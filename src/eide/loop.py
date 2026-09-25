@@ -1,0 +1,809 @@
+# -*- coding: utf-8 -*-
+"""Vòng lặp tác tử — EIDE-MDD-40 §B1.
+
+Đây là bản hiện thực của đoạn giả mã trong tài liệu:
+
+    def turn(human_act):
+        ev = hooks.user_prompt_submit(human_act)      # S0, 0 token
+        if ev.block: return ev.reply
+        msgs.append(user(human_act, ev.annotations))
+        for step in range(40):
+            ctx = assemble(constitution, EIDE_md, reminders=[...], skills)
+            rsp = llm.stream(ctx, msgs, tools=tools.visible())
+            if not rsp.tool_calls: break
+            for call in rsp.tool_calls:
+                pre  = hooks.pre_tool_use(call)
+                perm = policy.decide(call, pre)
+                res  = tools.run(call) if perm.allow else error(perm.reason)
+                hooks.post_tool_use(call, res)
+                msgs.append(tool_result(call.id, res))
+            if ctx.tokens > 0.7 * window: msgs = compact(msgs)
+        hooks.stop(msgs)
+
+Điều quan trọng nhất về kiến trúc này, và là lý do v3 bỏ máy trạng thái S0–S6: **không
+có đường nào đi vòng qua ba lớp xác định**. Mô hình muốn làm gì cũng phải qua
+`pre_tool_use → policy.decide → post_tool_use`. Trong kiến trúc cũ, một nút hỏng giữa
+chuỗi làm cả lượt chết tại chỗ; ở đây lỗi quay về mô hình như dữ liệu, kèm hướng dẫn,
+và nó đổi hướng.
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+from .config import Config
+from .context import assemble
+from .errors import EideError, budget_exhausted, gate_pending
+from .hooks import HookBus, S0Engine
+from .hooks.standard import register_standard_hooks
+from .ids import IdGen
+from .policy import PolicyEngine
+from .protocol import HumanAct
+from .protocol import uicommand as uic
+from .protocol.ledger import Ledger
+from .store import EideMd, Store, inventory
+from .tools import Registry, build_registry
+
+
+# =========================================================================== ngữ cảnh lượt
+@dataclass
+class TurnContext:
+    """Mọi thứ một công cụ hoặc một hook cần biết về lượt đang chạy."""
+
+    config: Config
+    store: Store
+    ledger: Ledger
+    eide_md: EideMd
+    ids: IdGen
+    registry: Registry
+    emit: Callable[[Any], None]
+
+    history: Any = None
+    run_id: str = ""
+    started_at: float = 0.0
+    tool_calls_used: int = 0
+    ask_rounds: int = 0
+    awaiting_human: bool = False
+    said_anything: bool = False
+
+    pending_cards: list[dict[str, Any]] = field(default_factory=list)
+    assumptions: list[str] = field(default_factory=list)
+    assumptions_stated: list[str] = field(default_factory=list)
+    human_edits: list[dict[str, Any]] = field(default_factory=list)
+    project_name: str = ""
+    # Tệp tác tử đang sửa trong lượt này — soft-lock (§E4 bước 1, ca CX09).
+    locks: set[str] = field(default_factory=set)
+    thoi_diem_ket_thuc: dict[str, float] = field(default_factory=dict)
+    # Mọi câu tác tử đã NÓI RA trong lượt. Hook Stop và phép đánh dấu "đã nhắc" đọc
+    # cái này, chứ không hỏi mô hình xem nó có nghĩ là đã nói hay chưa.
+    loi_da_noi: list[str] = field(default_factory=list)
+    # Lời NGƯỜI đã nói trong phiên — constant-guard coi con số họ tự nói là có nguồn.
+    loi_nguoi_trong_phien: list[str] = field(default_factory=list)
+    usage_luot: Any = None                       # chi phí CỦA LƯỢT NÀY, không phải phiên
+    phan_loai_sua: Any = None                    # §E4.1 — loại sửa của người trong lượt
+    fact_nguoi_moi: list[dict[str, Any]] = field(default_factory=list)
+    # Tài liệu đã nạp trong phiên — giữ nguyên văn theo trang để trích Fact và trả lời
+    # có trích trang. Không nằm trong kho vì nội dung PDF lớn và không cần phiên bản.
+    tai_lieu: dict[str, Any] = field(default_factory=dict)
+
+    def mark_agent_wrote(self, path: str) -> None:
+        """Soft-lock: cảnh báo người, nhưng VẪN cho họ sửa (§E4 bước 1).
+
+        Khoá cứng sẽ biến tác tử thành cái chắn đường. Ca CX09 đo đúng chuyện người phá
+        khoá, nên phá khoá phải là một đường đi hợp lệ chứ không phải một lỗi.
+        """
+        if path not in self.locks:
+            self.locks.add(path)
+            self.emit(uic.surface_lock("code", block=path, by=self.run_id,
+                                       why="Tác tử đang sửa tệp này"))
+
+    def build_inventory(self):
+        return inventory.build(self.store, ledger=self.ledger,
+                               project_name=self.project_name,
+                               pending_cards=self.pending_cards)
+
+    @property
+    def elapsed(self) -> float:
+        return time.perf_counter() - self.started_at
+
+    def budget_left(self) -> tuple[int, float]:
+        b = self.config.budget
+        return b.max_tool_calls - self.tool_calls_used, b.max_seconds - self.elapsed
+
+
+# =========================================================================== tác tử
+class Agent:
+    """Một phiên làm việc: giữ transcript, thẻ chờ và cổng chờ qua nhiều lượt."""
+
+    def __init__(self, config: Config, *, llm: Any, registry: Registry | None = None,
+                 policy: PolicyEngine | None = None, s0: S0Engine | None = None,
+                 project_name: str = ""):
+        self.config = config
+        self.llm = llm
+        self.registry = registry or build_registry()
+        self.policy = policy or PolicyEngine(autonomy=config.autonomy)
+        self.s0 = s0 or S0Engine()
+        self.hooks = register_standard_hooks(HookBus())
+
+        p = config.paths
+        self.ledger = Ledger(p.ledger)
+        self.store = Store(p.store_db)
+        self.ids = IdGen(p.state_dir)
+        self.eide_md = EideMd.load(p.eide_md, create_name=project_name or p.project_root.name)
+        self.project_name = project_name or p.project_root.name
+
+        # Lịch sử phải dựng SAU kho và sổ cái (nó dùng cả hai) và TRƯỚC lượt đầu tiên
+        # (nó khởi tạo kho git của dự án).
+        from .history import History
+        self.history = History(paths=p, store=self.store, ledger=self.ledger,
+                               ids=self.ids, eide_md=self.eide_md)
+
+        self.messages: list[dict[str, Any]] = []
+        self.dang_nhin: str = "project"          # bề mặt người đang mở (HumanAct attend)
+        self.pending_cards: list[dict[str, Any]] = []
+        self.pending_gates: dict[str, dict[str, Any]] = {}
+        self.assumptions: list[str] = []
+        self.last_report: dict[str, Any] = {}
+        self.locks: set[str] = set()             # tệp tác tử đang giữ soft-lock
+        self.thoi_diem_ket_thuc: dict[str, float] = {}
+        self.loi_nguoi: list[str] = []           # mọi câu người đã gõ trong phiên
+        self.usage_phien: Any = None             # chi phí cộng dồn cả phiên
+        self.tai_lieu: dict[str, Any] = {}       # tài liệu đã nạp, theo doc_id
+
+    # ------------------------------------------------------------------ một lượt
+    def turn(self, act: HumanAct, emit: Callable[[Any], None]) -> None:
+        run_id = self.ids.next("run")
+        ctx = TurnContext(config=self.config, store=self.store, ledger=self.ledger,
+                          eide_md=self.eide_md, ids=self.ids, registry=self.registry,
+                          emit=emit, history=self.history, run_id=run_id,
+                          started_at=time.perf_counter(),
+                          pending_cards=self.pending_cards, assumptions=self.assumptions,
+                          project_name=self.project_name, locks=self.locks,
+                          thoi_diem_ket_thuc=self.thoi_diem_ket_thuc,
+                          # N9 — sửa của người mà tác tử chưa nhắc tới. Hook Stop đọc
+                          # đúng danh sách này để bắt thêm một vòng (CX07).
+                          human_edits=[cs.to_dict() for cs in
+                                       self.history.log.human_unacknowledged()],
+                          loi_nguoi_trong_phien=self.loi_nguoi,
+                          tai_lieu=self.tai_lieu)
+        # Mọi lời tác tử nói ra đều đi qua đây, nên "đã nói gì chưa" là một sự thật đo
+        # được chứ không phải một phỏng đoán.
+        def ghi_lai(cmd):
+            if cmd.method == "console.post" and cmd.params.get("role") == "agent":
+                ctx.loi_da_noi.append(cmd.params.get("text", ""))
+                ctx.said_anything = True
+            emit(cmd)
+        ctx.emit = ghi_lai
+
+        if act.text:
+            self.loi_nguoi.append(act.text)
+        if act.note:
+            self.loi_nguoi.append(act.note)
+
+        self.ledger.append("turn.start", {"run_id": run_id, "act_id": act.id,
+                                          "kind": act.kind, "text": act.text})
+
+        # Chuyển tab không phải một "lượt chạy": không hiện thẻ Run, không vẽ lại bề
+        # mặt, không gọi mô hình. Chỉ ghi sổ để phát lại được (DEV-226).
+        im_lang = act.kind == "attend"
+        if not im_lang:
+            emit(uic.run_update(run_id, status="running", steps=[]))
+
+        try:
+            self._run(act, ctx)
+        finally:
+            self._ghi_nhan_da_nhac(ctx)
+            self._tha_khoa(ctx)
+            self.thoi_diem_ket_thuc[run_id] = time.time()
+            report = self._report(ctx)
+            self.last_report = report
+            self.ledger.append("turn.end", {"run_id": run_id, **report})
+            if not im_lang:
+                emit(uic.run_update(
+                    run_id, status="waiting" if ctx.awaiting_human else "done",
+                    cost=report["cost"], assumptions=self.assumptions,
+                    buttons=["Hoàn tác lượt", "Ghi bản ưng ý"]))
+                # I3 — giao diện chỉ render thứ lõi gửi. Vẽ lại bề mặt SAU khi sổ cái
+                # đã chốt lượt, để tab Nhật ký thấy được cả dòng kết thúc lượt.
+                self.paint(emit, run=report)
+
+    # ------------------------------------------------------------------ vẽ bề mặt
+    def paint(self, emit: Callable[[Any], None], *, run: dict[str, Any] | None = None,
+              only: list[str] | None = None) -> None:
+        """Dựng và gửi SurfaceModel cho các tab (§D, §E2, §E7)."""
+        from . import surfaces
+        inv = inventory.build(self.store, ledger=self.ledger,
+                              project_name=self.project_name,
+                              pending_cards=self.pending_cards)
+        surfaces.emit_all(emit, store=self.store, ledger=self.ledger, eide_md=self.eide_md,
+                          inv=inv, cfg=self.config, assumptions=self.assumptions,
+                          run=run, only=only, hist=self.history)
+
+    # ------------------------------------------------------------------ thân
+    def _run(self, act: HumanAct, ctx: TurnContext) -> None:
+        # --- Thao tác không cần mô hình: giải quyết bằng mã rồi về.
+        if act.kind == "decide":
+            return self._resolve_gate(act, ctx)
+        if act.kind == "stop":
+            ctx.emit(uic.console_post("[Tác tử] Đã dừng.", role="agent"))
+            ctx.said_anything = True
+            return
+        if act.kind in ("attend", "set"):
+            return self._dieu_huong(act, ctx)
+        if act.kind == "edit":
+            return self._nguoi_sua(act, ctx)
+        if act.kind == "undo":
+            return self._nguoi_hoan_tac(act, ctx)
+
+        # --- S0: hook UserPromptSubmit, 0 token, đứng trước mọi phép đoán (N5).
+        s0 = self.s0.run(act.text, attachments_text=act.data.get("_attachment_text", ""),
+                         ledger=self.ledger, gate_id_factory=lambda: self.ids.next("gate"))
+        self.ledger.append("hook", {"run_id": ctx.run_id, **s0.to_ledger()})
+
+        if s0.reply_vi:
+            ctx.emit(uic.console_post(f"[Tác tử] {s0.reply_vi}", role="agent"))
+            ctx.said_anything = True
+        for n in s0.notices:
+            ctx.emit(uic.notice(n["text"], level=n["level"], code=n["code"]))
+        for card in s0.cards:
+            ctx.emit(uic.console_post(_render_gate(card), role="agent", card=card))
+            self.pending_cards.append(card)
+            self.pending_gates[card["gate_id"]] = {"card": card, "call": None,
+                                                   "run_id": ctx.run_id}
+            self.ledger.append("gate", {"run_id": ctx.run_id, "gate_id": card["gate_id"],
+                                        "gate": card["gate"], "rule": card["rule"],
+                                        "state": "open"})
+        if s0.block:
+            ctx.awaiting_human = bool(s0.cards)
+            return
+
+        # --- Lượt của người vào transcript, kèm khối nhắc.
+        self.messages.append({"role": "user",
+                              "text": self._user_block(act, ctx, s0.annotations)})
+
+        # --- Vòng lặp công cụ.
+        extra_round_used = False
+        while True:
+            self._tool_loop(ctx, s0)
+            stop = self.hooks.stop(ctx)
+            self.ledger.append("hook", {"run_id": ctx.run_id, "hook": "Stop",
+                                        "another_round": stop.another_round,
+                                        "reason": stop.reason_vi, "checks": stop.fired})
+            if not stop.another_round or extra_round_used or ctx.awaiting_human:
+                break
+            # Chỉ cho đúng MỘT vòng thêm: hook Stop nhắc là để sửa sót, không phải để
+            # kéo dài lượt vô hạn khi mô hình cứ lờ đi.
+            extra_round_used = True
+            self.messages.append({"role": "user", "text": stop.injection})
+
+    def _tool_loop(self, ctx: TurnContext, s0: Any) -> None:
+        while True:
+            left_calls, left_secs = ctx.budget_left()
+            if left_calls <= 0 or left_secs <= 0:
+                kind = "số lời gọi công cụ" if left_calls <= 0 else "thời gian"
+                lim = (self.config.budget.max_tool_calls if left_calls <= 0
+                       else f"{self.config.budget.max_seconds:.0f} s")
+                err = budget_exhausted(kind, lim)
+                ctx.emit(uic.notice(err.message_vi, level="warn", code=err.code))
+                ctx.said_anything = True
+                return
+
+            asm = self._assemble(ctx, s0)
+            stream_id = f"{ctx.run_id}-s{ctx.tool_calls_used}"
+            try:
+                rsp = self.llm.stream(
+                    system=asm.system_instruction, messages=self.messages,
+                    tools=self.registry.declarations(),
+                    on_text=lambda d: ctx.emit(uic.console_stream(d, stream_id=stream_id)))
+            except EideError as e:
+                # UC19: hỏng thì dừng an toàn, nói thật, không mất việc đã làm.
+                self.ledger.append("incident", {"run_id": ctx.run_id, **e.to_tool_result()})
+                ctx.emit(uic.console_stream("", stream_id=stream_id, done=True))
+                ctx.emit(uic.console_post(f"[Tác tử] {e.message_vi}", role="agent"))
+                ctx.said_anything = True
+                return
+
+            ctx.emit(uic.console_stream("", stream_id=stream_id, done=True))
+            self.ledger.append("llm_call", {"run_id": ctx.run_id, "model": rsp.model,
+                                            "usage": rsp.usage.to_dict(),
+                                            "tool_calls": [c.tool for c in rsp.tool_calls],
+                                            "elapsed_ms": round(rsp.elapsed_ms, 1)})
+            self._usage_add(rsp.usage, ctx)
+
+            if rsp.text.strip():
+                ctx.emit(uic.console_post(f"[Tác tử] {rsp.text.strip()}", role="agent"))
+                ctx.said_anything = True
+                self._note_stated_assumptions(ctx, rsp.text)
+
+            self.messages.append(rsp.to_message())
+            if not rsp.tool_calls:
+                return
+
+            for call in rsp.tool_calls:
+                self._one_tool(call, ctx)
+                if ctx.awaiting_human:
+                    return
+
+            if self._context_pressure(asm) > self.config.budget.compact_at:
+                self._compact(ctx)
+
+    # ------------------------------------------------------------------ một công cụ
+    def _one_tool(self, call: Any, ctx: TurnContext) -> None:
+        c = {"tool": call.tool, "args": call.args, "id": call.id}
+        ctx.tool_calls_used += 1
+        self.ledger.append("tool_use", {"run_id": ctx.run_id, "tool": call.tool,
+                                        "args": call.args, "call_id": call.id})
+        spec = self.registry.get(call.tool)
+
+        pre = self.hooks.pre_tool_use(c, ctx)
+        if not pre.ok and pre.error is not None:
+            return self._tool_error(call, pre.error, ctx)
+
+        perm = self.policy.decide(c, pre.facts, spec)
+        self.ledger.append("hook", {"run_id": ctx.run_id, "hook": "policy",
+                                    "tool": call.tool, **perm.to_ledger()})
+
+        if perm.action == "deny":
+            return self._tool_error(call, self.policy.deny_error(c, perm, pre.facts), ctx)
+
+        if perm.action == "ask":
+            gid = self.ids.next("gate")
+            card = {"type": "gate", "card_id": gid, "gate_id": gid, "gate": perm.gate,
+                    "rule": perm.rule_id, "title": perm.summary_vi or f"Duyệt {call.tool}",
+                    "risk": getattr(spec, "risk", "R3"), "never_auto": perm.never_auto,
+                    "irreversible": perm.irreversible,
+                    "require_fields": perm.require_fields,
+                    "tool": call.tool, "args": call.args,
+                    "consequences_vi": [], "options": ["Duyệt", "Từ chối"]}
+            ctx.emit(uic.console_post(_render_gate(card), role="agent", card=card))
+            self.pending_cards.append(card)
+            self.pending_gates[gid] = {"card": card, "call": c, "run_id": ctx.run_id}
+            self.ledger.append("gate", {"run_id": ctx.run_id, "gate_id": gid,
+                                        "gate": perm.gate, "tool": call.tool, "state": "open"})
+            ctx.said_anything = True
+            ctx.awaiting_human = True
+            # I6: mô hình phải DỪNG, không được hỏi lại bằng lời để lách thẻ.
+            return self._tool_error(
+                call, gate_pending(perm.gate or "?", gid, perm.summary_vi), ctx, as_incident=False)
+
+        res = self.registry.run(call.tool, call.args, ctx)
+        self.hooks.post_tool_use(c, res, ctx)
+        self.messages.append({"role": "tool", "tool_call_id": call.id,
+                              "tool": call.tool, "result": res.to_model()})
+
+    def _tool_error(self, call: Any, err: EideError, ctx: TurnContext,
+                    *, as_incident: bool = True) -> None:
+        if as_incident:
+            self.ledger.append("tool_result", {"run_id": ctx.run_id, "tool": call.tool,
+                                               "ok": False, "code": err.code})
+        self.messages.append({"role": "tool", "tool_call_id": call.id,
+                              "tool": call.tool, "result": err.to_tool_result()})
+
+    # ------------------------------------------------------------------ điều hướng
+    def _dieu_huong(self, act: HumanAct, ctx: TurnContext) -> None:
+        """`attend` và `set`: ghi nhận bằng mã, KHÔNG gọi mô hình.
+
+        Đây là chỗ dễ đốt tiền nhất của cả kiến trúc, và nó đã đốt thật: ở lần chạy app
+        đầu tiên, mỗi cái bấm chuyển tab sinh ra một `attend`, lõi coi nó như một lượt
+        bình thường và gọi mô hình — bảy cú bấm thành bảy lượt, mỗi lượt vài nghìn token,
+        để trả lời một câu người dùng chưa từng hỏi.
+
+        Chuyển tab là **sự chú ý**, không phải **yêu cầu**. Tác tử cần biết người đang
+        nhìn gì (§D1 I4 — lõi chỉ thấy HumanAct kèm xuất xứ), nhưng biết không có nghĩa
+        là phải nói gì đó về nó.
+        """
+        if act.kind == "attend":
+            self.dang_nhin = act.origin.surface
+            return
+
+        key = str(act.data.get("key"))
+        val = act.data.get("value")
+        if key == "autonomy" and val in ("A0", "A1", "A2", "A3", "A4"):
+            self.policy.autonomy = str(val)
+            self.config.autonomy = str(val)
+            ctx.emit(uic.notice(f"Mức tự chủ đổi sang {val}.", level="info"))
+        elif key == "trust" and isinstance(val, str):
+            self.policy.trusted.add(val)
+            ctx.emit(uic.notice(f"Đã ghi nhớ: tin {val} cho lần sau.", level="info"))
+        else:
+            ctx.emit(uic.notice(f"Thiết lập “{key}” chưa được hiện thực ở bước này.",
+                                level="warn"))
+        ctx.said_anything = True
+
+    # ------------------------------------------------------------------ người sửa (§E4)
+    def _nguoi_sua(self, act: HumanAct, ctx: TurnContext) -> None:
+        """Sáu bước của §E4, từ lúc người bấm Lưu tới lúc tác tử biết.
+
+        Điểm cốt lõi, và là chỗ dễ làm sai nhất: **lưu của người luôn được** (§E4 bước 4:
+        "code.human_save luôn tự duyệt — đây là hành động R0 của người"). Không có cổng
+        nào chắn đường người sửa hiện vật của chính họ. Cái đi qua cổng là chiều ngược
+        lại: tác tử ghi đè lên bản người vừa sửa (G-FILE).
+        """
+        t = act.target
+        assert t is not None                       # đã kiểm ở HumanAct.validate()
+        la_tep = t.type in ("file", "code")
+        pha_khoa = la_tep and t.id in self.locks
+
+        try:
+            cs = (self._sua_tep(act, ctx, pha_khoa) if la_tep
+                  else self._sua_hien_vat(act, ctx))
+        except _XungDot as e:
+            return self._the_xung_dot(e, act, ctx)
+
+        if cs is None:
+            return
+
+        # Bước 5(a) — EIDE.md §"Người vừa sửa": tác tử đọc mục này mỗi lượt.
+        self.eide_md.note_human_edit(
+            artefact=str(t), summary=cs.explain.get("summary", "sửa"), why=act.note)
+        self.eide_md.save()
+
+        pl = getattr(ctx, "phan_loai_sua", None)
+        loi = [f"[Tác tử] Đã ghi thay đổi của anh vào {t} ({cs.id})."]
+
+        if cs.stale_marked:
+            loi.append("Những thứ dựng trên nó giờ cần xem lại: "
+                       + ", ".join(cs.stale_marked)
+                       + ". Tôi chưa chạy lại gì cả — anh muốn tôi lập kế hoạch cập nhật không?")
+        elif pl is not None and not pl.gay_stale:
+            # CX08 — nói rõ VÌ SAO không có gì phải cập nhật, để im lặng không bị
+            # hiểu thành bỏ sót.
+            loi.append(f"Đây là {pl.mo_ta_vi}, không đụng tới nội dung kỹ thuật — "
+                       "nên không có gì dựng trên nó phải làm lại.")
+
+        from . import human_edit as he
+        nhac = he.loi_nhac_fact_nguoi(getattr(ctx, "fact_nguoi_moi", []) or [])
+        if nhac:
+            loi.append(nhac)
+        if pha_khoa:
+            # §E4.1 dòng lock_broken: tác tử DỪNG sửa tệp đó, không tự lưu đè.
+            self.locks.discard(t.id)
+            ctx.emit(uic.surface_unlock("code", block=t.id))
+            loi.append("Tôi đang sửa dở tệp này nên đã dừng lại và giữ bản của anh. "
+                       "Phần sửa của tôi sẽ được gộp lên bản mới và trình diff để anh "
+                       "duyệt, chứ không tự ghi đè.")
+        ctx.emit(uic.console_post("\n\n".join(loi), role="agent"))
+        ctx.emit(uic.history_update(changesets=[self.history.tom_tat(cs)],
+                                    stale=[{"id": i} for i in cs.stale_marked]))
+        ctx.said_anything = True
+
+    def _sua_tep(self, act: HumanAct, ctx: TurnContext, pha_khoa: bool):
+        from .errors import path_not_found
+        path = act.target.id
+        p = (self.config.paths.project_root / path).resolve()
+        if not p.exists():
+            raise path_not_found(path)
+
+        cu = p.read_text("utf-8", errors="replace")
+        moi = act.data.get("content")
+        if moi is None:
+            ctx.emit(uic.notice("Thiếu nội dung mới trong thao tác sửa.", level="error"))
+            return None
+
+        base_ver = str(act.data.get("base_version", ""))
+        if _bam(cu) != base_ver and base_ver:
+            # Bước 3 — base_version khác bản hiện tại: tác tử đã sửa trong lúc người gõ.
+            goc = self._tim_ban_goc(path, base_ver)
+            if goc is None:
+                raise _XungDot(path, cua_nguoi=moi, cua_tac_tu=cu, goc=None,
+                               vi_sao="không tìm lại được bản gốc mà anh đã mở")
+            kq = self.history.vcs.merge_ba_chieu(base=goc, cua_nguoi=moi, cua_tac_tu=cu)
+            if not kq.sach:
+                raise _XungDot(path, cua_nguoi=moi, cua_tac_tu=cu, goc=goc,
+                               vi_sao=f"{kq.doan_xung_dot} đoạn đụng nhau")
+            moi = kq.noi_dung
+
+        p.write_text(moi, "utf-8")
+        return self.history.ghi_tep(
+            author="human", paths=[path],
+            summary=act.data.get("summary") or f"anh sửa {path}",
+            explain=self._explain_cua_nguoi(act, f"anh sửa {path}"),
+            noi_dung_truoc={path: cu}, human_act_id=act.id, note=act.note,
+            run_id=ctx.run_id)
+
+    def _sua_hien_vat(self, act: HumanAct, ctx: TurnContext):
+        from . import human_edit as he
+
+        aid = act.target.id
+        cu = self.store.get(aid)
+        if cu is None:
+            ctx.emit(uic.notice(
+                f"Không có hiện vật {aid} trong kho, nên không sửa được. "
+                "Mở tab tương ứng để xem kho đang có gì.", level="error"))
+            return None
+
+        base = str(act.data.get("base_version", "")).lstrip("v")
+        if base and base.isdigit() and int(base) != cu["version"]:
+            # Cùng hiện vật, hai người sửa. Trộn theo TRƯỜNG: khác trường thì gộp được,
+            # cùng trường khác giá trị thì để người chọn (§E4 bước 3).
+            fields = act.data.get("fields") or {}
+            dung = [k for k, v in fields.items() if cu["canonical"].get(k) != v]
+            if dung:
+                raise _XungDot(
+                    aid,
+                    cua_nguoi="; ".join(f"{k} = {fields[k]}" for k in dung),
+                    cua_tac_tu="; ".join(f"{k} = {cu['canonical'].get(k)}" for k in dung),
+                    goc=None,
+                    vi_sao=f"anh mở bản v{base}, nhưng kho đã ở v{cu['version']} — "
+                           f"trường {', '.join(dung)} đã đổi từ lúc đó")
+
+        truoc = dict(cu["canonical"])
+        can = dict(truoc)
+        can.update(act.data.get("fields") or {})
+
+        # §E4.1 — không phải sửa nào cũng như nhau. Đổi tên một khối không được làm
+        # cả chuỗi hạ nguồn sáng đèn cảnh báo (CX08).
+        pl = he.phan_loai(truoc=truoc, sau=can,
+                          lock_broken=bool(act.data.get("lock_broken")),
+                          bac_bo=bool(act.data.get("bac_bo")))
+        ctx.phan_loai_sua = pl
+
+        cs = self.history.ghi_kho(
+            author="human", artefact_id=aid, type=cu["type"], op="update",
+            canonical=can, explain=self._explain_cua_nguoi(act, f"anh sửa {aid}"),
+            human_act_id=act.id, note=act.note, run_id=ctx.run_id,
+            gay_stale=pl.gay_stale)
+
+        # §E4 bước 3 / CX05 — số mới người vừa nhập mà chưa truy vết được thì thành
+        # Fact tầng NGƯỜI, chứ không biến mất vào một ô trong bảng.
+        from .hooks.standard import _van_ban_co_nguon
+        nguon = _van_ban_co_nguon(ctx, {})
+        ctx.fact_nguoi_moi = [
+            he.tao_fact_nguoi(self.store, hien_vat=aid, so=s,
+                              trich_loi=act.note or act.data.get("summary") or
+                                        f"anh sửa {aid}: {s.nguyen_van}",
+                              human_act_id=act.id)
+            for s in he.so_moi_khong_nguon(truoc=truoc, sau=can, nguon_da_co=nguon)
+        ]
+        return cs
+
+    def _explain_cua_nguoi(self, act: HumanAct, mac_dinh: str) -> dict[str, Any]:
+        """Changeset của người cũng có lớp giải thích (§E5.1) — dựng từ lời họ."""
+        return {
+            "summary": act.data.get("summary") or mac_dinh,
+            "why": act.note or "Anh không ghi lý do.",
+            "sources": [{"kind": "human_act", "ref": act.id, "tier": "NGUOI"}],
+            "diff_prev": act.data.get("summary") or "xem diff của changeset",
+            "next": "Tác tử xem lại hạ nguồn và đề nghị cập nhật.",
+            "confidence": "NGUOI",
+        }
+
+    def _tim_ban_goc(self, path: str, bam: str) -> str | None:
+        """Tìm lại nội dung tệp mà người đã mở, theo hash nội dung."""
+        b = self.history.blobs.get(bam)
+        if b is not None:
+            return b.decode("utf-8", "replace")
+        if not self.history.git_san:
+            return None
+        for r in self.history.vcs.lich_su_tep(path, n=40):
+            noi_dung = self.history.vcs.noi_dung_tai(r["sha"], path)
+            if noi_dung is not None and _bam(noi_dung) == bam:
+                return noi_dung
+        return None
+
+    def _the_xung_dot(self, e: "_XungDot", act: HumanAct, ctx: TurnContext) -> None:
+        """§E4 bước 3 — "xung đột → thẻ clarify với hai bản cạnh nhau, người chọn"."""
+        card_id = self.ids.next("card")
+        card = {
+            "type": "clarify", "card_id": card_id,
+            "intro": f"Bản của anh và bản hiện tại của {e.hien_vat} đụng nhau "
+                     f"({e.vi_sao}). Tôi không tự chọn hộ.",
+            "questions": [{
+                "key": "chon",
+                "question": f"Giữ bản nào cho {e.hien_vat}?",
+                "why": "Tôi không ghi đè sửa của anh, và cũng không vứt phần tôi vừa làm "
+                       "mà không hỏi.",
+                "choices": ["Giữ bản của tôi (anh)", "Giữ bản của tác tử",
+                            "Để tôi xem diff rồi quyết"],
+                "required": True}],
+            "hai_ban": {"cua_nguoi": e.cua_nguoi[:4000], "cua_tac_tu": e.cua_tac_tu[:4000]},
+        }
+        ctx.emit(uic.console_post(
+            f"[Tác tử] Bản của anh và bản hiện tại của **{e.hien_vat}** đụng nhau: "
+            f"{e.vi_sao}. Anh chọn giữ bản nào?", role="agent", card=card))
+        self.pending_cards.append(card)
+        ctx.awaiting_human = True
+        ctx.said_anything = True
+        self.ledger.append("incident", {"run_id": ctx.run_id, "code": "E_VERSION_CONFLICT",
+                                        "artefact": e.hien_vat, "why": e.vi_sao})
+
+    # ------------------------------------------------------------------ người hoàn tác
+    def _nguoi_hoan_tac(self, act: HumanAct, ctx: TurnContext) -> None:
+        """§E5.2 — "hoàn tác của người luôn được (R0)". Không cổng nào chắn."""
+        t = act.target
+        if t is None:
+            ctx.emit(uic.notice("Hoàn tác cái gì? Thiếu target.", level="error"))
+            return
+        kq = (self.history.hoan_tac_luot(t.id, by="human") if t.type == "run"
+              else self.history.hoan_tac_changeset(t.id, by="human"))
+
+        ctx.emit(uic.console_post(f"[Tác tử] {kq.message_vi}", role="agent"))
+        for c in kq.canh_bao:
+            ctx.emit(uic.notice(c, level="warn"))
+        ctx.said_anything = True
+        if kq.ok:
+            ctx.emit(uic.history_update(
+                changesets=self.history.danh_sach(limit=30),
+                stale=[{"id": i} for i in kq.stale_moi]))
+            self.messages.append({"role": "user", "text":
+                f"<system-reminder>\nNgười dùng vừa hoàn tác: {kq.message_vi}\n"
+                + ("Phần KHÔNG hoàn tác được: "
+                   + "; ".join(f"{g['id']} ({g['ly_do']})" for g in kq.giu_nguyen)
+                   + "\n" if kq.giu_nguyen else "")
+                + "Đừng làm lại thứ vừa bị hoàn tác trừ khi họ bảo.\n</system-reminder>"})
+
+    # ------------------------------------------------------------------ cổng
+    def _resolve_gate(self, act: HumanAct, ctx: TurnContext) -> None:
+        gid = act.data["gate_id"]
+        pend = self.pending_gates.pop(gid, None)
+        if pend is None:
+            ctx.emit(uic.notice(f"Thẻ {gid} không còn chờ nữa (đã trả lời hoặc hết hạn).",
+                                level="warn", code="E_GATE_STALE"))
+            ctx.said_anything = True
+            return
+        approved = bool(act.data.get("approved"))
+        self.pending_cards[:] = [c for c in self.pending_cards if c.get("card_id") != gid]
+        ctx.emit(uic.card_resolve(gid, by="human", choice=act.data.get("choice")))
+        self.ledger.append("gate", {"run_id": ctx.run_id, "gate_id": gid,
+                                    "state": "approved" if approved else "rejected",
+                                    "act_id": act.id, "note": act.note})
+
+        if not approved:
+            ctx.emit(uic.console_post("[Tác tử] Đã huỷ, tôi không làm thao tác đó.", role="agent"))
+            ctx.said_anything = True
+            self.messages.append({"role": "user",
+                                  "text": f"<system-reminder>Người dùng TỪ CHỐI cổng {gid}"
+                                          f"{' — lý do: ' + act.note if act.note else ''}. "
+                                          "Đừng tìm đường khác để làm việc đó. Hỏi họ muốn "
+                                          "làm gì tiếp.</system-reminder>"})
+            return
+
+        call = pend.get("call")
+        if call is None:
+            # Cổng do S0 phát (chưa có lời gọi công cụ nào) — để mô hình tiếp tục.
+            self.messages.append({"role": "user",
+                                  "text": f"<system-reminder>Người dùng ĐÃ DUYỆT cổng {gid} "
+                                          f"({pend['card'].get('title')}). Tiến hành."
+                                          "</system-reminder>"})
+            return self._tool_loop(ctx, None)
+
+        spec = self.registry.get(call["tool"])
+        res = self.registry.run(call["tool"], call["args"], ctx)
+        self.hooks.post_tool_use(call, res, ctx)
+        self.messages.append({"role": "tool", "tool_call_id": call.get("id", gid),
+                              "tool": call["tool"], "result": res.to_model()})
+        self._tool_loop(ctx, None)
+
+    # ------------------------------------------------------------------ ngữ cảnh
+    def _assemble(self, ctx: TurnContext, s0: Any):
+        inv = ctx.build_inventory()
+        recent = [m.get("text", "") for m in self.messages[-6:] if m.get("role") == "user"]
+        return assemble(
+            eide_md=self.eide_md, inventory_text=inv.render(), store=self.store,
+            recent_texts=recent or [""],
+            human_edit_changesets=ctx.human_edits,
+            pending_cards=self.pending_cards,
+            stopped_run=inv.unfinished_run,
+            assumptions=self.assumptions,
+            s0_annotations=getattr(s0, "annotations", None) or [],
+            budget=self.config.context_budget)
+
+    def _user_block(self, act: HumanAct, ctx: TurnContext, annotations: list[str]) -> str:
+        asm = self._assemble(ctx, type("S", (), {"annotations": annotations})())
+        body = act.text or act.transcript_line()
+        return (asm.reminder + "\n\n" + body) if asm.reminder else body
+
+    def _context_pressure(self, asm: Any) -> float:
+        used = asm.total_tokens + sum(len(str(m)) // 3 for m in self.messages)
+        return used / max(1, self.config.model.context_window)
+
+    def _compact(self, ctx: TurnContext) -> None:
+        """§B6 — nén khi > 70 %. PreCompact rút phần có cấu trúc ra trước.
+
+        Ở G1 mới giữ 10 lượt gần nhất nguyên văn và rút phần còn lại thành một dòng.
+        G2 nối phần ghi quyết định/giả định vào EIDE.md + sổ cái trước khi cắt.
+        """
+        if len(self.messages) <= 12:
+            return
+        dropped = len(self.messages) - 10
+        self.ledger.append("note", {"run_id": ctx.run_id, "compact": dropped})
+        head = {"role": "user",
+                "text": f"<system-reminder>\n{dropped} thông điệp cũ đã được nén khỏi ngữ "
+                        "cảnh. Quyết định và giả định quan trọng nằm trong EIDE.md và "
+                        "<inventory> ở trên. Cần chi tiết lượt cũ thì gọi history.list."
+                        "\n</system-reminder>"}
+        self.messages = [head] + self.messages[-10:]
+
+    # ------------------------------------------------------------------ báo cáo
+    def _note_stated_assumptions(self, ctx: TurnContext, text: str) -> None:
+        low = text.lower()
+        for a in self.assumptions:
+            if a not in ctx.assumptions_stated and a.lower()[:30] in low:
+                ctx.assumptions_stated.append(a)
+
+    def _ghi_nhan_da_nhac(self, ctx: TurnContext) -> None:
+        """N9 / CX07 — đánh dấu changeset của người là "tác tử đã nhắc tới".
+
+        Nhận biết bằng cách tìm mã changeset hoặc mã hiện vật trong lời tác tử đã nói
+        trong lượt. Máy móc, nhưng đó là ưu điểm: nó không tin vào việc mô hình *nghĩ*
+        rằng nó đã nhắc — nó kiểm chữ thật sự đã hiện ra cho người đọc.
+        """
+        if not ctx.human_edits or not ctx.loi_da_noi:
+            return
+        loi = "\n".join(ctx.loi_da_noi).lower()
+        for cs in ctx.human_edits:
+            moc = [cs["id"].lower()] + [t["artefact_id"].lower() for t in cs.get("touches", [])]
+            if any(m in loi for m in moc):
+                self.history.log.mark(cs["id"], acknowledged_by_agent=ctx.run_id)
+
+    def _tha_khoa(self, ctx: TurnContext) -> None:
+        for path in list(self.locks):
+            ctx.emit(uic.surface_unlock("code", block=path))
+        self.locks.clear()
+
+    def _usage_add(self, u: Any, ctx: TurnContext) -> None:
+        """Cộng dồn chi phí — của LƯỢT và của PHIÊN, tách bạch.
+
+        Bản đầu chỉ có một biến tích luỹ, nên báo cáo lượt in ra tổng cả phiên: một
+        lượt gọi bốn lần mô hình bị báo là tốn 487 nghìn token (DEV-232). Người đọc
+        con số đó không cách nào biết lượt vừa rồi thật sự đắt hay rẻ.
+        """
+        ctx.usage_luot = u if ctx.usage_luot is None else ctx.usage_luot.add(u)
+        self.usage_phien = u if self.usage_phien is None else self.usage_phien.add(u)
+
+    def _report(self, ctx: TurnContext) -> dict[str, Any]:
+        """Báo cáo lượt, 5 dòng — §E2 dòng "Báo cáo lượt"."""
+        luot = ctx.usage_luot
+        phien = self.usage_phien
+        return {
+            "run_id": ctx.run_id,
+            "tool_calls": ctx.tool_calls_used,
+            "seconds": round(ctx.elapsed, 2),
+            "awaiting_human": ctx.awaiting_human,
+            "assumptions": list(self.assumptions),
+            "cost": {"tokens": luot.to_dict() if luot else {},
+                     "tools": ctx.tool_calls_used,
+                     "seconds": round(ctx.elapsed, 2),
+                     "phien": phien.to_dict() if phien else {}},
+        }
+
+
+class _XungDot(Exception):
+    """Hai bản đụng nhau. Không giải bằng mã được — phải để người chọn (§E4 bước 3)."""
+
+    def __init__(self, hien_vat: str, *, cua_nguoi: str, cua_tac_tu: str,
+                 goc: str | None, vi_sao: str):
+        super().__init__(vi_sao)
+        self.hien_vat = hien_vat
+        self.cua_nguoi = cua_nguoi
+        self.cua_tac_tu = cua_tac_tu
+        self.goc = goc
+        self.vi_sao = vi_sao
+
+
+def _bam(s: str) -> str:
+    import hashlib
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def _render_gate(card: dict[str, Any]) -> str:
+    """Thẻ cổng dạng chữ, cho transcript và cho lõi chạy headless.
+
+    §E7: "Thẻ cổng ... đúng 1 mục; không default" — nên ở đây không có lựa chọn nào
+    được đánh dấu sẵn, và hậu quả luôn đứng trước lựa chọn.
+    """
+    L = [f"**[{card.get('gate', 'CỔNG')}] {card.get('title', '')}**"]
+    for c in card.get("consequences_vi", []):
+        L.append(f"- {c}")
+    if card.get("irreversible"):
+        L.append("- **Thao tác này KHÔNG hoàn tác được.**")
+    if card.get("require_vi"):
+        L.append("")
+        L.append(card["require_vi"])
+    if card.get("require_fields"):
+        L.append(f"_Phải nêu: {', '.join(card['require_fields'])}._")
+    L.append("")
+    L.append("→ " + "  ·  ".join(card.get("options", ["Duyệt", "Từ chối"])))
+    return "\n".join(L)

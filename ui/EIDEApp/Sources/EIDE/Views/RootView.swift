@@ -1,0 +1,243 @@
+import SwiftUI
+
+/// Bố cục §E7: Console bên trái (3 cỡ) · 10 tab bên phải · thanh trạng thái dưới cùng.
+struct RootView: View {
+    @EnvironmentObject var state: AppState
+    @EnvironmentObject var setup: Setup
+
+    var body: some View {
+        Group {
+            if case .dangChay = state.connection {
+                noiDung
+            } else {
+                MoDuAnView()
+            }
+        }
+    }
+
+    private var noiDung: some View {
+        VStack(spacing: 0) {
+            if state.kenhKiemThu.dangBat {
+                // Phiên kiểm thử phải nhìn ra ngay. Một bài test chạy lẫn vào công việc
+                // thật là cách nhanh nhất để mất lòng tin vào cả hai.
+                HStack(spacing: 6) {
+                    Image(systemName: "testtube.2")
+                    Text("CHẾ ĐỘ KIỂM THỬ GIAO DIỆN — thao tác đang được điều khiển từ "
+                         + "`.eide/ui-test/inbox.jsonl`")
+                        .font(.system(size: 11, weight: .medium))
+                    Spacer()
+                }
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(Color.staleAmber.opacity(0.18))
+                .foregroundStyle(Color.staleAmber)
+            }
+            HStack(spacing: 0) {
+                ConsoleView()
+                    .frame(width: state.consoleWidth.rawValue)
+                Divider()
+                VStack(spacing: 0) {
+                    TabBar()
+                    Divider()
+                    SurfaceView(surface: state.surfaces[state.selectedSurface],
+                                key: state.selectedSurface)
+                }
+            }
+            Divider()
+            StatusBarView()
+        }
+    }
+}
+
+// MARK: - Thanh tab
+
+struct TabBar: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(state.surfaceOrder, id: \.key) { t in
+                    let chon = state.selectedSurface == t.key
+                    Button {
+                        state.selectedSurface = t.key
+                        // I1 — kể cả việc chuyển tab cũng là một HumanAct có xuất xứ,
+                        // để sổ cái phát lại được đúng thứ người đã nhìn (§D2 `attend`).
+                        state.gui(.attend(surface: t.key))
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(t.title).font(.system(size: 12, weight: chon ? .semibold : .regular))
+                            if let n = soKhoiRong(t.key), n > 0 {
+                                Text("\(n)").font(.system(size: 9, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                    .help("\(n) khối chưa có dữ liệu")
+                            }
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(chon ? Color.accentColor.opacity(0.14) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 5))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 4)
+        }
+        .background(.background)
+    }
+
+    private func soKhoiRong(_ key: String) -> Int? {
+        state.surfaces[key]?.blocks.filter { $0.type == "empty" }.count
+    }
+}
+
+// MARK: - Thanh trạng thái (§E7)
+
+struct StatusBarView: View {
+    @EnvironmentObject var state: AppState
+
+    var body: some View {
+        HStack(spacing: 14) {
+            muc("Dự án", state.status.du_an, help: "Thư mục dự án đang mở")
+            muc("Nhánh", state.status.nhanh, help: "Nhánh git của dự án")
+            muc("Chip", state.status.chip,
+                help: state.status.chip == "chưa ghim"
+                    ? "Chưa ghim hộ chiếu chip nào. Tác tử không ghim tên chip trần khi chưa có tài liệu."
+                    : "Hộ chiếu chip đã ghim (ns.part@semver)")
+
+            if state.status.fact.isEmpty {
+                muc("Fact", "0", help: "Chưa có con số nào truy vết được tới tài liệu")
+            } else {
+                HStack(spacing: 4) {
+                    Text("Fact").font(.system(size: 10)).foregroundStyle(.secondary)
+                    ForEach(["VANG", "BAC", "NGUOI", "DONG"], id: \.self) { t in
+                        if let n = state.status.fact[t], n > 0, let tier = Tier(rawValue: t) {
+                            HStack(spacing: 2) {
+                                TierChip(tier: tier)
+                                Text("\(n)").font(.system(size: 11, design: .monospaced))
+                            }
+                        }
+                    }
+                }
+            }
+
+            muc("Chặng", state.status.chang, help: "Chặng làm việc suy ra từ kho, không do mô hình đoán")
+
+            Button {
+                state.selectedSurface = "history"
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: state.status.stale > 0
+                          ? "exclamationmark.triangle.fill" : "checkmark.circle")
+                    Text("STALE \(state.status.stale)")
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(state.status.stale > 0 ? Color.staleAmber : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help(state.status.stale > 0
+                  ? "Có hiện vật hạ nguồn cần cập nhật vì thượng nguồn đã đổi"
+                  : "Không hiện vật nào cần cập nhật")
+
+            muc("Bản ưng ý", state.status.snapshot ?? "chưa có",
+                help: state.status.snapshot == nil
+                    ? "Chưa ghi bản ưng ý nào"
+                    : "cách đây \(state.status.khoang_cach_snapshot) changeset")
+
+            Spacer()
+
+            muc("Tự chủ", state.status.tu_chu, help: "Mức tự chủ: A3 = ghi tự do, chỉ cổng rủi ro mới hỏi")
+            muc("Mô hình", state.status.mo_hinh, help: "Mô hình đang dùng")
+
+            let b = state.status.ngan_sach
+            Text("\(b.da_dung_tool)/\(b.tool) tool · \(Int(b.da_dung_giay))/\(Int(b.giay)) s")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .help("Ngân sách một lượt")
+
+            Circle()
+                .fill(state.connection.ok ? Color.okGreen : Color.gateRed)
+                .frame(width: 7, height: 7)
+                .help(state.connection.ok ? "Lõi đang chạy" : "Mất kết nối lõi")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 5)
+        .background(.bar)
+    }
+
+    private func muc(_ nhan: String, _ gia: String, help: String) -> some View {
+        HStack(spacing: 4) {
+            Text(nhan).font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(gia).font(.system(size: 11, weight: .medium)).lineLimit(1)
+        }
+        .help(help)
+    }
+}
+
+// MARK: - Màn mở dự án
+
+struct MoDuAnView: View {
+    @EnvironmentObject var state: AppState
+    @EnvironmentObject var setup: Setup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("EIDE").font(.system(size: 34, weight: .bold))
+            Text("Môi trường phát triển nhúng có tác tử làm việc cùng anh.")
+                .foregroundStyle(.secondary)
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    hang("Thư mục dự án", $setup.duAnPath, "Nơi tác tử được phép đọc/ghi — đây cũng là sandbox của nó.")
+                    hang("Gốc mã nguồn EIDE", $setup.repoPath, "Thư mục chứa src/eide")
+                    hang("Python", $setup.pythonPath, "Bỏ trống = dùng .venv/bin/python trong gốc mã nguồn")
+                }
+                .padding(6)
+            }
+
+            if let v = setup.vanDe {
+                Label(v, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Color.gateRed).font(.callout)
+            }
+            if case .hong(let m) = state.connection {
+                Label(m, systemImage: "xmark.octagon.fill")
+                    .foregroundStyle(Color.gateRed).font(.callout)
+                    .textSelection(.enabled)
+            }
+
+            HStack {
+                Button("Mở dự án") {
+                    Task {
+                        await state.mo(python: setup.pythonURL, repo: setup.repoURL,
+                                       duAn: setup.duAnURL)
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!setup.hopLe)
+
+                if !state.coreLog.isEmpty {
+                    Spacer()
+                    Text(state.coreLog.suffix(3).joined())
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary).lineLimit(3)
+                }
+            }
+            Spacer()
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func hang(_ nhan: String, _ gia: Binding<String>, _ goiY: String) -> some View {
+        HStack(spacing: 8) {
+            Text(nhan).frame(width: 150, alignment: .trailing).foregroundStyle(.secondary)
+            TextField(goiY, text: gia).textFieldStyle(.roundedBorder)
+            Button("Chọn…") { chonThuMuc(gia) }
+        }
+    }
+
+    private func chonThuMuc(_ gia: Binding<String>) {
+        let p = NSOpenPanel()
+        p.canChooseDirectories = true
+        p.canChooseFiles = true
+        p.allowsMultipleSelection = false
+        if p.runModal() == .OK, let u = p.url { gia.wrappedValue = u.path }
+    }
+}

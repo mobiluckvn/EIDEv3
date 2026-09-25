@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.DS_Store
+
+# Khoa API — khong bao gio commit
+.env
+.env.*
+!.env.example
+
+# Du lieu cua nguoi dung / du an dang lam — khong bao gio commit
+du-lieu/
+.eide/
+ket-qua-do/
+
+# Ket qua bien dich Swift — dung lai duoc bang `./dong-goi.sh`
+ui/EIDEApp/.build/
+ui/EIDEApp/EIDE.app/
+*.xcuserdatad/
+.swiftpm/

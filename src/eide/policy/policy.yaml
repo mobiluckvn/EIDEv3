@@ -1,0 +1,199 @@
+# =============================================================================
+# Lớp cấp quyền — EIDE-MDD-40 §B4
+# =============================================================================
+#
+# Chạy SAU hook PreToolUse, TRƯỚC khi công cụ chạy:
+#
+#     pre  = hooks.pre_tool_use(call)
+#     perm = policy.decide(call, pre)      <-- tệp này
+#     res  = tools.run(call) if perm.allow else error(perm.reason)
+#
+# Ba kết quả:
+#   allow — chạy
+#   ask   — phát THẺ CỔNG riêng, dừng lượt, chờ HumanAct kind=decide (I6).
+#           Một chữ "có" người gõ trong ô nhập KHÔNG mở cổng.
+#   deny  — trả lỗi cho mô hình đọc. Đây là dữ liệu để nó đổi hướng, không phải sự cố.
+#
+# Điều kiện `when` đọc từ:
+#   - tham số lời gọi:      args.<tên>
+#   - kết quả hook PreTool: constant_guard.unsourced, target.human_edited, target.merged,
+#                           explain.complete, plan.big, snapshot.has_release, tier.ok
+#   - hợp đồng công cụ:     tool.risk, tool.writes_artefact
+#   - ngữ cảnh:             autonomy, trusted
+#
+# Luật xét theo thứ tự; luật ĐẦU TIÊN khớp sẽ quyết. Vì vậy deny đứng trước allow.
+
+version: 1
+
+# Mức tự chủ mặc định. Người đổi được trong Thiết lập (A13.1) — §E7.
+autonomy_default: A3
+
+# Mỗi mức tự chủ cho phép tự động tới mức rủi ro nào.
+# Cổng có never_auto thì KHÔNG mức nào bỏ qua được.
+autonomy:
+  A0: {auto_max_risk: R0, vi: "Hỏi mọi thứ"}
+  A1: {auto_max_risk: R1, vi: "Đọc tự do; ghi phải hỏi"}
+  A2: {auto_max_risk: R2, vi: "Ghi trong dự án tự do"}
+  A3: {auto_max_risk: R2, vi: "Mặc định — ghi tự do, chỉ các cổng rủi ro mới hỏi"}
+  A4: {auto_max_risk: R3, vi: "Tự chủ cao — chỉ G-OPS/G-SAFE mới hỏi"}
+
+rules:
+
+  # ---------------------------------------------------------------- DENY
+  # Deny là lỗi CÓ CHỦ ĐÍCH. Mỗi cái dưới đây canh một nguyên tắc, và lý do phải
+  # nói đủ để mô hình sửa được lời gọi chứ không phải để nó thử lại y hệt.
+
+  - id: POL-N7-source-quote
+    tool: "store.req_create"
+    when: "!args.source_quote"
+    action: deny
+    reason_vi: >
+      REQ phải trích đúng lời người dùng (source_quote). Không trích được câu nào thì
+      đó không phải yêu cầu của họ — có thể là chỉ thị cho bạn, hoặc là rủi ro bạn tự
+      thấy. Chỉ thị không thành FR; rủi ro đi vào risk[].
+    principle: N7
+
+  - id: POL-N8-explain
+    tool: "store.*|fs.write|fs.edit|board.*|bom.*|diagram.*|sim.criteria"
+    when: "!explain.complete"
+    action: deny
+    reason_vi: >
+      Thiếu lớp giải thích. Hiện vật phải có đủ sáu trường summary/why/sources/
+      diff_prev/next/confidence trước khi ghi.
+    principle: N8
+
+  - id: POL-N1-constant-guard
+    tool: "fs.write|fs.edit"
+    when: "constant_guard.unsourced > 0"
+    action: deny
+    reason_vi: >
+      Trong nội dung sắp ghi có hằng số kỹ thuật chưa truy vết được tới nguồn nào.
+      Ba đường đi tiếp, chọn một: (1) fact.query tìm trong kho; (2) nếu chính người dùng
+      đã nói con số đó, gọi fact.assert_human để ghi nó thành Fact tầng NGƯỜI kèm trích
+      lời họ; (3) nếu chưa ai biết, hỏi họ bằng ask_user. Đừng bỏ con số đi, cũng đừng
+      thử ghi lại y nguyên.
+    principle: N1
+
+  - id: POL-N2-tier
+    tool: "fact.compare"
+    when: "!tier.ok"
+    action: deny
+    reason_vi: >
+      Một vế của phép so sánh ở tầng ĐỒNG (tri thức chung). So sánh chỉ hợp lệ khi cả
+      hai vế thuộc VÀNG/BẠC/NGƯỜI. Hãy nói rõ đây là suy đoán, hoặc đi tìm nguồn.
+    principle: N2
+
+  - id: POL-N5-release-before-lock
+    tool: "target.dangerous"
+    when: "!snapshot.has_release"
+    action: deny
+    reason_vi: >
+      Chưa có snapshot nào được đánh dấu release. Thao tác khoá vĩnh viễn (RDP/eFuse)
+      chỉ làm khi đã có một bản release để quay về — sau khi khoá thì không còn đường lùi.
+    principle: N5
+    ca_do: [CX15]
+
+  # ---------------------------------------------------------------- ASK (thẻ cổng)
+
+  - id: POL-OPS
+    tool: "target.dangerous"
+    action: ask
+    gate: G-OPS
+    never_auto: true              # không mức tự chủ nào bỏ qua được
+    summary_vi: "Hậu quả vĩnh viễn — nói rõ mất gì, không có mặc định"
+    principle: N5
+
+  - id: POL-FLASH
+    tool: "target.flash"
+    action: ask
+    gate: G-FLASH
+    summary_vi: "Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa"
+    irreversible: true
+
+  - id: POL-FILE-overwrite-human
+    tool: "fs.write|fs.edit"
+    when: "target.human_edited && !target.merged"
+    action: ask
+    gate: G-FILE
+    summary_vi: "Tệp này người dùng vừa sửa — diff sẽ ghi đè bản của họ"
+    principle: N9
+    ca_do: [CX09]
+
+  - id: POL-QUAL-criteria-change
+    tool: "sim.criteria"
+    when: "args.exists && args.changed"
+    action: ask
+    gate: G-QUAL
+    require_fields: [from, to, why]
+    summary_vi: "Đổi tiêu chí chấp nhận — phải nêu từ bao nhiêu, sang bao nhiêu, vì sao"
+    principle: N6
+
+  - id: POL-HIST-undo
+    tool: "history.undo"
+    when: "args.scope == 'run' || touches.human_changeset"
+    action: ask
+    gate: G-HIST
+    summary_vi: "Hoàn tác sẽ mất gì / giữ gì"
+    principle: N9
+
+  - id: POL-HIST-restore
+    tool: "snapshot.restore"
+    action: ask
+    gate: G-HIST
+    summary_vi: "Khôi phục snapshot — liệt kê hiện vật sẽ đổi và sửa của người sẽ mất"
+    principle: N9
+
+  - id: POL-SNAP-name
+    tool: "snapshot.create"
+    when: "args.by == 'agent'"
+    action: ask
+    gate: G-SNAP
+    summary_vi: "Tác tử không tự đặt tên bản ưng ý — người đặt"
+    principle: N9
+
+  - id: POL-DATA-approve
+    tool: "doc.approve_request"
+    action: ask
+    gate: G-DATA
+    auto_if: "args.domain in trusted"
+    summary_vi: "Duyệt nguồn tài liệu trước khi trích Fact"
+    principle: N1
+
+  - id: POL-TOOL-install
+    tool: "tool.install"
+    action: ask
+    gate: G-TOOL
+    summary_vi: "Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích thước"
+    irreversible: true
+
+  - id: POL-SCOPE-plan
+    tool: "plan.exit"
+    when: "plan.big"
+    action: ask
+    gate: G-SCOPE
+    summary_vi: "Việc lớn — duyệt kế hoạch trước khi chạy"
+
+  - id: POL-DESIGN-choose
+    tool: "store.option_choose|board.freeze"
+    action: ask
+    gate: G-DESIGN
+    summary_vi: "Chốt phương án/thiết kế — mọi thứ sau đó dựng trên lựa chọn này"
+
+  # ---------------------------------------------------------------- ALLOW
+
+  - id: POL-read-free
+    tool: "fs.read|fs.glob|fs.grep|fs.stat|fact.*|rag.*|store.list|store.get|inventory.get|memory.read|history.list|history.diff|snapshot.list|snapshot.compare|ledger.verify|tool.search|skill.load|ui.*|ask_user"
+    action: allow
+    note_vi: "Đọc và hỏi thì không cần xin phép — §B4 dòng đầu."
+
+  - id: POL-write-in-project
+    tool: "store.*|fs.write|fs.edit|memory.note|plan.*|diagram.*|arch.*|board.*|bom.*"
+    action: allow
+    max_autonomy_risk: R2
+    note_vi: "Ghi trong dự án: mức A2 trở lên cho tự do, vì mọi thứ đều là changeset hoàn tác được (N9)."
+
+  # Mặc định cho công cụ không luật nào nhắc tới: theo mức rủi ro khai trong hợp đồng.
+  - id: POL-default
+    tool: "*"
+    action: by_risk
+    note_vi: "Không có luật riêng thì so mức rủi ro của công cụ với mức tự chủ hiện tại."
