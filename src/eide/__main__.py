@@ -45,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         core.console_act({"kind": "say", "text": a.say})
         print("\n--- báo cáo lượt ---", file=sys.stderr)
         print(json.dumps(agent.last_report, ensure_ascii=False, indent=1), file=sys.stderr)
+        agent.dong_phien()
         return 0
 
     core = Core(agent.ledger, agent.ids, agent.turn, on_sync=agent.paint)
@@ -59,7 +60,12 @@ def main(argv: list[str] | None = None) -> int:
         asyncio.run(run())
         return 0
 
-    StdioTransport(core).serve_forever()
+    # Thoát sạch thì đánh dấu phiên đã kết thúc. Lần mở sau không phải soi lại nó —
+    # và quan trọng hơn: nếu KHÔNG có dấu này thì lần sau biết là đã có sự cố (MEM14).
+    try:
+        StdioTransport(core).serve_forever()
+    finally:
+        agent.dong_phien()
     return 0
 
 

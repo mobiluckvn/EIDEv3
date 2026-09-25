@@ -131,6 +131,9 @@ class Changeset:
 
 
 # =========================================================================== sổ changeset
+GENESIS = "0" * 64
+
+
 class ChangesetLog:
     """`changesets.jsonl` — append-only, là chỉ mục chung cho cả kho và git (§E5.1).
 
@@ -148,14 +151,76 @@ class ChangesetLog:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        self._head = self._doc_hash_cuoi()
+
+    # ------------------------------------------------------------------ chuỗi hash
+    # MEM-42 §12 và MEM-18. Sổ cái đã có chuỗi hash từ G1; sổ changeset thì chưa — mà
+    # nó mới là thứ hoàn tác và snapshot đọc. Một dòng bị sửa ở giữa mà không ai biết
+    # nghĩa là "hoàn tác không xoá lịch sử" mất luôn cơ sở để nói.
+    #
+    # Chỉ băm phần NỘI DUNG (bỏ hai trường đánh dấu sau: `acknowledged_by_agent`,
+    # `undone_by`), vì hai trường đó được phép sửa tại chỗ theo §E5.2 — băm cả chúng
+    # thì chuỗi vỡ mỗi lần tác tử nhắc tới một thay đổi của người.
+    _BO_QUA_KHI_BAM = ("acknowledged_by_agent", "undone_by", "prev_hash", "hash")
+
+    def _doc_hash_cuoi(self) -> str:
+        cuoi = GENESIS
+        if not self.path.exists():
+            return cuoi
+        for line in self.path.read_text("utf-8").splitlines():
+            if line.strip():
+                cuoi = (json.loads(line).get("hash") or cuoi)
+        return cuoi
+
+    @classmethod
+    def _bam(cls, d: dict[str, Any], prev: str) -> str:
+        than = {k: v for k, v in d.items() if k not in cls._BO_QUA_KHI_BAM}
+        chu = json.dumps(than, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256((prev + chu).encode("utf-8")).hexdigest()
 
     def append(self, cs: Changeset) -> Changeset:
-        line = json.dumps(cs.to_dict(), ensure_ascii=False, separators=(",", ":")) + "\n"
+        d = cs.to_dict()
+        d["prev_hash"] = self._head
+        d["hash"] = self._bam(d, self._head)
+        line = json.dumps(d, ensure_ascii=False, separators=(",", ":")) + "\n"
         with self._lock, self.path.open("a", encoding="utf-8") as f:
             f.write(line)
             f.flush()
             os.fsync(f.fileno())
+        self._head = d["hash"]
         return cs
+
+    def verify(self) -> tuple[bool, str]:
+        """Kiểm chuỗi — gọi khi MỞ DỰ ÁN. Lệch thì nói đúng changeset nào."""
+        prev = GENESIS
+        n = 0
+        chua_ky = 0
+        if not self.path.exists():
+            return True, "Chưa có changeset nào."
+        for i, line in enumerate(self.path.read_text("utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            d = json.loads(line)
+            if "hash" not in d:
+                # Dòng ghi trước khi có chuỗi hash (kho cũ). KHÔNG được tính là toàn
+                # vẹn — "chưa kiểm được" khác "đã kiểm và đạt" (N6).
+                chua_ky += 1
+                n += 1
+                continue
+            if d.get("prev_hash") != prev:
+                return False, (f"Sổ changeset bị sửa ở {d.get('id')} (dòng {i}): "
+                               "liên kết trước không khớp.")
+            if self._bam(d, prev) != d["hash"]:
+                return False, (f"Sổ changeset bị sửa ở {d.get('id')} (dòng {i}): "
+                               "nội dung không khớp hash.")
+            prev = d["hash"]
+            n += 1
+        if chua_ky:
+            return False, (
+                f"{chua_ky}/{n} changeset KHÔNG có chuỗi hash nên không kiểm được — "
+                "hoặc chúng được ghi trước khi có cơ chế này, hoặc tệp đã bị ghi lại "
+                "bằng đường khác. Đừng coi là toàn vẹn.")
+        return True, f"Sổ changeset toàn vẹn: {n} thay đổi."
 
     def read(self) -> Iterator[Changeset]:
         if not self.path.exists():
@@ -186,10 +251,19 @@ class ChangesetLog:
                 if cs.by_human and not cs.acknowledged_by_agent and not cs.undone_by]
 
     def mark(self, cs_id: str, **fields: Any) -> None:
-        """Đánh dấu `acknowledged_by_agent` / `undone_by`. Viết lại tệp, giữ nguyên nội dung."""
-        rows = [cs.to_dict() for cs in self.read()]
+        """Đánh dấu `acknowledged_by_agent` / `undone_by`. Giữ nguyên mọi thứ khác.
+
+        Đọc lại từ **JSON thô**, không qua `Changeset.from_dict → to_dict`. Vòng đó làm
+        rụng `prev_hash`/`hash` vì chúng không phải field của dataclass — và một lần
+        đánh dấu là đủ xoá sạch chuỗi hash của cả tệp. Lỗi này im lặng: `verify()` sau
+        đó vẫn báo "toàn vẹn" vì không còn hash nào để mà lệch.
+        """
+        if not self.path.exists():
+            return
+        rows = [json.loads(l) for l in self.path.read_text("utf-8").splitlines()
+                if l.strip()]
         for r in rows:
-            if r["id"] == cs_id:
+            if r.get("id") == cs_id:
                 r.update(fields)
         with self._lock:
             tmp = self.path.with_suffix(".jsonl.tmp")

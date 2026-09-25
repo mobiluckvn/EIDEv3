@@ -93,6 +93,27 @@ rules:
     principle: N5
     ca_do: [CX15]
 
+  - id: POL-MEM-eide-md-qua-tool
+    tool: "fs.write"
+    when: "target.la_eide_md"
+    action: deny
+    reason_vi: >
+      EIDE.md là bộ nhớ dự án, không phải một tệp mã. Ghi thẳng vào nó sẽ bỏ qua cấu
+      trúc mục cố định, trần 3 000 token, và nguồn gốc dòng — ba thứ khiến nó còn đọc
+      được sau sáu tháng. Dùng memory.note(section, line) để ghi đúng mục.
+    principle: P2
+    ca_do: [MEM03]
+
+  - id: POL-MEM-eide-md-qua-tool-edit
+    tool: "fs.edit"
+    when: "target.la_eide_md"
+    action: deny
+    reason_vi: >
+      EIDE.md sửa bằng memory.note (thêm dòng) hoặc memory.forget (xoá dòng), không
+      bằng fs.edit — để mỗi thay đổi có nguồn gốc và có changeset hoàn tác được.
+    principle: P2
+    ca_do: [MEM03]
+
   - id: POL-E6-ten-do-nguoi-dat
     tool: "snapshot.create"
     when: "!snapshot.ten_tu_nguoi"

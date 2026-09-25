@@ -41,6 +41,7 @@ from .hooks.standard import register_standard_hooks
 from .ids import IdGen
 from . import memory as mem
 from .memory import boc_ket_qua
+from .memory.transcript import KhoPhien, phuc_hoi as _phuc_hoi
 from .policy import PolicyEngine
 from .protocol import HumanAct
 from .protocol import uicommand as uic
@@ -115,6 +116,24 @@ class TurnContext:
         return b.max_tool_calls - self.tool_calls_used, b.max_seconds - self.elapsed
 
 
+class DanhSachGhiDia(list):
+    """`list` các message, nhưng mỗi lần thêm đều xuống đĩa trước.
+
+    Vì sao là một lớp chứ không phải "nhớ gọi thêm một dòng ở mười chỗ append": bất
+    biến write-ahead chỉ có giá trị khi nó đúng ở **mọi** đường. Một chỗ quên là một
+    lượt mất sau sự cố, và chỗ quên đó sẽ là chỗ thêm vào sau này chứ không phải chỗ
+    đang có hôm nay.
+    """
+
+    def __init__(self, ts: Any):
+        super().__init__()
+        self._ts = ts
+
+    def append(self, m: dict[str, Any]) -> None:     # type: ignore[override]
+        self._ts.ghi(m)
+        super().append(m)
+
+
 # =========================================================================== tác tử
 class Agent:
     """Một phiên làm việc: giữ transcript, thẻ chờ và cổng chờ qua nhiều lượt."""
@@ -142,7 +161,14 @@ class Agent:
         self.history = History(paths=p, store=self.store, ledger=self.ledger,
                                ids=self.ids, eide_md=self.eide_md)
 
-        self.messages: list[dict[str, Any]] = []
+        # M1 trên đĩa (MEM-42 §7.2). Trước bước MEM-B, `messages` chỉ sống trong RAM:
+        # lõi chết giữa lượt là mất sạch ngữ cảnh mô hình.
+        self.phien = KhoPhien(p.state_dir / "sessions")
+        self.session_id = self.ids.next("ses")
+        self.transcript = self.phien.transcript(self.session_id)
+        self.phuc_hoi = self._doc_phien_do()
+
+        self.messages: list[dict[str, Any]] = DanhSachGhiDia(self.transcript)
         self.dang_nhin: str = "project"          # bề mặt người đang mở (HumanAct attend)
         self.pending_cards: list[dict[str, Any]] = []
         self.pending_gates: dict[str, dict[str, Any]] = {}
@@ -153,6 +179,29 @@ class Agent:
         self.loi_nguoi: list[str] = []           # mọi câu người đã gõ trong phiên
         self.usage_phien: Any = None             # chi phí cộng dồn cả phiên
         self.tai_lieu: dict[str, Any] = {}       # tài liệu đã nạp, theo doc_id
+
+    def _doc_phien_do(self) -> Any:
+        """Phiên trước có kết thúc sạch không? Nếu không, đọc lại và soi việc dở dang.
+
+        Không tự nạp lại transcript cũ vào ngữ cảnh — đó là resume đầy đủ (§7.5), việc
+        của MEM-C. Ở đây chỉ trả lời đúng một câu mà MEM14 hỏi: **công cụ nào đã bắt
+        đầu mà không có kết quả**, và trong đó cái nào đổi thứ bên ngoài.
+        """
+        truoc = self.phien.gan_nhat(tru=self.session_id)
+        if not truoc or self.phien.ket_thuc_sach(truoc):
+            return None
+        bc = _phuc_hoi(self.phien.transcript(truoc), truoc)
+        if bc.goi_dang_do or bc.dong_hong:
+            self.ledger.append("incident", {
+                "code": "E_PHIEN_DO", "session": truoc,
+                "message_vi": (f"Phiên {truoc} dừng giữa chừng: {len(bc.goi_dang_do)} "
+                               f"lời gọi công cụ không có kết quả, {bc.dong_hong} dòng hỏng."),
+                "goi_dang_do": bc.goi_dang_do})
+        return bc
+
+    def dong_phien(self) -> None:
+        """Đánh dấu phiên kết thúc sạch — để lần mở sau biết không cần phục hồi."""
+        self.phien.danh_dau_ket_thuc(self.session_id)
 
     # ------------------------------------------------------------------ một lượt
     def turn(self, act: HumanAct, emit: Callable[[Any], None]) -> None:
@@ -314,6 +363,20 @@ class Agent:
         if s0.block:
             ctx.awaiting_human = bool(s0.cards)
             return
+
+        # --- Phiên trước dừng giữa chừng: nói ra TRƯỚC khi mô hình làm gì tiếp (MEM14).
+        if self.phuc_hoi is not None and self.phuc_hoi.goi_dang_do:
+            self.messages.append({"role": "user", "_he_thong": True,
+                                  "text": self.phuc_hoi.nhac_vi()})
+            if self.phuc_hoi.can_hoi_nguoi:
+                ctx.emit(uic.notice(
+                    "Phiên trước dừng giữa chừng khi đang chạy "
+                    + ", ".join(g["tool"] for g in self.phuc_hoi.goi_dang_do
+                                if g["co_tac_dung_phu"])
+                    + ". Không rõ nó đã xong chưa — tôi sẽ không chạy lại, anh kiểm giúp.",
+                    level="warn", code="E_PHIEN_DO"))
+                ctx.said_anything = True
+            self.phuc_hoi = None            # nhắc đúng một lần, không lặp mỗi lượt
 
         # --- Lượt của người vào transcript, kèm khối nhắc.
         self.messages.append({"role": "user",
@@ -822,6 +885,9 @@ class Agent:
                     ghim=mem.chi_so_ghim(self.messages),
                     tep_da_sua=set(self.locks))
         self.ledger.append("note", {"run_id": ctx.run_id, "compact": "C1", **bc})
+        # §12 "nén là giao dịch": ghi tệp mới rồi đổi tên. Không có khoảnh khắc nào
+        # transcript ở trạng thái "đã cắt nhưng chưa có bản thay thế".
+        self.transcript.thay_toan_bo(list(self.messages))
         if bc["giam_phan_tram"] >= 5:
             ctx.emit(uic.notice(
                 f"[Hệ thống] Đã thu gọn ngữ cảnh {bc['giam_phan_tram']:.0f} % "

@@ -169,6 +169,27 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                              fired=["release"])
 
     @bus.on_pre_tool
+    def la_eide_md(call: dict[str, Any], ctx: Any) -> PreToolResult:
+        """MEM-42 §7.1 — EIDE.md chỉ vào bằng `memory.*`, không bằng `fs.write`.
+
+        So theo đường dẫn ĐÃ GIẢI, không theo chuỗi: `./EIDE.md`, `EIDE.md` và đường
+        tuyệt đối là cùng một tệp, và một luật khoá trên chuỗi thì chỉ cần viết khác
+        một chút là lách được.
+        """
+        if call.get("tool") not in ("fs.write", "fs.edit"):
+            return PreToolResult(facts={"target.la_eide_md": False})
+        from pathlib import Path
+        raw = (call.get("args") or {}).get("path") or ""
+        if not raw:
+            return PreToolResult(facts={"target.la_eide_md": False})
+        goc = Path(ctx.config.paths.project_root).resolve()
+        p = Path(raw).expanduser()
+        p = (goc / p).resolve() if not p.is_absolute() else p.resolve()
+        return PreToolResult(
+            facts={"target.la_eide_md": p == Path(ctx.config.paths.eide_md).resolve()},
+            fired=["eide_md"])
+
+    @bus.on_pre_tool
     def ten_ban_ung_y(call: dict[str, Any], ctx: Any) -> PreToolResult:
         """§E6.2 — tên bản ưng ý phải do NGƯỜI đặt, và câu đó phải có thật.
 

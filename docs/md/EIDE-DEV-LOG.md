@@ -903,3 +903,44 @@ việc của MEM-C — tới đó mới có một phép đoán nằm giữa đư
 Đo được: 266 ca đơn vị · MEM-A 21/21 qua giao diện thật · hồi quy G3 31/31, G4 23/23,
 G5 35/35, ING-A 29/29 — envelope đổi đường đi của **mọi** kết quả công cụ nên bốn bộ
 này là phép kiểm thật sự, không phải hình thức.
+
+---
+
+### [DEV-257] 25/09/2026 · MEM-B — M1 lên đĩa, và ba lỗi im lặng tìm ra trên đường
+
+Trước bước này `Agent.messages` chỉ là một `list` Python. Lõi chết giữa lượt là mất sạch
+ngữ cảnh mô hình — **và không ai biết là đã mất**, vì sổ cái vẫn đầy đủ nên giao diện
+dựng lại dòng hội thoại như không có chuyện gì.
+
+`DanhSachGhiDia` là một `list` ghi xuyên xuống đĩa. Chọn một lớp thay vì "nhớ gọi thêm
+một dòng ở mười chỗ `append`" là có chủ đích: bất biến write-ahead chỉ có giá trị khi
+nó đúng ở **mọi** đường, và chỗ quên sẽ là chỗ thêm vào sau này chứ không phải chỗ đang
+có hôm nay.
+
+**Ba lỗi tìm ra khi chạy thật, cả ba đều im lặng:**
+
+1. **`ChangesetLog.mark()` xoá sạch chuỗi hash.** Nó đọc lại qua
+   `Changeset.from_dict → to_dict`, mà `prev_hash`/`hash` không phải field của dataclass
+   nên rụng mất. Một lần tác tử nhắc tới thay đổi của người là đủ để cả tệp mất chữ ký.
+   Nay `mark()` đọc JSON thô và chỉ sửa đúng trường được phép.
+2. **`verify()` báo "toàn vẹn" cho những dòng KHÔNG có hash.** Đây là đạt giả đúng nghĩa
+   N6: "chưa kiểm được" bị đếm thành "đã kiểm và đạt". Ca đo E2E xanh trước khi sửa lỗi
+   (1), rồi vẫn xanh sau khi tệp bị sửa tay — nó xanh vì không còn gì để mà lệch. Nay
+   dòng chưa ký làm `verify()` trả **False** kèm số lượng.
+3. **Hiến pháp dặn mô hình gọi `plan.enter` — một công cụ không tồn tại** trong 49 công
+   cụ đã đăng ký. Tìm ra khi phải rút hiến pháp cho vừa trần. Thêm ca đo quét mọi tên
+   công cụ nhắc trong hiến pháp và đối chiếu với registry: một chỉ dẫn gọi công cụ không
+   có thật là một lời hứa hão với mô hình.
+
+**Về trần hiến pháp:** thêm nội dung MEM-B đẩy nó lên 3 735/3 600 và ca canh (DEV-254)
+nổ. Lần này **không nâng trần** — rút được 138 token thật: bỏ chỉ dẫn `plan.enter`, gộp
+hai câu lặp ý ở §2 và §5, rút gọn ví dụ ở §7. Còn 3 597/3 600. Đó đúng là công dụng của
+một cái trần có người canh: nó buộc một quyết định, và quyết định đó tìm ra một lỗi.
+
+**Còn lại của MEM-B, làm ở MEM-C:** resume đầy đủ (nạp lại M1 vào ngữ cảnh mô hình) và
+bộ nhớ người dùng `~/.eide/memory.md` (M3). Bước này mới làm phần *ghi và giữ*; phần
+*đọc lại vào ngữ cảnh* đi cùng C2/PostCompact vì hai thứ đó dùng chung đường lắp
+transcript.
+
+Đo được: 293 ca đơn vị · MEM-B 20/20 qua giao diện thật · hồi quy G3 31/31, G4 23/23,
+G5 35/35, ING-A 29/29, MEM-A 21/21.

@@ -295,6 +295,52 @@ def build_registry(features: Any = None) -> Registry:
                 "note_vi": ("" if het >= len(chu) else
                             f"Còn {len(chu) - het} ký tự. Gọi tiếp với tu={het}.")}
 
+    @r.tool("ledger.query", "Lịch sử",
+            "TRA sổ cái để trả lời câu hỏi về quá khứ: 'ban đầu anh nói gì về…', 'vì "
+            "sao chọn MTP', 'lần trước lỗi gì'. Dùng cái này TRƯỚC khi trả lời bất kỳ "
+            "câu hỏi nào về những gì đã xảy ra — đừng kể lại từ trí nhớ.",
+            {"type": "object",
+             "properties": {
+                 "chua": {"type": "string",
+                          "description": "Từ khoá tìm trong nội dung sự kiện"},
+                 "loai": {"type": "string",
+                          "description": "human_act | gate | changeset | tool_use | "
+                                         "incident | tombstone | llm_call"},
+                 "run_id": {"type": "string"},
+                 "limit": {"type": "integer", "description": "mặc định 30"}}},
+            risk="R1",
+            keywords=["tra", "lịch sử", "quá khứ", "ban đầu", "vì sao", "lần trước",
+                      "đã nói", "sổ cái"])
+    def ledger_query(ctx: Any, chua: str = "", loai: str = "", run_id: str = "",
+                     limit: int | None = None):
+        """MEM-42 §10 — truy hồi có chủ đích, thay cho việc mô hình đoán.
+
+        Tra được thì phải TRA. Một câu trả lời về quá khứ dựng từ transcript đã nén là
+        một câu trả lời nghe đúng mà không ai kiểm được — đúng chỗ nguy hiểm mà TC074
+        chỉ ra.
+        """
+        import json as _json
+
+        n = int(limit or 30)
+        low = (chua or "").lower()
+        ra: list[dict[str, Any]] = []
+        for ev in ctx.ledger.read():
+            if loai and ev.kind != loai:
+                continue
+            if run_id and ev.data.get("run_id") != run_id:
+                continue
+            chu = _json.dumps(ev.data, ensure_ascii=False, default=str)
+            if low and low not in chu.lower():
+                continue
+            ra.append({"seq": ev.seq, "ts": ev.ts, "loai": ev.kind,
+                       "run_id": ev.data.get("run_id", ""),
+                       "tom_tat": chu[:220]})
+        tong = len(ra)
+        return {"tong": tong, "su_kien": ra[-n:],
+                "note_vi": ("" if tong else
+                            "Sổ cái không có sự kiện nào khớp. Nói THẲNG là không tìm "
+                            "thấy — đừng dựng lại câu chuyện từ trí nhớ.")}
+
     @r.tool("ledger.verify", "Lịch sử",
             "Kiểm tính toàn vẹn của sổ cái (chuỗi hash). Gọi khi nghi ngờ lịch sử bị sửa.",
             {"type": "object", "properties": {}},

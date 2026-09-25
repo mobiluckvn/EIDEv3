@@ -209,8 +209,18 @@ def register(r: Registry) -> Registry:
             risk="R2", writes_artefact=True, needs_explain=True,
             keywords=["ghi nhớ", "quyết định", "giả định", "eide.md", "đừng"])
     def memory_note(ctx: Any, section: str, line: str, explain: dict[str, Any]):
+        # §7.1 "ai được ghi mục nào" — mục "Đừng" là ranh giới người đặt.
+        duoc, vi_sao = ctx.eide_md.duoc_ghi(section, "tac_tu")
+        if not duoc:
+            return ToolResult(False, error=EideError(
+                "E4003", vi_sao,
+                hint_for_agent=("Gọi ask_user để đề xuất; nếu họ đồng ý thì chính họ gõ "
+                                "vào tệp, hoặc bạn ghi vào mục khác cho đúng chỗ."),
+                alternatives=["ask_user", "memory.note(section='Quy ước')"], blame="agent"))
+
         cu = ctx.eide_md.path.read_text("utf-8") if ctx.eide_md.path.exists() else ""
-        ctx.eide_md.append_line(section, f"- {line}")
+        # Nguồn gốc dòng (§7.1): dòng do tác tử ghi kết thúc bằng [run-xx].
+        ctx.eide_md.append_line(section, f"- {line}", boi=ctx.run_id)
         ctx.eide_md.save()
         # EIDE.md là bộ nhớ dự án, không phải mã — đặt đúng loại để nó không lọt vào
         # đồ thị phụ thuộc của mã và không bị đếm là "tệp mã" trong kiểm kê.
@@ -218,7 +228,81 @@ def register(r: Registry) -> Registry:
             author=f"agent:{ctx.run_id}", paths=["EIDE.md"], loai="memory",
             summary=explain.get("summary", f"ghi vào §{section}"), explain=explain,
             noi_dung_truoc={"EIDE.md": cu}, run_id=ctx.run_id)
-        return {"section": section, "changeset": cs.id}
+
+        out = {"section": section, "changeset": cs.id,
+               "so_token": ctx.eide_md.so_token}
+        if ctx.eide_md.qua_tran:
+            # §7.1 — vượt trần thì CẢNH BÁO và đề xuất lược, không tự xoá (P5).
+            de = ctx.eide_md.de_xuat_luoc()
+            ctx.emit(uic.notice(
+                f"EIDE.md đã {ctx.eide_md.so_token} token, vượt trần 3 000. "
+                f"Có {len(de)} chỗ lược được — anh duyệt thì tôi làm.",
+                level="warn", code="MEM-10"))
+            out["qua_tran"] = True
+            out["de_xuat_luoc"] = de
+            out["note_vi"] = ("EIDE.md vượt trần. Nói cho người dùng biết và đề nghị "
+                              "lược; ĐỪNG tự xoá dòng nào.")
+        return out
+
+    @r.tool("memory.forget", "Store",
+            "Xoá một dòng khỏi bộ nhớ dài hạn. Dùng khi người dùng bảo quên một điều "
+            "đã ghi. Dòng đã quên KHÔNG được sống lại từ transcript cũ.",
+            {"type": "object",
+             "properties": {
+                 "section": {"type": "string"},
+                 "chua": {"type": "string",
+                          "description": "Một đoạn chữ có trong dòng cần xoá"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["section", "chua", "explain"]},
+            risk="R2", writes_artefact=True, needs_explain=True, core=False,
+            keywords=["quên", "xoá", "bỏ", "forget", "đừng nhớ"])
+    def memory_forget(ctx: Any, section: str, chua: str, explain: dict[str, Any]):
+        """P7 "quên có chủ đích" — và **bia mộ** để nó không hồi sinh.
+
+        Xoá một dòng là chưa đủ: transcript cũ vẫn còn câu đó, và lần nén sau mô hình
+        có thể tóm tắt nó trở lại. Nên mỗi lần quên ghi một `tombstone` vào sổ cái, và
+        bước nén (MEM-C) đọc danh sách đó trước khi viết bản tóm tắt.
+        """
+        cu = ctx.eide_md.path.read_text("utf-8") if ctx.eide_md.path.exists() else ""
+        da_xoa = ctx.eide_md.xoa_dong(section, chua)
+        if da_xoa is None:
+            return ToolResult(False, error=EideError(
+                "E2003", f"Không có dòng nào trong §{section} chứa “{chua}”.",
+                hint_for_agent="Gọi memory.read để xem tệp có gì rồi trích đúng chữ.",
+                alternatives=["memory.read"], blame="agent"))
+        ctx.eide_md.save()
+        cs = ctx.history.ghi_tep(
+            author=f"agent:{ctx.run_id}", paths=["EIDE.md"], loai="memory",
+            summary=explain.get("summary", f"quên một dòng ở §{section}"),
+            explain=explain, noi_dung_truoc={"EIDE.md": cu}, run_id=ctx.run_id)
+        ma = ctx.ids.next("tomb")
+        ctx.ledger.append("tombstone", {
+            "run_id": ctx.run_id, "tombstone_id": ma, "scope": "project",
+            "section": section, "noi_dung": da_xoa, "changeset": cs.id})
+        return {"da_xoa": da_xoa, "tombstone": ma, "changeset": cs.id,
+                "note_vi": ("Đã quên. ĐỪNG nhắc lại nội dung này, kể cả khi nó còn "
+                            "trong đoạn hội thoại cũ.")}
+
+    @r.tool("memory.status", "Store",
+            "Xem bộ nhớ đang chứa gì: EIDE.md bao nhiêu token trên trần, có gì nên "
+            "lược, đã quên những gì, ngữ cảnh đang dùng bao nhiêu.",
+            {"type": "object", "properties": {}},
+            risk="R1", core=False,
+            keywords=["bộ nhớ", "memory", "trạng thái", "đang nhớ gì"])
+    def memory_status(ctx: Any):
+        tomb = [e.data for e in ctx.ledger.read() if e.kind == "tombstone"]
+        return {
+            "eide_md": {"so_token": ctx.eide_md.so_token,
+                        "tran": 3000,
+                        "qua_tran": ctx.eide_md.qua_tran,
+                        "muc": {k: len(v.splitlines())
+                                for k, v in ctx.eide_md.sections.items() if v}},
+            "de_xuat_luoc": ctx.eide_md.de_xuat_luoc(),
+            "da_quen": [{"section": t.get("section"), "noi_dung": t.get("noi_dung")}
+                        for t in tomb],
+            "note_vi": ("" if not ctx.eide_md.qua_tran else
+                        "EIDE.md vượt trần — đề nghị người dùng duyệt phần lược."),
+        }
 
     # ====================================================================== lịch sử
     @r.tool("history.diff", "Lịch sử",

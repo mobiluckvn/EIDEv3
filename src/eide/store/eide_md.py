@@ -26,6 +26,22 @@ SECTIONS = ["Mục tiêu", "Chip & phần cứng", "Quyết định", "Giả đ�
 HUMAN_EDITS_SECTION = "Người vừa sửa"
 MAX_HUMAN_EDIT_LINES = 10      # §E4 bước 5: "giữ ≤ 10 dòng gần nhất"
 
+# MEM-42 §7.1 — trần 3 000 token trên CHÍNH TỆP, không chỉ lúc đưa vào ngữ cảnh.
+#
+# Bản trước chỉ cắt ở `render()`. Nghĩa là tệp thật vẫn phình vô hạn, mô hình nhận một
+# bản cụt mà không ai biết, và người mở tệp ra thì thấy một thứ khác hẳn. Cắt lúc đọc
+# là giấu vấn đề; trần trên tệp là nói ra vấn đề.
+TRAN_TOKEN = 3000
+KY_TU_MOI_TOKEN = 3.0
+
+# §7.1 "ai được ghi mục nào". Mục "Đừng" là ranh giới NGƯỜI đặt — tác tử tự thêm vào đó
+# là tự đặt ra một luật rồi tự tuân theo, đúng thứ N7 cấm.
+CHI_NGUOI_GHI = {"Đừng"}
+
+
+def _uoc_token(s: str) -> int:
+    return int(len(s) / KY_TU_MOI_TOKEN)
+
 TEMPLATE = """# EIDE.md — {name}
 
 Tệp này là bộ nhớ dài hạn của dự án. Cả anh và tác tử đều sửa được. Tác tử đọc nó
@@ -116,11 +132,78 @@ class EideMd:
     def set(self, section: str, body: str) -> None:
         self.sections[section] = body.strip()
 
-    def append_line(self, section: str, line: str) -> None:
+    def append_line(self, section: str, line: str, *, boi: str | None = None) -> None:
+        """Thêm một dòng vào mục. `boi` là nguồn gốc: `run-43` hoặc `h-0940`.
+
+        §7.1 "nguồn gốc dòng": mỗi dòng nói được **ai ghi**. Không có nó thì sáu tháng
+        sau không ai phân biệt được điều mình tự quyết với điều máy suy ra — và đó là
+        lúc người ta ngừng tin cả tệp.
+        """
+        if boi and not line.rstrip().endswith("]"):
+            line = f"{line.rstrip()} [{boi}]"
         cur = self.sections.get(section, "")
         if cur.startswith("_(") and cur.endswith(")_"):
             cur = ""  # thay chỗ giữ chỗ bằng nội dung thật
         self.sections[section] = (cur + "\n" + line).strip()
+
+    def xoa_dong(self, section: str, chua: str) -> str | None:
+        """Xoá dòng đầu tiên trong mục có chứa `chua`. Trả dòng đã xoá, hoặc None."""
+        ds = self.sections.get(section, "").splitlines()
+        for i, d in enumerate(ds):
+            if chua.strip() and chua.strip().lower() in d.lower():
+                ds.pop(i)
+                self.sections[section] = "\n".join(ds).strip()
+                return d
+        return None
+
+    # ------------------------------------------------------------------ trần và lược
+    @property
+    def so_token(self) -> int:
+        return _uoc_token(self.path.read_text("utf-8") if self.path.exists() else "")
+
+    @property
+    def qua_tran(self) -> bool:
+        return self.so_token > TRAN_TOKEN
+
+    def de_xuat_luoc(self) -> list[dict[str, Any]]:
+        """§7.1 "Lược" — ĐỀ XUẤT, không tự xoá (P5).
+
+        Tự xoá cái cũ là cách nhanh nhất để mất một quyết định mà không ai nhớ đã mất.
+        Nên hàm này chỉ trả về danh sách, và người duyệt.
+        """
+        ra: list[dict[str, Any]] = []
+        for muc, than in self.sections.items():
+            ds = [d for d in than.splitlines() if d.strip().startswith("- ")]
+            if muc == HUMAN_EDITS_SECTION and len(ds) > MAX_HUMAN_EDIT_LINES:
+                ra.append({"muc": muc, "so_dong": len(ds) - MAX_HUMAN_EDIT_LINES,
+                           "vi_sao": ("dòng đã được tác tử nhắc tới và cũ hơn 10 thay "
+                                      "đổi — chuyển sang sổ cái, tra lại được bằng "
+                                      "ledger.query"),
+                           "dong": ds[:-MAX_HUMAN_EDIT_LINES]})
+            elif muc == "Quyết định" and len(ds) > 15:
+                ra.append({"muc": muc, "so_dong": len(ds) - 15,
+                           "vi_sao": ("§7.1 giữ 15 ADR mới nhất trong tệp; các ADR cũ "
+                                      "vẫn nằm đủ trong kho, tra bằng store.list"),
+                           "dong": ds[:-15]})
+            elif muc == "Ghi chú tự do" and len(ds) > 20:
+                ra.append({"muc": muc, "so_dong": len(ds) - 20,
+                           "vi_sao": "ghi chú tự do giữ tối đa 20 dòng",
+                           "dong": ds[:-20]})
+        if self.qua_tran and not ra:
+            dai = max(self.sections.items(), key=lambda kv: len(kv[1]), default=("", ""))
+            ra.append({"muc": dai[0], "so_dong": 0,
+                       "vi_sao": (f"Tệp {self.so_token} token, vượt trần {TRAN_TOKEN}. "
+                                  f"Mục dài nhất là “{dai[0]}” — gộp hoặc rút gọn nó."),
+                       "dong": []})
+        return ra
+
+    def duoc_ghi(self, section: str, boi_ai: str) -> tuple[bool, str]:
+        """§7.1 "ai được ghi mục nào". `boi_ai` là "nguoi" hoặc "tac_tu"."""
+        if section in CHI_NGUOI_GHI and boi_ai != "nguoi":
+            return False, (
+                f"Mục “{section}” là ranh giới do người đặt — chỉ họ thêm hoặc bỏ được. "
+                "Bạn có thể ĐỀ XUẤT qua một thẻ để họ duyệt, nhưng không tự ghi.")
+        return True, ""
 
     def note_human_edit(self, *, artefact: str, summary: str, why: str | None,
                         when: str | None = None) -> None:

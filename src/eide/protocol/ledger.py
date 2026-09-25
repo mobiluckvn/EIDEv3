@@ -36,6 +36,7 @@ EVENT_KINDS = {
     "tool_use", "tool_result",
     "gate",               # the cong phat ra / quyet dinh cua nguoi
     "card",               # the lam ro: phat ra / duoc tra loi / bi bo qua
+    "tombstone",          # da quen co chu dich (P7) — khong duoc hoi sinh
     "changeset",          # chi muc; noi dung day o changesets.jsonl (§E5.1)
     "incident",           # mang, LLM, timeout, sandbox (UC19)
     "note",
