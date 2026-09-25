@@ -239,12 +239,36 @@ struct StatusBar: Codable {
     var tu_chu: String = "A3"
     var mo_hinh: String = ""
     var ngan_sach: Budget = .init()
+    var ngu_canh: NguCanh = .init()
 
     struct Budget: Codable {
         var tool: Int = 40
         var giay: Double = 300
         var da_dung_tool: Int = 0
         var da_dung_giay: Double = 0
+    }
+
+    /// Đồng hồ ngữ cảnh — EIDE-MEM-42 §4, khối A14.6.
+    ///
+    /// Người nhìn thanh này để biết vì sao tác tử "quên": không phải nó kém trí nhớ,
+    /// mà là một khối cụ thể đã chạm trần. Không có bảng này thì "ngữ cảnh đầy" là
+    /// một lời giải thích không ai kiểm được.
+    struct NguCanh: Codable {
+        var khoi: [Khoi] = []
+        var tong: Int = 0
+        var cua_so: Int = 0
+        var ty_le: Double = 0
+        var muc: String = "C0"          // C0…C4 theo bốn ngưỡng §4.2
+        var kha_dung: Int = 0
+
+        struct Khoi: Codable {
+            var ten: String = ""
+            var token: Int = 0
+            var tran: Int?
+            var vuot: Bool = false
+        }
+
+        var phanTram: Int { Int((ty_le * 100).rounded()) }
     }
 }
 

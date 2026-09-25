@@ -541,10 +541,12 @@ def project(eide_md: Any, inv: Any, assumptions: list[str]) -> dict[str, Any]:
 
 
 # =========================================================================== thanh trạng thái
-def status_bar(inv: Any, cfg: Any, *, run: dict[str, Any] | None = None) -> dict[str, Any]:
-    """§E7 thanh trạng thái + ui_model A0."""
+def status_bar(inv: Any, cfg: Any, *, run: dict[str, Any] | None = None,
+               ngu_canh: dict[str, Any] | None = None) -> dict[str, Any]:
+    """§E7 thanh trạng thái + ui_model A0 + đồng hồ ngữ cảnh A14.6 (MEM-02)."""
     b = cfg.budget
     return {
+        "ngu_canh": ngu_canh or {},
         "du_an": inv.project_name or "(chưa đặt tên)",
         "nhanh": inv.branch,
         "chip": inv.passport or "chưa ghim",
@@ -563,9 +565,43 @@ def status_bar(inv: Any, cfg: Any, *, run: dict[str, Any] | None = None) -> dict
 
 
 # =========================================================================== phát tất cả
+def dong_ho_ngu_canh(asm: Any, messages: list[Any], cfg: Any) -> dict[str, Any]:
+    """MEM-42 §4.1–4.2 — đồng hồ token theo khối, bốn ngưỡng, dự trữ 20 %.
+
+    Người nhìn thanh này để biết vì sao tác tử "quên": không phải nó kém trí nhớ, mà là
+    một khối cụ thể đã chạm trần. Không có bảng này thì "ngữ cảnh đầy" là một lời giải
+    thích không kiểm được.
+    """
+    cb = cfg.context_budget
+    cua_so = cfg.model.context_window
+    tran = {"constitution": cb.constitution, "eide_md": cb.eide_md,
+            "inventory": cb.inventory, "facts": cb.facts,
+            "human_edits": cb.human_edits, "pending": cb.pending,
+            "skills_hint": cb.skills_hint}
+    khoi = []
+    for ten, cap in tran.items():
+        dung = int((getattr(asm, "tokens", {}) or {}).get(ten, 0))
+        khoi.append({"ten": ten, "token": dung, "tran": cap,
+                     "vuot": dung > cap})
+    transcript = sum(len(str(m)) // 3 for m in messages)
+    khoi.append({"ten": "transcript", "token": transcript, "tran": None, "vuot": False})
+    du_tru = cb.du_tru(cua_so)
+    khoi.append({"ten": "dự trữ (bất khả xâm phạm)", "token": du_tru,
+                 "tran": du_tru, "vuot": False})
+
+    tong = sum(k["token"] for k in khoi)
+    ty_le = tong / max(1, cua_so)
+    return {"khoi": khoi, "tong": tong, "cua_so": cua_so,
+            "ty_le": round(ty_le, 3), "muc": cb.muc_nen(ty_le),
+            "nguong": {"C1": cb.nguong_c1, "C2": cb.nguong_c2,
+                       "C3": cb.nguong_c3, "C4": cb.nguong_c4},
+            "kha_dung": cb.kha_dung(cua_so)}
+
+
 def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
              assumptions: list[str] | None = None, run: dict[str, Any] | None = None,
-             only: list[str] | None = None, hist: Any = None) -> int:
+             only: list[str] | None = None, hist: Any = None,
+             ngu_canh: dict[str, Any] | None = None) -> int:
     """Vẽ lại các bề mặt. Gọi cuối mỗi lượt và khi giao diện xin dựng lại toàn bộ."""
     models = {
         "requirements": lambda: requirements(store, inv),
@@ -586,7 +622,7 @@ def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
             continue
         emit(uic.surface_set(ten, dung()))
         n += 1
-    emit(uic.ui_set("status_bar", status_bar(inv, cfg, run=run)))
+    emit(uic.ui_set("status_bar", status_bar(inv, cfg, run=run, ngu_canh=ngu_canh)))
     emit(uic.history_update(
         changesets=hist.danh_sach(limit=40) if hist else [],
         snapshots=hist.danh_sach_snapshot() if hist else [],

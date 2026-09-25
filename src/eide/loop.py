@@ -39,6 +39,8 @@ from .errors import EideError, budget_exhausted, gate_pending
 from .hooks import HookBus, S0Engine
 from .hooks.standard import register_standard_hooks
 from .ids import IdGen
+from . import memory as mem
+from .memory import boc_ket_qua
 from .policy import PolicyEngine
 from .protocol import HumanAct
 from .protocol import uicommand as uic
@@ -225,7 +227,30 @@ class Agent:
                               pending_cards=self.pending_cards)
         surfaces.emit_all(emit, store=self.store, ledger=self.ledger, eide_md=self.eide_md,
                           inv=inv, cfg=self.config, assumptions=self.assumptions,
-                          run=run, only=only, hist=self.history)
+                          run=run, only=only, hist=self.history,
+                          ngu_canh=self.ngu_canh_hien_tai())
+
+    def ngu_canh_hien_tai(self) -> dict[str, Any]:
+        """Đồng hồ ngữ cảnh cho thanh trạng thái (MEM-02).
+
+        Dựng lại phần cố định bằng `_assemble` thay vì nhớ lần lắp gần nhất: con số
+        người nhìn phải là con số của LÚC NÀY, không phải của lượt trước.
+        """
+        from . import surfaces
+        inv = inventory.build(self.store, ledger=self.ledger,
+                              project_name=self.project_name,
+                              pending_cards=self.pending_cards)
+        recent = [m.get("text", "") for m in self.messages[-6:] if m.get("role") == "user"]
+        asm = assemble(
+            eide_md=self.eide_md, inventory_text=inv.render(), store=self.store,
+            recent_texts=recent or [""],
+            human_edit_changesets=[cs.to_dict() for cs
+                                   in self.history.log.human_unacknowledged()],
+            pending_cards=self.pending_cards,
+            stopped_run=inv.unfinished_run,
+            assumptions=self.assumptions,
+            budget=self.config.context_budget)
+        return surfaces.dong_ho_ngu_canh(asm, self.messages, self.config)
 
     # ------------------------------------------------------------------ thân
     def _run(self, act: HumanAct, ctx: TurnContext) -> None:
@@ -357,7 +382,8 @@ class Agent:
                 if ctx.awaiting_human:
                     return
 
-            if self._context_pressure(asm) > self.config.budget.compact_at:
+            muc = self.config.context_budget.muc_nen(self._context_pressure(asm))
+            if muc != "C0":
                 self._compact(ctx)
 
     # ------------------------------------------------------------------ một công cụ
@@ -402,8 +428,16 @@ class Agent:
 
         res = self.registry.run(call.tool, call.args, ctx)
         self.hooks.post_tool_use(c, res, ctx)
+
+        # MEM-42 §5.1 — kết quả KHÔNG đi nguyên văn vào transcript. Phần vượt trần nằm
+        # ở blob và mô hình đọc lại bằng `blob.read`. Đây là chỗ rẻ nhất để giữ cửa sổ.
+        env = boc_ket_qua(tool=call.tool, call_id=call.id, ket_qua=res,
+                          args=call.args, blobs=self.history.blobs)
+        if env.truncated:
+            self.ledger.append("note", {"run_id": ctx.run_id, "cat_ket_qua": env.to_ledger()})
         self.messages.append({"role": "tool", "tool_call_id": call.id,
-                              "tool": call.tool, "result": res.to_model()})
+                              "tool": call.tool, "result": env.to_model(),
+                              "envelope": env.to_ledger()})
 
     def _tool_error(self, call: Any, err: EideError, ctx: TurnContext,
                     *, as_incident: bool = True) -> None:
@@ -777,21 +811,23 @@ class Agent:
         return used / max(1, self.config.model.context_window)
 
     def _compact(self, ctx: TurnContext) -> None:
-        """§B6 — nén khi > 70 %. PreCompact rút phần có cấu trúc ra trước.
+        """Nén theo bậc thang MEM-42 §6. Ở MEM-A mới có C1 (0 token).
 
-        Ở G1 mới giữ 10 lượt gần nhất nguyên văn và rút phần còn lại thành một dòng.
-        G2 nối phần ghi quyết định/giả định vào EIDE.md + sổ cái trước khi cắt.
+        C1 không gọi mô hình và không có rủi ro mất nghĩa — nó chỉ thay kết quả công cụ
+        cũ bằng một dòng tóm tắt CÓ `blob_ref`, nên mọi thứ vẫn đọc lại được. C2 (tóm
+        tắt có cấu trúc) và PostCompact là việc của MEM-C; tới đó mới có một phép đoán
+        nằm giữa đường và mới cần kiểm ngược.
         """
-        if len(self.messages) <= 12:
-            return
-        dropped = len(self.messages) - 10
-        self.ledger.append("note", {"run_id": ctx.run_id, "compact": dropped})
-        head = {"role": "user",
-                "text": f"<system-reminder>\n{dropped} thông điệp cũ đã được nén khỏi ngữ "
-                        "cảnh. Quyết định và giả định quan trọng nằm trong EIDE.md và "
-                        "<inventory> ở trên. Cần chi tiết lượt cũ thì gọi history.list."
-                        "\n</system-reminder>"}
-        self.messages = [head] + self.messages[-10:]
+        bc = mem.c1(self.messages,
+                    ghim=mem.chi_so_ghim(self.messages),
+                    tep_da_sua=set(self.locks))
+        self.ledger.append("note", {"run_id": ctx.run_id, "compact": "C1", **bc})
+        if bc["giam_phan_tram"] >= 5:
+            ctx.emit(uic.notice(
+                f"[Hệ thống] Đã thu gọn ngữ cảnh {bc['giam_phan_tram']:.0f} % "
+                f"({bc['stub_qua_han']} kết quả cũ, {bc['dedup']} lần đọc trùng). "
+                "Không mất gì — đọc lại được bằng blob.read.",
+                level="info", code="C1"))
 
     # ------------------------------------------------------------------ báo cáo
     def _note_stated_assumptions(self, ctx: TurnContext, text: str) -> None:

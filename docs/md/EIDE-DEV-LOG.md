@@ -818,3 +818,88 @@ ai đọc nữa. Tệp rỗng hoặc thiếu trả mã thoát 2, không bao gi�
 
 Đo được: 239 ca đơn vị; `so_ket_qua.py --hai-che-do tools/thu_ing_a.py` → 29/29 khớp
 giữa hai chế độ.
+
+---
+
+### [DEV-254] 25/09/2026 · Hiến pháp vượt trần 2 000 token — nâng trần, và đặt người canh
+
+Đồng hồ ngữ cảnh vừa dựng xong đã bắt được một thứ ngay lần chạy thật đầu tiên: khối
+hiến pháp **3 503 token** trên trần 2 000 mà MEM-42 §4.1 ghi, kèm ghi chú *"Không xảy ra
+(cố định)"*.
+
+Con số 2 000 được ước **trước khi** chín nguyên tắc được viết ra kèm lý do và trước khi
+§10 có bảng "chốt cái gì → ghi bằng công cụ nào". Đo lại từng mục: mỗi nguyên tắc ~200
+token, §10 là 628.
+
+Chọn cắt hiến pháp cho vừa con số, hay sửa con số? Hai dữ kiện quyết định:
+
+- Bảng §10 là thứ **đo được là đổi hành vi** — nó là lý do tác tử ghi hiện vật thay vì
+  kể trong văn xuôi (G3), và ghi bản ưng ý đúng đường (G5). Cắt nó để đạt một mục tiêu
+  ngân sách là đổi một hành vi đã đo lấy một dòng trong bảng.
+- Khối này **được cache** (prompt caching), nên chi phí mỗi lượt gần như bằng không, và
+  3,5 k trên cửa sổ 1 M là 0,35 %.
+
+Nên: trần lên **3 600**. Nhưng một cái trần không ai canh thì không phải là trần — hiến
+pháp là khối DUY NHẤT không tự co lại được (EIDE.md và `<facts>` đều có bước cắt). Nên
+đi kèm là ca đo `test_hien_phap_khong_duoc_phinh_qua_tran`: thêm chữ vào hiến pháp thì
+ca đỏ, và người thêm phải quyết định có đáng không — thay vì lặng lẽ nâng trần lần nữa.
+
+**Đề nghị cập nhật tài liệu: CÓ** — §4.1 nên ghi 3 600 và bỏ ghi chú "không xảy ra".
+
+---
+
+### [DEV-255] 25/09/2026 · MEM-A — kết quả công cụ không còn đi nguyên văn vào ngữ cảnh
+
+MEM-42 §5.1 gọi đây là *"biện pháp quan trọng nhất và rẻ nhất"*. Bản trước không có gì:
+`res.to_model()` đi thẳng vào transcript, chỉ `fs.read` tự cắt theo byte và `fs.grep`
+cắt 200 ký tự mỗi dòng. `BlobStore` đã có sẵn, content-addressed, đã chạy thật cho
+snapshot từ G5 — nhưng chưa bao giờ được nối vào kết quả công cụ.
+
+Nay mỗi kết quả đi qua `ToolResultEnvelope` với bảng chính sách 15 công cụ. Đo trên tệp
+3 000 dòng thật: **62 561 → 1 268 token** vào ngữ cảnh, phần dư nguyên văn nằm ở blob.
+
+Ba điều bộ này cố ý **không** làm, và mỗi điều có một ca đo canh:
+
+1. **Không cắt lặng lẽ.** Mọi lần cắt để lại `_cat` nói rõ đã hiện bao nhiêu và gọi gì
+   để đọc tiếp. Thiếu kho blob thì phong bì **nói thẳng** "phần dư KHÔNG lưu lại được"
+   thay vì im lặng làm mất.
+2. **Không cắt cái nhỏ.** Dưới trần thì đi qua nguyên vẹn — bọc mọi thứ chỉ tăng token
+   mà không giảm gì.
+3. **Không cắt lỗi.** `EideError` mang bốn trường để mô hình đổi hướng (§B3); cắt nó là
+   cắt đúng thứ đang cứu lượt.
+
+Kèm `blob.read` — không có nó thì "cắt" thành "mất". Nó có trần cứng 60 k ký tự mỗi lần
+gọi, để chính nó không thành cửa sau nhét cả tệp vào ngữ cảnh.
+
+**Một lỗi tìm ra khi chạy thật:** bảng đề mục luôn rỗng, vì `fs.read` trả nội dung **đã
+đánh số dòng** (`"  123\tmã"`) còn regex đề mục khớp từ đầu dòng. Hệ quả: mô hình nhận
+60 dòng đầu mà không có gì để biết nên đọc tiếp đoạn nào — tức phần "gợi ý range" của
+§5.1 mất tác dụng trong im lặng. Ca đơn vị nay canh trên chuỗi **đã đánh số**.
+
+---
+
+### [DEV-256] 25/09/2026 · C1 đếm theo LƯỢT, không đếm message
+
+Bản trước giữ "10 lượt gần nhất" bằng cách giữ **10 message cuối** (`loop._compact`).
+Một lượt thật thường là 4–10 message (lời người + lượt mô hình + nhiều kết quả công cụ),
+nên "10 message" thực tế là **chưa tới hai lượt**. Đây là lý do người dùng thấy tác tử
+quên những thứ vừa nói ở đầu cùng một việc.
+
+Và nó không phải "nén" — nó **vứt**: `self.messages = [head] + self.messages[-10:]`, các
+message cũ biến mất không để lại đường nào.
+
+C1 mới (`memory/compact.py`) làm bốn việc của §6.1, tất cả bằng mã, 0 token:
+stub kết quả quá 8 **lượt** · dedup lần đọc trùng · supersede khi tệp đã bị sửa · thu
+gọn thẻ đã đóng. Nó **không vứt message nào** — chỉ thay ruột bằng một dòng tóm tắt có
+`blob_ref`, nên mọi thứ vẫn đọc lại được.
+
+Ghim (§5.4) theo **ý chí của người**, không theo độ mới: một câu người gõ ba mươi lượt
+trước vẫn ràng buộc hơn một kết quả công cụ của lượt vừa xong.
+
+Ngưỡng kích hoạt cũng đổi: trước là một mốc 70 %; nay là bốn mốc 60/70/85/95 của §4.2,
+và `muc_nen()` trả C0…C4. Ở MEM-A mới có C1; C2 (tóm tắt có cấu trúc) và PostCompact là
+việc của MEM-C — tới đó mới có một phép đoán nằm giữa đường và mới cần kiểm ngược.
+
+Đo được: 266 ca đơn vị · MEM-A 21/21 qua giao diện thật · hồi quy G3 31/31, G4 23/23,
+G5 35/35, ING-A 29/29 — envelope đổi đường đi của **mọi** kết quả công cụ nên bốn bộ
+này là phép kiểm thật sự, không phải hình thức.

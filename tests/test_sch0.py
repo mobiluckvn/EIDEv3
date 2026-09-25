@@ -73,11 +73,15 @@ def test_co_tat_thi_luoc_do_tool_khong_tang_mot_token_nao():
 
     tat = build_registry(Features(schematic=False))
     bat = build_registry(Features(schematic=True))
-    # Chưa có tool sch nào nên hai bên bằng nhau — ca này canh cho LÚC SAU: khi SCH-A
-    # thêm 8 tool, bên tắt vẫn phải giữ nguyên con số này.
-    assert len(tat.all()) == len(bat.all()) == 48
-    n = sum(len(json.dumps(d, ensure_ascii=False)) for d in tat.declarations())
-    assert n > 0
+    # Chưa có tool sch nào nên hai bên bằng nhau. Ca này canh cho LÚC SAU: khi SCH-A
+    # thêm 8 tool, bên TẮT phải không đổi một công cụ, một token nào.
+    #
+    # Cố ý KHÔNG chốt cứng con số 48: bước khác thêm công cụ là chuyện bình thường, và
+    # một ca đo đỏ vì lý do bình thường sẽ bị người ta sửa cho qua thay vì đọc.
+    assert len(tat.all()) == len(bat.all())
+    assert ([d["name"] for d in tat.declarations()]
+            == [d["name"] for d in bat.declarations()])
+    assert tat.bo_qua_vi_co == bat.bo_qua_vi_co == []
 
 
 def test_co_doc_tu_bien_moi_truong(monkeypatch):

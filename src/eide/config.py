@@ -59,15 +59,65 @@ class Budget:
 
 @dataclass(slots=True)
 class ContextBudget:
-    """Ngan sach token tung khoi ngu canh — MDD-40 §B2 (bang)."""
+    """Ngan sach token tung khoi ngu canh — EIDE-MEM-42 §4.1 (10 khoi).
 
-    constitution: int = 2000
+    Ban truoc co 7 khoi theo MDD-40 §B2. MEM-42 them ba khoi va mot dieu quan trong
+    hon ca ba: **du tru 20 %**. Khong co du tru thi ngu canh co the day den muc khong
+    con cho cho chinh cau tra loi cua luot nay — va luc do loi khong phai "dai qua",
+    ma la mot loi 400 giua chung.
+
+    Nguyen tac P8: moi khoi co tran RIENG; vuot thi nen khoi do, khong "muon" cua khoi
+    khac. Muon la cach mot khoi it quan trong an mat cho cua khoi quan trong.
+    """
+
+    # MEM-42 §4.1 ghi 2 000 va ghi chu "khong xay ra (co dinh)". Do that tren ban dang
+    # chay: 3 503. Con so 2 000 duoc uoc TRUOC khi chin nguyen tac va bang §10 duoc viet
+    # ra kem ly do; moi nguyen tac nay ~200 token va da rut het co the rut.
+    #
+    # Chon cach nao: cat hien phap cho vua con so, hay sua con so? Bang §10 la thu da
+    # DO DUOC la doi hanh vi (tac tu ghi hien vat thay vi ke trong van xuoi, G3/G5), va
+    # khoi nay duoc cache nen chi phi moi luot gan nhu bang khong. Cat no de dat mot muc
+    # tieu ngan sach la doi mot hanh vi da do lay mot dong trong bang.
+    #
+    # Nen: dat tran theo so THAT + mot khoang tho, va them mot ca do chan no phinh tiep
+    # (`test_hien_phap_khong_duoc_phinh_qua_tran`). Mot cai tran khong ai canh thi khong
+    # phai la tran — xem DEV-254.
+    constitution: int = 3600
+    tool_schema: int = 4000          # khoi 2 — luoc do tool hien thi
     eide_md: int = 3000
     inventory: int = 800
     facts: int = 2000
     human_edits: int = 1000
     pending: int = 300
+    skills: int = 6000               # khoi 7 — skill da nap
     skills_hint: int = 300
+    session_summary: int = 3000      # khoi 8 — ban tom tat phien (C2/C3)
+    du_tru_ty_le: float = 0.20       # khoi 10 — bat kha xam pham
+
+    # Bon nguong cua §4.2. Vuot tung muc thi lam gi, xem `muc_nen`.
+    nguong_c1: float = 0.60
+    nguong_c2: float = 0.70
+    nguong_c3: float = 0.85
+    nguong_c4: float = 0.95
+
+    def du_tru(self, cua_so: int) -> int:
+        return int(cua_so * self.du_tru_ty_le)
+
+    def kha_dung(self, cua_so: int) -> int:
+        """Phan thuc su dung duoc — cua so tru du tru."""
+        return max(0, cua_so - self.du_tru(cua_so))
+
+    def muc_nen(self, ty_le: float) -> str:
+        """§4.2 — tra ve C0..C4 theo muc su dung."""
+        if ty_le >= self.nguong_c4:
+            return "C4"
+        if ty_le >= self.nguong_c3:
+            return "C3"
+        if ty_le >= self.nguong_c2:
+            return "C2"
+        if ty_le >= self.nguong_c1:
+            return "C1"
+        return "C0"
 
 
 @dataclass(slots=True)

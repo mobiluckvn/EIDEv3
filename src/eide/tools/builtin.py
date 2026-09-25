@@ -257,6 +257,44 @@ def build_registry(features: Any = None) -> Registry:
         return {"count": len(runs), "runs": runs,
                 "note_vi": "" if runs else "Sổ cái chưa có lượt nào khớp."}
 
+    @r.tool("blob.read", "Tệp & lệnh",
+            "Đọc lại phần kết quả đã bị cắt khỏi ngữ cảnh. Khi một kết quả công cụ có "
+            "trường `_cat`, dùng `ref` trong đó để lấy nguyên văn theo khoảng ký tự.",
+            {"type": "object",
+             "properties": {
+                 "ref": {"type": "string", "description": "blob:sha256:… lấy từ trường _cat"},
+                 "tu": {"type": "integer", "description": "Ký tự bắt đầu, mặc định 0"},
+                 "den": {"type": "integer", "description": "Ký tự kết thúc"}},
+             "required": ["ref"]},
+            risk="R1", core=False,
+            keywords=["blob", "đọc lại", "phần còn lại", "đã cắt", "nguyên văn"])
+    def blob_read(ctx: Any, ref: str, tu: int = 0, den: int | None = None):
+        """MEM-42 §5.2. Không có công cụ này thì "cắt" trở thành "mất"."""
+        bam = ref.split(":")[-1].strip()
+        if ctx.history is None or not bam:
+            raise EideError(
+                "E5003", "Không có kho blob trong phiên này.",
+                hint_for_agent="Gọi lại công cụ gốc với phạm vi hẹp hơn.",
+                alternatives=["fs.read với offset/limit"], blame="system")
+        data = ctx.history.blobs.get(bam)
+        if data is None:
+            raise EideError(
+                "E5003", f"Không còn nội dung nào ở {ref}.",
+                hint_for_agent=("Tham chiếu này sai hoặc đã bị dọn. Gọi lại công cụ gốc "
+                                "thay vì đoán nội dung."),
+                alternatives=["gọi lại công cụ gốc"], blame="agent")
+        chu = data.decode("utf-8", "replace")
+        het = len(chu) if den is None else min(len(chu), max(tu, den))
+        phan = chu[tu:het]
+        # Trần cứng: blob.read không được trở thành cửa sau để nhét cả tệp vào ngữ cảnh.
+        if len(phan) > 60_000:
+            phan = phan[:60_000]
+            het = tu + 60_000
+        return {"ref": ref, "tong_ky_tu": len(chu), "tu": tu, "den": het,
+                "noi_dung": phan,
+                "note_vi": ("" if het >= len(chu) else
+                            f"Còn {len(chu) - het} ký tự. Gọi tiếp với tu={het}.")}
+
     @r.tool("ledger.verify", "Lịch sử",
             "Kiểm tính toàn vẹn của sổ cái (chuỗi hash). Gọi khi nghi ngờ lịch sử bị sửa.",
             {"type": "object", "properties": {}},

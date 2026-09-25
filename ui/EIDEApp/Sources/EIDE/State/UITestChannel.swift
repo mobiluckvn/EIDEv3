@@ -210,6 +210,18 @@ final class UITestChannel {
                 "du_an": s.status.du_an, "chip": s.status.chip,
                 "chang": s.status.chang, "stale": s.status.stale,
                 "fact": s.status.fact, "mo_hinh": s.status.mo_hinh,
+                // Đồng hồ ngữ cảnh (MEM-02) — để ca đo hỏi được "khối nào chạm trần".
+                "ngu_canh": [
+                    "tong": s.status.ngu_canh.tong,
+                    "cua_so": s.status.ngu_canh.cua_so,
+                    "ty_le": s.status.ngu_canh.ty_le,
+                    "muc": s.status.ngu_canh.muc,
+                    "kha_dung": s.status.ngu_canh.kha_dung,
+                    "khoi": s.status.ngu_canh.khoi.map {
+                        ["ten": $0.ten, "token": $0.token,
+                         "tran": $0.tran ?? 0, "vuot": $0.vuot] as [String: Any]
+                    },
+                ] as [String: Any],
             ],
             "dang_chay": s.busy,
         ]

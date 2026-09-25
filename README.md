@@ -21,7 +21,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **G5** | Bản ưng ý bất biến · khôi phục không xoá lịch sử · so sánh hai bản · nhánh · release là điều kiện khoá chip | xong |
 | **ING-A** | classify v3: Office trước archive · ba mức hỗ trợ · E1010–E1015 · giới hạn archive & zip bomb · cây tệp A3.6 | xong |
 | **SCH-0** | Cờ tính năng (tắt = không đăng ký) · migration Store có `down()` · so hồi quy hai chế độ | xong |
-| ING-B…E · MEM-A…D | Bộ đọc Office · bảng→Fact · EDA/cấu hình vendor · bộ nhớ và nén (EIDE-GAP-44) | đang |
+| **MEM-A** | Phong bì kết quả công cụ + blob · `blob.read` · đồng hồ ngữ cảnh 10 khối · C1 thu gọn 0 token | xong |
+| ING-B…E · MEM-B…D · SCH-A…D | Bộ đọc Office · bảng→Fact · EDA · bộ nhớ dài hạn · sơ đồ KiCad (EIDE-GAP-44) | đang |
 | G6 | Build/Sim + subagent | chưa |
 | G7 | Mạch thật | chưa |
 
@@ -85,6 +86,7 @@ ui/EIDEApp/Sources/EIDE/
 .venv/bin/python tools/thu_g4.py                     # 23 ca nền tri thức + 8 đường hỏng
 .venv/bin/python tools/thu_g5.py                     # 35 ca bản ưng ý/nhánh + 8 đường hỏng
 .venv/bin/python tools/thu_ing_a.py                  # 29 ca phân loại tệp + 8 đường hỏng
+.venv/bin/python tools/thu_mem_a.py                  # 21 ca bộ nhớ/nén + 6 đường hỏng
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_ing_a.py   # hồi quy hai chế độ cờ
 .venv/bin/python tools/chay_kich_ban.py --lan 5      # bộ 76 TC, mỗi ca 5 lần
 .venv/bin/python tools/theo_doi.py --du-an <thư mục> # theo dõi phiên thật qua sổ cái

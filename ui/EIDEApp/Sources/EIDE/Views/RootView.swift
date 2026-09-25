@@ -1,6 +1,54 @@
 import SwiftUI
 
 /// Bố cục §E7: Console bên trái (3 cỡ) · 10 tab bên phải · thanh trạng thái dưới cùng.
+/// Đồng hồ ngữ cảnh — EIDE-MEM-42 §4, yêu cầu MEM-01/MEM-02.
+///
+/// Một con số phần trăm trên thanh trạng thái, và cả bảng mười khối khi rê chuột.
+/// Lý do nó đáng chỗ: khi tác tử bắt đầu quên, câu hỏi đầu tiên của người là "vì sao".
+/// Không có đồng hồ này thì câu trả lời duy nhất là "ngữ cảnh đầy" — một lời giải
+/// thích không kiểm được. Có nó thì người thấy **khối nào** đã chạm trần.
+struct DongHoNguCanh: View {
+    let nc: StatusBar.NguCanh
+
+    private var mau: Color {
+        switch nc.muc {
+        case "C4": return .gateRed
+        case "C3": return .gateRed.opacity(0.8)
+        case "C2": return .staleAmber
+        case "C1": return .staleAmber.opacity(0.8)
+        default:   return .okGreen
+        }
+    }
+
+    var body: some View {
+        if nc.cua_so > 0 {
+            HStack(spacing: 4) {
+                Circle().fill(mau).frame(width: 6, height: 6)
+                Text("ngữ cảnh \(nc.phanTram) %")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                if nc.muc != "C0" {
+                    Text(nc.muc)
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(mau)
+                }
+            }
+            .help(chiTiet)
+        }
+    }
+
+    private var chiTiet: String {
+        var d = ["Cửa sổ \(nc.cua_so) token · dùng \(nc.tong) (\(nc.phanTram) %)",
+                 "Dùng được \(nc.kha_dung) — 20 % còn lại để dành cho câu trả lời lượt này",
+                 ""]
+        for k in nc.khoi where k.token > 0 {
+            let tran = k.tran.map { " / \($0)" } ?? ""
+            d.append("\(k.vuot ? "⚠︎ " : "")\(k.ten): \(k.token)\(tran)")
+        }
+        return d.joined(separator: "\n")
+    }
+}
+
 struct RootView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var setup: Setup
@@ -152,6 +200,8 @@ struct StatusBarView: View {
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .help("Ngân sách một lượt")
+
+            DongHoNguCanh(nc: state.status.ngu_canh)
 
             Circle()
                 .fill(state.connection.ok ? Color.okGreen : Color.gateRed)
