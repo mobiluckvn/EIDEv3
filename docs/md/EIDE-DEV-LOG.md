@@ -751,3 +751,70 @@ này.
 
 Đo được: `thu_ing_a.py` 29/29 qua giao diện thật; ba bộ E2E cũ (G3 31/31 · G4 23/23 ·
 G5 35/35) không hồi quy.
+
+---
+
+### [DEV-252] 25/09/2026 · Mở họ mã lỗi E8xxx cho sơ đồ/EDA
+
+EIDE-SCH-44 §3 dùng `E7001` cho "netlist sinh ra lệch CKM" và `E7002` cho "chưa có
+pinout đã duyệt". Cả hai mã **đã mang nghĩa khác**: họ `E7xxx` dành cho lịch sử và
+changeset, và `E7001`…`E7007` đã dùng hết cho hoàn tác, khôi phục snapshot, đánh dấu
+release, rẽ nhánh, ghi bản ưng ý.
+
+Đây là lần thứ hai một tài liệu bổ sung đặt mã trùng (lần đầu: DEV-249). Chủ sản phẩm
+đã chốt cùng một cách xử lý: **cấp mã mới**.
+
+| SCH-44 gọi | EIDE dùng | Nghĩa |
+|---|---|---|
+| E7001 | **E8001** | netlist sinh ra không đẳng cấu với CKM — dừng, kèm diff |
+| E7002 | **E8002** | chưa có pinout đã duyệt cho một ref — không bịa chân |
+
+Họ `E8xxx` để dành cho sơ đồ/EDA, còn chỗ cho SCH-B…D đánh số tiếp. Hôm nay mới **đặt
+chỗ trong bảng họ mã** (`errors.py:31–33`); hàm dựng lỗi viết khi SCH-A cần tới.
+
+**Đề nghị cập nhật tài liệu: CÓ** — SCH-44 §3 và §5 nên dùng E8001/E8002.
+
+---
+
+### [DEV-253] 25/09/2026 · SCH-0 — ba thứ hạ tầng mà SCH-44 dựa vào nhưng chưa tồn tại
+
+Rà SCH-44 cho thấy §2.1 và §8 đứng trên ba cơ chế mà bản đang chạy không có. Làm chúng
+thành một bước riêng **trước** SCH-A, vì chúng là *bằng chứng* mà quy trình đưa tính
+năng vào đòi, không phải phần của tính năng.
+
+**1. Cờ tính năng.** `Features` trong `config.py`, đọc theo thứ tự: mặc định trong mã →
+`~/.eide/settings.json` → biến môi trường `EIDE_FEATURE_<TÊN>`.
+
+Điểm cần nói rõ vì dễ nhầm: cờ tính năng **không phải** `ToolSpec.core`. `core=False` là
+*nạp trễ* — công cụ vẫn được đăng ký, chỉ giấu khỏi lược đồ cho tới khi `tool.search`
+mở ra, nghĩa là mô hình **vẫn gọi được**. §2.1 đòi mạnh hơn: cờ tắt thì công cụ *không
+được đăng ký*. Nên `Registry.add()` bỏ qua hẳn spec có `feature` chưa bật, và ghi tên
+nó vào `bo_qua_vi_co` để còn kiểm được. Ca đo canh cả đường `tool.search` không moi
+được ra.
+
+Mặc định khi không biết cờ nào bật (`features=None`) là **TẮT** — thiếu thông tin thì
+nghiêng về phía an toàn, không nghiêng về phía tiện.
+
+**2. Migration cho Store.** Ba bảng đang dựng bằng `CREATE TABLE IF NOT EXISTS`, không
+có `PRAGMA user_version`. Hệ quả: **mọi thay đổi lược đồ là thay đổi không quay lại
+được** — thêm một bảng xong, muốn gỡ thì chỉ còn cách sửa tay trên kho của người dùng.
+SCH-18 đòi `down()`.
+
+Nay có `MIGRATIONS` với `up`/`down`, `nang_cap()` áp phần còn thiếu khi mở kho, và
+`ha_cap(den)`. Hai chi tiết có chủ đích: kho cũ chưa đánh số (`user_version = 0`, bảng
+đã có sẵn) vẫn nâng cấp được vì `up` của phiên bản 1 là idempotent; và `ha_cap(0)` —
+tức xoá sạch kho — **bị từ chối** trừ khi gọi kèm `cho_phep_xoa_goc=True`, vì một lệnh
+gỡ tính năng không được phép vô tình xoá cả dự án.
+
+**3. So hai lần chạy.** §8 bước B và C đòi "hồi quy hai chế độ giống 100 %", trong khi
+bốn bộ E2E hiện in bảng ra màn hình cho người đọc. Đọc bằng mắt hai bảng 35 dòng thì
+bắt được khác biệt lớn; thứ nguy hiểm là **một ô lặng lẽ đổi từ đạt sang không đạt**.
+
+`Bo.ghi_ra()` ghi kết quả ra JSONL, `tools/so_ket_qua.py` so hai tệp và
+`--hai-che-do <kịch bản>` chạy một bộ hai lần (cờ tắt / cờ bật) rồi so. Phép so cố ý
+**bỏ cột bằng chứng**: bằng chứng chứa lời mô hình sinh ra, đổi mỗi lần chạy, nên đưa
+vào sẽ làm mọi lần so đều báo khác — và một phép kiểm luôn kêu là một phép kiểm không
+ai đọc nữa. Tệp rỗng hoặc thiếu trả mã thoát 2, không bao giờ báo "giống" (N6).
+
+Đo được: 239 ca đơn vị; `so_ket_qua.py --hai-che-do tools/thu_ing_a.py` → 29/29 khớp
+giữa hai chế độ.

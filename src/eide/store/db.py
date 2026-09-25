@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -83,6 +84,49 @@ CREATE INDEX IF NOT EXISTS ix_fact_subject ON facts(subject, key);
 CREATE INDEX IF NOT EXISTS ix_fact_tier    ON facts(tier);
 """
 
+
+# --------------------------------------------------------------------------- migration
+# EIDE-SCH-44 §2.1 lop bao ve so 4 va SCH-18: "luoc do chi cong them; migration co
+# kiem tra nguoc (down)".
+#
+# Vi sao can, bang mot cau: `CREATE TABLE IF NOT EXISTS` bien MOI thay doi luoc do thanh
+# mot thay doi **khong quay lai duoc**. Them mot bang xong, muon go ra thi khong co
+# duong nao ngoai sua tay tren kho cua nguoi dung. `user_version` cho ta biet dang o
+# dau, va `down` cho ta duong lui.
+#
+# Quy tac cho moi migration them sau:
+#   - `up` phai chay lai duoc nhieu lan ma khong hong (IF NOT EXISTS / IF EXISTS);
+#   - `down` chi go DUNG thu `up` them vao, khong dung toi du lieu co truoc;
+#   - phien ban 1 la luoc do goc, nen `down` cua no la xoa sach — chi dung khi go han
+#     ca kho, va `ha_cap` tu choi neu khong duoc noi ro (xem `cho_phep_xoa_goc`).
+
+
+@dataclass(slots=True)
+class Migration:
+    phien_ban: int
+    mo_ta: str
+    up: str
+    down: str
+
+
+MIGRATIONS: list[Migration] = [
+    Migration(
+        phien_ban=1,
+        mo_ta="lược đồ gốc: events (event-sourcing) + artefacts (hình chiếu) + facts",
+        up=SCHEMA,
+        down=(
+            "DROP INDEX IF EXISTS ix_fact_tier; DROP INDEX IF EXISTS ix_fact_subject;"
+            "DROP TABLE IF EXISTS facts;"
+            "DROP INDEX IF EXISTS ix_art_stale; DROP INDEX IF EXISTS ix_art_type;"
+            "DROP TABLE IF EXISTS artefacts;"
+            "DROP INDEX IF EXISTS ix_events_cs; DROP INDEX IF EXISTS ix_events_artefact;"
+            "DROP TABLE IF EXISTS events;"
+        ),
+    ),
+]
+
+SCHEMA_VERSION = MIGRATIONS[-1].phien_ban
+
 # Các loại hiện vật có trong §E2 (22 dòng bảng) — dùng để kiểm và để đếm trong inventory.
 ARTEFACT_TYPES = (
     "req", "option", "adr", "fact", "passport", "ckm", "pinout", "block_diagram",
@@ -106,11 +150,51 @@ class Store:
         self._lock = threading.Lock()
         self._db = sqlite3.connect(self.path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
-        self._db.executescript(SCHEMA)
-        self._db.commit()
+        self.nang_cap()
 
     def close(self) -> None:
         self._db.close()
+
+    # ------------------------------------------------------------------ lược đồ
+    @property
+    def phien_ban_luoc_do(self) -> int:
+        return int(self._db.execute("PRAGMA user_version").fetchone()[0])
+
+    def nang_cap(self, den: int | None = None) -> list[int]:
+        """Áp các migration còn thiếu. Trả về danh sách phiên bản đã áp."""
+        dich = SCHEMA_VERSION if den is None else den
+        da_ap: list[int] = []
+        for m in MIGRATIONS:
+            if self.phien_ban_luoc_do >= m.phien_ban or m.phien_ban > dich:
+                continue
+            with self._lock:
+                self._db.executescript(m.up)
+                self._db.execute(f"PRAGMA user_version = {m.phien_ban}")
+                self._db.commit()
+            da_ap.append(m.phien_ban)
+        return da_ap
+
+    def ha_cap(self, den: int, *, cho_phep_xoa_goc: bool = False) -> list[int]:
+        """Gỡ ngược các migration cho tới phiên bản `den` — SCH-18.
+
+        Hạ xuống 0 nghĩa là xoá sạch ba bảng gốc, tức xoá kho. Việc đó phải được nói ra
+        bằng `cho_phep_xoa_goc=True`; mặc định từ chối, vì một lệnh gỡ tính năng không
+        được phép vô tình xoá cả dự án.
+        """
+        if den < 1 and not cho_phep_xoa_goc:
+            raise ValueError(
+                "Hạ lược đồ xuống 0 sẽ xoá toàn bộ kho hiện vật. Nếu thật sự muốn, "
+                "gọi lại với cho_phep_xoa_goc=True.")
+        da_go: list[int] = []
+        for m in reversed(MIGRATIONS):
+            if m.phien_ban <= den or self.phien_ban_luoc_do < m.phien_ban:
+                continue
+            with self._lock:
+                self._db.executescript(m.down)
+                self._db.execute(f"PRAGMA user_version = {m.phien_ban - 1}")
+                self._db.commit()
+            da_go.append(m.phien_ban)
+        return da_go
 
     # ------------------------------------------------------------------ ghi
     def apply(self, *, artefact_id: str, type: str, op: str, author: str,

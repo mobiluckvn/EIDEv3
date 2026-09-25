@@ -32,7 +32,9 @@ from typing import Any
 # E4xxx  cap quyen / cong / sandbox    (N5 — chan co chu dich)
 # E5xxx  du lieu / store / lugc do
 # E6xxx  mo hinh (LLM)                 (UC19 — qua tai, timeout, tra sai lugc do)
-# E7xxx  lich su / changeset / snapshot
+# E7xxx  lich su / changeset / snapshot   (E7001–E7007 da dung het)
+# E8xxx  so do / EDA                      (SCH-44; E8001 netlist lech CKM, E8002 thieu
+#                                          pinout da duyet — xem DEV-252)
 # E_PROTO_*  giao thuc UAP             (MDD-40 §D2)
 
 

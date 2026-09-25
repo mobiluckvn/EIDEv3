@@ -52,8 +52,14 @@ def _rel(ctx: Any, p: Path) -> str:
 _S_PATH = {"type": "string", "description": "Đường dẫn tương đối tới gốc dự án"}
 
 
-def build_registry() -> Registry:
-    r = Registry()
+def build_registry(features: Any = None) -> Registry:
+    """Dựng bộ công cụ. `features` quyết định nhóm nào được ĐĂNG KÝ (SCH-44 §2.1).
+
+    Không truyền gì ⇒ đọc cờ từ `~/.eide/settings.json` + biến môi trường. Cờ tắt thì
+    công cụ của tính năng đó không tồn tại với mô hình, không phải chỉ bị giấu.
+    """
+    from ..config import Features
+    r = Registry(features if features is not None else Features.load())
 
     # ====================================================================== fs
     @r.tool("fs.read", "Tệp & lệnh",

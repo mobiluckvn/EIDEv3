@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -107,9 +108,25 @@ class GiaoDien:
 
 
 class Bo:
-    def __init__(self):
+    """Bảng kết quả một bộ kiểm — in ra cho người, và GHI RA cho máy so.
+
+    Phần ghi ra tồn tại vì SCH-44 §8 bước B/C đòi "hồi quy hai chế độ giống 100 %".
+    Đọc bằng mắt hai bảng 35 dòng thì chỉ phát hiện được khác biệt lớn; cái nguy hiểm
+    là một ô lặng lẽ đổi từ đạt sang không đạt giữa hai lần chạy.
+
+    Chỉ ghi **(phần, tên, đạt)**, cố ý bỏ bằng chứng: bằng chứng chứa lời mô hình sinh
+    ra, đổi mỗi lần chạy, nên đưa nó vào phép so sẽ làm mọi lần so đều khác nhau —
+    một phép kiểm luôn kêu là một phép kiểm không ai đọc nữa.
+
+        EIDE_KETQUA=/tmp/tat.jsonl  python tools/thu_g5.py
+        EIDE_FEATURE_SCHEMATIC=1 EIDE_KETQUA=/tmp/bat.jsonl python tools/thu_g5.py
+        python tools/so_ket_qua.py /tmp/tat.jsonl /tmp/bat.jsonl
+    """
+
+    def __init__(self, ten_bo: str = ""):
         self.ket: list[dict] = []
         self.nhom = ""
+        self.ten_bo = ten_bo or pathlib.Path(sys.argv[0]).stem
 
     def phan(self, t: str) -> None:
         self.nhom = t
@@ -140,7 +157,33 @@ class Bo:
             for k in hong:
                 print(f"  ✗ [{k['nhom']}] {k['ten']}  {k['bc'][:120]}")
         print("═" * 92)
+        self.ghi_ra()
         return 0 if not hong else 1
+
+    def ghi_ra(self) -> pathlib.Path | None:
+        """Ghi kết quả ra JSONL để so hai lần chạy (SCH-19)."""
+        dich = os.environ.get("EIDE_KETQUA")
+        p = (pathlib.Path(dich) if dich
+             else pathlib.Path(__file__).resolve().parents[1]
+             / "du-lieu" / "ket-qua" / f"{self.ten_bo}.jsonl")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("w", encoding="utf-8") as f:
+            f.write(json.dumps({"bo": self.ten_bo, "so_ca": len(self.ket),
+                                "co": sorted(_co_dang_bat())},
+                               ensure_ascii=False) + "\n")
+            for k in self.ket:
+                f.write(json.dumps({"nhom": k["nhom"], "ten": k["ten"],
+                                    "dat": k["dat"]}, ensure_ascii=False) + "\n")
+        print(f"  {XAM}kết quả đã ghi: {p}{HET}")
+        return p
+
+
+def _co_dang_bat() -> list[str]:
+    try:
+        from eide.config import Features
+        return Features.load().dang_bat()
+    except Exception:                                    # noqa: BLE001
+        return []
 
 
 # =========================================================================== kịch bản

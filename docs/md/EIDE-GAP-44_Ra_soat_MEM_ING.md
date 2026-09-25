@@ -225,6 +225,9 @@ Ba điểm đã chốt, ghi ở đây để mọi bước sau không phải hỏ
 | 1 | ING-19 — Office do người dùng tự viết | **Tầng NGƯỜI** | `ingest`/`doc.load` gán `tier="NGUOI"` khi nguồn không phải nhà sản xuất; trích dẫn trỏ về người, không về datasheet |
 | 2 | Thứ tự bước | **Đồng ý đổi ING-A lên trước MEM-A** | Bảng §5 giữ nguyên thứ tự đã đề nghị |
 | 3 | Xung đột mã lỗi E1003 | **Cấp mã mới cho các lỗi của ING-43** | `E1003` giữ nghĩa cũ ("không có tệp ở đường dẫn"), vì nó đã nằm trong thông báo người dùng đã thấy và trong ca đo đang xanh. Sáu lỗi mới của ING-43 nhận mã E1010–E1015 — xem DEV-249 |
+| 4 | Xung đột mã lỗi E7001/E7002 của SCH-44 | **Mở họ E8xxx cho sơ đồ/EDA** | `E8001` netlist lệch CKM · `E8002` chưa có pinout đã duyệt. Họ `E7xxx` giữ nguyên nghĩa lịch sử/changeset |
+| 5 | Thứ tự | **SCH-0 trước MEM-A** | Cờ tính năng · migration Store · so hồi quy hai chế độ — ba thứ mà SCH-44 §2.1 và §8 dựa vào, và MEM-A cũng dùng lại |
+| 6 | Ngưỡng bố cục SCH | **Giữ mặc định** | ≤ 70 % net dùng nhãn · ≤ 3 đoạn gấp |
 
 Điểm (2) kéo theo: K = 10 lượt và ngưỡng 70 % **giữ nguyên** cho tới khi có số đo, nhưng
 sai lệch "10 message thay vì 10 lượt" (`loop.py:785`) phải sửa trong MEM-A.

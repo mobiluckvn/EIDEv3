@@ -62,6 +62,7 @@ class ToolSpec:
     risk: str = "R1"
     gate: str | None = None
     core: bool = True                          # core = luôn hiện; còn lại nạp qua tool.search
+    feature: str | None = None                 # thuộc cờ tính năng nào (SCH-44 §2.1)
     keywords: list[str] = field(default_factory=list)
 
     def declaration(self) -> dict[str, Any]:
@@ -91,12 +92,26 @@ class ToolResult:
 
 
 class Registry:
-    def __init__(self) -> None:
+    def __init__(self, features: Any = None) -> None:
         self._tools: dict[str, ToolSpec] = {}
         self._unlocked: set[str] = set()       # công cụ đã nạp qua tool.search
+        self.features = features
+        self.bo_qua_vi_co: list[str] = []      # công cụ không đăng ký vì cờ tắt
+
+    def _co_bat(self, ten_co: str | None) -> bool:
+        if not ten_co:
+            return True
+        if self.features is None:
+            return False        # không biết cờ nào bật ⇒ coi như TẮT, đúng phía an toàn
+        return bool(self.features.bat(ten_co))
 
     # ------------------------------------------------------------------ đăng ký
     def add(self, spec: ToolSpec) -> ToolSpec:
+        if not self._co_bat(spec.feature):
+            # Không đăng ký, không chỉ giấu (SCH-44 §2.1). Tác tử không thấy, không gọi
+            # được, và lược đồ tool không tăng một token nào.
+            self.bo_qua_vi_co.append(spec.name)
+            return spec
         if spec.name in self._tools:
             raise ValueError(f"Công cụ {spec.name} đã đăng ký rồi.")
         if spec.risk not in RISK_LEVELS:

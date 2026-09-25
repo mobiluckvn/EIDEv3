@@ -169,12 +169,64 @@ def user_memory_path() -> Path:
 
 
 @dataclass(slots=True)
+class Features:
+    """Co tinh nang — EIDE-SCH-44 §2.1 lop bao ve so 1.
+
+    Khac biet voi `ToolSpec.core` (nap tre): `core=False` VAN dang ky cong cu, chi giau
+    no khoi luoc do cho toi khi `tool.search` mo ra. Co tinh nang thi manh hon — tat la
+    **khong dang ky**, nen khong co nhanh ma nao cua tinh nang do chay duoc, va luoc do
+    tool khong tang mot token nao.
+
+    Doc theo thu tu: mac dinh trong ma → `~/.eide/settings.json` → bien moi truong.
+    Bien moi truong dung sau cung de chay hoi quy HAI CHE DO ma khong sua tep cua nguoi:
+
+        EIDE_FEATURE_SCHEMATIC=1 .venv/bin/python tools/thu_g5.py
+    """
+
+    schematic: bool = False        # SCH-44: sinh so do KiCad. Mac dinh TAT.
+
+    @classmethod
+    def load(cls) -> "Features":
+        import json
+
+        f = cls()
+        p = Path.home() / ".eide" / "settings.json"
+        if p.exists():
+            try:
+                d = (json.loads(p.read_text("utf-8")) or {}).get("features") or {}
+            except (ValueError, OSError):
+                d = {}
+            for ten in cls.ten_co():
+                if ten in d:
+                    setattr(f, ten, bool(d[ten]))
+        for ten in cls.ten_co():
+            v = os.environ.get(f"EIDE_FEATURE_{ten.upper()}")
+            if v is not None:
+                setattr(f, ten, v.strip().lower() in ("1", "true", "yes", "on", "co"))
+        return f
+
+    @staticmethod
+    def ten_co() -> tuple[str, ...]:
+        return ("schematic",)
+
+    def bat(self, ten: str) -> bool:
+        return bool(getattr(self, ten, False))
+
+    def dang_bat(self) -> list[str]:
+        return [t for t in self.ten_co() if self.bat(t)]
+
+    def to_dict(self) -> dict[str, bool]:
+        return {t: self.bat(t) for t in self.ten_co()}
+
+
+@dataclass(slots=True)
 class Config:
     paths: Paths
     budget: Budget = field(default_factory=Budget)
     context_budget: ContextBudget = field(default_factory=ContextBudget)
     latency: LatencyTargets = field(default_factory=LatencyTargets)
     model: ModelConfig = field(default_factory=ModelConfig)
+    features: Features = field(default_factory=Features.load)
     autonomy: str = "A3"
     language: str = "vi"
     # Che do do: khong goi mo hinh that, dung ban ghi lai. Dung cho 76 TC chay lap 5 lan.

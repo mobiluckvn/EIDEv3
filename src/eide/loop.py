@@ -122,7 +122,7 @@ class Agent:
                  project_name: str = ""):
         self.config = config
         self.llm = llm
-        self.registry = registry or build_registry()
+        self.registry = registry or build_registry(self.config.features)
         self.policy = policy or PolicyEngine(autonomy=config.autonomy)
         self.s0 = s0 or S0Engine()
         self.hooks = register_standard_hooks(HookBus())
