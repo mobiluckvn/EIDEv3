@@ -54,15 +54,22 @@ def chay(du_an: pathlib.Path) -> int:
     kho = Store(du_an / ".eide" / "store.sqlite")
     reqs = kho.list("req", limit=20)
     adrs = kho.list("adr", limit=20)
-    b.kiem("Quyết định và yêu cầu vào kho", bool(reqs) and bool(adrs),
-           f"{len(reqs)} REQ · {len(adrs)} ADR")
+    # Đo thứ ĐÁNG đo: quyết định rời khỏi hội thoại vào một hiện vật CÓ PHIÊN BẢN.
+    # Ép nó phải là ADR chứ không được là REQ là ép một lựa chọn trình bày — cả hai đều
+    # hoàn tác được, đều có explain, đều tra lại được.
+    co_mtp = any("MTP" in str(a["canonical"]).upper() for a in reqs + adrs)
+    b.kiem("Quyết định rời khỏi hội thoại vào hiện vật có phiên bản",
+           bool(reqs) and co_mtp,
+           f"{len(reqs)} REQ · {len(adrs)} ADR · nhắc MTP: {co_mtp}")
 
     b.phan("B · NÉN C2 BẰNG MÔ HÌNH THẬT, CÓ KIỂM NGƯỢC (MEM06, MEM08)")
     # C2 giữ 10 lượt gần nhất nguyên văn, nên phải có hơn 10 lượt thì mới có việc để
     # nén. Dựng bằng lượt THẬT qua giao diện — nếu dựng bằng cách nhét message vào
     # danh sách thì ta đang kiểm một thứ khác với thứ chạy trong sản phẩm.
-    print("  (dựng thêm 10 lượt để C2 có việc thật…)")
-    for i in range(10):
+    # C2 giữ K=10 lượt nguyên văn, và mỗi lần kiểm trượt thì K += 4. Phiên phải đủ dài
+    # để sau một lần trượt vẫn còn chỗ nén — nếu không, ta đo nhầm "chưa tới lúc".
+    print("  (dựng thêm 16 lượt để C2 có việc thật, kể cả sau một lần kiểm trượt…)")
+    for i in range(16):
         g.go(f"Ghi chú {i + 1}: mình vừa xem lại phần nguồn của bo. Đường 3V3 lấy từ "
              f"LDO, tụ lọc 100 nF sát chân VDD, và mình đã đo thử điểm thứ {i + 1} "
              "trên bo mẫu. Ghi nhận giúp mình, chưa cần làm gì thêm.")
@@ -88,16 +95,22 @@ def chay(du_an: pathlib.Path) -> int:
            bool(xong) or bool(truot) or bool(khong),
            f"{len(xong)} đạt · {len(truot)} trượt · {len(khong)} chưa tới lúc")
 
-    if xong:
-        tt = xong[-1].data.get("tom_tat", {}).get("muc", {})
-        b.kiem("Bản tóm tắt đủ mười mục, không mục nào biến mất",
-               len(tt) == 10, f"{len(tt)} mục: {', '.join(list(tt)[:4])}…")
-        b.kiem("Mục quyết định giữ được nội dung thật",
-               any(k in str(tt.get("quyet_dinh", "")).upper() for k in ("MTP", "ADR")),
-               str(tt.get("quyet_dinh", ""))[:120])
-        b.kiem("Kiểm ngược có điểm số, không phải một lời hứa",
-               "/" in str(xong[-1].data.get("diem", "")),
-               f"kiểm {xong[-1].data.get('diem')}")
+    # Ba ô dưới đây TỪNG bị bỏ qua im lặng khi C2 không chạy, làm số ca của bộ này lúc
+    # 20 lúc 23 — và một bộ kiểm đổi số ca giữa hai lần chạy thì không so được với
+    # chính nó (SCH-19). Nay luôn chấm, và "C2 không chạy" là một ô ĐỎ chứ không phải
+    # một ô biến mất.
+    b.kiem("C2 thật sự chạy và qua kiểm — tiền đề của cả phần này",
+           bool(xong), f"{len(xong)} lần đạt")
+    tt = (xong[-1].data.get("tom_tat", {}).get("muc", {})) if xong else {}
+    b.kiem("Bản tóm tắt đủ mười mục, không mục nào biến mất",
+           len(tt) == 10, f"{len(tt)} mục: {', '.join(list(tt)[:4])}…" if tt
+           else "chưa có bản tóm tắt nào")
+    b.kiem("Mục quyết định giữ được nội dung thật",
+           any(k in str(tt.get("quyet_dinh", "")).upper() for k in ("MTP", "ADR")),
+           str(tt.get("quyet_dinh", ""))[:120] or "—")
+    b.kiem("Kiểm ngược có điểm số, không phải một lời hứa",
+           bool(xong) and "/" in str(xong[-1].data.get("diem", "")),
+           f"kiểm {xong[-1].data.get('diem')}" if xong else "—")
 
     b.phan("C · SAU KHI NÉN VẪN TRẢ LỜI ĐÚNG VỀ QUÁ KHỨ (MEM06)")
     g.go("Nhắc lại giúp mình: mình đã chốt dùng cơ chế gì để truyền tệp?")
@@ -154,19 +167,30 @@ def chay(du_an: pathlib.Path) -> int:
 
     ctx = _ctx(du_an)
 
-    b.buoc("1. Kiểm ngược SAI thì huỷ nén, giữ nguyên ngữ cảnh")
+    b.buoc("1. MẤT MÁT THẬT: gốc trả lời được, sau nén thì không → huỷ nén")
     from eide.llm import ScriptedGateway
-    llm = ScriptedGateway([rsp_tt(muc_tieu="x"), rsp_kiem("sai", "sai", "sai"),
-                           rsp_tt(muc_tieu="x"), rsp_kiem("sai", "sai", "sai"),
-                           rsp_tt(muc_tieu="x"), rsp_kiem("sai", "sai", "sai")])
+    phieu = sm.lam_phieu_kiem(ctx.ledger, ctx.store)
+    dung = [c.dap_an for c in phieu]
+    sai = ["không biết"] * len(phieu)
+    llm = ScriptedGateway([rsp_tt(muc_tieu="x"), rsp_kiem(*sai), rsp_kiem(*dung),
+                           rsp_tt(muc_tieu="x"), rsp_kiem(*sai), rsp_kiem(*dung),
+                           rsp_tt(muc_tieu="x"), rsp_kiem(*sai), rsp_kiem(*dung)])
     bn = BoNen(llm=llm, ledger=ctx.ledger, store=ctx.store, eide_md=ctx.eide_md)
     m = ms(20)
     truoc = [dict(x) for x in m]
     kq = bn.nen(m, run_id="run-thu")
     b.kiem("Huỷ nén và ngữ cảnh về đúng như trước",
            not kq.ok and m == truoc, f"{kq.diem_kiem} · {kq.ly_do[:80]}")
-    b.kiem("Thử lại đúng 2 lần rồi mới bỏ", kq.so_lan_thu == 3,
-           f"{kq.so_lan_thu} lần")
+    b.kiem("Điểm kiểm nói rõ mất mấy câu", "0/" in kq.diem_kiem, kq.diem_kiem)
+
+    b.buoc("1b. Câu hỏi mô hình KHÔNG trả lời được ở đâu cả thì bị LOẠI")
+    llm2 = ScriptedGateway([rsp_tt(muc_tieu="x"), rsp_kiem(*sai), rsp_kiem(*sai)])
+    bn1b = BoNen(llm=llm2, ledger=ctx.ledger, store=ctx.store, eide_md=ctx.eide_md)
+    kq1b = bn1b.nen(ms(20), run_id="run-thu")
+    b.kiem("Không tính là mất mát, và nói rõ là CHƯA kiểm",
+           kq1b.ok and kq1b.diem_kiem == "KHÔNG kiểm được", kq1b.diem_kiem)
+    b.kiem("Dòng báo cho người không được giả vờ đã kiểm",
+           "chưa kiểm được" in kq1b.dong_he_thong(), kq1b.dong_he_thong()[:120])
 
     b.buoc("2. Mô hình hỏng giữa lúc tóm tắt")
     from eide.errors import llm_unavailable

@@ -999,3 +999,76 @@ lên là một bộ nhớ không ai kiểm.
 Đo được: 331 ca đơn vị · MEM-C 23/23 qua giao diện thật với mô hình thật (C2 chạy thật,
 kiểm ngược có điểm) · hồi quy G3 31/31, G4 23/23, G5 35/35, ING-A 29/29, MEM-A 21/21,
 MEM-B 20/20.
+
+---
+
+### [DEV-259] 25/09/2026 · ING-B — bộ đọc Office, và ba lỗi lộ ra trên tệp thật
+
+Phép thử có sức thuyết phục nhất của bước này là nạp **chính tệp yêu cầu nâng cấp của
+chủ sản phẩm** (`EIDE-ING-43…docx`). Nó bắt ngay lỗi đầu tiên.
+
+**1. `p.style` là `None`.** Một đoạn Word không có style làm `doc_docx` nổ
+`AttributeError`. Tệp mẫu mình tự dựng không có đoạn nào như thế; tệp thật thì có. Một
+bộ đọc tài liệu không được phép chết vì một đoạn thiếu định dạng.
+
+**2. Bảng bị đọc như một dòng chữ.** Datasheet đặt đơn vị ở **cột riêng**:
+`VDD max | 2.7 | 5.5 | V`. Bộ trích cũ tìm "số kèm đơn vị" trên một dòng, mà `5.5` và
+`V` cách nhau một dấu gạch — nên nó trả về **rỗng** trên đúng loại tài liệu nó sinh ra
+để đọc. Nay `Trang` mang theo từng ô và tiêu đề cột, và bộ trích đọc bảng như bảng:
+cột Min/Typ/Max cho hậu tố khoá, cột Unit cho đơn vị.
+
+**3. Ô Excel chỉ có công thức thì biến mất.** Tệp `.xlsx` chưa từng mở bằng Excel không
+có giá trị đã tính; `data_only=True` trả `None`, cả hàng bị coi là rỗng và mất hẳn. Nay
+chỗ nào không có giá trị thì lấy công thức làm nội dung — thà hiện `=AVERAGE(B2:B3)`
+còn hơn không hiện gì. (Và công thức vẫn là *nguồn của số* theo §4.2.)
+
+**Trích dẫn theo loại** là phần khó, không phải phần đọc chữ. Word **không có số trang
+cố định** — nó phụ thuộc phông chữ và khổ giấy, nên trích dẫn theo trang cho Word là một
+lời hứa sai với người mở tệp trên máy khác. Đơn vị trích dẫn nay là: `3.2 Electrical >
+Bảng 1, dòng 2` cho Word · `Bảng đo!B7` cho Excel · `slide 12` cho PowerPoint. Ai cần số
+trang thật thì `doc.to_pdf` sinh bản **phái sinh** cùng `doc_id`, và nói rõ đó là phái
+sinh.
+
+**Tầng theo nguồn (ING-19).** `doc.load` nay **bắt buộc** nêu `nguon` — không có mặc
+định, vì tầng tin cậy của mọi Fact trích ra phụ thuộc vào nó và đoán sai thì một số nội
+bộ đứng ngang hàng datasheet nhà sản xuất. Theo quyết định 25/09: `noi_bo` → **NGƯỜI**,
+`nha_san_xuat`/`ben_thu_ba` → BẠC, nguồn lạ → NGƯỜI (phía thận trọng).
+
+---
+
+### [DEV-260] 25/09/2026 · PostCompact phải phân biệt "nén làm mất" với "câu hỏi vô lý"
+
+Chạy MEM-C trên phiên thật cho một kết quả đáng chú ý: kiểm ngược **trượt 2/3 ba lần
+liên tiếp**, nên C2 không bao giờ chạy được. Soi ra hai vấn đề riêng biệt, và cả hai đều
+làm phép kiểm đo nhầm thứ.
+
+**(a) Phép kiểm bị hỏi trên transcript trần.** Bản đầu chỉ truyền `messages`, không
+truyền `<inventory>`. Nó biến câu hỏi thành *"transcript MỘT MÌNH có chứa X không"* —
+chặt hơn tình huống thật, vì ở lượt bình thường mô hình luôn có khối kiểm kê. Câu "tiêu
+chí của NFR-01 là gì" bị trả lời "không biết", trong khi con số đó nằm trong kho và tra
+ra ngay. Sửa chỗ này **không** làm phép kiểm dễ đi: thứ đã nằm trong M2 thì mất nó khỏi
+transcript là *đúng* — đó chính là điều PreCompact bảo đảm. Cái phải bắt là mất thứ
+**không còn ở đâu khác**.
+
+**(b) Câu hỏi mà mô hình chịu thua ở mọi nơi.** Nếu nó cũng sai trên ngữ cảnh **gốc**
+thì nó đang đo khả năng của mô hình, không đo mất mát của phép nén — và nó sẽ huỷ mọi
+lần nén. Nay khi kiểm trượt, hệ thống hỏi lại đúng bộ câu đó trên ngữ cảnh chưa nén; câu
+nào sai ở cả hai bên thì **bị loại** và ghi sổ cái. Chỉ tốn thêm một lời gọi, và chỉ khi
+đã trượt.
+
+Loại hết câu thì sao? **Không được im lặng coi là đạt.** Kết quả ghi đúng chữ "KHÔNG
+kiểm được", dòng báo cho người nói rõ "chưa kiểm được — nếu thấy tôi quên gì, bảo tôi
+huỷ nén". Đây là N6 áp vào chính phép kiểm.
+
+**Hai lỗi nhỏ hơn cùng đợt:** phép thử lại `K += 4` có thể đẩy K vượt độ dài phiên, và
+vòng sau báo "chưa tới lúc nén" — **che mất** sự thật là kiểm đã trượt; nay dừng đúng
+chỗ và nói đúng chuyện. Và bốn lối ra của `nen()` trước đây không ghi gì vào sổ cái:
+người vừa yêu cầu một việc, im lặng là sai dù kết quả là "không làm gì".
+
+**Một lỗi về phía bài kiểm, không phải sản phẩm:** bộ MEM-C có ba ô bị bỏ qua im lặng
+khi C2 không chạy, làm số ca lúc 20 lúc 23 — mà một bộ kiểm đổi số ca giữa hai lần chạy
+thì **không so được với chính nó** (SCH-19). Nay luôn chấm, và "C2 không chạy" là một ô
+đỏ chứ không phải một ô biến mất.
+
+Đo được: 359 ca đơn vị · ING-B 25/25 và MEM-C 26/26 qua giao diện thật · hồi quy G3
+31/31, G4 23/23, G5 35/35, ING-A 29/29, MEM-A 21/21, MEM-B 20/20.

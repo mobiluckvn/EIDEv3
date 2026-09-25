@@ -65,6 +65,10 @@ class KetQuaNen:
         if not self.ok:
             return (f"[Hệ thống] Nén KHÔNG qua kiểm ({self.diem_kiem}) — giữ nguyên ngữ "
                     f"cảnh. {self.ly_do}")
+        if self.diem_kiem == "KHÔNG kiểm được":
+            return (f"[Hệ thống] Đã nén {self.truoc} → {self.sau} ký tự, nhưng **chưa "
+                    "kiểm được** — không có câu hỏi nào đủ điều kiện. Nếu thấy tôi quên "
+                    "gì, bảo tôi huỷ nén.")
         return (f"[Hệ thống] Đã nén {self.truoc} → {self.sau} ký tự, giữ {K_LUOT} lượt "
                 f"gần nhất, kiểm {self.diem_kiem}."
                 + (f" Rút vào bộ nhớ dự án: {', '.join(self.rut_vao_m2)}."
@@ -192,11 +196,28 @@ class BoNen:
         return None
 
     def _goi_kiem(self, messages_da_nen: list[dict[str, Any]],
-                  phieu: list[sm.CauKiem]) -> list[str]:
+                  phieu: list[sm.CauKiem], inventory_text: str = "") -> list[str]:
+        """Hỏi trên ngữ cảnh ĐÃ NÉN — và "ngữ cảnh" nghĩa là **đúng thứ mô hình sẽ có**.
+
+        Bản đầu chỉ truyền `messages`, không truyền `<inventory>`. Nó biến phép kiểm
+        thành "transcript một mình có chứa X không" — chặt hơn tình huống thật, vì ở
+        lượt bình thường mô hình luôn có khối kiểm kê. Đo được trên phiên thật: câu
+        "tiêu chí của NFR-01 là gì" bị trả lời "không biết", trong khi con số đó nằm
+        trong kho và ở lượt thường thì tra ra ngay.
+        
+        Sửa chỗ này KHÔNG làm phép kiểm dễ đi: nếu một thứ đã nằm trong M2 thì mất nó
+        khỏi transcript là *đúng* — đó chính là điều PreCompact bảo đảm. Cái phép kiểm
+        phải bắt là mất thứ **không** còn ở đâu khác.
+        """
+        ngu_canh = list(messages_da_nen)
+        if inventory_text:
+            ngu_canh.append({"role": "user", "_he_thong": True,
+                             "text": f"<system-reminder>\n{inventory_text}\n"
+                                     "</system-reminder>"})
         rsp = self.llm.stream(
             system=("Bạn đang trả lời câu hỏi kiểm tra trí nhớ. Chỉ dùng ngữ cảnh đang "
                     "có. Không biết thì nói không biết."),
-            messages=list(messages_da_nen) + [
+            messages=ngu_canh + [
                 {"role": "user", "text": sm.prompt_kiem(phieu)}],
             tools=[sm.luoc_do_tra_loi()])
         for c in rsp.tool_calls or []:
@@ -262,6 +283,9 @@ class BoNen:
             if tt is None or tt.rong():
                 kq.ly_do = ("Mô hình không trả về bản tóm tắt đúng lược đồ. "
                             "Giữ nguyên ngữ cảnh.")
+                self.ledger.append("compact", {"run_id": run_id, "buoc": "luoc_do_sai",
+                                               "lan": lan, "rong": tt is not None,
+                                               "message_vi": kq.ly_do})
                 messages[:] = goc
                 kq.sau = kq.truoc
                 return kq
@@ -307,26 +331,86 @@ class BoNen:
                 kq.diem_kiem = "không có phiếu kiểm"
             else:
                 try:
-                    tl = self._goi_kiem(moi, phieu)
+                    tl = self._goi_kiem(moi, phieu, inventory_text)
                 except Exception as e:                           # noqa: BLE001
                     kq.ly_do = f"Gọi mô hình để kiểm hỏng: {e}. Giữ nguyên ngữ cảnh."
+                    self.ledger.append("compact", {"run_id": run_id, "buoc": "loi_kiem",
+                                                   "lan": lan, "message_vi": kq.ly_do})
                     messages[:] = goc
                     kq.sau = kq.truoc
                     return kq
                 cham = sm.cham_phieu(phieu, tl)
+
+                # --- Câu hỏi này có CÔNG BẰNG không?
+                #
+                # Một phép kiểm chỉ đo được "nén làm mất gì" khi câu hỏi trả lời được
+                # TRƯỚC khi nén. Nếu mô hình cũng chịu thua trên ngữ cảnh gốc thì câu đó
+                # đang đo khả năng của mô hình, không đo mất mát của phép nén — và nó sẽ
+                # huỷ mọi lần nén, khiến C2 không bao giờ chạy được.
+                #
+                # Đo được trên phiên thật: kiểm trượt 2/3 ba lần liên tiếp vì một câu
+                # hỏi mà mô hình không trả lời được ở đâu cả.
+                #
+                # Chỉ tốn thêm một lời gọi, và chỉ khi đã trượt.
+                if not cham["qua"]:
+                    try:
+                        tl_goc = self._goi_kiem(goc, phieu, inventory_text)
+                    except Exception:                        # noqa: BLE001
+                        tl_goc = []
+                    goc_cham = sm.cham_phieu(phieu, tl_goc)
+                    giu = [i for i in range(len(phieu))
+                           if cham["chi_tiet"][i]["dat"] or goc_cham["chi_tiet"][i]["dat"]]
+                    bo = [i for i in range(len(phieu)) if i not in giu]
+                    if bo:
+                        self.ledger.append("compact", {
+                            "run_id": run_id, "buoc": "cau_hoi_bo", "lan": lan,
+                            "so_bo": len(bo), "cau": [phieu[i].hoi for i in bo],
+                            "message_vi": ("Bỏ câu hỏi kiểm mà mô hình cũng không trả "
+                                           "lời được TRƯỚC khi nén — nó đo nhầm thứ.")})
+                        phieu = [phieu[i] for i in giu]
+                        cham = sm.cham_phieu(phieu, [tl[i] if i < len(tl) else ""
+                                                     for i in giu])
+
+                if not phieu:
+                    # Không còn câu nào kiểm được. KHÔNG được im lặng coi là đạt —
+                    # "không kiểm được" phải hiện ra đúng chữ đó cho người đọc (N6).
+                    cham = {"dat": 0, "tong": 0, "diem": "KHÔNG kiểm được",
+                            "qua": True, "chi_tiet": []}
+                    self.ledger.append("compact", {
+                        "run_id": run_id, "buoc": "khong_kiem_duoc", "lan": lan,
+                        "message_vi": ("Nén xong nhưng không có câu hỏi nào kiểm được — "
+                                       "nhận bản nén, và nói rõ là CHƯA kiểm.")})
+
                 kq.diem_kiem = cham["diem"]
                 kq.chi_tiet_kiem = cham["chi_tiet"]
                 if not cham["qua"]:
                     self.ledger.append("compact", {
                         "run_id": run_id, "buoc": "kiem_truot", "lan": lan,
                         "diem": cham["diem"], "chi_tiet": cham["chi_tiet"]})
-                    if lan <= SO_LAN_THU_LAI:
+                    if lan <= SO_LAN_THU_LAI and (luot_cuoi - (k + K_TANG_KHI_KIEM_TRUOT)) > 0:
                         k += K_TANG_KHI_KIEM_TRUOT     # giữ nhiều hơn rồi thử lại
                         messages[:] = [copy.deepcopy(m) for m in goc]
                         continue
+                    if lan <= SO_LAN_THU_LAI:
+                        # Tăng K nữa thì không còn gì để nén, và vòng sau sẽ báo "chưa
+                        # tới lúc" — che mất sự thật là **kiểm đã trượt**. Dừng ở đây
+                        # và nói đúng chuyện đã xảy ra.
+                        kq.ly_do = (f"Kiểm sau nén không đạt ({cham['diem']}) và phiên "
+                                    f"chỉ có {luot_cuoi} lượt — giữ nhiều hơn nữa thì "
+                                    "không còn gì để nén. Giữ nguyên ngữ cảnh.")
+                        self.ledger.append("compact", {
+                            "run_id": run_id, "buoc": "bo_cuoc", "lan": lan,
+                            "diem": cham["diem"], "so_luot": luot_cuoi,
+                            "message_vi": kq.ly_do})
+                        messages[:] = goc
+                        kq.sau = kq.truoc
+                        return kq
                     kq.ly_do = (f"Kiểm sau nén không đạt sau {lan} lần "
                                 f"({cham['diem']}). Giữ nguyên ngữ cảnh — thà tốn token "
                                 "còn hơn quên mất một quyết định.")
+                    self.ledger.append("compact", {"run_id": run_id, "buoc": "bo_cuoc",
+                                                   "lan": lan, "diem": cham["diem"],
+                                                   "message_vi": kq.ly_do})
                     messages[:] = goc
                     kq.sau = kq.truoc
                     return kq

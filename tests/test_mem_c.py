@@ -162,10 +162,15 @@ def test_MEM08_kiem_SAI_thi_HUY_nen_va_giu_nguyen(bo_nen, make_agent):
     Core(agent.ledger, agent.ids, agent.turn, on_emit=lambda c: None).console_act(
         {"kind": "say", "text": "mình chốt dùng cơ chế MTP cho truyền tệp"})
 
-    # Mô hình tóm tắt xong nhưng trả lời kiểm SAI cả ba câu.
-    agent.llm.script = [_rsp_tom_tat(muc_tieu="x"), _rsp_kiem("không biết", "sai", "sai"),
-                        _rsp_tom_tat(muc_tieu="x"), _rsp_kiem("sai", "sai", "sai"),
-                        _rsp_tom_tat(muc_tieu="x"), _rsp_kiem("sai", "sai", "sai")]
+    # MẤT MÁT THẬT: trên ngữ cảnh gốc mô hình trả lời ĐÚNG, sau khi nén thì không.
+    # Đây mới là thứ PostCompact tồn tại để bắt — khác với "câu hỏi vốn không trả lời
+    # được", vốn phải bị loại chứ không được tính là mất mát.
+    phieu = sm.lam_phieu_kiem(agent.ledger, agent.store)
+    dung = [c.dap_an for c in phieu]
+    sai = ["không biết"] * len(phieu)
+    agent.llm.script = [_rsp_tom_tat(muc_tieu="x"), _rsp_kiem(*sai), _rsp_kiem(*dung),
+                        _rsp_tom_tat(muc_tieu="x"), _rsp_kiem(*sai), _rsp_kiem(*dung),
+                        _rsp_tom_tat(muc_tieu="x"), _rsp_kiem(*sai), _rsp_kiem(*dung)]
     agent.llm._i = 0
     bn = BoNen(llm=agent.llm, ledger=agent.ledger, store=agent.store,
                eide_md=agent.eide_md)
@@ -175,9 +180,8 @@ def test_MEM08_kiem_SAI_thi_HUY_nen_va_giu_nguyen(bo_nen, make_agent):
     kq = bn.nen(ms, run_id="run-2")
 
     assert not kq.ok
-    assert kq.so_lan_thu == 3, "phải thử lại đúng 2 lần rồi bỏ"
     assert ms == truoc, "ngữ cảnh phải về đúng như trước khi nén"
-    assert "thà tốn token" in kq.ly_do
+    assert "0/" in kq.diem_kiem, kq.diem_kiem
 
 
 def test_MEM08_thu_lai_thi_GIU_NHIEU_HON(bo_nen, make_agent):
@@ -268,7 +272,7 @@ def test_MEM17_khoi_resume_dung_bang_MA_khong_co_cho_nao_de_null(chay, make_agen
                             history=agent.history)
     assert khoi.startswith("<resume>") and khoi.endswith("</resume>")
     for muc in ("Phiên trước tóm lại", "Đang dở dang", "Toàn vẹn",
-                "Việc của bạn ngay bây giờ"):
+                "Dùng khối này thế nào"):
         assert muc in khoi, muc
     # TC065: không có trường summary riêng để mà null — chưa có thì NÓI là chưa có.
     assert "Chưa có bản tóm tắt nào" in khoi
@@ -459,3 +463,144 @@ def test_memory_compact_KHONG_co_muc_mac_dinh(make_agent):
     agent = make_agent([])
     spec = agent.registry.get("memory.compact")
     assert "muc" in spec.params["required"]
+
+
+def test_MEM17_khoi_resume_KHONG_duoc_chiem_cho_cau_hoi_cua_nguoi(chay, make_agent):
+    """Đo được trên phiên thật: người hỏi "VDD tối đa bao nhiêu", tác tử trả lời bằng
+    một bản tóm tắt tình trạng dự án. Bối cảnh không bao giờ được thay việc."""
+    from eide.protocol.rpc import Core
+
+    agent = make_agent([Response(text="ok")])
+    Core(agent.ledger, agent.ids, agent.turn, on_emit=lambda c: None).console_act(
+        {"kind": "say", "text": "bắt đầu"})
+
+    khoi = dung_khoi_resume(ledger=agent.ledger, store=agent.store,
+                            history=agent.history)
+    assert "BỐI CẢNH, không phải việc được giao" in khoi
+    assert "Làm đúng thứ người dùng vừa hỏi trước đã" in khoi
+    assert "Tự thuật lại" not in khoi
+
+
+def test_MEM08_phep_kiem_duoc_nhan_DUNG_ngu_canh_mo_hinh_se_co(make_agent):
+    make_agent_thu = make_agent
+    """Hỏi trên transcript trần là chặt hơn tình huống thật.
+
+    Ở lượt bình thường mô hình luôn có `<inventory>`. Bỏ nó ra khỏi phép kiểm nghĩa là
+    hỏi "transcript MỘT MÌNH có chứa X không" — và một thứ đã nằm trong kho thì mất nó
+    khỏi transcript là ĐÚNG, đó chính là điều PreCompact bảo đảm.
+    """
+    ghi: list[dict] = []
+
+    class LlmGhiLai:
+        name = "ghi"
+
+        def __init__(self, script):
+            self.script = list(script)
+            self._i = 0
+            self.calls: list = []
+
+        def stream(self, *, system, messages, tools, **kw):
+            ghi.append({"messages": [dict(m) for m in messages],
+                        "tools": [t["name"] for t in tools]})
+            r = self.script[self._i]
+            self._i += 1
+            return r
+
+        def count_tokens(self, t):
+            return len(t) // 3
+
+    agent = make_agent_thu([])
+    bn = BoNen(llm=LlmGhiLai([_rsp_tom_tat(muc_tieu="x"), _rsp_kiem("a", "b", "c")]),
+               ledger=agent.ledger, store=agent.store, eide_md=agent.eide_md)
+    agent.ledger.append("changeset", {"id": "cs-1", "author": "human",
+                                      "touches": ["FR-01"], "run_id": "r"})
+    ms = _messages(20)
+    bn.nen(ms, run_id="run-1",
+           inventory_text="<inventory>\nFR-01 · tiêu chí ≥ 2 MB/s\n</inventory>")
+
+    # Lần gọi thứ nhất là tóm tắt, thứ hai là kiểm. (Kiểm trượt thì có lần thứ ba —
+    # không quan tâm ở đây.)
+    assert len(ghi) >= 2 and ghi[1]["tools"] == [sm.TEN_TOOL_TRA_LOI]
+    chu_kiem = " ".join(str(m.get("text", "")) for m in ghi[1]["messages"])
+    assert "2 MB/s" in chu_kiem, "phép kiểm phải thấy <inventory> như lượt bình thường"
+
+
+def test_MOI_loi_ra_cua_nen_deu_de_lai_dau_trong_SO_CAI(bo_nen, make_agent):
+    """Người vừa yêu cầu một việc — im lặng là sai, dù kết quả là "không làm gì".
+
+    Đo được trên phiên thật: tác tử gọi `memory.compact(C2)`, PreCompact chạy, rồi
+    không có sự kiện nào nữa. Nhìn sổ cái không biết nó đã làm gì.
+    """
+    from eide.llm.gateway import Response
+
+    truong_hop = [
+        ("chưa tới lúc", [], _messages(3)),
+        ("lược đồ sai", [Response(text="tôi tóm tắt bằng văn xuôi")], _messages(20)),
+    ]
+    for ten, script, ms in truong_hop:
+        agent, bn = bo_nen(script)
+        bn.nen(ms, run_id="run-1")
+        su = [e for e in agent.ledger.read() if e.kind == "compact"]
+        assert su, f"{ten}: không để lại dấu nào trong sổ cái"
+        assert any(e.data.get("message_vi") for e in su), f"{ten}: không nói vì sao"
+
+
+def test_MEM08_khong_tang_K_vuot_qua_do_dai_PHIEN(bo_nen, make_agent):
+    """Tăng K nữa thì vòng sau báo "chưa tới lúc" — che mất sự thật là kiểm đã trượt."""
+    from eide.protocol.rpc import Core
+
+    agent = make_agent([Response(text="ok")])
+    Core(agent.ledger, agent.ids, agent.turn, on_emit=lambda c: None).console_act(
+        {"kind": "say", "text": "mình chốt phương án truyền tệp bằng giao thức MTP"})
+    phieu = sm.lam_phieu_kiem(agent.ledger, agent.store)
+    agent.llm.script = [_rsp_tom_tat(muc_tieu="x"),
+                        _rsp_kiem(*["không biết"] * len(phieu)),
+                        _rsp_kiem(*[c.dap_an for c in phieu])]
+    agent.llm._i = 0
+    bn = BoNen(llm=agent.llm, ledger=agent.ledger, store=agent.store,
+               eide_md=agent.eide_md)
+
+    ms = _messages(12)                    # 12 lượt: K=10 nén được 2; K=14 thì hết sạch
+    kq = bn.nen(ms, run_id="run-1")
+    assert not kq.ok and not kq.khong_co_gi, "phải báo là KIỂM TRƯỢT, không phải chưa tới lúc"
+    assert "không còn gì để nén" in kq.ly_do
+    su = [e for e in agent.ledger.read()
+          if e.kind == "compact" and e.data.get("buoc") == "bo_cuoc"]
+    assert su and su[-1].data["diem"].startswith("0/")
+
+
+def test_MEM08_cau_hoi_mo_hinh_KHONG_TRA_LOI_DUOC_o_dau_ca_thi_bi_loai(make_agent):
+    """Một câu hỏi mà mô hình chịu thua cả TRƯỚC khi nén thì không đo mất mát — nó đo
+    khả năng của mô hình, và nó sẽ huỷ mọi lần nén khiến C2 không bao giờ chạy được.
+
+    Đo được trên phiên thật: kiểm trượt 2/3 ba lần liên tiếp vì đúng một câu như thế.
+    """
+    from eide.protocol.rpc import Core
+
+    agent = make_agent([Response(text="ok")])
+    Core(agent.ledger, agent.ids, agent.turn, on_emit=lambda c: None).console_act(
+        {"kind": "say", "text": "mình chốt phương án truyền tệp bằng giao thức MTP"})
+    phieu = sm.lam_phieu_kiem(agent.ledger, agent.store)
+    sai = ["không biết"] * len(phieu)
+    # Sai ở CẢ HAI bên ⇒ câu hỏi không công bằng ⇒ bị loại.
+    agent.llm.script = [_rsp_tom_tat(muc_tieu="x"), _rsp_kiem(*sai), _rsp_kiem(*sai)]
+    agent.llm._i = 0
+    bn = BoNen(llm=agent.llm, ledger=agent.ledger, store=agent.store,
+               eide_md=agent.eide_md)
+
+    kq = bn.nen(_messages(20), run_id="run-1")
+    assert kq.ok, "loại hết câu không công bằng thì không được coi là mất mát"
+    assert kq.diem_kiem == "KHÔNG kiểm được"
+    bo = [e for e in agent.ledger.read()
+          if e.kind == "compact" and e.data.get("buoc") == "cau_hoi_bo"]
+    assert bo and bo[0].data["cau"]
+
+
+def test_MEM08_khong_kiem_duoc_phai_NOI_DUNG_CHU_DO(make_agent):
+    """N6 áp vào chính phép kiểm: "chưa kiểm được" không được hiện ra như "đã kiểm"."""
+    from eide.memory.nen import KetQuaNen
+
+    kq = KetQuaNen(ok=True, truoc=100, sau=50, diem_kiem="KHÔNG kiểm được")
+    dong = kq.dong_he_thong()
+    assert "chưa kiểm được" in dong and "huỷ nén" in dong
+    assert "3/3" not in dong

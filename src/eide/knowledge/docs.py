@@ -80,8 +80,32 @@ def ve_si(gia_tri: float, don_vi: str) -> tuple[float, str]:
 # =========================================================================== tài liệu
 @dataclass(slots=True)
 class Trang:
+    """Một ĐƠN VỊ TRÍCH DẪN. Với PDF là một trang; với Office thì không phải.
+
+    `nhan` tồn tại vì ING-43 §4.2 đòi trích dẫn **theo loại tài liệu**: `.docx` không có
+    số trang cố định nên trích dẫn của nó là đường tiêu đề + số bảng; `.xlsx` là
+    `Sheet!ô`; `.pptx` là số slide. Ép hết về "trang N" thì người mở tệp ra không tìm
+    được chỗ ta đang nói tới — mà tìm được chính là toàn bộ điểm của N1.
+
+    `so` vẫn giữ để sắp thứ tự và để đường PDF cũ chạy y nguyên.
+    """
+
     so: int
     chu: str
+    nhan: str = ""            # "3.2 Electrical > Bảng 4" · "Sheet1!A1:D20" · "slide 12"
+    # Khi đơn vị này là một HÀNG BẢNG: từng ô, và tiêu đề cột của bảng.
+    # Đơn vị đo trong datasheet nằm ở cột riêng, nên đọc bảng như một dòng chữ là
+    # đánh mất liên hệ giữa con số và đơn vị của nó.
+    o: list[str] = field(default_factory=list)
+    cot: list[str] = field(default_factory=list)
+
+    @property
+    def trich_dan(self) -> str:
+        return self.nhan or f"trang {self.so}"
+
+    @property
+    def la_hang_bang(self) -> bool:
+        return bool(self.o and self.cot)
 
 
 @dataclass(slots=True)
@@ -95,12 +119,26 @@ class TaiLieu:
     nha_phat_hanh: str = ""
     trang: list[Trang] = field(default_factory=list)
     canh_bao_tiem_lenh: list[str] = field(default_factory=list)
+    loai: str = "pdf"              # pdf | docx | xlsx | pptx
+    don_vi_trich_dan: str = "trang"    # trang | mục | ô | slide
+    chuyen_doi_tu: str = ""        # ING-43 §4.2 — "đã chuyển đổi" phải nói ra
+    pdf_phai_sinh: str = ""        # bản PDF sinh ra để có số trang, cùng doc_id
 
     def to_canonical(self) -> dict[str, Any]:
         return {"doc_id": self.doc_id, "title": self.ten, "path": self.duong_dan,
                 "hash": self.hash, "pages": self.so_trang, "version": self.phien_ban,
-                "publisher": self.nha_phat_hanh,
+                "publisher": self.nha_phat_hanh, "loai": self.loai,
+                "don_vi_trich_dan": self.don_vi_trich_dan,
+                "converted_from": self.chuyen_doi_tu,
+                "pdf_phai_sinh": self.pdf_phai_sinh,
                 "prompt_injection": self.canh_bao_tiem_lenh}
+
+    def don_vi(self, so: int) -> Trang | None:
+        return next((t for t in self.trang if t.so == so), None)
+
+    def trich_dan(self, so: int) -> str:
+        t = self.don_vi(so)
+        return t.trich_dan if t else f"{self.don_vi_trich_dan} {so}"
 
 
 # §C3 bước 7 — nội dung tải về là DỮ LIỆU. Mẫu này chỉ để CẢNH BÁO người dùng;
@@ -205,6 +243,12 @@ def trich_fact_ung_vien(tl: TaiLieu, *, thuc_the: str,
     """
     ra: list[FactUngVien] = []
     for t in tl.trang:
+        # --- Hàng bảng: đọc theo CỘT. Đơn vị nằm ở cột riêng, giá trị ở cột Min/Typ/Max.
+        if t.la_hang_bang:
+            ra.extend(_tu_hang_bang(t, thuc_the))
+            if len(ra) >= gioi_han:
+                return _gom(ra[:gioi_han])
+            continue
         for dong in t.chu.splitlines():
             chu = dong.strip()
             if len(chu) < 3 or len(chu) > 400:
@@ -229,6 +273,74 @@ def trich_fact_ung_vien(tl: TaiLieu, *, thuc_the: str,
     return _gom(ra)
 
 
+# Tên cột → hậu tố khoá. "VDD" ở cột Max thành `vdd.max`, ở cột Min thành `vdd.min`.
+_HAU_TO_COT = {
+    "min": "min", "minimum": "min", "nhỏ nhất": "min",
+    "typ": "typ", "typical": "typ", "nom": "typ", "value": "typ", "giá trị": "typ",
+    "max": "max", "maximum": "max", "lớn nhất": "max", "rating": "max",
+}
+_COT_DON_VI = {"unit", "units", "đơn vị"}
+_COT_TEN = {"parameter", "symbol", "thông số", "ký hiệu", "tên"}
+
+
+def _tu_hang_bang(t: "Trang", thuc_the: str) -> list["FactUngVien"]:
+    """Một hàng bảng → các Fact ứng viên, mỗi cột giá trị một cái.
+
+    Vì sao phải đọc theo cột thay vì theo dòng chữ: datasheet đặt đơn vị ở **cột riêng**
+    ("VDD max | 2.7 | 5.5 | V"). Nối cả hàng thành một chuỗi rồi tìm "số kèm đơn vị" thì
+    `5.5` và `V` cách nhau một dấu gạch và không bao giờ khớp — bộ trích sẽ trả về rỗng
+    trên đúng loại tài liệu nó sinh ra để đọc.
+    """
+    thap = [str(c).strip().lower() for c in t.cot]
+    i_don_vi = next((i for i, c in enumerate(thap) if c in _COT_DON_VI), None)
+    don_vi_chung = (str(t.o[i_don_vi]).strip()
+                    if i_don_vi is not None and i_don_vi < len(t.o) else "")
+
+    ten = ""
+    for i, c in enumerate(thap):
+        if c in _COT_TEN and i < len(t.o) and str(t.o[i]).strip():
+            ten = str(t.o[i]).strip()
+            break
+    if not ten:
+        ten = str(t.o[0]).strip() if t.o else ""
+    if not ten:
+        return []
+
+    khoa_goc = None
+    for mau, k in _MAU_THONG_SO:
+        if mau.search(ten):
+            khoa_goc = k.rsplit(".", 1)[0]
+            break
+    if khoa_goc is None:
+        return []
+
+    ra: list[FactUngVien] = []
+    for i, c in enumerate(thap):
+        hau_to = _HAU_TO_COT.get(c)
+        if hau_to is None or i >= len(t.o):
+            continue
+        o = str(t.o[i]).strip()
+        if not o:
+            continue
+        m = re.search(r"-?\d+(?:[.,]\d+)?", o)
+        if not m:
+            continue
+        try:
+            gt = float(m.group(0).replace(",", "."))
+        except ValueError:
+            continue
+        # Đơn vị: ưu tiên đơn vị viết ngay trong ô, sau đó tới cột Đơn vị.
+        dv_o = re.sub(r"^-?\d+(?:[.,]\d+)?\s*", "", o).strip()
+        dv = dv_o or don_vi_chung
+        if not dv:
+            continue
+        ra.append(FactUngVien(
+            khoa=f"{khoa_goc}.{hau_to}", gia_tri=gt, don_vi=dv, trang=t.so,
+            trich_doan=t.chu[:200], thuc_the=thuc_the,
+            nguyen_van=f"{m.group(0)} {dv}".strip()))
+    return ra
+
+
 def _gom(ds: list[FactUngVien]) -> list[FactUngVien]:
     """Cùng khoá + cùng giá trị SI thì giữ một, ưu tiên trang sớm nhất."""
     thay: dict[tuple[str, float, str], FactUngVien] = {}
@@ -238,6 +350,26 @@ def _gom(ds: list[FactUngVien]) -> list[FactUngVien]:
         if k not in thay or f.trang < thay[k].trang:
             thay[k] = f
     return sorted(thay.values(), key=lambda x: (x.khoa, x.trang))
+
+
+# ING-43 §6 — tầng mặc định theo NGUỒN, không theo định dạng.
+#
+# Quyết định của chủ sản phẩm 25/09/2026 cho ING-19: tài liệu Office do người dùng hoặc
+# đồng nghiệp tự viết gán tầng **NGƯỜI**, không phải BẠC. Lý do nằm ở chỗ Fact đó sẽ
+# được đọc lại sáu tháng sau: tầng NGƯỜI vẫn so sánh được (nó nằm trong TANG_DUNG_DUOC),
+# nhưng trích dẫn của nó trỏ về *người*, không trỏ về datasheet — nên khi in ra, người
+# đọc thấy ngay đây là số nội bộ. Gán BẠC thì nó đứng ngang hàng datasheet nhà sản xuất
+# trong mọi bảng so sánh, và không ai phân biệt được nữa.
+TANG_THEO_NGUON = {
+    "nha_san_xuat": "BAC",     # đã duyệt nguồn, chưa xác nhận từng dòng
+    "ben_thu_ba": "BAC",       # cùng tầng nhưng mang nhãn "bên thứ ba"
+    "noi_bo": "NGUOI",         # người tự viết — không có tài liệu chuẩn đứng sau
+}
+
+
+def tang_mac_dinh(nguon: str, loai: str = "pdf") -> str:
+    """Tầng cho Fact trích từ một tài liệu. Nguồn lạ thì chọn phía thận trọng."""
+    return TANG_THEO_NGUON.get(nguon, "NGUOI")
 
 
 def fact_tu_ung_vien(uv: FactUngVien, *, doc: TaiLieu, tier: str = "BAC") -> dict[str, Any]:
@@ -254,15 +386,19 @@ def fact_tu_ung_vien(uv: FactUngVien, *, doc: TaiLieu, tier: str = "BAC") -> dic
         "value": uv.gia_tri, "unit": uv.don_vi,
         "condition": "", "tier": tier, "origin": "extract",
         "source": {"doc_id": doc.doc_id, "version": doc.phien_ban,
-                   "page": uv.trang, "quote": uv.trich_doan},
+                   "page": uv.trang, "cite": doc.trich_dan(uv.trang),
+                   "quote": uv.trich_doan},
         "explain": {
             "summary": f"{KHOA_CHUAN.get(uv.khoa, uv.khoa)} = {uv.nguyen_van}",
-            "why": f"Đọc bằng mã từ {doc.ten} trang {uv.trang}.",
-            "sources": [{"kind": "doc", "ref": f"{doc.doc_id} tr.{uv.trang}",
+            "why": f"Đọc bằng mã từ {doc.ten}, {doc.trich_dan(uv.trang)}.",
+            "sources": [{"kind": "doc",
+                         "ref": f"{doc.doc_id} · {doc.trich_dan(uv.trang)}",
                          "tier": tier}],
             "diff_prev": "bản đầu tiên",
             "next": ("Người xác nhận đúng dòng này để lên tầng VÀNG."
-                     if tier == "BAC" else "—"),
+                     if tier == "BAC" else
+                     "Tìm tài liệu chuẩn chứng thực để nâng lên VÀNG."
+                     if tier == "NGUOI" else "—"),
             "confidence": tier,
         },
     }

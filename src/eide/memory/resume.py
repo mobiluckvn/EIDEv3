@@ -115,10 +115,18 @@ def dung_khoi_resume(*, ledger: Any, store: Any, history: Any,
         L.append("- **Sổ cái lệch.** Báo người dùng; chuyển sang chỉ đọc.")
     L.append("")
 
-    # --- 5. Việc của mô hình ở lượt này.
-    L += ["## Việc của bạn ngay bây giờ",
-          "Tự thuật lại 5–8 câu: dự án đang ở đâu, đã quyết những gì, việc tiếp theo là "
-          "gì. Chỉ dùng thông tin trong khối này và <inventory>. Không chắc thì gọi "
-          "ledger.query, đừng đoán.",
+    # --- 5. Dùng khối này thế nào.
+    #
+    # Câu dặn ở đây từng là "tự thuật lại 5–8 câu", và nó CHIẾM CHỖ câu hỏi của người:
+    # người hỏi "VDD tối đa bao nhiêu", tác tử trả lời bằng một bản tóm tắt tình trạng
+    # dự án. Đo được trên phiên thật. Bối cảnh không bao giờ được thay việc.
+    L += ["## Dùng khối này thế nào",
+          "Đây là BỐI CẢNH, không phải việc được giao. Làm đúng thứ người dùng vừa hỏi "
+          "trước đã.",
+          "Chỉ khi họ hỏi “dự án đang thế nào” hoặc chưa giao việc gì cụ thể thì mới "
+          "thuật lại 5–8 câu từ khối này.",
+          "Nếu có mục nào ở trên ảnh hưởng tới việc họ vừa giao — việc dở dang, thẻ "
+          "đang chờ, sổ lệch — thì nói ra TRƯỚC khi làm.",
+          "Không chắc điều gì thì gọi ledger.query, đừng đoán.",
           "</resume>"]
     return "\n".join(L)
