@@ -283,6 +283,115 @@ def register(r: Registry) -> Registry:
                 "note_vi": ("Đã quên. ĐỪNG nhắc lại nội dung này, kể cả khi nó còn "
                             "trong đoạn hội thoại cũ.")}
 
+    @r.tool("memory.remember_user", "Store",
+            "ĐỀ XUẤT ghi một sở thích của người dùng vào bộ nhớ xuyên dự án. Chỉ dùng "
+            "khi họ lặp lại một sở thích từ hai lần trở lên, hoặc nói thẳng 'nhớ là…'. "
+            "Bạn KHÔNG tự ghi — công cụ này dựng thẻ để họ đồng ý.",
+            {"type": "object",
+             "properties": {
+                 "chu_de": {"type": "string",
+                            "enum": ["tu_chu", "trinh_bay", "toolchain", "phan_cung",
+                                     "nguon_tin", "ngon_ngu"]},
+                 "noi_dung": {"type": "string",
+                              "description": "Một dòng, viết bằng lời của họ"},
+                 "vi_sao": {"type": "string",
+                            "description": "Họ đã nói/làm gì khiến bạn nghĩ đây là thói quen"}},
+             "required": ["chu_de", "noi_dung", "vi_sao"]},
+            risk="R2", core=False,
+            keywords=["nhớ", "sở thích", "thói quen", "từ nay", "lần sau"])
+    def memory_remember_user(ctx: Any, chu_de: str, noi_dung: str, vi_sao: str):
+        """§8 — tác tử ĐỀ XUẤT, người đồng ý thì mới ghi.
+
+        Một bộ nhớ tự lớn lên là một bộ nhớ không ai kiểm. Nên đường duy nhất vào M3 đi
+        qua một cái thẻ có nút Đồng ý / Không.
+        """
+        from ..memory import BoNhoNguoiDung
+
+        k = BoNhoNguoiDung.kiem(chu_de, noi_dung)
+        if not k.ok:
+            return ToolResult(False, error=EideError(
+                "E4004", k.ly_do,
+                hint_for_agent=("Đừng tìm cách diễn đạt lại cho lọt. Nếu nó thuộc dự án "
+                                "thì dùng memory.note; nếu là bí mật thì đừng ghi ở đâu cả."),
+                alternatives=["memory.note (bộ nhớ dự án)"], blame="agent"))
+
+        card_id = ctx.ids.next("card")
+        card = {
+            "type": "clarify", "card_id": card_id,
+            "intro": (f"Tôi thấy: {vi_sao}\n\nCó muốn tôi nhớ điều này cho **mọi dự án** "
+                      f"không?\n\n> {noi_dung}"),
+            "questions": [{"key": "dong_y", "question": "Nhớ nhé?",
+                           "why": "Bộ nhớ này theo anh, không theo dự án. Anh xoá được "
+                                  "bất cứ lúc nào.",
+                           "choices": ["Đồng ý", "Không"], "required": True}],
+            "assumption_if_skipped": "Không ghi gì vào bộ nhớ người dùng.",
+            "tra_loi_thanh": "nho_nguoi_dung",
+            "du_lieu": {"chu_de": chu_de, "noi_dung": noi_dung},
+        }
+        ctx.emit(uic.console_post(
+            f"[Tác tử] {card['intro']}", role="agent", card=card))
+        ctx.pending_cards.append(card)
+        ctx.awaiting_human = True
+        return {"da_de_xuat": True, "card_id": card_id,
+                "note_vi": "Đã hỏi. KẾT THÚC lượt và chờ họ quyết."}
+
+    @r.tool("memory.compact", "Store",
+            "Thu gọn ngữ cảnh ngay. BẮT BUỘC nêu mức: `C1` là thu gọn cơ học, 0 token, "
+            "không mất gì — dùng thoải mái. `C2` gọi mô hình tóm tắt phần cũ rồi tự "
+            "kiểm lại, chỉ làm khi người dùng bảo. Người dùng nói “C2” hay “tóm tắt” "
+            "thì truyền đúng muc=\"C2\", đừng hạ xuống C1.",
+            {"type": "object",
+             "properties": {
+                 "muc": {"type": "string", "enum": ["C1", "C2"],
+                         "description": "Đúng mức người dùng yêu cầu"}},
+             "required": ["muc"]},
+            risk="R2", core=False, gate=None,
+            keywords=["nén", "thu gọn", "ngữ cảnh", "compact", "tóm tắt"])
+    def memory_compact(ctx: Any, muc: str):
+        """`muc` KHÔNG có giá trị mặc định — có chủ đích.
+
+        Một mặc định ở đây nghĩa là: người bảo "nén mức C2", mô hình gọi thiếu tham số,
+        và hệ thống lặng lẽ làm C1 rồi báo "đã thu gọn". Người tưởng đã tóm tắt, thực
+        ra chưa. Thà mô hình nhận lỗi thiếu tham số còn hơn làm một việc khác việc được
+        giao mà không ai biết.
+        """
+        ag = getattr(ctx, "agent", None)
+        if ag is None:
+            return ToolResult(False, error=EideError(
+                "E2004", "Công cụ này cần chạy trong một phiên có vòng lặp.",
+                hint_for_agent="Không gọi lại.", blame="system"))
+        truoc = sum(len(str(m)) for m in ag.messages)
+        ag._compact(ctx, muc)
+        sau = sum(len(str(m)) for m in ag.messages)
+        cuoi = ag.nhat_ky_nen[-1] if ag.nhat_ky_nen else {}
+        if cuoi.get("khong_co_gi"):
+            return {"muc": muc, "truoc": truoc, "sau": sau, "khong_co_gi": True,
+                    "note_vi": ("CHƯA TỚI LÚC nén — không phải nén hỏng. Nói đúng thế "
+                                f"cho người dùng: {cuoi.get('ly_do', '')}")}
+        return {"muc": muc, "truoc": truoc, "sau": sau,
+                "kiem": cuoi.get("kiem", ""), "ok": cuoi.get("ok", muc == "C1"),
+                "note_vi": ("Nói cho người dùng biết đã thu gọn bao nhiêu và kiểm ra "
+                            "sao. Không mất gì — mọi thứ đọc lại được.")}
+
+    @r.tool("memory.undo_compact", "Store",
+            "Huỷ lần nén gần nhất và khôi phục ngữ cảnh như trước. Dùng được trong 24 giờ.",
+            {"type": "object", "properties": {}},
+            risk="R2", core=False,
+            keywords=["huỷ nén", "khôi phục ngữ cảnh", "undo compact"])
+    def memory_undo_compact(ctx: Any):
+        ag = getattr(ctx, "agent", None)
+        if ag is None:
+            return ToolResult(False, error=EideError(
+                "E2004", "Công cụ này cần chạy trong một phiên có vòng lặp.",
+                hint_for_agent="Không gọi lại.", blame="system"))
+        kq = ag.bo_nen.huy_nen(ag.messages)
+        if not kq["ok"]:
+            return ToolResult(False, error=EideError(
+                "E7008", kq["message_vi"],
+                hint_for_agent="Nói thẳng là không huỷ được và vì sao.",
+                alternatives=["memory.status"], blame="user"))
+        return kq
+
     @r.tool("memory.status", "Store",
             "Xem bộ nhớ đang chứa gì: EIDE.md bao nhiêu token trên trần, có gì nên "
             "lược, đã quên những gì, ngữ cảnh đang dùng bao nhiêu.",

@@ -64,6 +64,7 @@ class TurnContext:
     emit: Callable[[Any], None]
 
     history: Any = None
+    agent: Any = None          # để `memory.compact` gọi ngược vào vòng lặp
     run_id: str = ""
     started_at: float = 0.0
     tool_calls_used: int = 0
@@ -167,6 +168,12 @@ class Agent:
         self.session_id = self.ids.next("ses")
         self.transcript = self.phien.transcript(self.session_id)
         self.phuc_hoi = self._doc_phien_do()
+        self.bo_nen = mem.BoNen(llm=llm, ledger=self.ledger, store=self.store,
+                                eide_md=self.eide_md, transcript=self.transcript)
+        self.nhat_ky_nen: list[dict[str, Any]] = []
+        self.bo_nho_nguoi = mem.BoNhoNguoiDung()
+        # Khối <resume> chỉ tiêm MỘT LẦN, ở lượt đầu của phiên (§7.5).
+        self.can_resume = True
 
         self.messages: list[dict[str, Any]] = DanhSachGhiDia(self.transcript)
         self.dang_nhin: str = "project"          # bề mặt người đang mở (HumanAct attend)
@@ -208,7 +215,7 @@ class Agent:
         run_id = self.ids.next("run")
         ctx = TurnContext(config=self.config, store=self.store, ledger=self.ledger,
                           eide_md=self.eide_md, ids=self.ids, registry=self.registry,
-                          emit=emit, history=self.history, run_id=run_id,
+                          emit=emit, history=self.history, agent=self, run_id=run_id,
                           started_at=time.perf_counter(),
                           pending_cards=self.pending_cards, assumptions=self.assumptions,
                           project_name=self.project_name, locks=self.locks,
@@ -277,7 +284,25 @@ class Agent:
         surfaces.emit_all(emit, store=self.store, ledger=self.ledger, eide_md=self.eide_md,
                           inv=inv, cfg=self.config, assumptions=self.assumptions,
                           run=run, only=only, hist=self.history,
-                          ngu_canh=self.ngu_canh_hien_tai())
+                          ngu_canh=self.ngu_canh_hien_tai(),
+                          bo_nho_kw=self._mat_bang_bo_nho())
+
+    def _mat_bang_bo_nho(self) -> dict[str, Any]:
+        """Dữ liệu cho khối A14.6 — thứ người nhìn để biết tác tử đang nhớ gì (P6)."""
+        ghim = []
+        for i in mem.chi_so_ghim(self.messages):
+            m = self.messages[i]
+            ghim.append({"vi_sao": ("người ghim" if m.get("_ghim") else
+                                    f"ý chí: {m.get('_kind', '?')}"),
+                         "chu": str(m.get("text") or "")[:200]})
+        return {
+            "ngu_canh": self.ngu_canh_hien_tai(),
+            "tom_tat": self.bo_nen.tom_tat_hien_tai,
+            "ghim": ghim,
+            "nhat_ky_nen": self.nhat_ky_nen,
+            "bo_nho_nguoi": self.bo_nho_nguoi,
+            "da_quen": [e.data for e in self.ledger.read() if e.kind == "tombstone"],
+        }
 
     def ngu_canh_hien_tai(self) -> dict[str, Any]:
         """Đồng hồ ngữ cảnh cho thanh trạng thái (MEM-02).
@@ -336,6 +361,21 @@ class Agent:
             ctx.emit(uic.card_resolve(str(ma), by="human", choice=tl or None))
             # Thẻ do snapshot.propose dựng: câu trả lời CHÍNH LÀ việc phải làm. Không
             # đẩy sang mô hình — tên đã có, nội dung do kho quyết định, 0 token.
+            if the and the.get("tra_loi_thanh") == "nho_nguoi_dung":
+                # §8 — chỉ ghi vào M3 khi người bấm đồng ý, không sớm hơn một giây nào.
+                dl = the.get("du_lieu") or {}
+                if "đồng ý" in str(tl.get("dong_y", "")).lower():
+                    k = self.bo_nho_nguoi.ghi(dl.get("chu_de", ""), dl.get("noi_dung", ""))
+                    ctx.emit(uic.console_post(
+                        f"[Tác tử] Đã nhớ: {dl.get('noi_dung')}" if k.ok
+                        else f"[Tác tử] Không ghi được: {k.ly_do}", role="agent"))
+                else:
+                    ctx.emit(uic.console_post(
+                        "[Tác tử] Không nhớ gì cả — tôi chỉ dùng trong phiên này.",
+                        role="agent"))
+                ctx.said_anything = True
+                return
+
             if the and the.get("tra_loi_thanh") == "snapshot" and tl.get("ten"):
                 return self._nguoi_ghi_ban(HumanAct.from_dict(
                     {"kind": "snapshot",
@@ -364,6 +404,16 @@ class Agent:
             ctx.awaiting_human = bool(s0.cards)
             return
 
+        # --- Mở lại dự án: dựng khối <resume> bằng MÃ, không bằng trí nhớ (§7.5).
+        if self.can_resume:
+            self.can_resume = False
+            khoi = mem.dung_khoi_resume(
+                ledger=self.ledger, store=self.store, history=self.history,
+                tom_tat_truoc=self.bo_nen.tom_tat_hien_tai, phuc_hoi=self.phuc_hoi)
+            if khoi:
+                self.messages.append({"role": "user", "_he_thong": True,
+                                      "_ghim": True, "text": khoi})
+
         # --- Phiên trước dừng giữa chừng: nói ra TRƯỚC khi mô hình làm gì tiếp (MEM14).
         if self.phuc_hoi is not None and self.phuc_hoi.goi_dang_do:
             self.messages.append({"role": "user", "_he_thong": True,
@@ -379,7 +429,11 @@ class Agent:
             self.phuc_hoi = None            # nhắc đúng một lần, không lặp mỗi lượt
 
         # --- Lượt của người vào transcript, kèm khối nhắc.
-        self.messages.append({"role": "user",
+        #
+        # `_kind` là thứ quyết định message này có bị nén không (§5.4): quyết định, xác
+        # nhận, sửa, ghi bản ưng ý, đổi thiết lập — đều là Ý CHÍ của người, và nén mất
+        # ý chí của người là làm ngược ý họ.
+        self.messages.append({"role": "user", "_kind": act.kind,
                               "text": self._user_block(act, ctx, s0.annotations)})
 
         # --- Vòng lặp công cụ.
@@ -447,7 +501,7 @@ class Agent:
 
             muc = self.config.context_budget.muc_nen(self._context_pressure(asm))
             if muc != "C0":
-                self._compact(ctx)
+                self._compact(ctx, muc)
 
     # ------------------------------------------------------------------ một công cụ
     def _one_tool(self, call: Any, ctx: TurnContext) -> None:
@@ -861,7 +915,9 @@ class Agent:
             pending_cards=self.pending_cards,
             stopped_run=inv.unfinished_run,
             assumptions=self.assumptions,
-            s0_annotations=getattr(s0, "annotations", None) or [],
+            s0_annotations=([self.bo_nho_nguoi.khoi_ngu_canh()]
+                            if self.bo_nho_nguoi.khoi_ngu_canh() else [])
+                           + (getattr(s0, "annotations", None) or []),
             budget=self.config.context_budget)
 
     def _user_block(self, act: HumanAct, ctx: TurnContext, annotations: list[str]) -> str:
@@ -873,13 +929,12 @@ class Agent:
         used = asm.total_tokens + sum(len(str(m)) // 3 for m in self.messages)
         return used / max(1, self.config.model.context_window)
 
-    def _compact(self, ctx: TurnContext) -> None:
-        """Nén theo bậc thang MEM-42 §6. Ở MEM-A mới có C1 (0 token).
+    def _compact(self, ctx: TurnContext, muc: str = "C1") -> None:
+        """Bậc thang nén §6. C1 luôn chạy trước; C2 chỉ khi C1 không đủ.
 
-        C1 không gọi mô hình và không có rủi ro mất nghĩa — nó chỉ thay kết quả công cụ
-        cũ bằng một dòng tóm tắt CÓ `blob_ref`, nên mọi thứ vẫn đọc lại được. C2 (tóm
-        tắt có cấu trúc) và PostCompact là việc của MEM-C; tới đó mới có một phép đoán
-        nằm giữa đường và mới cần kiểm ngược.
+        Thứ tự này không phải để tiết kiệm mà để **giảm rủi ro**: C1 là mã thuần, không
+        có phép đoán nào nằm giữa đường. C2 đưa mô hình vào giữa transcript và sự thật,
+        nên chỉ tới đó khi cần, và khi tới thì phải kiểm ngược (§6.6).
         """
         bc = mem.c1(self.messages,
                     ghim=mem.chi_so_ghim(self.messages),
@@ -894,6 +949,20 @@ class Agent:
                 f"({bc['stub_qua_han']} kết quả cũ, {bc['dedup']} lần đọc trùng). "
                 "Không mất gì — đọc lại được bằng blob.read.",
                 level="info", code="C1"))
+        if muc in ("C0", "C1"):
+            return
+
+        # --- C2: tóm tắt có cấu trúc, có kiểm ngược.
+        k = mem.K_LUOT if muc == "C2" else 6      # §6.4 — C3 hạ K xuống 6
+        inv = ctx.build_inventory().render()
+        kq = self.bo_nen.nen(self.messages, run_id=ctx.run_id, inventory_text=inv,
+                             k_luot=k)
+        kq.muc = muc
+        self.nhat_ky_nen.append({"ts": kq.tom_tat.created_at if kq.tom_tat else "",
+                                 **kq.to_dict()})
+        ctx.emit(uic.notice(kq.dong_he_thong(),
+                            level="info" if kq.ok else "warn", code=muc))
+        ctx.said_anything = True
 
     # ------------------------------------------------------------------ báo cáo
     def _note_stated_assumptions(self, ctx: TurnContext, text: str) -> None:

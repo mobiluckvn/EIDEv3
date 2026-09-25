@@ -944,3 +944,58 @@ transcript.
 
 Đo được: 293 ca đơn vị · MEM-B 20/20 qua giao diện thật · hồi quy G3 31/31, G4 23/23,
 G5 35/35, ING-A 29/29, MEM-A 21/21.
+
+---
+
+### [DEV-258] 25/09/2026 · MEM-C — nén có kiểm chứng, và bốn lỗi chỉ lộ khi chạy thật
+
+PostCompact là mục mình đánh giá cao nhất trong cả MEM-42, và lý do nằm ở một câu: nó
+biến *"nén có làm mất gì không"* từ cảm tính thành **một con số 3/3 hoặc một lần huỷ**.
+Không có nó, cách duy nhất phát hiện mất mát là người dùng phải nhắc lại một quyết định
+họ đã nói — tức ta để người đi phát hiện lỗi của mình (TC074).
+
+Ba bước, và thứ tự là toàn bộ ý nghĩa: PreCompact (mã, 0 token) đưa sự thật có cấu trúc
+vào M2 **trước** khi văn bản bị tóm → tóm tắt theo lược đồ 10 mục → PostCompact hỏi
+ngược trên ngữ cảnh **đã nén**, sai thì khôi phục, K += 4, tối đa 2 lần.
+
+**Bốn lỗi tìm ra khi chạy thật, không lỗi nào bắt được bằng ca đơn vị như mình viết ban đầu:**
+
+1. **`copy.deepcopy(messages)` nổ giữa lúc nén.** `Agent.messages` là `DanhSachGhiDia` —
+   một `list` con giữ `Transcript`, trong đó có `threading.Lock` không deepcopy được.
+   Lỗi `TypeError: cannot pickle '_thread.lock' object`, và nổ đúng lúc ngữ cảnh đang
+   đầy. Ca đơn vị bỏ lọt vì nó truyền `list` thường — **kiểm một container khác với
+   container chạy trong sản phẩm**. Nay có ca đo chạy trên `Agent.messages` thật.
+
+2. **`memory.compact` có giá trị mặc định cho `muc`.** Người nói "nén ở mức C2", mô hình
+   gọi thiếu tham số, hệ thống lặng lẽ làm C1 rồi báo "đã thu gọn". Người tưởng đã tóm
+   tắt, thực ra chưa. Bỏ mặc định: thà mô hình nhận lỗi thiếu tham số còn hơn làm một
+   việc khác việc được giao mà không ai biết.
+
+3. **"Chưa tới lúc nén" bị báo thành "nén không qua kiểm".** Hai chuyện khác hẳn nhau
+   với người đọc: một cái là *hệ thống nghi ngờ chính nó*, cái kia là *chưa cần làm*.
+   Gộp hai thành một câu là làm người lo vô cớ. Nay có cờ `khong_co_gi` riêng, và cả
+   trường hợp này cũng ghi sổ cái — người vừa yêu cầu một việc, im lặng là sai.
+
+4. **Nén làm ngữ cảnh TO RA mà vẫn nhận.** Khung bản tóm tắt 10 mục là ~1,3 k ký tự;
+   nén một đoạn ngắn hơn thế nghĩa là trả tiền một lần gọi mô hình để làm mọi thứ tệ đi.
+   Nay kiểm kích thước **trước** khi gọi PostCompact — không tốn nốt lần gọi thứ hai.
+
+**Ba thứ nén không bao giờ được chạm, mỗi thứ có ca đo riêng:** message ghim theo ý chí
+người (`decide`/`edit`/`snapshot`/`set`/`choose`/`undo`); nội dung người đã bảo quên
+(bản tóm tắt chứa tombstone → huỷ nén); và bản cũ khi bất kỳ bước nào hỏng — mạng, lược
+đồ sai, mô hình chết — transcript về đúng như trước, không bao giờ ở trạng thái "đã cắt
+nhưng chưa có tóm tắt".
+
+**Resume (§7.5)** dựng khối `<resume>` bằng mã từ sổ cái, kho và bản tóm tắt phiên trước.
+Cách chữa TC065 (`previous_session.summary = null`) ở đây là **bỏ hẳn trường đó**: không
+có chỗ nào để null. Chưa có tóm tắt thì khối nói "chưa có", và đó là một câu trả lời
+đúng. Khối chỉ tiêm một lần, ở lượt đầu của phiên.
+
+**M3 (§8)** có ba ràng buộc, mỗi cái chặn một kiểu hỏng: danh sách trắng sáu chủ đề
+(không có nó thì "nhớ sở thích" trượt dần thành nhớ *về* người dùng); quét bí mật trước
+khi ghi; và tác tử chỉ **đề xuất** qua thẻ, người bấm đồng ý mới ghi — một bộ nhớ tự lớn
+lên là một bộ nhớ không ai kiểm.
+
+Đo được: 331 ca đơn vị · MEM-C 23/23 qua giao diện thật với mô hình thật (C2 chạy thật,
+kiểm ngược có điểm) · hồi quy G3 31/31, G4 23/23, G5 35/35, ING-A 29/29, MEM-A 21/21,
+MEM-B 20/20.

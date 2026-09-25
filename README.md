@@ -23,7 +23,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **SCH-0** | Cờ tính năng (tắt = không đăng ký) · migration Store có `down()` · so hồi quy hai chế độ | xong |
 | **MEM-A** | Phong bì kết quả công cụ + blob · `blob.read` · đồng hồ ngữ cảnh 10 khối · C1 thu gọn 0 token | xong |
 | **MEM-B** | M1 trên đĩa + write-ahead · EIDE.md quy tắc cứng + deny `fs.write` · `memory.forget`/`status` · `ledger.query` · hash chuỗi changeset | xong |
-| ING-B…E · MEM-C…D · SCH-A…D | Bộ đọc Office · bảng→Fact · EDA · bộ nhớ dài hạn · sơ đồ KiCad (EIDE-GAP-44) | đang |
+| **MEM-C** | C2 tóm tắt 10 mục · PreCompact/PostCompact kiểm ngược 3 câu · ghim theo ý chí người · resume 5 bước · bộ nhớ người dùng · khối A14.6 | xong |
+| ING-B…E · MEM-D · SCH-A…D | Bộ đọc Office · bảng→Fact · EDA · bộ nhớ dài hạn · sơ đồ KiCad (EIDE-GAP-44) | đang |
 | G6 | Build/Sim + subagent | chưa |
 | G7 | Mạch thật | chưa |
 
@@ -89,6 +90,7 @@ ui/EIDEApp/Sources/EIDE/
 .venv/bin/python tools/thu_ing_a.py                  # 29 ca phân loại tệp + 8 đường hỏng
 .venv/bin/python tools/thu_mem_a.py                  # 21 ca bộ nhớ/nén + 6 đường hỏng
 .venv/bin/python tools/thu_mem_b.py                  # 20 ca bộ nhớ dài hạn + 7 đường hỏng
+.venv/bin/python tools/thu_mem_c.py                  # 23 ca nén có kiểm chứng + 7 đường hỏng
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_ing_a.py   # hồi quy hai chế độ cờ
 .venv/bin/python tools/chay_kich_ban.py --lan 5      # bộ 76 TC, mỗi ca 5 lần
 .venv/bin/python tools/theo_doi.py --du-an <thư mục> # theo dõi phiên thật qua sổ cái

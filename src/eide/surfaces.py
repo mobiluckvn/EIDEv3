@@ -502,7 +502,109 @@ def history(store: Any, inv: Any, hist: Any = None) -> dict[str, Any]:
     return _don_gian("history", "A11", "Lịch sử", khoi)
 
 
-def project(eide_md: Any, inv: Any, assumptions: list[str]) -> dict[str, Any]:
+def bo_nho(eide_md: Any, *, ngu_canh: dict[str, Any] | None = None,
+           tom_tat: Any = None, ghim: list[dict[str, Any]] | None = None,
+           nhat_ky_nen: list[dict[str, Any]] | None = None,
+           bo_nho_nguoi: Any = None, da_quen: list[dict[str, Any]] | None = None
+           ) -> list[dict[str, Any]]:
+    """Khối A14.6 — Bộ nhớ tác tử. EIDE-MEM-42 §11.
+
+    Nguyên tắc P6: **người thấy và sửa được bộ nhớ tác tử.** Không có mặt bằng này thì
+    "tác tử nhớ gì" là một hộp đen, và khi nó quên một thứ thì người chỉ có thể đoán là
+    do ngữ cảnh đầy hay do mô hình kém.
+    """
+    khoi: list[dict[str, Any]] = []
+
+    # --- Đồng hồ ngữ cảnh theo khối.
+    nc = ngu_canh or {}
+    if nc.get("cua_so"):
+        khoi.append(block(
+            "A14.6.1", "Ngữ cảnh đang dùng", "table",
+            summary=(f"{nc['tong']:,} / {nc['cua_so']:,} token "
+                     f"({nc['ty_le'] * 100:.0f} %) · mức {nc['muc']} · "
+                     f"dùng được {nc['kha_dung']:,} sau khi trừ 20 % dự trữ"),
+            columns=["Khối", "Token", "Trần", "Vượt?"],
+            rows=[[k["ten"], f"{k['token']:,}",
+                   f"{k['tran']:,}" if k.get("tran") else "—",
+                   "VƯỢT" if k.get("vuot") else ""] for k in nc.get("khoi", [])]))
+
+    # --- Bản tóm tắt phiên: xem và SỬA được (MEM-11).
+    if tom_tat is not None:
+        from .memory.summary import MUC
+        khoi.append(block(
+            "A14.6.2", "Bản tóm tắt phiên", "sections",
+            summary="Đây là thứ thay cho phần hội thoại đã nén. Anh sửa được — sửa xong "
+                    "lượt sau tác tử dùng bản của anh.",
+            sections=[{"ten": t, "than": tom_tat.muc.get(t, "—")} for t, _, _ in MUC],
+            cot_sua={t: t for t, _, _ in MUC}))
+    else:
+        khoi.append(empty(
+            "A14.6.2", "Bản tóm tắt phiên",
+            chua_co="Chưa nén lần nào nên chưa có bản tóm tắt.",
+            vi_sao="Ngữ cảnh chưa chạm ngưỡng 70 %. Tới đó tác tử sẽ tóm tắt phần cũ "
+                   "theo mười mục cố định, rồi tự kiểm lại xem có mất gì không.",
+            can_gi="Không cần làm gì — đây là trạng thái bình thường."))
+
+    # --- Nhật ký nén: trước/sau, kiểm mấy trên mấy.
+    nk = nhat_ky_nen or []
+    if nk:
+        khoi.append(block(
+            "A14.6.3", "Nhật ký nén", "table",
+            summary=(f"{len(nk)} lần nén · "
+                     f"{sum(1 for n in nk if n.get('ok'))} lần qua kiểm"),
+            columns=["Mức", "Trước", "Sau", "Kiểm", "Số lần thử", "Kết quả"],
+            rows=[[n.get("muc", ""), f"{n.get('truoc', 0):,}", f"{n.get('sau', 0):,}",
+                   n.get("kiem", ""), n.get("so_lan_thu", 1),
+                   "đạt" if n.get("ok") else f"HUỶ — {n.get('ly_do', '')[:60]}"]
+                  for n in nk[-10:]]))
+
+    # --- Message được ghim: không bao giờ bị nén.
+    g = ghim or []
+    if g:
+        khoi.append(block(
+            "A14.6.4", "Đang ghim (không bao giờ bị nén)", "list",
+            summary=f"{len(g)} thông điệp · ghim theo Ý CHÍ của anh, không theo độ mới",
+            items=[f"[{x.get('vi_sao', '?')}] {x.get('chu', '')[:120]}" for x in g]))
+
+    # --- Bộ nhớ người dùng (M3).
+    if bo_nho_nguoi is not None:
+        ds = bo_nho_nguoi.doc()
+        if ds:
+            khoi.append(block(
+                "A14.6.5", "Bộ nhớ về anh (dùng chung mọi dự án)", "table",
+                summary=f"{len(ds)} dòng · {bo_nho_nguoi.path}",
+                columns=["Chủ đề", "Nội dung"],
+                rows=[[m["chu_de"], m["dong"]] for m in ds]))
+        else:
+            khoi.append(empty(
+                "A14.6.5", "Bộ nhớ về anh (dùng chung mọi dự án)",
+                chua_co="Chưa nhớ gì về anh.",
+                vi_sao="Tác tử chỉ ĐỀ XUẤT nhớ khi anh lặp lại một sở thích từ hai lần "
+                       "trở lên, và chỉ ghi khi anh bấm đồng ý. Nó không bao giờ nhớ "
+                       "khoá, mật khẩu, hay nhận xét về anh.",
+                can_gi="Không cần làm gì."))
+
+    # --- Đã quên có chủ đích.
+    dq = da_quen or []
+    if dq:
+        khoi.append(block(
+            "A14.6.6", "Đã quên theo yêu cầu của anh", "list",
+            summary=f"{len(dq)} điều · tác tử không được nhắc lại, kể cả từ hội thoại cũ",
+            items=[f"{t.get('section', '')}: {t.get('noi_dung', '')}" for t in dq]))
+
+    # --- Cảnh báo EIDE.md vượt trần + đề xuất lược.
+    if eide_md is not None and getattr(eide_md, "qua_tran", False):
+        de = eide_md.de_xuat_luoc()
+        khoi.append(block(
+            "A14.6.7", "EIDE.md vượt trần", "table",
+            summary=(f"{eide_md.so_token:,} token / trần 3 000. Tác tử KHÔNG tự xoá — "
+                     "anh duyệt thì nó lược."),
+            columns=["Mục", "Số dòng lược được", "Vì sao"],
+            rows=[[d["muc"], d["so_dong"], d["vi_sao"]] for d in de]))
+    return khoi
+
+
+def project(eide_md: Any, inv: Any, assumptions: list[str], **kw: Any) -> dict[str, Any]:
     """Dự án & Bộ nhớ tác tử — bề mặt G1 điền được đầy đủ (ui_model A14).
 
     §A3 N3: bảng kiểm kê phải hiện cho NGƯỜI thấy đúng như tác tử thấy. Nếu người và
@@ -537,7 +639,7 @@ def project(eide_md: Any, inv: Any, assumptions: list[str]) -> dict[str, Any]:
         block("A14.3b", "Giả định đang dùng", "list",
               summary="Giả định phải được nói ra, không nằm ngầm trong hiện vật (N4)",
               items=assumptions or ["Không có giả định nào đang dùng."]),
-    ])
+    ] + bo_nho(eide_md, **kw))
 
 
 # =========================================================================== thanh trạng thái
@@ -601,7 +703,8 @@ def dong_ho_ngu_canh(asm: Any, messages: list[Any], cfg: Any) -> dict[str, Any]:
 def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
              assumptions: list[str] | None = None, run: dict[str, Any] | None = None,
              only: list[str] | None = None, hist: Any = None,
-             ngu_canh: dict[str, Any] | None = None) -> int:
+             ngu_canh: dict[str, Any] | None = None,
+             bo_nho_kw: dict[str, Any] | None = None) -> int:
     """Vẽ lại các bề mặt. Gọi cuối mỗi lượt và khi giao diện xin dựng lại toàn bộ."""
     models = {
         "requirements": lambda: requirements(store, inv),
@@ -614,7 +717,7 @@ def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
         "hardware": lambda: hardware(store, inv),
         "journal": lambda: journal(ledger),
         "history": lambda: history(store, inv, hist),
-        "project": lambda: project(eide_md, inv, assumptions or []),
+        "project": lambda: project(eide_md, inv, assumptions or [], **(bo_nho_kw or {})),
     }
     n = 0
     for ten, dung in models.items():
