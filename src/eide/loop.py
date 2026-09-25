@@ -181,6 +181,12 @@ class Agent:
             self.loi_nguoi.append(act.text)
         if act.note:
             self.loi_nguoi.append(act.note)
+        # Chữ người gõ vào thẻ cũng là LỜI NGƯỜI — cùng hạng với câu họ gõ vào ô nhập.
+        # Không tính nó thì mọi chốt chặn kiểu "thứ này phải do người nói ra" sẽ chặn
+        # nhầm đúng lúc người vừa nói ra.
+        for v in (act.data.get("answers") or {}).values():
+            if str(v).strip():
+                self.loi_nguoi.append(str(v))
 
         self.ledger.append("turn.start", {"run_id": run_id, "act_id": act.id,
                                           "kind": act.kind, "text": act.text})
@@ -236,6 +242,31 @@ class Agent:
             return self._nguoi_sua(act, ctx)
         if act.kind == "undo":
             return self._nguoi_hoan_tac(act, ctx)
+        if act.kind == "snapshot":
+            return self._nguoi_ghi_ban(act, ctx)
+        if act.kind == "branch":
+            return self._nguoi_re_nhanh(act, ctx)
+        if act.kind == "choose":
+            # Thẻ đã được trả lời thì phải rời khỏi `<pending>`. Nếu không, khối nhắc
+            # vẫn bảo mô hình "còn thẻ đang chờ người trả lời" ở mọi lượt sau, và nó sẽ
+            # hỏi lại đúng câu người vừa trả lời.
+            ma = act.data.get("card_id")
+            the = next((c for c in self.pending_cards if c.get("card_id") == ma), None)
+            self.pending_cards[:] = [c for c in self.pending_cards
+                                     if c.get("card_id") != ma]
+            tl = act.data.get("answers") or {}
+            self.ledger.append("card", {"run_id": ctx.run_id, "card_id": ma,
+                                        "state": "answered", "keys": sorted(tl)})
+            # I3 — giao diện chỉ đóng thẻ khi LÕI bảo đóng. Thiếu lệnh này thì thẻ đã
+            # trả lời vẫn nằm trên Console và băng "còn thẻ đang chờ anh" vẫn sáng.
+            ctx.emit(uic.card_resolve(str(ma), by="human", choice=tl or None))
+            # Thẻ do snapshot.propose dựng: câu trả lời CHÍNH LÀ việc phải làm. Không
+            # đẩy sang mô hình — tên đã có, nội dung do kho quyết định, 0 token.
+            if the and the.get("tra_loi_thanh") == "snapshot" and tl.get("ten"):
+                return self._nguoi_ghi_ban(HumanAct.from_dict(
+                    {"kind": "snapshot",
+                     "data": {"name": tl["ten"], "note": tl.get("ghi_chu", "")},
+                     "origin": {"surface": "console"}}), ctx)
 
         # --- S0: hook UserPromptSubmit, 0 token, đứng trước mọi phép đoán (N5).
         s0 = self.s0.run(act.text, attachments_text=act.data.get("_attachment_text", ""),
@@ -356,7 +387,8 @@ class Agent:
                     "irreversible": perm.irreversible,
                     "require_fields": perm.require_fields,
                     "tool": call.tool, "args": call.args,
-                    "consequences_vi": [], "options": ["Duyệt", "Từ chối"]}
+                    "consequences_vi": _hau_qua(c, ctx, perm, spec),
+                    "options": ["Duyệt", "Từ chối"]}
             ctx.emit(uic.console_post(_render_gate(card), role="agent", card=card))
             self.pending_cards.append(card)
             self.pending_gates[gid] = {"card": card, "call": c, "run_id": ctx.run_id}
@@ -634,6 +666,51 @@ class Agent:
                    + "\n" if kq.giu_nguyen else "")
                 + "Đừng làm lại thứ vừa bị hoàn tác trừ khi họ bảo.\n</system-reminder>"})
 
+    # ------------------------------------------------------------- bản ưng ý / nhánh
+    def _nguoi_ghi_ban(self, act: HumanAct, ctx: TurnContext) -> None:
+        """§E6.2 — người đặt tên thì MÃ ghi, không đi vòng qua mô hình.
+
+        Đây là một trong số ít thao tác mà mô hình không có việc gì để làm: tên đã có,
+        nội dung do kho quyết định. Cho mô hình đi qua đây chỉ thêm một chỗ để tên bị
+        viết lại thành thứ khác.
+        """
+        ten = str(act.data.get("name") or act.text or "").strip()
+        if not ten:
+            ctx.emit(uic.notice("Bản ưng ý cần một cái tên.", level="error"))
+            ctx.said_anything = True
+            return
+        try:
+            s = self.history.tao_snapshot(
+                ten=ten, ghi_chu=str(act.data.get("note") or act.note or ""), boi="human")
+        except ValueError as e:
+            ctx.emit(uic.console_post(f"[Tác tử] {e}", role="agent"))
+            ctx.said_anything = True
+            return
+        ctx.emit(uic.console_post(
+            f"[Tác tử] Đã ghi bản ưng ý **{s.name}** (`{s.id}`) — {s.tom_tat()}.\n\n"
+            "Quay về bản này bất cứ lúc nào; nội dung của nó không đổi nữa.",
+            role="agent"))
+        ctx.said_anything = True
+        self.paint(ctx.emit, only=["history"])
+        self.messages.append({"role": "user", "text":
+                              f"<system-reminder>\nNgười dùng vừa ghi bản ưng ý "
+                              f"“{s.name}” ({s.id}).\n</system-reminder>"})
+
+    def _nguoi_re_nhanh(self, act: HumanAct, ctx: TurnContext) -> None:
+        viec = str(act.data.get("action") or "create")
+        ten = str(act.data.get("name") or act.text or "").strip()
+        if viec in ("create", "tao"):
+            kq = self.history.tao_nhanh(ten)
+        elif viec in ("switch", "chuyen"):
+            kq = self.history.chuyen_nhanh(ten)
+        else:
+            kq = {"ok": True, "message_vi": "Các nhánh: "
+                  + ", ".join(self.history.danh_sach_nhanh())}
+        ctx.emit(uic.console_post(f"[Tác tử] {kq['message_vi']}", role="agent"))
+        ctx.said_anything = True
+        if kq.get("ok"):
+            self.paint(ctx.emit, only=["history"])
+
     # ------------------------------------------------------------------ cổng
     def _resolve_gate(self, act: HumanAct, ctx: TurnContext) -> None:
         gid = act.data["gate_id"]
@@ -786,6 +863,65 @@ class _XungDot(Exception):
 def _bam(s: str) -> str:
     import hashlib
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def _hau_qua(call: dict[str, Any], ctx: Any, perm: Any, spec: Any) -> list[str]:
+    """Hậu quả cụ thể của một lời gọi, bằng tiếng người — §E7 quy tắc 1.
+
+    Chỗ này từng trả về danh sách rỗng cho **mọi** cổng. Hậu quả là thẻ cổng chỉ còn
+    hai cái nút và một câu tóm tắt: người bấm mà không biết mình đổi cái gì lấy cái gì,
+    tức là cái cổng chỉ còn tác dụng làm chậm, không còn tác dụng bảo vệ (DEV-248).
+    Nguyên tắc ở đây: chỉ nói thứ **tính được từ trạng thái thật**, không nói chung chung.
+    """
+    tool = call.get("tool", "")
+    args = call.get("args") or {}
+    ra: list[str] = []
+    try:
+        if tool == "snapshot.restore" and ctx.history is not None:
+            bc = ctx.history.se_mat_gi_khi_khoi_phuc(str(args.get("snapshot", "")))
+            if bc.get("ok"):
+                ra += bc.get("se_mat_vi", [])
+                if bc.get("co_sua_cua_nguoi"):
+                    ra.append(f"Trong đó có {len(bc['cua_nguoi'])} thay đổi do CHÍNH ANH "
+                              "sửa — chúng sẽ bị thay bằng bản cũ.")
+                for g in bc.get("khong_hoan_tac_duoc", []):
+                    ra.append(f"{g['id']} không lùi lại được: {g['ly_do']}")
+                if not args.get("giu_ban_hien_tai"):
+                    ra.append("Bản hiện tại chưa được ghi thành bản ưng ý nào — "
+                              "đặt tên cho nó trước thì sau này còn quay lại được.")
+            else:
+                ra.append(bc.get("message_vi", ""))
+        elif tool == "history.undo" and ctx.history is not None:
+            muc = str(args.get("scope", "run"))
+            ma = str(args.get("id", "")) or "lượt gần nhất"
+            ra.append(f"Hoàn tác {muc} {ma} — các hiện vật nó đã ghi quay về bản trước đó.")
+        elif tool.startswith("target."):
+            viec = args.get("what") or args.get("op") or tool.split(".", 1)[1]
+            ra.append(f"Tác động lên phần cứng thật: {viec}.")
+            if tool == "target.dangerous":
+                ra.append("Sau thao tác này chip không trở lại trạng thái cũ được.")
+        elif tool in ("fs.write", "fs.edit"):
+            ra.append(f"Ghi đè {args.get('path', 'tệp')} — bản hiện tại của tệp bị thay.")
+        elif tool == "tool.install":
+            ra.append(f"Cài {args.get('pkg', 'gói')} vào máy anh, ngoài thư mục dự án.")
+    except Exception as e:                       # thẻ cổng không được chết vì phần phụ
+        ra.append(f"(không dựng được danh sách hậu quả: {e})")
+
+    if not ra and perm.summary_vi:
+        ra.append(perm.summary_vi)
+    # "Nếu việc này hỏng thì lùi về đâu" là câu người cần TRƯỚC khi bấm. Điều kiện bám
+    # vào bản chất việc (đụng phần cứng, hoặc R2/R3, hoặc không đảo ngược) chứ không
+    # bám vào `spec`: cổng vẫn nổ cho cả công cụ chưa đăng ký, và khi đó `spec` là None.
+    nang = (tool.startswith("target.") or perm.irreversible
+            or getattr(spec, "risk", "") in ("R2", "R3"))
+    if nang and ctx.history is not None:
+        try:
+            gan = ctx.history.snapshots.gan_nhat()
+            ra.append(f"Bản ưng ý gần nhất để quay về: “{gan.name}”." if gan
+                      else "Chưa có bản ưng ý nào để quay về nếu việc này hỏng.")
+        except Exception:
+            pass
+    return [c for c in ra if c]
 
 
 def _render_gate(card: dict[str, Any]) -> str:

@@ -223,3 +223,81 @@ def test_bao_cao_luot_co_du_so_lieu(chay):
     r = agent.last_report
     assert set(r) >= {"run_id", "tool_calls", "seconds", "assumptions", "cost"}
     assert r["cost"]["tokens"] is not None
+
+
+# =========================================================================== thẻ làm rõ
+def test_tra_loi_the_thi_the_roi_khoi_hang_cho(chay, make_agent):
+    """Thẻ đã trả lời phải rời `<pending>` — nếu không, lượt sau mô hình hỏi lại."""
+    from eide.loop import TurnContext
+    from eide.protocol.rpc import Core
+
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "ask_user", {
+            "questions": [{"key": "ten", "question": "Đặt tên bản này là gì?"}]})]),
+        Response(text="Đã ghi bản “v0.1-chay-duoc”."),
+    ])
+    seen: list = []
+    core = Core(agent.ledger, agent.ids, agent.turn, on_emit=seen.append)
+    core.console_act({"kind": "say", "text": "chốt lại trạng thái hiện tại"})
+    assert len(agent.pending_cards) == 1
+    ma = agent.pending_cards[0]["card_id"]
+
+    core.console_act({"kind": "choose",
+                      "data": {"card_id": ma, "answers": {"ten": "v0.1-chay-duoc"}},
+                      "origin": {"surface": "console"}})
+    assert agent.pending_cards == [], "thẻ đã trả lời mà vẫn nằm trong hàng chờ"
+
+    gui = [m["text"] for m in agent.messages if m["role"] == "user"][-1]
+    assert "v0.1-chay-duoc" in gui, "tên người đặt phải tới được mô hình"
+    assert "Thẻ đang chờ người trả lời" not in gui
+
+
+def test_bo_qua_the_thi_noi_ro_gia_dinh(chay):
+    from eide.protocol.humanact import HumanAct
+    a = HumanAct.from_dict({"kind": "choose",
+                            "data": {"card_id": "card-1", "answers": {},
+                                     "assumption_if_skipped": "Không ghi bản ưng ý nào."},
+                            "origin": {"surface": "console"}})
+    assert a.transcript_line() == "[Bạn] Bỏ qua thẻ, đi tiếp với giả định: Không ghi bản ưng ý nào."
+
+
+# =========================================================================== hậu quả
+def test_the_cong_luon_co_hau_qua_truoc_nut_bam(chay):
+    """§E7 quy tắc 1 — hậu quả đứng trước lựa chọn. Rỗng thì cổng chỉ làm chậm."""
+    agent, seen = chay(
+        {"kind": "say", "text": "nạp firmware lên bo đi"},
+        script=[Response(tool_calls=[ToolCall("c1", "target.flash", {"file": "a.bin"})])])
+    the = [c for c in _cards(seen) if c.get("type") == "gate"]
+    assert the, "phải dựng thẻ cổng"
+    assert the[0]["consequences_vi"], "thẻ cổng không có dòng hậu quả nào"
+    assert any("bản ưng ý" in c.lower() for c in the[0]["consequences_vi"]), \
+        "thao tác R2/R3 phải nói có bản nào để quay về không"
+
+
+def test_hau_qua_khoi_phuc_neu_dich_danh_thu_se_mat(chay, make_agent):
+    from eide.protocol.rpc import Core
+
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "snapshot.restore", {"snapshot": "snap-01"})]),
+        Response(text="đã dừng chờ anh"),
+    ])
+    agent.history.ghi_kho(
+        author="agent:r1", artefact_id="FR-01", type="req", op="create",
+        canonical={"loai": "FR", "text": "cũ", "criteria": "", "source_quote": "x"},
+        explain={"summary": "a", "why": "b", "sources": [], "diff_prev": "-",
+                 "next": "-", "confidence": "NGUOI"}, run_id="r1")
+    agent.history.tao_snapshot(ten="moc-dau")
+    agent.history.ghi_kho(
+        author="human", artefact_id="FR-02", type="req", op="create",
+        canonical={"loai": "FR", "text": "anh thêm sau", "criteria": "",
+                   "source_quote": "x"},
+        explain={"summary": "a", "why": "b", "sources": [], "diff_prev": "-",
+                 "next": "-", "confidence": "NGUOI"}, human_act_id="h-1")
+
+    seen: list = []
+    Core(agent.ledger, agent.ids, agent.turn, on_emit=seen.append).console_act(
+        {"kind": "say", "text": "quay về bản moc-dau đi"})
+    hq = [c for c in _cards(seen) if c.get("type") == "gate"][0]["consequences_vi"]
+    chu = " ".join(hq)
+    assert "FR-02" in chu, f"phải nêu đích danh thứ sẽ mất, mới có: {hq}"
+    assert "CHÍNH ANH" in chu, "phải cảnh báo có sửa của người trong đó"

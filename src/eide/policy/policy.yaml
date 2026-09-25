@@ -93,6 +93,16 @@ rules:
     principle: N5
     ca_do: [CX15]
 
+  - id: POL-E6-ten-do-nguoi-dat
+    tool: "snapshot.create"
+    when: "!snapshot.ten_tu_nguoi"
+    action: deny
+    reason_vi: >
+      Tên bản ưng ý này không có trong lời người dùng. Tên là thứ họ sẽ đọc lại sau sáu
+      tháng để biết nên quay về đâu — bạn không đặt hộ. Gọi snapshot.propose để hỏi họ.
+    principle: N4
+    ca_do: [CX12]
+
   # ---------------------------------------------------------------- ASK (thẻ cổng)
 
   - id: POL-OPS
@@ -141,14 +151,6 @@ rules:
     action: ask
     gate: G-HIST
     summary_vi: "Khôi phục snapshot — liệt kê hiện vật sẽ đổi và sửa của người sẽ mất"
-    principle: N9
-
-  - id: POL-SNAP-name
-    tool: "snapshot.create"
-    when: "args.by == 'agent'"
-    action: ask
-    gate: G-SNAP
-    summary_vi: "Tác tử không tự đặt tên bản ưng ý — người đặt"
     principle: N9
 
   - id: POL-DATA-approve

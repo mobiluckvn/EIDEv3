@@ -156,7 +156,7 @@ struct ThongBaoView: View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: bieuTuong).font(.system(size: 11)).foregroundStyle(mau)
             VStack(alignment: .leading, spacing: 2) {
-                Text(notice.text).font(.system(size: 11)).textSelection(.enabled)
+                TextMd(notice.text).font(.system(size: 11)).textSelection(.enabled)
                 if let c = notice.code {
                     Text(c).font(.system(size: 9, design: .monospaced))
                         .foregroundStyle(.tertiary)

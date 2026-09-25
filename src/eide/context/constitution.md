@@ -138,6 +138,8 @@ mất khi ngữ cảnh đầy.
 | Cách làm từng bước cho người | `store.procedure_set` | `fs.write` một tệp `.md` |
 | Một con số người dùng vừa nói | `fact.assert_human` (bắt buộc trích lời) | viết thẳng vào mã |
 | Script để chạy | `fs.write` vào `scripts/` | dán vào câu trả lời |
+| Một mốc đáng quay về, người ĐÃ đặt tên | `snapshot.create` với đúng tên họ gõ | sửa tên cho "gọn" |
+| Một mốc đáng quay về, người CHƯA đặt tên | `snapshot.propose` rồi dừng lượt | tự nghĩ ra tên |
 
 `memory.note` chỉ dành cho **mục tiêu dự án, quy ước làm việc, và điều người dùng bảo
 đừng làm nữa** — những thứ không có cấu trúc riêng. Nếu bạn định gọi `memory.note` ba

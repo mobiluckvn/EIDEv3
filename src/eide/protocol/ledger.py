@@ -35,6 +35,7 @@ EVENT_KINDS = {
     "llm_call",           # mot lan goi mo hinh: model, token vao/ra, thoi gian
     "tool_use", "tool_result",
     "gate",               # the cong phat ra / quyet dinh cua nguoi
+    "card",               # the lam ro: phat ra / duoc tra loi / bi bo qua
     "changeset",          # chi muc; noi dung day o changesets.jsonl (§E5.1)
     "incident",           # mang, LLM, timeout, sandbox (UC19)
     "note",

@@ -74,7 +74,7 @@ struct BlockView: View {
             }
 
             if let s = block.summary, !s.isEmpty {
-                Text(s).font(.system(size: 11)).foregroundStyle(.secondary)
+                TextMd(s).font(.system(size: 11)).foregroundStyle(.secondary)
             }
 
             // §E3.2 §3 — "luôn nói khác biệt": diff_prev hiện NGAY dưới tóm tắt.
@@ -82,7 +82,7 @@ struct BlockView: View {
                 HStack(alignment: .top, spacing: 5) {
                     Image(systemName: "arrow.triangle.branch")
                         .font(.system(size: 9)).foregroundStyle(Color.accentColor)
-                    Text("Khác bản trước: \(d)")
+                    TextMd("Khác bản trước: \(d)")
                         .font(.system(size: 10)).foregroundStyle(Color.accentColor)
                 }
             }
@@ -142,9 +142,10 @@ struct BlockView: View {
         case "timeline": KhoiDongThoiGian(block: block)
         case "changesets": KhoiChangeset(block: block)
         case "procedure": KhoiQuyTrinh(block: block)
+        case "snapshots": KhoiSnapshot(block: block)
         case "list":     KhoiDanhSach(block: block)
         case "sections": KhoiMuc(block: block)
-        case "text":     Text(block.str("text") ?? "").font(.system(size: 12)).textSelection(.enabled)
+        case "text":     MarkdownView(text: block.str("text") ?? "")
         case "code":
             Text(block.str("text") ?? "")
                 .font(.system(size: 11, design: .monospaced))
@@ -173,7 +174,7 @@ struct KhoiRong: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
                 Image(systemName: "circle.dashed").foregroundStyle(.tertiary)
-                Text(block.str("chua_co") ?? "Chưa có gì.")
+                TextMd(block.str("chua_co") ?? "Chưa có gì.")
                     .font(.system(size: 12, weight: .medium))
                 if let b = block.str("buoc") { BuocChip(buoc: b) }
             }
@@ -181,14 +182,14 @@ struct KhoiRong: View {
                 HStack(alignment: .top, spacing: 6) {
                     Text("Vì sao").font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.tertiary).frame(width: 44, alignment: .trailing)
-                    Text(v).font(.system(size: 11)).foregroundStyle(.secondary)
+                    TextMd(v).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
             if let c = block.str("can_gi"), c != "—" {
                 HStack(alignment: .top, spacing: 6) {
                     Text("Cần gì").font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.tertiary).frame(width: 44, alignment: .trailing)
-                    Text(c).font(.system(size: 11))
+                    TextMd(c).font(.system(size: 11))
                 }
             }
         }
@@ -370,7 +371,7 @@ struct OSuaDuoc: View {
                 dangSua = true
             } label: {
                 HStack(spacing: 4) {
-                    Text(gia).font(.system(size: 11)).lineLimit(3)
+                    TextMd(gia).font(.system(size: 11)).lineLimit(3)
                         .multilineTextAlignment(.leading)
                     Spacer(minLength: 0)
                 }
@@ -405,7 +406,7 @@ struct OCoTang: View {
         if let t = Tier(loose: text), t.nhan == text || text.uppercased() == t.rawValue {
             TierChip(tier: t)
         } else {
-            Text(text)
+            TextMd(text)
                 .font(.system(size: 11))
                 .textSelection(.enabled)
                 .lineLimit(3)
@@ -482,7 +483,7 @@ struct DongSoCai: View {
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Self.mau(loai))
                 .frame(width: 88, alignment: .leading)
-            Text(item["tom_tat"]?.stringValue ?? "")
+            TextMd(item["tom_tat"]?.stringValue ?? "")
                 .font(.system(size: 11))
                 .textSelection(.enabled)
             Spacer()
@@ -502,6 +503,116 @@ struct DongSoCai: View {
     }
 }
 
+// MARK: - Bản ưng ý (§E6)
+
+/// Danh sách bản ưng ý. Dấu ★ cho bản release.
+///
+/// Cột **khoảng cách** ("cách đây 12 changeset") là thứ §E6.3 đòi hiện khi mở lại dự
+/// án. Nó trả lời câu người thật sự hỏi khi nhìn một danh sách mốc: *từ đó tới giờ đã
+/// đi xa chưa?* — một cái ngày tháng không trả lời được câu đó.
+struct KhoiSnapshot: View {
+    @EnvironmentObject var state: AppState
+    let block: SurfaceBlock
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if !(block.payload["co_release"]?.boolValue ?? false) {
+                Label("Chưa có bản nào đánh dấu release — các thao tác khoá vĩnh viễn "
+                      + "trên chip (RDP, eFuse) sẽ bị chặn cho tới khi có.",
+                      systemImage: "lock.open")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            ForEach(Array(block.arr("items").enumerated()), id: \.offset) { _, s in
+                DongSnapshot(s: s)
+            }
+        }
+    }
+}
+
+private struct DongSnapshot: View {
+    @EnvironmentObject var state: AppState
+    let s: JSONValue
+
+    private var id: String { s["id"]?.stringValue ?? "" }
+    private var laRelease: Bool { s["kind"]?.stringValue == "release" }
+    private var cuaNguoi: Bool { s["created_by"]?.stringValue == "human" }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: laRelease ? "star.fill" : "star")
+                .font(.system(size: 12))
+                .foregroundStyle(laRelease ? Color.staleAmber : Color.secondary.opacity(0.5))
+                .help(laRelease ? "Bản phát hành" : "Bản ưng ý")
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(s["name"]?.stringValue ?? id)
+                        .font(.system(size: 12, weight: .semibold))
+                        .textSelection(.enabled)
+                    Text(id).font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                    if let k = s["khoang_cach"]?.intValue, k > 0 {
+                        Text("cách đây \(k) thay đổi")
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    ThanhTacGia(tacGia: cuaNguoi ? "nguoi" : "tac_tu")
+                }
+                if let n = s["note"]?.stringValue, !n.isEmpty {
+                    TextMd(n).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                HStack(spacing: 8) {
+                    Text(s["tom_tat"]?.stringValue ?? "")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                    if let c = s["chip"]?.stringValue, !c.isEmpty {
+                        Text(c).font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                let passed = (s["passed"]?.arrayValue ?? []).compactMap(\.stringValue)
+                if !passed.isEmpty {
+                    Label("đạt: \(passed.joined(separator: ", "))",
+                          systemImage: "checkmark.seal")
+                        .font(.system(size: 10)).foregroundStyle(Color.okGreen)
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 10) {
+                Button("So sánh") {
+                    state.gui(.say("So sánh bản ưng ý \(id) với trạng thái hiện tại "
+                                   + "giúp tôi — khác nhau ở đâu?"))
+                }
+                .buttonStyle(.plain).font(.system(size: 11))
+                .foregroundStyle(Color.accentColor)
+
+                // §E6.3 — khôi phục đi qua thẻ G-HIST, và thẻ phải liệt kê sẽ mất gì
+                // TRƯỚC. Nên nút này HỎI tác tử chứ không tự khôi phục.
+                Button("Khôi phục") {
+                    state.gui(.say("Tôi muốn khôi phục về bản ưng ý \(id). "
+                                   + "Cho tôi biết sẽ mất gì trước đã."))
+                }
+                .buttonStyle(.plain).font(.system(size: 11))
+                .foregroundStyle(Color.gateRed)
+                .help("Tác tử sẽ liệt kê sẽ mất gì rồi mới hỏi")
+
+                if !laRelease {
+                    Button("Đánh dấu release") {
+                        state.gui(.say("Đánh dấu bản ưng ý \(id) là release."))
+                    }
+                    .buttonStyle(.plain).font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .help("Release là điều kiện cho thao tác khoá vĩnh viễn trên chip")
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .overlay(alignment: .bottom) { Divider().opacity(0.3) }
+    }
+}
+
 // MARK: - Quy trình từng bước
 
 /// Quy trình là **hiện vật có cấu trúc**, không phải tệp markdown.
@@ -516,7 +627,7 @@ struct KhoiQuyTrinh: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             if let m = block.str("muc_dich"), !m.isEmpty {
-                Text(m).font(.system(size: 11)).foregroundStyle(.secondary)
+                TextMd(m).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             let can = block.arr("can_truoc").compactMap(\.stringValue)
             if !can.isEmpty {
@@ -524,7 +635,7 @@ struct KhoiQuyTrinh: View {
                     Text("Cần có trước").font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.tertiary)
                     ForEach(can, id: \.self) { c in
-                        Text("• \(c)").font(.system(size: 11))
+                        TextMd("• \(c)").font(.system(size: 11))
                     }
                 }
                 .padding(7)
@@ -566,7 +677,7 @@ private struct BuocView: View {
                             .foregroundStyle(Color.gateRed)
                     }
                 }
-                Text(b["viec"]?.stringValue ?? "").font(.system(size: 12, weight: .medium))
+                TextMd(b["viec"]?.stringValue ?? "").font(.system(size: 12, weight: .medium))
                     .textSelection(.enabled)
 
                 if let cb = b["canh_bao"]?.stringValue, !cb.isEmpty {
@@ -785,7 +896,7 @@ struct KhoiDanhSach: View {
             ForEach(Array(block.arr("items").enumerated()), id: \.offset) { _, it in
                 HStack(alignment: .top, spacing: 6) {
                     Text("•").foregroundStyle(.tertiary)
-                    Text(it.display).font(.system(size: 11)).textSelection(.enabled)
+                    TextMd(it.display).font(.system(size: 11)).textSelection(.enabled)
                     Spacer()
                 }
             }
@@ -810,11 +921,11 @@ struct KhoiMuc: View {
                     set: { bat in
                         if bat { mo.insert(ten) } else { mo.remove(ten) }
                     })) {
-                    Text(than).font(.system(size: 11)).textSelection(.enabled)
+                    MarkdownView(text: than, co: 11)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 3)
                 } label: {
-                    Text(ten).font(.system(size: 12, weight: .medium))
+                    TextMd(ten).font(.system(size: 12, weight: .medium))
                 }
             }
         }

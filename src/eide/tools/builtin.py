@@ -350,10 +350,11 @@ def build_registry() -> Registry:
                 "Không có công cụ nào cho việc này. Nói thẳng với người dùng rằng EIDE chưa "
                 "làm được việc đó — đừng thay bằng một việc gần giống."}
 
-    from . import design, knowledge, writing
+    from . import design, knowledge, snapshots, writing
     writing.register(r)
     design.register(r)
     knowledge.register(r)
+    snapshots.register(r)
     return r
 
 

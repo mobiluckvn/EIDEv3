@@ -147,7 +147,7 @@ class HumanAct:
         t = str(self.target) if self.target else ""
         body = {
             "say": lambda: self.text,
-            "choose": lambda: f"Chọn: {self.data.get('choice', self.text)}",
+            "choose": lambda: _tra_loi_the(self),
             "decide": lambda: (
                 f"{'Duyệt' if self.data.get('approved') else 'Từ chối'} "
                 f"{self.data.get('gate', 'cổng')} ({self.data['gate_id']})"
@@ -223,6 +223,24 @@ def ensure(act: HumanAct | dict[str, Any]) -> HumanAct:
     if isinstance(act, HumanAct):
         return act.validate()
     return HumanAct.from_dict(act)
+
+
+def _tra_loi_the(act: "HumanAct") -> str:
+    """Dòng transcript cho `choose` — thẻ làm rõ trả về MỘT DICT, không phải một chuỗi.
+
+    Thẻ làm rõ (§E7) hỏi nhiều câu một lượt và giao diện gửi lại `data.answers` dạng
+    {khoá: câu trả lời}. Nếu dòng này chỉ đọc `data.choice`, thì câu người vừa gõ vào
+    thẻ — ví dụ TÊN của bản ưng ý — biến mất khỏi transcript, và biến mất luôn khỏi thứ
+    mô hình đọc ở lượt sau (`loop._user_block` lấy `act.text or transcript_line()`).
+    Người sẽ thấy tác tử hỏi tên, mình đặt tên, rồi tác tử hỏi lại lần nữa.
+    """
+    tl = act.data.get("answers") or {}
+    if tl:
+        return "Trả lời thẻ — " + "; ".join(f"{k}: {v}" for k, v in tl.items())
+    if act.data.get("choice") or act.text:
+        return f"Chọn: {act.data.get('choice') or act.text}"
+    gd = act.data.get("assumption_if_skipped")
+    return f"Bỏ qua thẻ, đi tiếp với giả định: {gd}" if gd else "Bỏ qua thẻ, không trả lời"
 
 
 __all__ = ["HumanAct", "Target", "Origin", "HUMAN_ACT_KINDS", "SURFACES", "ensure", "EideError"]

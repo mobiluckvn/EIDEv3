@@ -66,7 +66,7 @@ struct ViSaoView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Tác tử giải thích thêm")
                         .font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
-                    Text(g).font(.system(size: 11)).textSelection(.enabled)
+                    MarkdownView(text: g, co: 11).textSelection(.enabled)
                 }
             }
         }

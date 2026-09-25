@@ -206,6 +206,48 @@ enum Markdown {
 
 // MARK: - Hiển thị
 
+/// `Text` cho **chữ do tác tử viết**, ở bất kỳ đâu ngoài Console.
+///
+/// Lý do tồn tại: bộ dựng markdown ban đầu chỉ được nối vào Console, nên mọi chỗ khác —
+/// tóm tắt khối trên các tab, ô bảng, chữ trên thẻ, thông báo, lớp "Vì sao?" — hiện
+/// `**đậm**` dưới dạng ký tự thô. Người dùng đọc phải tự bóc dấu sao (DEV-247).
+///
+/// Ranh giới: chỉ dùng cho chữ **tác tử sinh ra**. Chữ do mã sinh (mã hiệu, số đếm,
+/// nhãn cột, đường dẫn) vẫn dùng `Text` thường — ở đó dấu `*` và `_` là ký tự thật của
+/// một cái tên, không phải cú pháp, và diễn dịch chúng là làm hỏng cái tên.
+func TextMd(_ s: String) -> Text { Text(Markdown.inline(s)) }
+
+extension Markdown {
+    /// Chữ **sau khi dựng** — thứ người thật sự nhìn thấy.
+    ///
+    /// Có hàm này để phép kiểm hỏi được đúng câu hỏi của người dùng: "trên màn hình
+    /// còn dấu sao không?". Kiểm trên chuỗi gốc thì luôn thấy `**` và không nói lên
+    /// điều gì; kiểm trên chuỗi này thì `**` còn sót nghĩa là có một chỗ chưa nối vào
+    /// bộ dựng.
+    static func chuThuan(_ raw: String) -> String {
+        tach(raw).map { k -> String in
+            switch k {
+            case .doan(let s), .tieuDe(_, let s):
+                return String(inline(s).characters)
+            case .danhSach(let m):
+                return m.map { String(inline($0.0).characters) }.joined(separator: "\n")
+            case .bang(let cot, let hang):
+                return (([cot] + hang).map { h in
+                    h.map { String(inline($0).characters) }.joined(separator: " ")
+                }).joined(separator: "\n")
+            case .ma(let than, _):
+                return than                 // khối mã cố ý giữ nguyên văn
+            case .trichDan(let d):
+                return d.map { String(inline($0).characters) }.joined(separator: "\n")
+            case .duongKe:
+                return ""
+            case .congThuc(let s, _):
+                return s
+            }
+        }.joined(separator: "\n")
+    }
+}
+
 struct MarkdownView: View {
     let text: String
     var co: CGFloat = 12

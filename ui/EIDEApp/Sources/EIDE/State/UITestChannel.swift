@@ -149,6 +149,8 @@ final class UITestChannel {
                 "loai": c.kind.rawValue,
                 "gate": c.gate ?? "",
                 "gate_id": c.gateID ?? "",
+                // Thẻ làm rõ không có gate_id; trả lời nó cần card_id.
+                "card_id": c.id,
                 "tieu_de": c.title,
                 "so_hau_qua": c.consequences.count,
                 "never_auto": c.neverAuto,
@@ -167,9 +169,16 @@ final class UITestChannel {
             return [
                 "code": b.code, "type": b.type, "title": b.title,
                 "summary": b.summary ?? "",
+                "summary_render": Markdown.chuThuan(b.summary ?? ""),
+                "chu_da_dung": chuDaDung(b),
                 "so_buoc": b.arr("buoc").count,
                 "so_hang": b.arr("rows").count,
                 "so_muc": b.arr("items").count,
+                // Ô trống trung thực: ba trường này là thứ người ĐỌC khi chưa có gì.
+                // Không phơi ra thì mọi phép kiểm về ô trống đều đậu giả vì chuỗi rỗng.
+                "chua_co": b.str("chua_co") ?? "",
+                "vi_sao": b.str("vi_sao") ?? "",
+                "can_gi": b.str("can_gi") ?? "",
                 // G3 — hợp đồng trình bày E2
                 "co_explain": !ex.isEmpty,
                 "explain_du_6_truong": duTruong,
@@ -189,6 +198,8 @@ final class UITestChannel {
             "su_kien": "anh_chup", "nhan": nhan,
             "so_dong_hoi_thoai": s.transcript.count,
             "loi_tac_tu_cuoi": String(cuoi.prefix(3000)),
+            // Chữ SAU KHI DỰNG — để hỏi được "trên màn hình còn dấu sao không".
+            "loi_tac_tu_render": String(Markdown.chuThuan(cuoi).prefix(3000)),
             "khoi_markdown": khoiMd,
             "the_dang_cho": theHien,
             "tab_dang_mo": s.selectedSurface,
@@ -202,6 +213,29 @@ final class UITestChannel {
             ],
             "dang_chay": s.busy,
         ]
+    }
+
+    /// Gom mọi chữ do tác tử viết trong một khối, đã qua bộ dựng. Dùng để soi xem
+    /// còn chỗ nào trên tab quên nối vào bộ dựng markdown không (DEV-247).
+    private func chuDaDung(_ b: SurfaceBlock) -> String {
+        var phan: [String] = [b.summary ?? "", b.str("text") ?? "",
+                              b.str("chua_co") ?? "", b.str("vi_sao") ?? "",
+                              b.str("can_gi") ?? "", b.str("muc_dich") ?? ""]
+        for r in b.arr("rows") {
+            phan += r.arrayValue.compactMap(\.stringValue)
+        }
+        for p in b.arr("pairs") {
+            phan += p.arrayValue.compactMap(\.stringValue)
+        }
+        phan += b.arr("items").compactMap(\.stringValue)
+        for x in b.arr("buoc") {
+            phan += [x["viec"]?.stringValue ?? "", x["canh_bao"]?.stringValue ?? ""]
+        }
+        for x in b.arr("sections") {
+            phan += [x["ten"]?.stringValue ?? "", x["than"]?.stringValue ?? ""]
+        }
+        return phan.filter { !$0.isEmpty }
+            .map { Markdown.chuThuan($0) }.joined(separator: "\n")
     }
 
     private func tenKhoi(_ k: MdKhoi) -> String {

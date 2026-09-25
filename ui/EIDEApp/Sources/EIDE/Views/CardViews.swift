@@ -47,7 +47,7 @@ struct TheCongView: View {
             }
             .foregroundStyle(Color.gateRed)
 
-            Text(card.title).font(.system(size: 13, weight: .semibold))
+            TextMd(card.title).font(.system(size: 13, weight: .semibold))
 
             // Hậu quả TRƯỚC lựa chọn.
             if !card.consequences.isEmpty {
@@ -55,7 +55,7 @@ struct TheCongView: View {
                     ForEach(card.consequences, id: \.self) { c in
                         HStack(alignment: .top, spacing: 5) {
                             Text("•").foregroundStyle(Color.gateRed)
-                            Text(c).font(.system(size: 12)).textSelection(.enabled)
+                            TextMd(c).font(.system(size: 12)).textSelection(.enabled)
                         }
                     }
                 }
@@ -66,7 +66,7 @@ struct TheCongView: View {
                     .foregroundStyle(Color.gateRed)
             }
             if let r = card.requireText {
-                Text(r).font(.system(size: 11)).foregroundStyle(.secondary)
+                TextMd(r).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             if !card.requireFields.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
@@ -127,7 +127,7 @@ struct TheLamRoView: View {
             .foregroundStyle(Color.accentColor)
 
             if let i = card.intro, !i.isEmpty {
-                Text(i).font(.system(size: 12)).textSelection(.enabled)
+                MarkdownView(text: i).textSelection(.enabled)
             }
 
             ForEach(Array(card.questions.enumerated()), id: \.offset) { i, q in
@@ -135,10 +135,10 @@ struct TheLamRoView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Text("\(i + 1).").font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(.secondary)
-                        Text(q.text).font(.system(size: 12, weight: .medium))
+                        TextMd(q.text).font(.system(size: 12, weight: .medium))
                     }
                     if let w = q.why {
-                        Text(w).font(.system(size: 10)).italic().foregroundStyle(.secondary)
+                        TextMd(w).font(.system(size: 10)).italic().foregroundStyle(.secondary)
                             .padding(.leading, 16)
                     }
                     if !q.choices.isEmpty {
@@ -193,7 +193,7 @@ struct FlowChoices: View {
                     HStack(spacing: 5) {
                         Image(systemName: chon == c ? "largecircle.fill.circle" : "circle")
                             .font(.system(size: 10))
-                        Text(c).font(.system(size: 11)).multilineTextAlignment(.leading)
+                        TextMd(c).font(.system(size: 11)).multilineTextAlignment(.leading)
                     }
                     .foregroundStyle(chon == c ? Color.accentColor : .primary)
                 }

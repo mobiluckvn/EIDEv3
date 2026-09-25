@@ -38,7 +38,12 @@ def pol():
      {"explain.complete": True}, "ask", "G-QUAL"),
     ("history.undo", {"scope": "run"}, {}, "ask", "G-HIST"),
     ("snapshot.restore", {}, {}, "ask", "G-HIST"),
-    ("snapshot.create", {"by": "agent"}, {}, "ask", "G-SNAP"),
+    # Tên không có trong lời người → CHẶN. Khoá trên một sự thật đo được, không trên
+    # trường `by` do chính tác tử khai (xem DEV-246).
+    ("snapshot.create", {"ten": "sau-khi-sua-driver"},
+     {"snapshot.ten_tu_nguoi": False}, "deny", None),
+    ("snapshot.create", {"ten": "v0.2-them-nhiet"},
+     {"snapshot.ten_tu_nguoi": True}, "allow", None),
     ("doc.approve_request", {"domain": "vn.com"}, {}, "ask", "G-DATA"),
     ("tool.install", {"pkg": "gcc"}, {}, "ask", "G-TOOL"),
 ])

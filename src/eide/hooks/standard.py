@@ -15,6 +15,7 @@ import re
 from typing import Any
 
 from ..errors import missing_explain, outside_sandbox
+from .s0 import normalize_vi as _bo_dau
 from .base import HookBus, PreToolResult, StopResult
 
 # Sáu trường bắt buộc của lớp giải thích — §E1, §E3.1, nguyên tắc N8.
@@ -158,6 +159,36 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
         return PreToolResult(facts={"constant_guard.unsourced": len(khong_nguon),
                                     "constant_guard.list": khong_nguon},
                              fired=["constant_guard"])
+
+    @bus.on_pre_tool
+    def kiem_release(call: dict[str, Any], ctx: Any) -> PreToolResult:
+        """Cấp `snapshot.has_release` cho lớp cấp quyền (CX15)."""
+        if not str(call.get("tool", "")).startswith("target."):
+            return PreToolResult(facts={"snapshot.has_release": True})
+        return PreToolResult(facts={"snapshot.has_release": _co_release(ctx)},
+                             fired=["release"])
+
+    @bus.on_pre_tool
+    def ten_ban_ung_y(call: dict[str, Any], ctx: Any) -> PreToolResult:
+        """§E6.2 — tên bản ưng ý phải do NGƯỜI đặt, và câu đó phải có thật.
+
+        Cấm bằng lời trong mô tả công cụ là chưa đủ: mô hình rất dễ "giúp" bằng cách
+        nghĩ ra `sau-khi-sua-driver`. Nên chỗ này đo được: tên phải xuất hiện trong thứ
+        người đã gõ ở phiên này — câu trong ô nhập, hoặc chữ họ điền vào thẻ.
+        """
+        if call.get("tool") != "snapshot.create":
+            return PreToolResult(facts={"snapshot.ten_tu_nguoi": True})
+        ten = str((call.get("args") or {}).get("ten", "")).strip()
+        loi = " ".join(str(c) for c in
+                       (getattr(ctx, "loi_nguoi_trong_phien", []) or [])).lower()
+        # So khớp nới tay: người gõ "v0.2 thêm nhiệt", tác tử chuẩn hoá thành
+        # "v0.2-them-nhiet" — vẫn là tên của người, không phải tên nó nghĩ ra.
+        goc = re.sub(r"[^a-z0-9]+", " ", _bo_dau(ten.lower())).split()
+        loi_g = re.sub(r"[^a-z0-9]+", " ", _bo_dau(loi))
+        tu = bool(goc) and all(t in loi_g.split() for t in goc)
+        return PreToolResult(facts={"snapshot.ten_tu_nguoi": tu,
+                                    "snapshot.ten": ten},
+                             fired=["ten_ban_ung_y"])
 
     @bus.on_pre_tool
     def ghi_de_ban_cua_nguoi(call: dict[str, Any], ctx: Any) -> PreToolResult:
@@ -325,3 +356,17 @@ def _looks_empty(data: Any) -> bool:
         if "count" in meaningful and meaningful["count"] == 0 and len(meaningful) <= 3:
             return True
     return isinstance(data, (list, str)) and len(data) == 0
+
+
+def _co_release(ctx: Any) -> bool:
+    """CX15 — `target.dangerous` chỉ được phép khi đã có một bản phát hành.
+
+    Sau khi bật RDP hay đốt eFuse thì không còn đường lùi trên con chip đó. Điều kiện
+    "phải có một bản đã biết là chạy được" không phải thủ tục hành chính — nó là thứ
+    duy nhất còn lại để đối chiếu khi chip đã khoá.
+    """
+    h = getattr(ctx, "history", None)
+    try:
+        return bool(h and h.snapshots.co_release())
+    except Exception:                                        # noqa: BLE001
+        return False

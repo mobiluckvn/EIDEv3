@@ -427,11 +427,33 @@ def history(store: Any, inv: Any, hist: Any = None) -> dict[str, Any]:
                    "cũng vậy — sẽ hiện ở đây và hoàn tác được.",
             can_gi="Bảo tác tử làm một việc có ghi hiện vật, hoặc tự sửa một hiện vật."))
 
-    khoi.append(empty(
-        "A11.2", "Bản ưng ý (snapshot)",
-        chua_co="Chưa ghi bản ưng ý nào.",
-        vi_sao="Snapshot — trạng thái đặt tên, bất biến, khôi phục được — là bước G5.",
-        can_gi="—", buoc="G5"))
+    snaps = hist.danh_sach_snapshot() if hist else []
+    if snaps:
+        khoi.append(block(
+            "A11.2", "Bản ưng ý (snapshot)", "snapshots",
+            summary=(f"{len(snaps)} bản · "
+                     + (f"{sum(1 for s in snaps if s['kind'] == 'release')} release"
+                        if any(s["kind"] == "release" for s in snaps)
+                        else "chưa có bản release nào")),
+            items=snaps,
+            co_release=bool(hist and hist.snapshots.co_release())))
+    else:
+        khoi.append(empty(
+            "A11.2", "Bản ưng ý (snapshot)",
+            chua_co="Chưa ghi bản ưng ý nào.",
+            vi_sao="Bản ưng ý là trạng thái anh đặt tên và quay về được bất cứ lúc nào. "
+                   "Tác tử sẽ đề xuất ghi sau mỗi mốc đáng nhớ — nhưng anh đặt tên, vì "
+                   "tên là thứ anh sẽ đọc lại sau này.",
+            can_gi="Bảo tác tử ghi một bản, hoặc chờ nó tự đề xuất sau một mốc."))
+
+    if hist:
+        nhanh = hist.danh_sach_nhanh()
+        if len(nhanh) > 1:
+            khoi.append(block(
+                "A11.3", "Nhánh", "list",
+                summary=f"Đang ở nhánh “{hist.nhanh_hien_tai()}”",
+                items=[f"{'▸ ' if n == hist.nhanh_hien_tai() else '  '}{n}"
+                       for n in nhanh]))
 
     khoi.append(block(
         "A11.4", "Hiện vật STALE", "list",
@@ -528,7 +550,7 @@ def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
     emit(uic.ui_set("status_bar", status_bar(inv, cfg, run=run)))
     emit(uic.history_update(
         changesets=hist.danh_sach(limit=40) if hist else [],
-        snapshots=[],
+        snapshots=hist.danh_sach_snapshot() if hist else [],
         stale=[{"id": a["id"], "type": a["type"], "ly_do": a["stale_reason"]}
                for a in store.list(stale_only=True, limit=50)]))
     return n

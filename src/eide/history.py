@@ -87,6 +87,8 @@ class History:
         self.eide_md = eide_md
         self.log = ChangesetLog(paths.changesets)
         self.blobs = BlobStore(paths.blobs)
+        from .snapshot import SnapshotStore
+        self.snapshots = SnapshotStore(paths.state_dir / "snapshots.jsonl")
         self.vcs = Vcs(paths.project_root)
         self.git_san = False
         try:
@@ -368,7 +370,268 @@ class History:
                 "có thể làm mất công của những thay đổi đó — cân nhắc hoàn tác cả chuỗi."
                 .format(cs.id, len(sau), ", ".join(c.id for c in sau), cs.id)]
 
+    # ================================================================== snapshot
+    def tao_snapshot(self, *, ten: str, ghi_chu: str = "", boi: str = "human",
+                     kind: str = "named", passed: list[str] | None = None) -> Any:
+        """§E6.2 — ghi một bản ưng ý.
+
+        `kind="checkpoint"` cho bản ngầm (không tên, không hiện trong danh sách).
+        Người tạo thì `boi="human"` và **luôn được** (R0); tác tử đề xuất thì đã phải
+        đi qua thẻ G-SNAP trước khi tới đây, và chính người đặt tên.
+        """
+        from . import snapshot as sn
+
+        if kind in ("named", "release"):
+            if not ten.strip():
+                raise ValueError("Bản ưng ý phải có tên — đó là thứ dẫn anh quay về "
+                                 "đúng chỗ khi không còn nhớ hôm đó làm gì.")
+            trung = self.snapshots.theo_ten(ten)
+            if trung is not None:
+                raise ValueError(
+                    f"Đã có bản ưng ý tên “{ten}” ({trung.id}, {trung.ts[:10]}). "
+                    "Đặt tên khác để hai bản không lẫn vào nhau.")
+
+        xuat = sn.xuat_kho(self.store)
+        h = self.blobs.put(_json(xuat))
+        md = self.paths.eide_md
+        tag = None
+        if self.git_san:
+            sha = self.vcs.sha_hien_tai()
+            if sha and kind in ("named", "release"):
+                tag = f"snap/{_ten_tag(ten)}"
+                try:
+                    self.vcs._git("tag", "-f", tag, sha)
+                except GitKhongSan:
+                    tag = None
+
+        dem = self.store.counts()
+        s = sn.Snapshot(
+            id=self.ids.next("snap"), ts=sn._now(), kind=kind, name=ten,
+            note=ghi_chu, created_by=boi,
+            at_changeset=(self.log.all()[-1].id if self.log.all() else None),
+            chip=_chip_dang_ghim(self.store),
+            passed=passed or [],
+            contents={
+                "git_tag": tag,
+                "git_sha": self.vcs.sha_hien_tai() if self.git_san else None,
+                "store_export_hash": h,
+                "eide_md_hash": self.blobs.put(md.read_text("utf-8")) if md.exists() else None,
+                "docs": [d["id"] for d in self.store.list("doc", limit=50)],
+                "facts_tier_counts": self.store.fact_tier_counts(),
+                "so_req": dem.get("req", 0),
+                "so_tep": dem.get("code", 0) + dem.get("config", 0),
+                "so_changeset": len(self.log.all()),
+            })
+        self.snapshots.ghi(s)
+        self.ledger.append("note", {"snapshot": s.id, "kind": kind, "name": ten})
+        return s
+
+    def se_mat_gi_khi_khoi_phuc(self, snap_id: str) -> dict[str, Any]:
+        """Liệt kê hậu quả TRƯỚC khi hỏi — nội dung thẻ G-HIST (§E6.3)."""
+        from . import snapshot as sn
+
+        s = self.snapshots.get(snap_id)
+        if s is None:
+            return {"ok": False, "message_vi": f"Không có bản ưng ý nào mã {snap_id}."}
+        cu = self.blobs.get(s.contents.get("store_export_hash") or "")
+        if cu is None:
+            return {"ok": False,
+                    "message_vi": f"{snap_id} mất bản sao nội dung kho — không khôi phục "
+                                  "được. Đây là lỗi toàn vẹn, hãy báo lại."}
+        sau = self.log.sau(s.at_changeset) if s.at_changeset else self.log.all()
+        return {"ok": True, "snapshot": s.to_dict(),
+                **sn.se_mat_gi(sn.xuat_kho(self.store), _unjson(cu), changeset_sau=sau)}
+
+    def khoi_phuc_snapshot(self, snap_id: str, *, by: str = "human",
+                           giu_ban_hien_tai: str | None = None) -> KetQuaHoanTac:
+        """§E6.3 — khôi phục KHÔNG ghi đè lịch sử: nó tạo một changeset mới.
+
+        `giu_ban_hien_tai` = tên nhánh ⇒ bản hiện tại được ghi lại thành snapshot và
+        một nhánh mới được tạo từ đó, rồi mới khôi phục. Đây là gợi ý mà §E6.3 nói thẻ
+        G-HIST nên đưa ra khi người dùng có sửa chưa nằm trong bản ưng ý nào.
+        """
+        s = self.snapshots.get(snap_id)
+        if s is None:
+            return KetQuaHoanTac(False, message_vi=f"Không có bản ưng ý nào mã {snap_id}.")
+        data = self.blobs.get(s.contents.get("store_export_hash") or "")
+        if data is None:
+            return KetQuaHoanTac(
+                False, message_vi=f"{snap_id} mất bản sao nội dung kho — không khôi phục "
+                                  "được.")
+
+        canh: list[str] = []
+        if giu_ban_hien_tai:
+            try:
+                cu = self.tao_snapshot(ten=giu_ban_hien_tai,
+                                       ghi_chu=f"bản trước khi khôi phục {snap_id}",
+                                       boi=by)
+                canh.append(f"Bản hiện tại đã được ghi thành “{giu_ban_hien_tai}” ({cu.id}).")
+            except ValueError as e:
+                canh.append(f"Không ghi lại được bản hiện tại: {e}")
+
+        self.tao_snapshot(ten="", kind="checkpoint",
+                          ghi_chu=f"ngầm, trước khi khôi phục {snap_id}", boi="eide")
+
+        xuat = _unjson(data)
+        cs_id = self.ids.next("cs")
+        cham = self._ap_ban_xuat(xuat, cs_id)
+
+        if self.git_san and s.contents.get("git_sha"):
+            try:
+                self.vcs._git("checkout", s.contents["git_sha"], "--", ".")
+                self.vcs.commit(cs_id=cs_id, author=by,
+                                summary=f"khôi phục tệp về {snap_id}")
+            except GitKhongSan as e:
+                canh.append(f"Phần tệp không khôi phục được bằng git: {e}")
+
+        moi = Changeset(
+            id=cs_id, ts=cs_mod._now(), author=by,
+            touches=[cs_mod.Touch(i, "artefact", "restore") for i in cham],
+            forward=[{"kind": "snapshot_restore", "snapshot": snap_id}],
+            inverse=[],
+            explain={
+                "summary": f"Khôi phục về bản ưng ý “{s.name or snap_id}”",
+                "why": f"Người ra lệnh quay về {snap_id} ({s.ts[:10]}).",
+                "sources": [{"kind": "changeset", "ref": snap_id, "tier": "VANG"}],
+                "diff_prev": f"{len(cham)} hiện vật quay về trạng thái lúc {s.ts[:16]}",
+                "next": "Xem lại kết quả; bản trước khi khôi phục vẫn còn trong lịch sử.",
+                "confidence": "VANG"})
+        self._chot(moi)
+
+        return KetQuaHoanTac(
+            True, changeset_moi=moi.id, da_lui=[snap_id], canh_bao=canh,
+            message_vi=(f"Đã khôi phục về “{s.name or snap_id}” bằng changeset {moi.id}. "
+                        f"{len(cham)} hiện vật đổi. Lịch sử không mất gì — bản trước khi "
+                        f"khôi phục vẫn nằm trong dòng thời gian."))
+
+    def _ap_ban_xuat(self, xuat: dict[str, Any], cs_id: str) -> list[str]:
+        """Đặt kho về đúng trạng thái trong bản xuất. Trả danh sách hiện vật đã chạm."""
+        cham: list[str] = []
+        trong_snap = {a["id"] for a in xuat.get("artefacts", [])}
+
+        for a in xuat.get("artefacts", []):
+            hien = self.store.get(a["id"])
+            if hien is None or hien["canonical"] != a["canonical"]:
+                self.store.apply(artefact_id=a["id"], type=a["type"], op="update",
+                                 author="eide", canonical=a["canonical"],
+                                 explain=a.get("explain") or
+                                         {"summary": f"khôi phục theo {cs_id}"},
+                                 changeset_id=cs_id)
+                cham.append(a["id"])
+
+        # Hiện vật sinh ra SAU bản ưng ý thì không còn trong đó — gỡ bỏ.
+        for a in self.store.list(limit=5000):
+            if a["id"] not in trong_snap:
+                self.store.apply(artefact_id=a["id"], type=a["type"], op="delete",
+                                 author="eide", canonical={},
+                                 explain={"summary": f"gỡ theo khôi phục {cs_id}"},
+                                 changeset_id=cs_id)
+                cham.append(a["id"])
+
+        for f in xuat.get("facts", []):
+            g = dict(f)
+            for k in ("source", "explain"):
+                if isinstance(g.get(k), str):
+                    try:
+                        g[k] = _unjson(g[k].encode())
+                    except Exception:                        # noqa: BLE001
+                        g[k] = {}
+            g["min"], g["typ"], g["max"] = g.get("vmin"), g.get("vtyp"), g.get("vmax")
+            self.store.put_fact(g)
+        return cham
+
+    def so_sanh_snapshot(self, a_id: str, b_id: str) -> dict[str, Any]:
+        """§E6.3 — bảng theo loại hiện vật. `b_id="hien_tai"` để so với trạng thái bây giờ."""
+        from . import snapshot as sn
+
+        a = self.snapshots.get(a_id)
+        if a is None:
+            return {"ok": False, "message_vi": f"Không có bản ưng ý nào mã {a_id}."}
+        da = self.blobs.get(a.contents.get("store_export_hash") or "")
+        if da is None:
+            return {"ok": False, "message_vi": f"{a_id} mất bản sao nội dung kho."}
+
+        if b_id in ("hien_tai", "", None):
+            db, ten_b, ts_b = sn.xuat_kho(self.store), "hiện tại", ""
+        else:
+            b = self.snapshots.get(b_id)
+            if b is None:
+                return {"ok": False, "message_vi": f"Không có bản ưng ý nào mã {b_id}."}
+            raw = self.blobs.get(b.contents.get("store_export_hash") or "")
+            if raw is None:
+                return {"ok": False, "message_vi": f"{b_id} mất bản sao nội dung kho."}
+            db, ten_b, ts_b = _unjson(raw), b.name or b.id, b.ts[:16]
+
+        kb = sn.so_sanh_kho(_unjson(da), db)
+        return {"ok": True, "tu": {"id": a_id, "ten": a.name or a_id, "ts": a.ts[:16]},
+                "sang": {"id": b_id, "ten": ten_b, "ts": ts_b},
+                "khac_biet": [k.to_dict() for k in kb],
+                "giong_nhau": not kb,
+                "message_vi": ("Hai bản giống hệt nhau." if not kb else
+                               "Khác nhau ở: "
+                               + ", ".join(f"{k.loai} ({len(k.them)}+/{len(k.bot)}-/"
+                                           f"{len(k.doi)}~)" for k in kb))}
+
+    # ================================================================== nhánh
+    def tao_nhanh(self, ten: str, *, tu_snapshot: str | None = None) -> dict[str, Any]:
+        """§E5.5 — nhánh để thử hai phương án song song.
+
+        Nhánh gồm hai nửa: nhánh git cho tệp, và một **bản xuất kho** ghi lại trạng thái
+        hiện vật tại điểm rẽ. Chuyển nhánh sẽ khôi phục nửa thứ hai.
+
+        Đây chưa phải copy-on-write thật như §E5.5 mô tả — xem DEV-245.
+        """
+        if not self.git_san:
+            return {"ok": False,
+                    "message_vi": "Dự án không dùng được git nên chưa rẽ nhánh được."}
+        try:
+            hien = self.vcs._git("rev-parse", "--abbrev-ref", "HEAD").strip()
+            self.vcs._git("checkout", "-b", ten)
+        except GitKhongSan as e:
+            return {"ok": False, "message_vi": f"Không tạo được nhánh: {e}"}
+
+        s = self.tao_snapshot(ten=f"nhanh-{ten}", kind="checkpoint",
+                              ghi_chu=f"điểm rẽ nhánh {ten} từ {hien}", boi="eide")
+        self.ledger.append("note", {"branch": ten, "tu": hien, "snapshot": s.id})
+        return {"ok": True, "nhanh": ten, "tu_nhanh": hien, "snapshot": s.id,
+                "message_vi": f"Đã rẽ nhánh “{ten}” từ “{hien}”. Mọi thay đổi từ giờ "
+                              f"nằm trên nhánh này; “{hien}” giữ nguyên."}
+
+    def chuyen_nhanh(self, ten: str) -> dict[str, Any]:
+        if not self.git_san:
+            return {"ok": False, "message_vi": "Dự án không dùng được git."}
+        self.tao_snapshot(ten="", kind="checkpoint",
+                          ghi_chu=f"ngầm, trước khi chuyển sang nhánh {ten}", boi="eide")
+        try:
+            self.vcs._git("checkout", ten)
+        except GitKhongSan as e:
+            return {"ok": False, "message_vi": f"Không chuyển được: {e}"}
+        return {"ok": True, "nhanh": ten,
+                "message_vi": f"Đang ở nhánh “{ten}”."}
+
+    def nhanh_hien_tai(self) -> str:
+        if not self.git_san:
+            return "main"
+        return self.vcs._git("rev-parse", "--abbrev-ref", "HEAD", check=False).strip() or "main"
+
+    def danh_sach_nhanh(self) -> list[str]:
+        if not self.git_san:
+            return []
+        out = self.vcs._git("branch", "--format=%(refname:short)", check=False)
+        return [x.strip() for x in out.splitlines() if x.strip()]
+
     # ================================================================== đọc
+    def danh_sach_snapshot(self, *, gom_checkpoint: bool = False) -> list[dict[str, Any]]:
+        ds = self.snapshots.all(gom_checkpoint=gom_checkpoint)
+        tong_cs = len(self.log.all())
+        ra = []
+        for s in ds:
+            d = s.to_dict()
+            d["tom_tat"] = s.tom_tat()
+            d["khoang_cach"] = tong_cs - int(s.contents.get("so_changeset", 0) or 0)
+            ra.append(d)
+        return ra
+
     def danh_sach(self, *, limit: int = 60, tac_gia: str | None = None,
                   hien_vat: str | None = None) -> list[dict[str, Any]]:
         ds = self.log.all()
@@ -407,3 +670,30 @@ class History:
                                     "version": f.get("version"),
                                     "canonical": f.get("canonical")})
         return out
+
+
+# =========================================================================== phụ
+def _json(o) -> str:
+    import json
+    return json.dumps(o, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _unjson(b) -> dict:
+    import json
+    return json.loads(b.decode("utf-8") if isinstance(b, (bytes, bytearray)) else b)
+
+
+def _ten_tag(ten: str) -> str:
+    """Tên bản ưng ý → tên tag git hợp lệ. Giữ chữ người đọc được, bỏ ký tự git cấm."""
+    import re
+    import unicodedata
+    t = ten.replace("đ", "d").replace("Đ", "D")
+    t = "".join(c for c in unicodedata.normalize("NFD", t)
+                if not unicodedata.combining(c))
+    t = re.sub(r"[^A-Za-z0-9._-]+", "-", t).strip("-.")
+    return t or "khong-ten"
+
+
+def _chip_dang_ghim(store) -> str | None:
+    ds = store.list("passport", limit=1)
+    return ds[0]["id"] if ds else None
