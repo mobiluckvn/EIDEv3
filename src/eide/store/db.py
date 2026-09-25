@@ -88,6 +88,10 @@ ARTEFACT_TYPES = (
     "req", "option", "adr", "fact", "passport", "ckm", "pinout", "block_diagram",
     "netlist", "bom", "findings", "plan", "code", "diff", "build", "criteria",
     "sim_result", "analysis", "target", "assumptions", "report", "changeset", "snapshot",
+    # Thêm ngoài 22 dòng của §E2 — xem DEV-250:
+    "doc",             # tài liệu đã nạp theo trang (§C3 cần, §E2 bảng thiếu)
+    "procedure",       # quy trình từng bước (EIDE-NOTE-42)
+    "classification",  # kết quả phân loại một tệp (ING-43 §8, khối A3.6)
 )
 
 

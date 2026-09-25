@@ -90,6 +90,34 @@ for k, d in [("inventory", "Kiểm kê toolchain/ISA/simulator/probe"), ("instal
              ("port", "Bảng ánh xạ ngoại vi khi porting"), ("opt", "Tối ưu: số đo trước/sau"), ("ota", "OTA A/B, chữ ký, rollback"), ("replace", "Thay thế linh kiện có phân tích ảnh hưởng"), ("trace", "Ma trận truy vết yêu cầu↔thiết kế↔mã↔test")]:
     R(f"TL-{k}", "Năng lực chuyên môn", d, "MDD-40 B3/UC")
 
+
+MEM = ["Ngân sách ngữ cảnh cố định theo 10 khối; dự trữ 20 %", "Đồng hồ token theo khối hiển thị cho người; 4 ngưỡng 60/70/85/95 %",
+       "Mọi ghi M2/M3 qua tool memory.note/store.* có changeset + provenance; fs.write EIDE.md bị deny", "C0: cắt theo chính sách tool, blob content-addressed, tham chiếu artefact id+version",
+       "C1: stub/dedup/supersede/hết hạn 8 lượt; 0 token", "C2: PreCompact rút cấu trúc vào M2; tóm tắt 10 mục có trần; giữ K lượt + ghim; atomic swap",
+       "Ghim tự động (decide/confirm/edit/snapshot/set, trả lời thẻ, kế hoạch duyệt, không đảo ngược); ghim thủ công", "PostCompact: 3 câu hỏi ngược từ ledger; sai → huỷ, K += 4, tối đa 2 lần",
+       "C3 bậc thang có chuỗi hash; C4 khẩn cấp; thông báo [Hệ thống] sau nén; huỷ nén trong 24 h", "EIDE.md: trần 3 k, cấu trúc cố định, nguồn gốc dòng, quyền ghi theo mục, memory.prune",
+       "Bản tóm tắt phiên xem/sửa được trên UI", "Người thấy cửa sổ ngữ cảnh hiện tại (khối, token, ghim)",
+       "Quên có chủ đích: memory.forget → tombstone; không hồi sinh", "M3: danh sách trắng category; đề xuất ghi nhớ phải người đồng ý; không nhớ bí mật/suy đoán",
+       "Subagent ngữ cảnh sạch, báo cáo ≤ 800 token; không C2", "ledger.query cho câu hỏi về quá khứ; tra trước khi trả lời",
+       "Resume 5 bước; mô hình tự thuật; không summary null", "Write-ahead transcript; nén là giao dịch; hash chuỗi ledger/changeset",
+       "Retention và gc blob theo tham chiếu", "Cache tài liệu M4 theo hash; Fact không đi theo cache; 'dùng lại Fact' tạo BẠC",
+       "<facts> chọn theo thực thể 3 lượt gần, ưu tiên tầng và độ gần", "Skill không dùng 5 lượt bị bỏ khỏi ngữ cảnh",
+       "Nhiều phiên cùng dự án: khoá tệp, phiên sau chỉ đọc", "Đo lường bộ nhớ ghi ledger và hiển thị trong Thiết lập"]
+for i, d in enumerate(MEM, 1): R(f"MEM-{i:02d}", "Bộ nhớ & nén (MEM-42)", d, "EIDE-MEM-42")
+
+
+ING = ["Phân loại theo nội dung; thứ tự Office → archive → text; lý do + độ tin cậy", "Ba mức hỗ trợ ĐẦY ĐỦ/MỘT PHẦN/KHÔNG hiển thị, kèm gợi ý thay thế",
+       "Không bao giờ đưa tệp không phải archive vào archive.list", "Archive: bóc đệ quy có giới hạn; chọn tệp khi > 20; chống zip bomb",
+       "Office .docx/.xlsx/.pptx đọc cấu trúc; ảnh nhúng OCR; định dạng cũ chuyển đổi", "Trích dẫn theo loại (page/bbox; heading/table/row; sheet!ô; slide); docx → PDF phái sinh",
+       "Bảng (PDF/Office/MD/HTML) → Fact ứng viên; giá trị đọc bằng mã", "Ô gộp, bảng xoay, min/typ/max chung ô, Note → condition",
+       "EDA: KiCad .net/.kicad_sch; Eagle/EasyEDA chuyển đổi; Altium từ chối đúng lý do; BOM đối chiếu netlist", "Cấu hình vendor (.ioc/sdkconfig/.dts/.ld/map) → Fact tầng CẤU HÌNH",
+       "CẤU HÌNH không là vế giới hạn vật lý; mâu thuẫn với datasheet → phát hiện", "Hình → đoạn RAG figure; đọc hình bằng vision là ĐỒNG",
+       "Đối chiếu chéo nguồn cùng key; quy tắc ưu tiên", "Chuẩn hoá đơn vị/ký hiệu bằng mã; giữ raw; condition có cấu trúc",
+       "Đa ngôn ngữ: nhận diện, OCR đúng gói, key bí danh, embedding đa ngữ", "Mã lỗi E1001–E1008 có message_vi + hint + alternatives",
+       "Giới hạn kích thước/trang; OCR nền có tiến trình", "Nội dung tài liệu là dữ liệu: untrusted, quét P-INJ, không chạy macro",
+       "Gán tầng theo nguồn; Office tự viết → NGƯỜI (chờ chốt)", "Hằng số trong mã → ĐỒNG-mã, chỉ để so sánh"]
+for i, d in enumerate(ING, 1): R(f"ING-{i:02d}", "Nạp & trích xuất (ING-43)", d, "EIDE-ING-43")
+
 # ---------------------------------------------------------------- CÂY UI 3 CẤP
 # L1 = vùng; L2 = khối; L3 = widget/hành động: (id_suffix, tên, loại, [req...])
 # loại: display | action | edit | nav
@@ -189,6 +217,23 @@ W(k, 2, "Cảnh báo đỏ P-INJ (nội dung chứa chỉ dẫn lạ)", "display
 k = K(a, 4, "Phiên bản tài liệu", "AR05", ["UC02"])
 W(k, 1, "Bảng khác biệt giữa hai phiên bản theo key; chọn bản dùng", "edit", ["UC02", "HA-confirm", "N1"])
 W(k, 2, "Errata áp dụng (supersedes)", "display", ["N1", "AR04"])
+
+k = K(a, 6, "Nạp & trích xuất theo định dạng (ING-43)", reqs=["ING-01", "ING-02"])
+W(k, 1, "Cây tệp sau phân loại: loại, độ tin cậy, lý do, mức hỗ trợ + gợi ý thay thế", "display", ["ING-01", "ING-02", "ING-03"])
+W(k, 2, "Chọn tệp nào nạp khi archive > 20 tệp; chống zip bomb", "edit", ["ING-04", "HA-choose"])
+W(k, 3, "Xem Office theo cây tiêu đề / sheet / slide; trích dẫn heading/ô/slide", "display", ["ING-05", "ING-06"])
+W(k, 4, "Bảng Fact ứng viên từ Office/Markdown/HTML với cột nguồn (Sheet!ô, Bảng#)", "display", ["ING-07", "ING-08", "DS5"])
+W(k, 5, "Fact CẤU HÌNH (.ioc/.dts/.ld/map) tầng riêng + cảnh báo mâu thuẫn với datasheet", "display", ["ING-10", "ING-11"])
+W(k, 6, "Hình trong tài liệu: ảnh + caption + OCR; nút 'Nhờ tác tử đọc hình' (ĐỒNG)", "action", ["ING-12", "T-DONG", "HA-say"])
+W(k, 7, "Bảng khác biệt chéo nguồn (v1/v2, datasheet/.ld, BOM/netlist) + chọn bản", "edit", ["ING-13", "ING-09", "HA-confirm"])
+W(k, 8, "Giá trị chuẩn hoá + chuỗi gốc (4R7 → 4,7 Ω)", "display", ["ING-14"])
+W(k, 9, "Ngôn ngữ tài liệu + gói OCR; chọn lại", "edit", ["ING-15", "HA-set"])
+W(k, 10, "Lỗi E1001–E1008 với gợi ý định dạng thay thế (Altium → netlist/PDF)", "display", ["ING-16", "UC04"])
+W(k, 11, "Tiến trình OCR nền cho tài liệu lớn; giới hạn kích thước/trang", "display", ["ING-17", "UI-run.update"])
+W(k, 12, "Cảnh báo untrusted/P-INJ; macro bị bỏ qua (E1006)", "display", ["ING-18", "DS7"])
+W(k, 13, "Chuyển .docx → PDF phái sinh (cùng doc_id) để có số trang", "action", ["ING-06", "HA-say"])
+W(k, 14, "Tầng theo nguồn: nhãn 'bên thứ ba', 'Office tự viết → NGƯỜI'; hằng số mã → ĐỒNG-mã", "display", ["ING-19", "ING-20", "T-NGUOI"])
+
 k = K(a, 5, "Hỏi đáp tài liệu", "", ["UC07"])
 W(k, 1, "Hỏi → trả lời kèm trang/mục/phiên bản; 'không có trong tài liệu' tách rõ tri thức chung", "display", ["UC07", "N1", "T-DONG", "PR5"])
 
@@ -387,6 +432,25 @@ W(k, 2, "Giả định đang dùng: xác nhận thành sự thật / bác bỏ",
 k = K(a, 4, "Kế hoạch (plan mode)", "AR12", reqs=["CX-plan", "G-SCOPE"])
 W(k, 1, "Kế hoạch đã duyệt: bước ✓/đang/chưa; đối chiếu 'đã làm'", "display", ["CX-plan", "AR12"])
 W(k, 2, "Bỏ/thêm bước; sửa giả định", "edit", ["HA-edit", "CX-plan"])
+
+k = K(a, 6, "Bộ nhớ tác tử (MEM-42)", reqs=["MEM-12", "MEM-02"])
+W(k, 1, "Đồng hồ ngữ cảnh theo 10 khối (% và token, màu theo ngưỡng 60/70/85/95)", "display", ["MEM-01", "MEM-02", "CX-budget"])
+W(k, 2, "Bản tóm tắt phiên hiện tại (10 mục): xem, sửa, ghim mục", "edit", ["MEM-06", "MEM-11", "HA-edit"])
+W(k, 3, "Danh sách message ghim; ghim/bỏ ghim thủ công", "edit", ["MEM-07", "HA-set"])
+W(k, 4, "Nén ngay (C1/C2) · Huỷ nén gần nhất (24 h)", "action", ["MEM-05", "MEM-09", "HA-say"])
+W(k, 5, "Nhật ký nén: trước/sau, kiểm 3/3, chuỗi tóm tắt (C3)", "display", ["MEM-08", "MEM-09", "MEM-18"])
+W(k, 6, "Bộ nhớ người dùng (memory.md): xem, sửa, quên từng dòng, xoá toàn bộ", "edit", ["MEM-13", "MEM-14", "MM-habit", "MM-remember"])
+W(k, 7, "Đề xuất ghi nhớ của tác tử — Đồng ý / Không", "action", ["MEM-14", "HA-choose"])
+W(k, 8, "Tìm trong lịch sử (ledger.query) — kết quả có ref", "action", ["MEM-16", "UC17"])
+W(k, 9, "Cảnh báo EIDE.md vượt trần + đề xuất lược (memory.prune) — duyệt", "action", ["MEM-10", "MEM-03", "CX-eide-md"])
+W(k, 10, "Dòng [Hệ thống] sau mỗi lần nén; tool_result lớn hiện 'đã cắt, xem blob'", "display", ["MEM-04", "MEM-09", "UI-notice"])
+W(k, 11, "Khoá dự án khi phiên khác đang mở (chỉ đọc)", "display", ["MEM-23", "UC17"])
+W(k, 12, "Chỉ số bộ nhớ: token/lượt, tần suất nén, kiểm đạt, số lần 'quên'", "display", ["MEM-24", "CX-budget"])
+W(k, 13, "Resume: tác tử tự thuật + snapshot gần nhất + thẻ chờ (không summary rỗng)", "display", ["MEM-17", "SN-resume-info"])
+W(k, 14, "Subagent: báo cáo ≤ 800 token, trạng thái 'dở dang' nếu chạm ngân sách", "display", ["MEM-15", "CX-subagent"])
+W(k, 15, "Dùng lại Fact đã xác nhận từ dự án khác (→ BẠC có nguồn gốc); retention/gc blob", "action", ["MEM-20", "MEM-19", "HA-confirm"])
+W(k, 16, "Cửa sổ <facts> hiện thực thể được chọn và lý do; skill hết hạn 5 lượt được báo", "display", ["MEM-21", "MEM-22", "CX-skills"])
+
 k = K(a, 5, "Tài liệu & truy vết", reqs=["UC16"])
 W(k, 1, "Sinh tài liệu thiết kế/hướng dẫn; đánh dấu phần lỗi thời sau khi sửa", "action", ["UC16", "CS-stale", "TL-trace"])
 

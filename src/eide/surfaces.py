@@ -199,6 +199,45 @@ def documents(store: Any, inv: Any) -> dict[str, Any]:
             vi_sao="Không có tài liệu thì không có Fact, và không có Fact thì tác tử "
                    "không được dùng con số nào để quyết định hay sinh mã (N1).",
             can_gi="Kéo tệp PDF vào đây, hoặc bảo tác tử đi tìm rồi anh duyệt nguồn."))
+
+    # A3.6 — ING-43 §8. Cây tệp sau phân loại: loại · mức hỗ trợ · VÌ SAO · độ tin cậy.
+    #
+    # Cột "vì sao" là cột đáng giá nhất ở đây. Một bảng chỉ có "tệp → loại" thì khi máy
+    # đoán sai, người không có cách nào biết nó sai ở đâu; đọc được "zip có word/ →
+    # DOCX" thì họ sửa được ngay bằng cách đưa đúng tệp.
+    cls = store.list("classification", limit=100)
+    if cls:
+        hang = []
+        for c in cls:
+            k = c["canonical"]
+            hang.append([k.get("path", c["id"]), k.get("mo_ta", ""),
+                         k.get("muc_ho_tro_vi", ""), k.get("ly_do_phan_loai", ""),
+                         f"{k.get('do_tin_cay', 1.0):.0%}",
+                         k.get("ma_loi") or ("đọc được" if k.get("doc_duoc") else "—")])
+        day_du = sum(1 for c in cls if c["canonical"].get("muc_ho_tro") == "day_du")
+        khoi.append(block(
+            "A3.6", "Nạp & trích xuất theo định dạng", "table",
+            summary=(f"{len(cls)} tệp đã phân loại · {day_du} ở mức ĐẦY ĐỦ (trích Fact "
+                     "tự động được) · còn lại phải anh xác nhận từng số"),
+            columns=["Tệp", "Định dạng", "Mức hỗ trợ", "Vì sao xếp loại này",
+                     "Độ tin cậy", "Trạng thái"],
+            rows=hang,
+            row_meta={c["id"]: {"phien_ban": c["version"], "tac_gia": "tac_tu",
+                                "explain": c["explain"]} for c in cls}))
+
+        # Gói nhiều tệp: người chọn nạp cái nào (ING-04).
+        for c in cls:
+            k = c["canonical"]
+            if not k.get("can_chon"):
+                continue
+            khoi.append(block(
+                f"A3.6.{c['id'][-4:]}", f"Trong gói {k.get('path', '')}", "table",
+                summary=(f"{k.get('so_muc', 0)} tệp — quá nhiều để nạp hết. Anh chọn "
+                         "tệp nào cần đọc; loại dưới đây là ĐOÁN theo đuôi, chưa mở ra."),
+                columns=["Đường dẫn", "Loại đoán", "Mức hỗ trợ", "Kích thước"],
+                rows=[[t["duong_dan"], t["loai_doan"], t["muc_ho_tro_vi"],
+                       f"{t['kich_thuoc']:,} B" if t["kich_thuoc"] else "—"]
+                      for t in (k.get("cay") or [])[:60]]))
     return {"surface": "documents", "code": "A3", "title": "Tài liệu & Nguồn",
             "blocks": khoi}
 

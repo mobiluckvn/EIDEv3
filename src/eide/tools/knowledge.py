@@ -47,6 +47,24 @@ def register(r: Registry) -> Registry:
         d = kq.to_dict()
         d["path"] = _rel(ctx, p)
 
+        # Kết quả phân loại được GHI LẠI, không chỉ trả về cho mô hình.
+        #
+        # Lý do: tab Tài liệu phải dựng được cây tệp bằng mã từ kho (N3). Nếu kết quả
+        # chỉ sống trong một lời gọi tool, thì thứ người nhìn thấy phụ thuộc vào việc
+        # mô hình có thuật lại đúng hay không — đúng cái mà N3 bỏ đi.
+        if getattr(ctx, "history", None) is not None:
+            ma = "cls:" + d["path"]
+            ctx.history.ghi_kho(
+                author=f"agent:{ctx.run_id}", artefact_id=ma, type="classification",
+                op="update" if ctx.store.get(ma) else "create",
+                canonical={k: v for k, v in d.items() if k != "muc"},
+                explain={"summary": f"{d['path']} → {kq.mo_ta}",
+                         "why": kq.ly_do_phan_loai or "phân loại theo nội dung tệp",
+                         "sources": [], "diff_prev": "—",
+                         "next": "nạp vào kho nếu người dùng muốn dùng số trong đó",
+                         "confidence": "VANG" if kq.do_tin_cay >= 0.9 else "BAC"},
+                run_id=ctx.run_id)
+
         if kq.can_hoi_nguoi:
             # TC070 — script có lệnh phá hoại. Phải HỎI, và phải hỏi vì đã ĐỌC RA nó,
             # không phải vì tình cờ chết ở một bước khác.
@@ -64,6 +82,25 @@ def register(r: Registry) -> Registry:
                             f"Nói ĐÚNG lý do này cho người dùng — đừng nói chung chung "
                             f"là 'không hỗ trợ'. Đề xuất: "
                             + "; ".join(kq.de_xuat))
+        elif kq.muc_ho_tro == ingest_mod.MOT_PHAN:
+            # ING-02: ba mức, không phải hai. Giữa "đọc được" và "không" có một vùng mà
+            # người PHẢI biết mình đang ở trong đó — nếu không, họ tin số máy tự trích.
+            d["note_vi"] = (
+                f"{kq.mo_ta}: đọc được chữ và bảng, nhưng EIDE **không** tự trích Fact "
+                "từ loại này. Số lấy từ đây phải do người xác nhận. Nói rõ điều đó.")
+
+        if kq.loi is not None and kq.doc_duoc:
+            # Lỗi đi kèm một tệp vẫn đọc được là CẢNH BÁO, không phải từ chối — ING14.
+            ctx.emit(uic.notice(kq.loi.message_vi, level="warn", code=kq.loi.code))
+            d["canh_bao_vi"] = kq.loi.message_vi
+            d["note_vi"] = (d.get("note_vi", "") + " " + kq.loi.hint_for_agent).strip()
+
+        if kq.chi_tiet.get("can_chon"):
+            # ING-04: gói nhiều tệp thì người chọn nạp cái nào, tác tử không tự quyết.
+            d["note_vi"] = (
+                f"Gói này có {kq.chi_tiet['so_muc']} tệp — quá nhiều để nạp hết. Trình "
+                f"cây tệp cho người dùng và HỎI họ chọn tệp nào, đừng tự chọn. Mỗi tệp "
+                "đã có loại đoán và mức hỗ trợ trong trường `cay`.")
         return d
 
     # ====================================================================== tài liệu

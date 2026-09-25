@@ -679,3 +679,75 @@ sẽ mất gì (`se_mat_gi_khi_khoi_phuc`) mà không đưa lên thẻ.
 đích danh hiện vật sẽ mất và cảnh báo nếu trong đó có sửa của người; thao tác phần cứng
 nói rõ không lùi được; mọi việc nặng đều kèm câu "bản ưng ý gần nhất để quay về là gì" —
 hoặc nói thẳng là chưa có bản nào.
+
+---
+
+### [DEV-249] 25/09/2026 · Đánh số lại E1003–E1008 của ING-43 thành E1010–E1015
+
+EIDE-ING-43 §7 đặt sáu mã lỗi cho đường ống nạp, bắt đầu từ `E1003`. Mã đó **đã có
+nghĩa khác trong sản phẩm đang chạy**: `errors.path_not_found` dùng `E1003` cho "không
+có tệp ở đường dẫn" — cụm nguyên nhân lớn nhất của đợt đo 23/09 (11 ca), nơi mô hình bịa
+một đường dẫn rồi ném vào tool. `hint_for_agent` của nó là thứ đẩy mô hình sang **hỏi**
+thay vì **đoán**, và nó đang nằm trong ca đo xanh.
+
+Đổi nghĩa một mã đang chạy để khớp bảng trong tài liệu là đặt sự gọn gàng của bảng lên
+trên chỗ dựa của người đang dùng. Chủ sản phẩm chốt: **cấp mã mới**.
+
+| ING-43 gọi | EIDE dùng | Nghĩa |
+|---|---|---|
+| E1001 | `E1001` | định dạng không hỗ trợ — trùng nghĩa, giữ nguyên |
+| E1002 | `E1002` | tệp cụt/hỏng — trùng nghĩa, giữ nguyên |
+| E1003 | **E1010** | tệp có mật khẩu |
+| E1004 | **E1011** | vượt trần kích thước/số trang/số tệp |
+| E1005 | **E1012** | tỉ lệ nén bất thường (zip bomb) hoặc đường dẫn thoát ra ngoài |
+| E1006 | **E1013** | có macro — đã bỏ qua (CẢNH BÁO, không từ chối tệp) |
+| E1007 | **E1014** | OCR thất bại |
+| E1008 | **E1015** | chuyển đổi LibreOffice thất bại |
+| — | `E1003` | **giữ nghĩa cũ**: không có tệp ở đường dẫn |
+
+**Đề nghị cập nhật tài liệu: CÓ** — ING-43 §7 nên dùng bảng ánh xạ này.
+
+---
+
+### [DEV-250] 25/09/2026 · `ARTEFACT_TYPES` vượt 22 dòng của §E2
+
+§E2 của MDD-40 liệt kê 22 loại hiện vật. Mã đang có 25: thêm `doc`, `procedure` và
+`classification`.
+
+- `doc` — §C3 nói tới tài liệu nạp theo trang nhưng bảng §E2 không có dòng cho nó, dù
+  mọi Fact trích ra đều trỏ về một `doc`. Đây là chỗ thiếu của bảng, không phải mã.
+- `procedure` — EIDE-NOTE-42 lập luận vì sao quy trình từng bước phải là hiện vật có
+  cấu trúc chứ không phải một tệp `.md`.
+- `classification` — mới trong ING-A. Kết quả phân loại được **ghi vào kho**, không chỉ
+  trả về cho mô hình, để tab Tài liệu dựng khối A3.6 bằng mã (N3). Nếu nó chỉ sống
+  trong một lời gọi tool thì thứ người nhìn thấy phụ thuộc việc mô hình thuật lại có
+  đúng không — đúng cái N3 bỏ đi.
+
+**Đề nghị cập nhật tài liệu: CÓ** — §E2 nên có ba dòng này kèm hợp đồng trình bày.
+
+---
+
+### [DEV-251] 25/09/2026 · classify v3 — thứ tự kiểm khác pseudocode của ING-43 §3 ở một chỗ
+
+ING-43 §3 viết `if is_ole2(head): return LEGACY_OFFICE`, và để Altium rơi vào
+`BINARY_UNKNOWN` ở nhánh sau. Trên máy thật thì **không tới được nhánh đó**: Altium
+`.PcbDoc`/`.SchDoc` là tệp OLE2 thật, nên nó sẽ khớp `is_ole2` trước và bị gửi cho
+LibreOffice như một tài liệu Word cũ.
+
+Mã đặt phép kiểm `_KHONG_HO_TRO` theo đuôi **trước** OLE2, rồi trong nhánh OLE2 chỉ nhận
+`.doc/.xls/.ppt`. Ca đo `test_ING04_altium_khong_bi_nham_thanh_office_cu` canh đúng chỗ
+này.
+
+Đi kèm, hai sửa nhỏ cùng loại:
+
+- **Eagle `.sch`/`.brd` không còn bị từ chối theo đuôi.** Eagle từ v6 lưu XML, mà ING-43
+  §2 xếp mức MỘT PHẦN. Bản trước đưa cả hai đuôi vào danh sách "không hỗ trợ", tức là từ
+  chối nhầm đúng cái định dạng tài liệu bảo phải đọc. Nay quyết theo **nội dung**: giải
+  mã được UTF-8 và có thẻ `<eagle>` → đọc; không giải mã được → mới nói là đời cũ.
+- **Ba mức hỗ trợ thay cho `doc_duoc: bool`.** Giữa "đọc được" và "không" có một vùng
+  mà người PHẢI biết mình đang ở trong đó — `.pptx`, HTML, `.kicad_sch` đọc được chữ
+  nhưng EIDE không tự trích Fact. Một cờ nhị phân khiến người tin số máy tự trích từ
+  những nguồn mà chính máy không dám tự trích.
+
+Đo được: `thu_ing_a.py` 29/29 qua giao diện thật; ba bộ E2E cũ (G3 31/31 · G4 23/23 ·
+G5 35/35) không hồi quy.

@@ -23,6 +23,10 @@ from typing import Any
 
 # --------------------------------------------------------------------------- ho ma loi
 # E1xxx  dinh dang / noi dung tep      (ingest, classify, parse)
+#        E1001 khong ho tro · E1002 hong/cut · E1003 khong co duong dan
+#        E1010 mat khau · E1011 qua gioi han · E1012 zip bomb
+#        E1013 macro bi bo qua (canh bao) · E1014 OCR hong · E1015 chuyen doi hong
+#        (E1010–E1015 = E1003–E1008 cua ING-43, danh so lai — DEV-249)
 # E2xxx  thieu tien de                 (tool goi khi chua co cai no can)
 # E3xxx  mang / dich vu ben ngoai      (UC19 — phai phan biet voi loi tep)
 # E4xxx  cap quyen / cong / sandbox    (N5 — chan co chu dich)
@@ -124,6 +128,122 @@ def path_not_found(path: str) -> EideError:
         alternatives=["fs.glob để tìm tệp theo mẫu tên", "ask_user hỏi đường dẫn đầy đủ"],
         details={"path": path},
         blame="agent",
+    )
+
+
+# --------------------------------------------------------------------------- nap tai lieu
+# EIDE-ING-43 §7 dat sau ma loi E1003–E1008 cho duong ong nap. E1003 o day DA MANG nghia
+# khac ("khong co tep o duong dan") va nghia do da di vao thong bao nguoi dung doc, vao
+# `hint_for_agent` day mo hinh sang hoi thay vi doan, va vao ca do dang xanh.
+#
+# Doi nghia mot ma loi dang chay de khop tai lieu la dat su gon gang cua bang ma len tren
+# su dung cua nguoi. Chu san pham chot 25/09/2026: **cap ma moi**. Anh xa o DEV-249.
+
+
+def password_protected(path: str) -> EideError:
+    """E1010 — ING-43 goi la E1003. Tep co that, dung dinh dang, nhung bi khoa."""
+    return EideError(
+        code="E1010",
+        message_vi=f"Tệp {path} có mật khẩu bảo vệ — EIDE không mở được.",
+        hint_for_agent=(
+            "KHÔNG thử đoán mật khẩu và không gọi lại tool. Hỏi người dùng gỡ mật khẩu "
+            "rồi nạp lại, hoặc xin bản không khoá."
+        ),
+        alternatives=["Xin bản không đặt mật khẩu", "ask_user hỏi nguồn gốc tệp"],
+        details={"path": path},
+        blame="user",
+    )
+
+
+def over_limit(path: str, what: str, gia_tri: Any, tran: Any) -> EideError:
+    """E1011 — ING-43 goi la E1004. Vuot tran kich thuoc/so trang/so tep."""
+    return EideError(
+        code="E1011",
+        message_vi=(
+            f"{path}: {what} là {gia_tri}, vượt trần {tran} mà EIDE xử lý an toàn được. "
+            "Dừng lại ở đây để không treo máy giữa chừng."
+        ),
+        hint_for_agent=(
+            "Đừng lặp lại nguyên lời gọi. Hỏi người dùng thu hẹp phạm vi — khoảng trang, "
+            "hoặc chọn vài tệp trong gói — rồi nạp từng phần."
+        ),
+        alternatives=["Hỏi người dùng phạm vi trang cần đọc",
+                      "Nạp từng tệp con thay vì cả gói"],
+        details={"path": path, "what": what, "value": gia_tri, "limit": tran},
+        blame="user",
+    )
+
+
+def zip_bomb(path: str, ty_le: float, muc: str = "") -> EideError:
+    """E1012 — ING-43 goi la E1005. Ti le nen bat thuong: dung TRUOC khi boc."""
+    return EideError(
+        code="E1012",
+        message_vi=(
+            f"{path} giải nén ra gấp {ty_le:.0f} lần kích thước tệp"
+            + (f" (mục “{muc}”)" if muc else "")
+            + ". Tỉ lệ này bất thường — có thể là tệp nén được dựng để làm đầy ổ đĩa. "
+            "EIDE dừng trước khi bóc, không bóc thử."
+        ),
+        hint_for_agent=(
+            "KHÔNG bóc tệp này bằng đường nào khác. Báo người dùng và hỏi tệp đến từ đâu."
+        ),
+        alternatives=["Hỏi nguồn gốc tệp nén", "Đề nghị nạp từng tệp rời"],
+        details={"path": path, "ratio": ty_le, "member": muc},
+        blame="user",
+    )
+
+
+def macro_ignored(path: str, so_macro: int) -> EideError:
+    """E1013 — ING-43 goi la E1006. Day la CANH BAO: du lieu van doc duoc.
+
+    Tra ve mot EideError vi no can day du bon truong, nhung chỗ goi phai dat no vao
+    `canh_bao` chu khong dung no de tu choi tep.
+    """
+    return EideError(
+        code="E1013",
+        message_vi=(
+            f"{path} có {so_macro} macro. EIDE đọc dữ liệu trong tệp và **không chạy "
+            "macro** — macro trong tài liệu người khác gửi là mã của người khác."
+        ),
+        hint_for_agent=(
+            "Dữ liệu vẫn dùng được bình thường. Nói cho người dùng biết có macro và "
+            "EIDE đã bỏ qua, đừng im lặng."
+        ),
+        alternatives=[],
+        details={"path": path, "macros": so_macro},
+        blame="user",
+    )
+
+
+def ocr_failed(path: str, why: str) -> EideError:
+    """E1014 — ING-43 goi la E1007."""
+    return EideError(
+        code="E1014",
+        message_vi=f"Không đọc được chữ từ ảnh trong {path}: {why}.",
+        hint_for_agent=(
+            "Đừng đoán nội dung ảnh. Nói thẳng là không đọc được và xin bản có lớp chữ."
+        ),
+        alternatives=["Xin bản PDF gốc có lớp chữ", "Hỏi người dùng gõ lại số cần dùng"],
+        details={"path": path, "why": why},
+        blame="system",
+    )
+
+
+def convert_failed(path: str, den: str, why: str) -> EideError:
+    """E1015 — ING-43 goi la E1008. Chuyen doi LibreOffice that bai."""
+    return EideError(
+        code="E1015",
+        message_vi=(
+            f"Không chuyển được {path} sang {den}: {why}. "
+            "Định dạng cũ cần LibreOffice để đọc."
+        ),
+        hint_for_agent=(
+            "Kiểm xem LibreOffice đã cài chưa (tool.search 'libreoffice'). Nếu chưa, đề "
+            "nghị người dùng lưu lại tệp ở định dạng mới (.docx/.xlsx/.pptx)."
+        ),
+        alternatives=["Xin bản .docx/.xlsx/.pptx", "Đề nghị cài LibreOffice"],
+        details={"path": path, "to": den, "why": why},
+        blame="system",
     )
 
 

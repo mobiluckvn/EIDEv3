@@ -19,6 +19,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **G3** | Hiện vật hai dạng · explain bắt buộc · nút "Vì sao?" · Fact tầng NGƯỜI tự động · phân loại sửa | xong |
 | **G4** | Tri thức: ingest theo magic bytes · tài liệu theo trang · fact.extract/review · hộ chiếu + ISA · compare 8 luật | xong |
 | **G5** | Bản ưng ý bất biến · khôi phục không xoá lịch sử · so sánh hai bản · nhánh · release là điều kiện khoá chip | xong |
+| **ING-A** | classify v3: Office trước archive · ba mức hỗ trợ · E1010–E1015 · giới hạn archive & zip bomb · cây tệp A3.6 | xong |
+| ING-B…E · MEM-A…D | Bộ đọc Office · bảng→Fact · EDA/cấu hình vendor · bộ nhớ và nén (EIDE-GAP-44) | đang |
 | G6 | Build/Sim + subagent | chưa |
 | G7 | Mạch thật | chưa |
 
@@ -81,6 +83,7 @@ ui/EIDEApp/Sources/EIDE/
 .venv/bin/python tools/thu_g3.py                     # 31 ca CX + 8 đường hỏng có chủ đích
 .venv/bin/python tools/thu_g4.py                     # 23 ca nền tri thức + 8 đường hỏng
 .venv/bin/python tools/thu_g5.py                     # 35 ca bản ưng ý/nhánh + 8 đường hỏng
+.venv/bin/python tools/thu_ing_a.py                  # 29 ca phân loại tệp + 8 đường hỏng
 .venv/bin/python tools/chay_kich_ban.py --lan 5      # bộ 76 TC, mỗi ca 5 lần
 .venv/bin/python tools/theo_doi.py --du-an <thư mục> # theo dõi phiên thật qua sổ cái
 ```
