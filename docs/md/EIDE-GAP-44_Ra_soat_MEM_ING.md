@@ -1,9 +1,9 @@
-# EIDE-GAP-44 — Rà soát mã hiện tại theo MEM-42 và ING-43
+# EIDE-GAP-44 — Rà soát mã hiện tại theo MEM-42, ING-43 và SCH-44
 
 *25/09/2026 · Vũ Trí Công · rà trên nhánh `main` tại commit `e3ad881` (sau G5)*
 
-Đối chiếu **EIDE-MEM-42** (thay §B6 của MDD-40) và **EIDE-ING-43** (chi tiết hoá §C3)
-với mã đang chạy. Mỗi dòng có tệp:dòng đã đọc, không suy từ tên hàm.
+Đối chiếu **EIDE-MEM-42** (thay §B6 của MDD-40), **EIDE-ING-43** (chi tiết hoá §C3) và
+**EIDE-SCH-44** (tính năng mới, cộng thêm) với mã đang chạy. Mỗi dòng có tệp:dòng đã đọc, không suy từ tên hàm.
 
 Ký hiệu: **CÓ** đủ theo tài liệu · **MỘT PHẦN** có xương, thiếu phần chính · **KHÔNG**
 chưa có gì · **KHÁC** mã làm khác tài liệu một cách có chủ đích (phải ghi DEV-2xx).
@@ -100,6 +100,95 @@ thành `word/document.xml`.
 
 ---
 
+## 2b. SCH-01 … SCH-22
+
+SCH-44 là **tính năng mới**, không phải chỗ hở của bản đang chạy — nên bảng này gần như
+toàn **KHÔNG**, và điều đó không nói lên gì xấu. Thứ đáng rà ở đây là khác: *(a)* tiền đề
+nào chưa có, *(b)* bảy lớp bảo vệ của §2.1 dựa vào cơ chế nào mà hôm nay chưa tồn tại.
+
+### 2b.1 Hai tiền đề chưa có — phải xử lý trước khi bắt đầu SCH-A
+
+**(1) CKM chưa tồn tại.** SCH-44 mở đầu bằng *"từ Bản đồ tri thức mạch (CKM) đã có"*, và
+lộ trình ghi điều kiện của SCH-A là *"sau G4 (CKM/Fact) của MDD-40"*. Mã có `"ckm"`,
+`"pinout"`, `"netlist"`, `"block_diagram"` trong `ARTEFACT_TYPES` (`store/db.py:88`) —
+nhưng **không công cụ nào ghi bốn loại đó**. 48 công cụ hiện có, không có `board.*`,
+không có `diagram.render`, không có gì dựng `module_graph`. Tab Thiết kế chỉ hiện BOM và
+pinout rỗng (`surfaces.py:305–342`, ô trống còn ghi `buoc="G4"`).
+
+Nói thẳng: **`sch.compose` hôm nay không có đầu vào.** Điều này không có trong bảng 2.2
+"điểm chạm" của SCH-44 vì tài liệu giả định G4 đã sinh CKM — nhưng G4 mà repo đã làm là
+*nền tri thức* (tài liệu, Fact, hộ chiếu, so sánh), không phải *bản đồ mạch*.
+
+**(2) Không có cơ chế cờ tính năng.** SCH-44 §2.1 dòng 2 đặt `features.schematic = false`
+làm lớp bảo vệ số một. `Config` không có trường `features` nào (`config.py`), và
+`settings.json` chưa tồn tại. Registry **có** sẵn thứ gần nhất — `core=False` cho nạp trễ
+(`tools/registry.py:64, 125`) — nhưng nạp trễ ≠ cờ tính năng: `core=False` vẫn đăng ký
+công cụ, chỉ giấu khỏi lược đồ cho tới khi `tool.search` mở ra. §2.1 đòi *"tool sch.\*
+không được đăng ký (mô hình không thấy)"*.
+
+### 2b.2 Bảng SCH-01 … SCH-22
+
+| Mã | Trạng thái | Bằng chứng / chỗ dựa đã có | Thiếu gì | Bước |
+|---|---|---|---|---|
+| SCH-01 Sinh sơ đồ từ CKM qua SKiDL | **KHÔNG** | — | Cả CKM lẫn SKiDL | SCH-A |
+| SCH-02 Netlist đẳng cấu với CKM, lệch → E7001 | **KHÔNG** | Họ mã `E7xxx` đã dành cho lịch sử/changeset (`errors.py`), `E7001`–`E7007` **đã dùng hết** cho undo/snapshot | **Xung đột mã lỗi lần hai.** `E7001` trong mã là lỗi hoàn tác. Xem §2b.3 | SCH-A |
+| SCH-03 Không bịa chân: pinout ≥ NGƯỜI, thiếu → E7002 | **MỘT PHẦN** | Cơ chế chặn đã sẵn sàng và đã chứng minh: `TANG_DUNG_DUOC` (`compare.py:26`) và `kiem_truoc_khi_ghim` từ chối ghim hộ chiếu không có tài liệu (DEV-183) | Chưa có Fact loại `pinout`; chưa có tầng để so `≥ NGƯỜI` trên pinout | SCH-A |
+| SCH-04 Style flat/hierarchical | **KHÔNG** | — | — | SCH-A/D |
+| SCH-05 Bố cục có tiêu chí số, xác định | **KHÔNG** | — | Thuật toán §4 (vùng, A\* có phạt gấp) | SCH-B |
+| SCH-06 SVG có id theo ref/net | **KHÔNG** | — | Renderer nội bộ | SCH-B |
+| SCH-07 Tương tác ký hiệu → Fact/nguồn | **KHÔNG** | `ViSaoView.swift` đã là đúng cái panel cần bật lên khi bấm ký hiệu — dùng lại được | Khối A5.8; SVG trong SwiftUI | SCH-B |
+| SCH-08 Renderer nội bộ là chính, suy giảm về sơ đồ khối | **KHÔNG** | Mẫu suy giảm đã có và đã đo: `doc.search_web` thiếu cấu hình thì báo `E3001` nói rõ "trạng thái đã lưu, tiếp tục được" | Chưa có cả mức R1 lẫn R3 | SCH-A |
+| SCH-09 Không cài/gọi/đề nghị cài KiCad | **CÓ (do chưa có gì)** | Không chỗ nào trong mã nhắc `kicad-cli`. `tool.install` có trong bảng policy nhưng **chưa được đăng ký** làm công cụ | Cần một phép kiểm **chủ động** canh chữ "cài KiCad" không lọt vào thông điệp nào — xem §2b.4 | SCH-A |
+| SCH-10 Diff sơ đồ bằng lời (E3) | **MỘT PHẦN** | `so_sanh_kho`/`se_mat_gi` đã diff theo loại hiện vật và nói bằng lời (`snapshot.py:207–280`); `diff_prev` bắt buộc trên mọi hiện vật (G3) | Chưa có diff hình học (vị trí) | SCH-B |
+| SCH-11 Xuất gói, theo dõi mtime, Nạp lại | **KHÔNG** | `vcs.py` theo dõi tệp qua git, không theo mtime | — | SCH-C |
+| SCH-12 Round-trip phân loại thay đổi | **MỘT PHẦN** | `human_edit.phan_loai()` đã phân loại sửa của người thành 5 nhóm và **`trinh_bay` không gây STALE** (G3) — đúng hình dạng mà §7.3(a) "chỉ đổi vị trí → không STALE" cần | Cần thêm nhóm cho thay đổi hình học sơ đồ | SCH-C |
+| SCH-13 Thay đổi cấu trúc → thẻ hỏi, không ghi đè im lặng | **MỘT PHẦN** | Đường thẻ làm rõ đã chạy và vừa được sửa trong G5 (DEV-246); `snapshot.propose` là mẫu sẵn cho "đề xuất rồi dừng" | — | SCH-C |
+| SCH-14 Symbol lib đối chiếu Fact ≥ 95 % | **KHÔNG** | — | — | SCH-A |
+| SCH-15 Symbol sinh từ Fact có ghi nguồn | **KHÔNG** | N1 đã áp cho Fact và hằng số trong mã; áp cho ký hiệu là cùng một cơ chế | — | SCH-B |
+| SCH-16 Gói sch vào snapshot/release | **MỘT PHẦN** | `Snapshot.contents` đã gói kho + `git_sha` + blob (G5); thêm tệp sch là thêm khoá | — | SCH-A |
+| SCH-17 Cờ mặc định tắt, tắt = không nhánh nào chạy | **KHÔNG** | Xem §2b.1(2) | Cơ chế cờ tính năng | SCH-A |
+| SCH-18 Không đổi hợp đồng cũ; lược đồ chỉ cộng thêm; migration có `down()` | **KHÔNG** | **Store không có hệ thống migration nào** — ba bảng dựng bằng `CREATE TABLE IF NOT EXISTS` (`store/db.py:31, 46, 66`), không có `PRAGMA user_version` | Cần đánh số lược đồ + `up()/down()` trước khi thêm `sch_sheets` | SCH-A |
+| SCH-19 Hồi quy hai chế độ giống 100 % | **MỘT PHẦN** | Có bộ hồi quy thật chạy được: 218 ca đơn vị + 4 bộ E2E (G3 31 · G4 23 · G5 35 · ING-A 29) | Chưa có cách **so hai lần chạy** tự động; hiện đọc bằng mắt | SCH-A |
+| SCH-20 uuid ổn định theo ref | **KHÔNG** | `IdGen` sinh id người đọc được nhưng không phải uuid theo khoá | — | SCH-B |
+| SCH-21 Mọi tệp sch là changeset, G-FILE khi ghi đè | **CÓ** | `history.ghi_tep` → changeset có nghịch đảo (G2); hook `ghi_de_ban_cua_nguoi` đã bật G-FILE đúng (`hooks/standard.py:194`) | Chỉ cần gọi đúng đường có sẵn | SCH-A |
+| SCH-22 PCB/Gerber ngoài phạm vi | **CÓ** | `.kicad_pcb` xếp MỘT PHẦN, Gerber không nhận (ING-A) | — | — |
+
+**Tổng SCH: CÓ 3 · MỘT PHẦN 6 · KHÔNG 13.**
+
+### 2b.3 Xung đột mã lỗi lần hai — E7001/E7002
+
+SCH-44 §3 dùng `E7001` cho "netlist lệch CKM" và `E7002` cho "chưa có pinout đã duyệt".
+Trong mã, họ `E7xxx` **đã được dành cho lịch sử/changeset** (`errors.py:25–33`) và đã dùng
+hết `E7001`…`E7007` cho hoàn tác, khôi phục snapshot, đánh dấu release, rẽ nhánh, ghi
+bản ưng ý.
+
+Đây đúng tình huống anh đã chốt cách xử lý ở DEV-249. Áp lại cùng quy tắc, **đề nghị**:
+
+| SCH-44 gọi | Đề nghị dùng | Nghĩa |
+|---|---|---|
+| E7001 | **E8001** | netlist sinh ra không đẳng cấu với CKM — dừng, kèm diff |
+| E7002 | **E8002** | chưa có pinout đã duyệt cho một ref — không bịa chân |
+
+Mở họ **E8xxx cho sơ đồ/EDA**, để SCH-B…D còn chỗ đánh số tiếp. Mình chưa sửa gì, chờ
+anh gật ở đây như lần trước.
+
+### 2b.4 Hai chỗ SCH-44 đòi một phép kiểm mà tài liệu chưa nói cách làm
+
+**(a) SCH-09 "không đề nghị cài KiCad ở bất kỳ thông điệp nào".** Đây là một ràng buộc
+về *thứ không được xuất hiện*, và loại ràng buộc đó không tự giữ được. Mô hình rất dễ
+"giúp" bằng câu *"anh cài KiCad rồi mở tệp này"* — đúng lúc nó tưởng đang hữu ích.
+
+Đề nghị làm giống chốt chặn tên bản ưng ý (DEV-246): một phép kiểm ở hook `Stop` quét
+lời tác tử trong lượt, thấy mẫu "cài KiCad"/"install KiCad"/"kicad-cli" thì chặn và bắt
+nói lại. Cấm bằng lời trong hiến pháp là cấm không đo được.
+
+**(b) SCH-19 "hồi quy hai chế độ giống 100 %".** Hiện bốn bộ E2E in bảng ra màn hình và
+người đọc bằng mắt. Để so được hai lần chạy, `Bo.tong()` phải **xuất kết quả ra JSONL**
+rồi có một lệnh so. Việc nhỏ (nửa ngày) nhưng phải làm **trước** SCH-A, vì nó chính là
+bằng chứng mà §8 bước B và C đòi.
+
+---
+
 ## 3. Mười sai lệch quan trọng nhất
 
 Xếp theo *hậu quả cho người dùng thật*, không theo thứ tự tài liệu.
@@ -116,6 +205,14 @@ Xếp theo *hậu quả cho người dùng thật*, không theo thứ tự tài 
 | 8 | **Bảng → Fact chưa nhận cấu trúc bảng** (ING-07/08) | Hiện trích theo dòng văn bản nên bảng Min/Typ/Max ra sai hoặc thiếu mà **không có cảnh báo** — im lặng là phần tệ nhất | 2 ngày |
 | 9 | **Xung đột mã lỗi E1003** (ING-16) | Hai nghĩa cho một mã trong cùng sản phẩm. Phải chốt sớm, sửa sau thì mọi thông báo đã in ra đều sai | 0,25 ngày |
 | 10 | **`<facts>` không xếp theo tầng** (MEM-21) | Cắt bằng `body[:cap]` nghĩa là Fact VÀNG có thể rơi mất trong khi ĐỒNG ở lại. Ngược đúng thứ tự mà N2 dựng nên | 0,25 ngày |
+
+Ba mục nữa, thuộc SCH nhưng **phải xử lý trước khi chạm vào SCH**:
+
+| # | Việc | Vì sao đứng đây | Công |
+|---|---|---|---|
+| 11 | **CKM chưa tồn tại** | `sch.compose` không có đầu vào. Bốn loại hiện vật `ckm`/`pinout`/`netlist`/`block_diagram` có tên trong kho mà không công cụ nào ghi | chưa ước được |
+| 12 | **Không có cơ chế cờ tính năng** | Lớp bảo vệ số một của SCH-44 §2.1 dựa vào nó. `core=False` của registry là nạp trễ, không phải cờ | 0,5 ngày |
+| 13 | **Store không có migration** | SCH-18 đòi `down()`. Ba bảng dựng bằng `CREATE TABLE IF NOT EXISTS`, không có `user_version` | 0,5 ngày |
 
 ---
 
@@ -148,6 +245,13 @@ sáu tháng sau không ai phân biệt được nữa.
 (`config.py:58`) và `_compact` giữ 10 **message** (`loop.py:785`) — lưu ý đây là một sai
 lệch nhỏ cần sửa luôn: tài liệu nói 10 **lượt**, mà một lượt thường là 4–10 message.
 
+**(3) SCH — ngưỡng % net dùng nhãn (≤ 70 %) và số đoạn gấp tối đa (3)?**
+Đề nghị **giữ mặc định**: chưa có mạch mẫu nào chạy qua để nói khác.
+
+**(4) MỚI — họ mã lỗi cho sơ đồ.** SCH-44 dùng `E7001`/`E7002`, nhưng cả hai đã có
+nghĩa khác trong mã (hoàn tác, khôi phục). Đề nghị mở họ **E8xxx cho sơ đồ/EDA** và
+dùng `E8001`/`E8002` — xem §2b.3. **Chờ anh gật.**
+
 ---
 
 ## 5. Thứ tự thực hiện đề nghị
@@ -171,8 +275,18 @@ MEM-A thay đường ống, đã có 6 ca ING xanh để phát hiện hồi quy.
 | 7 | **ING-D** | EDA + cấu hình vendor + tầng CẤU HÌNH | ING07, 08 | 2 ngày |
 | 8 | **MEM-D** | C3/C4; retention/gc; đo lường | MEM09, 15, 19, 24 | 1,5 ngày |
 | 9 | **ING-E** | Hình/figure; đa ngôn ngữ; OCR nền | ING10, 11 | 2 ngày |
+| 10 | **SCH-0** | *(mới)* Cơ chế cờ tính năng · lược đồ Store có `user_version` + `up()/down()` · xuất kết quả E2E ra JSONL để so hai lần chạy | — | 1,5 ngày |
+| 11 | **SCH-A** | Module `eide/sch/` · `sch.compose/netlist/symbols` · E8001/E8002 · suy giảm R3 · hồi quy hai chế độ | SCH01–04, 14, 16, 18 | 3 ngày |
+| 12 | **SCH-B** | `sch.place`/`write`/`render` nội bộ · khối A5.8 SVG tương tác | SCH05–09, 15, 17 | 4 ngày |
+| 13 | **SCH-C** | Round-trip `export`/`import` · phân loại thay đổi · G-FILE | SCH10–13 | 2 ngày |
+| 14 | **SCH-D** | Hierarchical sheets · symbol sinh từ Fact có xác nhận · gói vào snapshot | SCH07, SCH-16 | 2 ngày |
 
-Tổng ước lượng **≈ 18,5 ngày công**. Mỗi bước một commit, unit test cho phần xác định
+Tổng ước lượng **≈ 31 ngày công** (18,5 cho MEM+ING, 12,5 cho SCH). Lưu ý **SCH-A
+chưa có đầu vào**: `sch.compose` cần CKM, mà CKM chưa được công cụ nào ghi (§2b.1).
+Việc dựng CKM **không nằm trong** ba tài liệu bổ sung này — nó thuộc MDD-40 §C2 và
+chưa được làm. Phải tính thêm, hoặc chốt rằng SCH đứng sau một bước CKM riêng.
+
+Mỗi bước một commit, unit test cho phần xác định
 (classify, envelope, C1, PostCompact, chuẩn hoá đơn vị), và chạy hồi quy bộ E2E hiện có
 (`thu_g3.py` 39 ca · `thu_g4.py` 31 ca · `thu_g5.py` 35 ca) trước khi đóng bước.
 
@@ -189,9 +303,17 @@ Tổng ước lượng **≈ 18,5 ngày công**. Mỗi bước một commit, uni
 | `pydevicetree` | `.dts` | ING-D |
 | `pytesseract` + gói `vie`/`eng`/`chi_sim` | OCR | ING-E |
 | `langdetect` | Nhận ngôn ngữ | ING-E |
+| `skidl` | CKM → mô tả mạch | SCH-A |
+| `kiutils` + `sexpdata` | Đọc/ghi `.kicad_sch` KiCad 8/9 | SCH-A/B |
+| `networkx` | Bố cục theo module | SCH-B |
+| `cairosvg` hoặc `resvg` | SVG → PDF/PNG | SCH-B |
+| dữ liệu `kicad-symbols` (git tag có hash, qua G-DATA) | Ký hiệu chính thức | SCH-A |
 
 Mỗi phụ thuộc là một thứ phải giải trình khi bảo vệ đề án, nên đề nghị: thêm theo bước,
 không thêm trước; và mọi thứ chạy trong sandbox, không mạng (ING-43 §11).
+
+**KHÔNG cài KiCad, KHÔNG gọi `kicad-cli`** (SCH-44, quyết định 25/09). Thư viện ký hiệu
+chỉ là *dữ liệu* tải về có hash, không phải phần mềm cài đặt.
 
 ---
 

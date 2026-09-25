@@ -1,4 +1,4 @@
-# EIDE v3.0 — GÓI BỔ SUNG (nâng cấp) cho Claude Code: Bộ nhớ (MEM-42) + Nạp & trích xuất tài liệu (ING-43)
+# EIDE v3.0 — GÓI BỔ SUNG (nâng cấp) cho Claude Code: Bộ nhớ (MEM-42) + Nạp & trích xuất tài liệu (ING-43) + Sơ đồ KiCad (SCH-44)
 
 Ngày: 25/09/2026 · Chủ sản phẩm: Vũ Trí Công · Repo: github.com/mobiluckvn/EIDE
 Tiền đề: repo đã (hoặc đang) làm theo gói `docs/review-v3/` (EIDE-MDD-40 v3.0). Gói này **bổ sung**, không thay thế, MDD-40.
@@ -9,9 +9,10 @@ Tiền đề: repo đã (hoặc đang) làm theo gói `docs/review-v3/` (EIDE-MD
 |---|---|
 | `docs/md/EIDE-MEM-42_Quan_ly_Bo_nho_va_Nen_Bo_nho.md` | **Thay thế mục B6 của MDD-40.** Năm tầng bộ nhớ M0–M4; 8 nguyên tắc; ngân sách ngữ cảnh 10 khối + 4 ngưỡng; quản lý theo lượt (cắt theo tool, blob, dedup, ghim); nén 5 cấp C0–C4 với lược đồ tóm tắt 10 mục và kiểm sau nén; EIDE.md quy tắc cứng; store/ledger/blob/retention; resume 5 bước; bộ nhớ người dùng; truy hồi; UI A14.6; sự cố; đo lường; MEM01–14; API `memory.*`; yêu cầu MEM-01…MEM-24 |
 | `docs/md/EIDE-ING-43_Duong_ong_Nap_Tai_lieu_va_Trich_xuat.md` | **Chi tiết hoá mục C3 và tool ingest.file/fact.extract của MDD-40.** Sửa bỏ sót Office (**docx/xlsx/pptx** + .doc/.xls/.ppt/.odt), Markdown/HTML, EDA (.kicad_sch, Eagle, EasyEDA, BOM), cấu hình vendor (.ioc/sdkconfig/.dts/.ld/map → tầng CẤU HÌNH), hình trong tài liệu, đa ngôn ngữ, chuẩn hoá đơn vị; bộ phân loại theo nội dung (Office TRƯỚC archive); mã lỗi E1001–E1008; ING01–16; yêu cầu ING-01…ING-20 |
-| `docs/docx/` | Bản Word của hai tài liệu (cho chủ sản phẩm) |
+| `docs/md/EIDE-SCH-44_Sinh_So_do_KiCad_va_Render.md` | **Tính năng mới, cộng thêm, cách ly.** CKM → SKiDL → netlist/ERC → bố cục theo module (tiêu chí số) → .kicad_sch (kiutils) → SVG bằng **renderer nội bộ** → xuất gói / nạp lại. **Máy KHÔNG cài KiCad**: không kicad-cli, thư viện ký hiệu chỉ tải như dữ liệu. Cờ `features.schematic` mặc định TẮT; 7 lớp bảo vệ hệ thống cũ; hồi quy hai chế độ; SCH01–18; SCH-01…SCH-22 |
+| `docs/docx/` | Bản Word của ba tài liệu (cho chủ sản phẩm) |
 | `docs/img/` | 2 sơ đồ bộ nhớ (tầng, bậc thang nén) |
-| `ui/` | Mô hình UI + HTML prototype + Excel ánh xạ **đã gồm** khối A14.6 (Bộ nhớ tác tử, 16 widget) và A3.6 (Nạp & trích xuất theo định dạng, 14 widget). Kiểm hai chiều: **242 yêu cầu ↔ 221 widget, ĐẠT**. Thay thế thư mục `ui/` của gói v3 |
+| `ui/` | Mô hình UI + HTML prototype + Excel ánh xạ **đã gồm** khối A14.6 (Bộ nhớ tác tử, 16 widget) và A3.6 (Nạp & trích xuất theo định dạng, 14 widget). và A5.8 (Sơ đồ KiCad, 11 widget) + cờ tính năng ở Thiết lập. Kiểm hai chiều: **264 yêu cầu ↔ 233 widget, ĐẠT**. Thay thế thư mục `ui/` của gói v3 |
 | `diag/` | Trình sinh sơ đồ HTML/CSS (nếu cần vẽ thêm) |
 
 ## 2. Việc cần làm (theo thứ tự)
@@ -29,13 +30,21 @@ Tiền đề: repo đã (hoặc đang) làm theo gói `docs/review-v3/` (EIDE-MD
 4. **ING-D**: EDA (.kicad_sch, Eagle, EasyEDA, BOM ↔ netlist) + cấu hình vendor (.ioc/sdkconfig/.dts/.ld/map) → Fact tầng **CẤU HÌNH** (không bao giờ là vế giới hạn vật lý). Ca: ING07, 08.
 5. **ING-E**: hình → đoạn RAG "figure"; đa ngôn ngữ (OCR vie/eng/chi_sim); OCR nền. Ca: ING10, 11.
 
+### Phần C — Sơ đồ KiCad (SCH-44 §11, sau G4; KHÔNG cài KiCad)
+1. **SCH-A**: cờ + module `eide/sch/` + `sch.compose/netlist/symbols` + E7001/E7002 + suy giảm R3; **hồi quy hai chế độ (cờ tắt/bật) phải giống 100 %** trước khi merge. Ca: SCH01–04, 14, 16, 18.
+2. **SCH-B**: `sch.place` (tiêu chí số, xác định) + `sch.write` (kiutils, uuid ổn định) + `sch.render` **nội bộ** (S-expr → SVG, cairosvg cho PDF/PNG) + A5.8 SVG tương tác. Ca: SCH05–09, 15, 17.
+3. **SCH-C**: round-trip `sch.export/import` (ING-43 KICAD), phân loại thay đổi, G-FILE. Ca: SCH10–13.
+4. **SCH-D**: hierarchical sheets; symbol sinh từ Fact có giao diện xác nhận; gói vào snapshot. Ca: SCH07.
+Ràng buộc cứng: không cài KiCad, không gọi kicad-cli, không đề nghị cài KiCad ở bất kỳ thông điệp nào; kiểm "mở được trong KiCad 8/9" làm ở CI/máy khác.
+
 ## 3. Điểm chờ chủ sản phẩm chốt (ghi vào gap report, không tự quyết)
 - ING-19: tài liệu Office **do người dùng tự viết** (spec nội bộ, bảng đo) gán tầng **NGƯỜI** (đề xuất) hay BẠC?
 - MEM: giá trị K (10 lượt giữ nguyên văn) và ngưỡng 70 % — giữ mặc định trừ khi đo thấy khác.
+- SCH: ngưỡng % net dùng nhãn (đề xuất ≤ 70 %) và số đoạn gấp tối đa (đề xuất 3) — giữ mặc định trừ khi 3 mạch mẫu cho thấy khác.
 
 ## 4. Nguyên tắc làm việc (như gói v3)
 - Đọc `README_BO_SUNG.md` → đọc **toàn bộ** MEM-42 rồi ING-43 → rà mã → **gap report bổ sung** `docs/md/EIDE-GAP-44_Ra_soat_MEM_ING.md` (mỗi mục MEM-01…24, ING-01…20: CÓ / MỘT PHẦN / KHÔNG / KHÁC, tệp:dòng, ca đo, bước) → **dừng chờ gật** → làm theo thứ tự §2.
-- Mỗi bước một nhánh/commit; unit test cho phần xác định (classify, envelope, compact C1, PostCompact, chuẩn hoá đơn vị); chạy 14 MEM + 16 ING + hồi quy 16 ca đang đạt của bộ 76 TC.
+- Mỗi bước một nhánh/commit; unit test cho phần xác định (classify, envelope, compact C1, PostCompact, chuẩn hoá đơn vị); chạy 14 MEM + 16 ING + 18 SCH + hồi quy 16 ca đang đạt của bộ 76 TC (với SCH: hồi quy cả hai chế độ cờ).
 - Sai lệch mã ↔ tài liệu → `docs/md/EIDE-DEV-LOG.md` dạng `[DEV-2xx]`; không sửa tài liệu trong gói.
 - Thay thư mục `ui/` của gói v3 bằng `ui/` của gói này (mô hình đã cộng dồn MEM + ING; kiểm tra Excel phải ra "ĐẠT — kín hai chiều").
 - Ngôn ngữ: mã tiếng Anh; thông điệp người dùng, explain, tài liệu tiếng Việt.

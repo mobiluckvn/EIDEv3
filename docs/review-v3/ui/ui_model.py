@@ -118,6 +118,18 @@ ING = ["Phân loại theo nội dung; thứ tự Office → archive → text; l�
        "Gán tầng theo nguồn; Office tự viết → NGƯỜI (chờ chốt)", "Hằng số trong mã → ĐỒNG-mã, chỉ để so sánh"]
 for i, d in enumerate(ING, 1): R(f"ING-{i:02d}", "Nạp & trích xuất (ING-43)", d, "EIDE-ING-43")
 
+
+SCH = ["Sinh sơ đồ từ CKM qua SKiDL; mô hình viết SKiDL, mã kiểm", "Netlist sinh ra đẳng cấu với CKM; lệch → E7001, dừng", "Không bịa chân: pinout phải ≥ NGƯỜI; thiếu → E7002",
+       "Style flat/hierarchical; chọn module", "Bố cục theo module với tiêu chí số; xác định, lặp lại được", "Render SVG có id theo ref/net",
+       "Tương tác: ký hiệu → Fact/nguồn; net → tô sáng + ERC", "Renderer nội bộ là đường chính; suy giảm về sơ đồ khối",
+       "Không cài/không gọi/không đề nghị cài KiCad trên máy; thư viện ký hiệu chỉ là dữ liệu qua G-DATA", "Diff sơ đồ bằng lời (E3)",
+       "Xuất gói để mở ở máy khác; theo dõi mtime; Nạp lại", "Round-trip phân loại thay đổi: bố cục / giá trị / cấu trúc",
+       "Thay đổi cấu trúc từ KiCad → thẻ hỏi, không ghi đè CKM im lặng", "Symbol lib chính thức đối chiếu Fact ≥ 95 %",
+       "Symbol sinh từ Fact có ghi nguồn", "Gói sch vào snapshot/release", "Cờ features.schematic mặc định tắt; tắt = không có nhánh mã sch nào chạy",
+       "Không đổi hợp đồng tool cũ; lược đồ chỉ cộng thêm; migration có down()", "Hồi quy hai chế độ giống 100 % trước khi merge",
+       "uuid ổn định theo ref; giữ bố cục người đã sửa khi sinh lại", "Mọi tệp sch là changeset hoàn tác được; G-FILE khi ghi đè tệp người sửa", "PCB/Gerber vẫn ngoài phạm vi"]
+for i, d in enumerate(SCH, 1): R(f"SCH-{i:02d}", "Sơ đồ KiCad (SCH-44)", d, "EIDE-SCH-44")
+
 # ---------------------------------------------------------------- CÂY UI 3 CẤP
 # L1 = vùng; L2 = khối; L3 = widget/hành động: (id_suffix, tên, loại, [req...])
 # loại: display | action | edit | nav
@@ -278,6 +290,20 @@ W(k, 1, "Bảng theo mức: bằng chứng (số + nguồn), hậu quả, cách 
 W(k, 2, "'0 phát hiện' nêu checklist đã rà", "display", ["PR5", "N6"])
 W(k, 3, "Chấp nhận rủi ro có lý do / 'không phải lỗi'", "edit", ["EDK-reject", "HA-confirm"])
 W(k, 4, "Chốt thiết kế (→ thẻ G-DESIGN)", "action", ["G-DESIGN", "HA-decide"])
+
+k = K(a, 8, "Sơ đồ nguyên lý KiCad (SCH-44, cờ features.schematic)", "AR09", ["SCH-17", "SCH-18", "SCH-22"])
+W(k, 1, "Nút 'Sinh sơ đồ KiCad' (flat/hierarchical, chọn module)", "action", ["SCH-01", "SCH-04", "HA-say"])
+W(k, 2, "SVG tương tác (renderer nội bộ): bấm ký hiệu → Fact/nguồn/BOM; bấm net → tô sáng + ERC; hover chân → AF", "display", ["SCH-06", "SCH-07", "SCH-08"])
+W(k, 3, "Băng chất lượng bố cục (0 chồng / 0 cắt / % nhãn) + nút 'Bố cục lại'", "action", ["SCH-05", "HA-say"])
+W(k, 4, "Mức render đang dùng (nội bộ / sơ đồ khối); không bao giờ đề nghị cài KiCad", "display", ["SCH-08", "SCH-09"])
+W(k, 5, "Diff sơ đồ v(n-1)→v(n) bằng lời + tô", "display", ["SCH-10", "EX-diff_prev"])
+W(k, 6, "Xuất gói (mở ở máy có KiCad) · Nạp lại · thẻ hỏi khi CKM ≠ sơ đồ", "action", ["SCH-11", "SCH-12", "SCH-13", "HA-upload"])
+W(k, 7, "Symbol sinh từ Fact: xem, xác nhận, sửa kiểu chân; symbol lib đối chiếu Fact", "edit", ["SCH-14", "SCH-15", "HA-confirm"])
+W(k, 8, "Cảnh báo pinout chưa duyệt (E7002) / netlist lệch CKM (E7001) với nút nạp datasheet", "display", ["SCH-02", "SCH-03", "DS1"])
+W(k, 9, "Xuất gói sch (.kicad_sch + .kicad_sym + .net + SVG) vào snapshot", "action", ["SCH-16", "SN-human"])
+W(k, 10, "Giữ bố cục người đã sửa khi sinh lại (uuid theo ref); ghi đè tệp người sửa → G-FILE", "display", ["SCH-20", "SCH-21", "G-FILE"])
+W(k, 11, "Kết quả hồi quy hai chế độ (cờ tắt/bật) trước khi bật tính năng", "display", ["SCH-19", "SCH-17"])
+
 k = K(a, 7, "Chuẩn bị sản xuất", "", ["UC15"])
 W(k, 1, "Nút Gerber/DRC/file gắp đặt hiển thị 'ngoài phạm vi v3' (không giả vờ có)", "display", ["UC15", "PR5"])
 k = K(a, 6, "Bảo mật & OTA (thiết kế)", "", ["UC14", "TL-ota"])
@@ -416,6 +442,7 @@ W(k, 1, "Bộ xem UAP: HumanAct đã gửi / UICommand đã nhận (id, seq, sur
 W(k, 2, "Chế độ truy vết: hiện mã UI (Ax.y.z) và yêu cầu ánh xạ trên mọi phần tử", "action", ["I3", "N8"])
 k = K(a, 4, "Sandbox & ngân sách", reqs=["CX-budget", "UC18"])
 W(k, 1, "Thư mục cho phép; mạng theo tool; tool/lượt; giây/lượt", "edit", ["CX-budget", "HA-set", "UC18"])
+W(k, 2, "Cờ tính năng: features.schematic (mặc định tắt)", "edit", ["SCH-17", "HA-set"])
 
 # --- A14 Dự án & bộ nhớ tác tử
 a = A("A14", "Dự án & Bộ nhớ tác tử", "panel")
