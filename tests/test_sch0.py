@@ -111,7 +111,9 @@ def test_nap_tre_chi_sch_compose_hien_con_lai_qua_tool_search():
 
     bat = build_registry(Features(schematic=True))
     hien = {t.name for t in bat.visible() if t.name.startswith("sch.")}
-    assert hien == {"sch.compose"}, hien
+    # §2.2 nêu đúng hai cái: `sch.compose` (bắt đầu đường ống) và `sch.render` (xem kết quả).
+    # Còn lại là các bước ở giữa — mô hình mở khi cần bằng tool.search.
+    assert hien == {"sch.compose", "sch.render"}, hien
 
     # `tool.search` mở khoá được — nếu không thì "nạp trễ" thành "không bao giờ nạp".
     bat.search("netlist kicad")

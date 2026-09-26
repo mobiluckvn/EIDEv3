@@ -13,7 +13,8 @@ mình — luôn đạt, và một phép kiểm luôn đạt tệ hơn không có
 **đọc lại tệp SKiDL** bằng `ast`, tức đi qua một hiện vật mà mô hình có thể đã sửa.
 
 Happy: soạn tệp SKiDL từ cây · sinh netlist và kiểm khớp · ký hiệu sinh từ Fact có ghi nguồn
-· tác tử thật sinh sơ đồ qua hội thoại.
+· bố cục xác định có tiêu chí đo bằng số · ghi .kicad_sch đọc lại được khớp từng ký tự ·
+render SVG kiểm chữ không đè · tác tử thật sinh sơ đồ qua hội thoại.
 
 Unhappy (bảy đường): mô hình bịa net trong tệp · tệp lỗi cú pháp · thiếu pinout · cây vi phạm
 bất biến · chưa đủ tiền đề · gọi sch.netlist trước sch.compose · đề nghị cài KiCad.
@@ -194,7 +195,57 @@ def chay(du_an: pathlib.Path) -> int:
     b.kiem("KHÔNG ghi tstamp bịa (KiCad dùng nó để khớp linh kiện khi cập nhật PCB)",
            "tstamp" not in net_txt, "sạch")
 
-    b.phan("Đ · TÁC TỬ THẬT SINH SƠ ĐỒ QUA HỘI THOẠI")
+    b.phan("Đ · BỐ CỤC (SCH05–08, SCH17)")
+    r = goi("sch.place")
+    b.kiem("Bố cục xong, tiêu chí đo bằng SỐ",
+           r.ok and r.data["tieu_chi"]["so_ky_hieu"] >= 1,
+           r.data["note_vi"][:170] if r.ok else str(r.error.message_vi)[:150])
+    tc = r.data["tieu_chi"] if r.ok else {}
+    b.kiem("0 ký hiệu chồng nhau · 0 dây cắt thân · đúng lưới 1,27 mm",
+           tc.get("cap_chong_nhau") == 0 and tc.get("day_cat_than") == 0
+           and not any("lệch lưới" in v for v in tc.get("vi_pham", [])),
+           f"chồng {tc.get('cap_chong_nhau')} · cắt thân {tc.get('day_cat_than')} · "
+           f"vi phạm: {tc.get('vi_pham')}")
+    b.kiem("Mọi ký hiệu nằm trong khổ giấy", tc.get("trong_kho_giay") is True,
+           f"khổ {tc.get('kho')}")
+    from eide.sch import bo_cuc as BCM
+    cay0 = C.Cay.doc(ctx.store)
+    nam = [BCM.tinh_bo_cuc(cay0, C.flatten(cay0)).to_dict() for _ in range(5)]
+    b.kiem("Chạy 5 lần cùng toạ độ (SCH17)", all(x == nam[0] for x in nam),
+           f"{len(nam[0]['o'])} ký hiệu, toạ độ giống hệt 5 lần")
+    b.kiem("Tỉ lệ net dùng nhãn được NÓI RA, không lặng lẽ cho qua",
+           "ty_le_net_dung_nhan" in tc,
+           f"{tc.get('ty_le_net_dung_nhan', 0):.0%} net dùng nhãn")
+
+    b.phan("E · GHI .kicad_sch (SCH20, SCH21) VÀ RENDER (SCH06–07)")
+    r = goi("sch.write")
+    b.kiem("Ghi được, và ĐỌC LẠI khớp từng ký tự (round-trip ổn định)",
+           r.ok and r.data["round_trip"] is True,
+           r.data["note_vi"][:170] if r.ok else str(r.error.message_vi)[:160])
+    p_sch = du_an / "sch/mach.kicad_sch"
+    txt_sch = p_sch.read_text("utf-8") if p_sch.exists() else ""
+    b.kiem("Tệp có đủ ref và có .kicad_pro đi kèm",
+           '"U1"' in txt_sch and (du_an / "sch/mach.kicad_pro").exists(),
+           f"{txt_sch.count('(symbol (lib_id')} ký hiệu trong tệp")
+    from eide.sch import ghi as GHI
+    b.kiem("uuid sinh theo REF nên sinh lại KHÔNG mất bố cục người đã sửa (SCH20)",
+           GHI.uuid_theo("sym:U1") in txt_sch
+           and GHI.uuid_theo("sym:U1") == GHI.uuid_theo("sym:U1"),
+           GHI.uuid_theo("sym:U1"))
+
+    r = goi("sch.render")
+    b.kiem("Vẽ ra SVG, số ký hiệu khớp số ref",
+           r.ok and r.data["so_ky_hieu"] == len(r.data["ref_trong_svg"])
+           and r.data["so_ky_hieu"] >= 1,
+           r.data["note_vi"][:150] if r.ok else str(r.error.message_vi)[:150])
+    svg = (du_an / "sch/mach.svg").read_text("utf-8") if (du_an / "sch/mach.svg").exists() else ""
+    b.kiem("SVG có bản đồ ký hiệu → ref để giao diện bấm được",
+           'data-ref="U1"' in svg, f"{svg.count('data-ref=')} ký hiệu có data-ref")
+    b.kiem("Chữ KHÔNG đè nhau (kiểm bbox)",
+           r.ok and r.data["chu_de_nhau"] == [],
+           str(r.data.get("chu_de_nhau"))[:150] if r.ok else "")
+
+    b.phan("G · TÁC TỬ THẬT SINH SƠ ĐỒ QUA HỘI THOẠI")
     g.go("Mình muốn có sơ đồ nguyên lý của mạch này. Sinh giúp mình, rồi nói rõ đã kiểm "
          "được những gì và chưa kiểm được gì.")
     a = g.doi_xong(420)
@@ -208,7 +259,7 @@ def chay(du_an: pathlib.Path) -> int:
            loi[:200])
 
     # ================================================================== UNHAPPY
-    b.phan("E · BẢY ĐƯỜNG HỎNG")
+    b.phan("H · MƯỜI ĐƯỜNG HỎNG")
 
     b.buoc("1. Mô hình BỊA một net trong tệp SKiDL (SCH14)")
     goc = p_py.read_text("utf-8")
@@ -267,7 +318,26 @@ def chay(du_an: pathlib.Path) -> int:
            not r.ok and "sch.compose" in (r.error.alternatives or []),
            (r.error.hint_for_agent if not r.ok else "lại chạy!")[:130])
 
-    b.buoc("7. Đề nghị cài KiCad — chốt chặn ở hook Stop (SCH09)")
+    b.buoc("7. Xếp bố cục khi netlist CHƯA kiểm")
+    r = ctx2.registry.run("sch.place", {"explain": EX}, ctx2)
+    b.kiem("Từ chối — xếp đẹp một mạch chưa kiểm là xếp đẹp một mạch có thể sai",
+           not r.ok and "mạch sai" in r.error.message_vi,
+           (r.error.message_vi if not r.ok else "lại xếp!")[:140])
+
+    b.buoc("8. Ghi .kicad_sch khi chưa có bố cục")
+    r = ctx2.registry.run("sch.write", {"explain": EX}, ctx2)
+    b.kiem("Nói rõ gọi sch.place trước",
+           not r.ok and r.error.alternatives == ["sch.place"],
+           (r.error.message_vi if not r.ok else "lại ghi!")[:120])
+
+    b.buoc("9. Render khi chưa có tệp — suy giảm R3")
+    r = ctx2.registry.run("sch.render", {"explain": EX}, ctx2)
+    b.kiem("Nói thẳng chưa có gì để vẽ, và chỉ về sơ đồ khối",
+           not r.ok and "mức R3" in r.error.message_vi
+           and "diagram.render" in (r.error.alternatives or []),
+           (r.error.message_vi if not r.ok else "lại vẽ!")[:150])
+
+    b.buoc("10. Đề nghị cài KiCad — chốt chặn ở hook Stop (SCH09)")
     from eide.hooks import HookBus
     from eide.hooks.standard import register_standard_hooks
 

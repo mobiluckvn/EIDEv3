@@ -335,10 +335,13 @@ def test_SCH16_co_TAT_thi_sch_khong_duoc_DANG_KY():
 
     tat = build_registry(Features(schematic=False))
     assert [t for t in tat.all() if t.name.startswith("sch.")] == []
-    assert set(tat.bo_qua_vi_co) == {"sch.compose", "sch.netlist", "sch.symbols"}
+    assert all(n.startswith("sch.") for n in tat.bo_qua_vi_co), tat.bo_qua_vi_co
     bat = build_registry(Features(schematic=True))
-    assert len([t for t in bat.all() if t.name.startswith("sch.")]) == 3
-    assert len(bat.all()) == len(tat.all()) + 3
+    sch_bat = [t.name for t in bat.all() if t.name.startswith("sch.")]
+    # KHÔNG chốt cứng con số: SCH-B/C/D còn thêm tool, và một ca đo đỏ vì lý do bình thường
+    # sẽ bị sửa cho qua thay vì được đọc.
+    assert len(sch_bat) >= 3
+    assert len(bat.all()) == len(tat.all()) + len(sch_bat)
 
 
 def test_co_khong_biet_thi_nghieng_ve_TAT():
@@ -526,3 +529,229 @@ def test_R3_chua_co_cay_thi_noi_thang_va_chi_ve_so_do_khoi(make_agent):
     if r.error.code == "E8005":
         assert "mức R3" in r.error.message_vi
         assert "diagram.render" in r.error.alternatives
+
+
+# =========================================================================== 10. bố cục §4
+def test_SCH17_bo_cuc_XAC_DINH_chay_nam_lan_cung_toa_do(bo):
+    """SCH17 đòi "cùng CKM chạy 5 lần: toạ độ giống hệt".
+
+    Không phải chuyện gọn gàng: mọi phép so phía sau (uuid ổn định, diff bố cục, "người đã
+    sửa gì") đều dựa trên việc cùng đầu vào cho cùng đầu ra.
+    """
+    from eide.sch import bo_cuc as BC
+
+    cay = C.Cay.doc(bo)
+    phang = C.flatten(cay)
+    ds = [BC.tinh_bo_cuc(cay, phang).to_dict() for _ in range(5)]
+    assert all(x == ds[0] for x in ds)
+
+
+def test_bo_cuc_moi_ky_hieu_dung_luoi_1_27(bo):
+    from eide.sch import bo_cuc as BC
+
+    bc = BC.tinh_bo_cuc(C.Cay.doc(bo), C.flatten(C.Cay.doc(bo)))
+    for z in bc.o:
+        assert abs(z.x / BC.LUOI - round(z.x / BC.LUOI)) < 1e-6, z
+        assert abs(z.y / BC.LUOI - round(z.y / BC.LUOI)) < 1e-6, z
+
+
+def test_bo_cuc_khong_ky_hieu_nao_chong_nhau(bo):
+    from eide.sch import bo_cuc as BC
+
+    bc = BC.tinh_bo_cuc(C.Cay.doc(bo), C.flatten(C.Cay.doc(bo)))
+    assert bc.tieu_chi["cap_chong_nhau"] == 0, bc.tieu_chi["vi_pham"]
+
+
+def test_bo_cuc_xep_khoi_theo_HUONG_PORT_khong_theo_ten(bo):
+    """§4: nguồn vào bên trái, trung tâm ở giữa. Suy từ tên khối ("PWR") sẽ đúng trên mạch
+    mẫu và sai trên mạch thật, vì tên khối do người đặt."""
+    from eide.sch import bo_cuc as BC
+
+    bc = BC.tinh_bo_cuc(C.Cay.doc(bo), C.flatten(C.Cay.doc(bo)))
+    theo_khoi = {v.khoi: v.x for v in bc.vung}
+    pwr = theo_khoi.get("module:/board/pwr")
+    mcu = theo_khoi.get("module:/board/mcu")
+    assert pwr is not None and mcu is not None, theo_khoi
+    assert pwr < mcu, "khối chỉ có power_out phải nằm bên trái"
+
+
+def test_bo_cuc_tieu_chi_bao_ty_le_NHAN_qua_cao(bo):
+    """Bản này chưa đi dây giữa các khối, nên tỉ lệ nhãn cao là điều CHỜ ĐỢI — và tiêu chí
+    §4 phải nói ra, không được lặng lẽ cho qua."""
+    from eide.sch import bo_cuc as BC
+
+    bc = BC.tinh_bo_cuc(C.Cay.doc(bo), C.flatten(C.Cay.doc(bo)))
+    tc = bc.tieu_chi
+    assert 0.0 <= tc["ty_le_net_dung_nhan"] <= 1.0
+    if tc["ty_le_net_dung_nhan"] > BC.NGUONG_NHAN:
+        assert any("khó đọc" in v for v in tc["vi_pham"]), tc["vi_pham"]
+
+
+def test_bo_cuc_chat_thi_TU_DOI_len_A3_chu_khong_bo_tieu_chi(bo):
+    """Một trang chật là lý do thật để đổi khổ, không phải lý do để bỏ tiêu chí."""
+    from eide.sch import bo_cuc as BC
+
+    # Nhồi 40 lá vào một khối để A4 không chứa nổi.
+    for i in range(40):
+        _nut(bo, f"leaf:R{i}", f"R{i}", loai="linh_kien", cha="module:/board/mcu",
+             kind="leaf", path=f"/board/mcu/R{i}", ref=f"R{i}")
+        _port(bo, f"leaf:R{i}", "1", chan="1", path=f"/board/mcu/R{i}")
+    bc = BC.tinh_bo_cuc(C.Cay.doc(bo), C.flatten(C.Cay.doc(bo)))
+    assert bc.kho == "A3" or not bc.tieu_chi["dat"], bc.tieu_chi
+    if bc.kho == "A3":
+        assert bc.tieu_chi["trong_kho_giay"], bc.tieu_chi["vi_pham"]
+
+
+def test_bo_cuc_cach_nhan_du_de_chu_khong_de_nhau(bo):
+    """Khoảng cách hai nhãn kề nhau phải ≥ chiều cao chữ. Lớp bố cục sở hữu con số này và
+    bộ vẽ đọc lại — nếu hai bên tự đoán riêng thì phép kiểm "chữ không đè" thành trang trí."""
+    from eide.sch import bo_cuc as BC
+    from eide.sch import ve_svg
+
+    assert BC.CACH_NHAN >= BC.CAO_CHU_MM
+    assert abs(ve_svg.CO_CHU_PX - BC.CAO_CHU_MM * ve_svg.PX_MOI_MM) < 1e-9
+
+
+# =========================================================================== 11. ghi .kicad_sch
+def test_SCH20_uuid_on_dinh_theo_ref(bo):
+    """KiCad dùng uuid để khớp ký hiệu giữa hai lần mở tệp. uuid ngẫu nhiên nghĩa là mọi thứ
+    người dùng đã sửa trong KiCad bị coi là của một ký hiệu khác và MẤT."""
+    from eide.sch import ghi as G
+
+    assert G.uuid_theo("sym:U1") == G.uuid_theo("sym:U1")
+    assert G.uuid_theo("sym:U1") != G.uuid_theo("sym:U2")
+    import re
+    assert re.fullmatch(r"[0-9a-f-]{36}", G.uuid_theo("sym:U1"))
+
+
+def test_ghi_kicad_sch_doc_lai_duoc_khop_tung_ky_tu(bo):
+    """§3 bước 5 — "kiutils parse lại được (round-trip ổn định)".
+
+    Kiểm khớp từng ký tự, không chỉ "đọc được": chỉ kiểm đọc được thì một trường bị bỏ khi
+    ghi vẫn đạt, vì tệp vẫn hợp lệ — chỉ là thiếu.
+    """
+    from eide.sch import bo_cuc as BC
+    from eide.sch import ghi as G
+
+    cay = C.Cay.doc(bo)
+    bc = BC.tinh_bo_cuc(cay, C.flatten(cay))
+    noi_dung = G.viet_kicad_sch(bc, symbol=SYM)
+    ok, vi = G.doc_lai_duoc(noi_dung)
+    assert ok, vi
+    assert noi_dung == G.viet_kicad_sch(bc, symbol=SYM), "ghi hai lần phải giống nhau"
+
+
+def test_ghi_kicad_sch_co_du_ref_va_khong_mat_ky_hieu_nao(bo):
+    from eide.sch import bo_cuc as BC
+    from eide.sch import ghi as G
+
+    cay = C.Cay.doc(bo)
+    bc = BC.tinh_bo_cuc(cay, C.flatten(cay))
+    noi_dung = G.viet_kicad_sch(bc, symbol=SYM)
+    for z in bc.o:
+        assert f'"{z.ref}"' in noi_dung, z.ref
+    assert noi_dung.count("(symbol (lib_id") == len(bc.o)
+
+
+# =========================================================================== 12. render SVG
+def test_render_svg_co_du_ky_hieu_va_ban_do_ref(bo):
+    """§3 bước 6: "số ký hiệu trong SVG = số ref" và "bản đồ id ký hiệu → ref"."""
+    from eide.sch import bo_cuc as BC
+    from eide.sch import ghi as G
+    from eide.sch import ve_svg
+
+    cay = C.Cay.doc(bo)
+    bc = BC.tinh_bo_cuc(cay, C.flatten(cay))
+    kq = ve_svg.ve(G.viet_kicad_sch(bc, symbol=SYM),
+                   hop={z.ref: (z.rong, z.cao) for z in bc.o})
+    assert kq.so_ky_hieu == len(bc.o)
+    assert sorted(kq.ref_trong_svg) == sorted(z.ref for z in bc.o)
+    for z in bc.o:
+        assert f'data-ref="{z.ref}"' in kq.svg, z.ref
+
+
+def test_render_svg_bat_duoc_CHU_DE_NHAU(bo):
+    """Phép kiểm đáng giá nhất của bước render: một sơ đồ có hai nhãn đè nhau vẫn "render
+    thành công" — ảnh có, không lỗi, và người đọc thấy một chuỗi ký tự vô nghĩa."""
+    from eide.sch import bo_cuc as BC
+    from eide.sch import ghi as G
+    from eide.sch import ve_svg
+
+    bc = BC.BoCuc(kho="A4", o=[BC.O(ref="U1", x=12.7, y=12.7, rong=25.4, cao=20.32)],
+                  nhan=[{"net": "SDA", "ref": "U1", "chan": "27", "x": 40.0, "y": 14.0},
+                        {"net": "SCL", "ref": "U1", "chan": "28", "x": 40.0, "y": 14.4}])
+    kq = ve_svg.ve(G.viet_kicad_sch(bc, symbol={}), hop={"U1": (25.4, 20.32)})
+    assert kq.chu_de_nhau, "hai nhãn cách 0,4 mm phải bị bắt là đè"
+    assert any("đè nhau" in c for c in kq.canh_bao)
+
+
+def test_render_anh_rong_thi_NOI_LA_RONG(bo):
+    """"Render thành công" với không ký hiệu nào là một hình rỗng, không phải một sơ đồ."""
+    from eide.sch import bo_cuc as BC
+    from eide.sch import ghi as G
+    from eide.sch import ve_svg
+
+    kq = ve_svg.ve(G.viet_kicad_sch(BC.BoCuc(kho="A4"), symbol={}))
+    assert kq.so_ky_hieu == 0
+    assert any("hình rỗng" in c for c in kq.canh_bao)
+
+
+def test_render_duong_lui_khi_kiutils_khong_doc_duoc(bo):
+    """§6 mức R3 — render là thứ người dùng NHÌN, nên nó không được biến mất chỉ vì một
+    import; có đường lui bằng biểu thức chính quy, và nó NÓI RA là đang đi đường lui."""
+    from eide.sch import ve_svg
+
+    tho = ('(kicad_sch (paper "A4")\n'
+           '  (symbol (lib_id "L:ATmega328P") (at 12.7 12.7 0)\n'
+           '    (property "Reference" "U1" (at 0 0 0)))\n'
+           '  (label "SDA" (at 40 14 0))\n)')
+    d = ve_svg._doc_tho(tho)
+    assert d["bang"] == "regex" and d["ky_hieu"][0]["ref"] == "U1"
+    assert d["nhan"][0]["text"] == "SDA" and d["kho"] == "A4"
+
+
+# =========================================================================== 13. công cụ B
+def test_place_write_render_chay_het_duong_ong(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    for b in ("sch.symbols", "sch.compose", "sch.netlist"):
+        assert goi(b).ok, b
+
+    r = goi("sch.place")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["so_ky_hieu"] >= 1 and r.data["tieu_chi"]["cap_chong_nhau"] == 0
+
+    r = goi("sch.write")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["round_trip"] is True
+    p = a.config.paths.project_root / "sch/mach.kicad_sch"
+    assert p.exists() and "(kicad_sch" in p.read_text("utf-8")
+    assert (a.config.paths.project_root / "sch/mach.kicad_pro").exists()
+
+    r = goi("sch.render")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    svg = (a.config.paths.project_root / "sch/mach.svg").read_text("utf-8")
+    assert svg.startswith("<svg") and "data-ref=" in svg
+    assert r.data["so_ky_hieu"] == r.data["so_ky_hieu"]
+
+
+def test_place_tu_choi_khi_netlist_chua_kiem(make_agent):
+    """Xếp đẹp một mạch chưa kiểm là xếp đẹp một mạch có thể sai."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    r = goi("sch.place")
+    assert not r.ok and "sch.netlist" in (r.error.alternatives or [])
+    assert "mạch sai" in r.error.message_vi
+
+
+def test_write_tu_choi_khi_chua_co_bo_cuc(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    r = goi("sch.write")
+    assert not r.ok and r.error.alternatives == ["sch.place"]
+
+
+def test_render_chua_co_tep_thi_suy_giam_R3(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    r = goi("sch.render")
+    assert not r.ok and "mức R3" in r.error.message_vi
+    assert "diagram.render" in r.error.alternatives

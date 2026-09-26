@@ -1565,3 +1565,69 @@ quả từng ca.
 
 Mười một bộ E2E chạy lại với cờ tắt (như người dùng thật) đều giữ nguyên: G3 31 · G4 23 ·
 G5 35 · ING-A 29 · ING-B 25 · MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35 · HIER 38.
+
+---
+
+### [DEV-271] 26/09/2026 · SCH-B — bố cục xác định, `.kicad_sch`, và SVG tự vẽ
+
+Ba bước còn lại của phần chính: `sch.place` → `sch.write` → `sch.render`. Sáu công cụ `sch.*`
+sau cờ, trong đó **hai** hiện mặc định (`sch.compose`, `sch.render`) đúng như §2.2 đòi.
+
+Quyết định phụ thuộc (anh chốt 26/09): thêm **`kiutils`** cho `.kicad_sch`, **tự viết** bộ vẽ
+SVG. `kiutils` là thư viện Python thuần, không phải KiCad — quyết định 25/09 cấm cài KiCad,
+không cấm đọc định dạng của nó. Lý do chọn nó cho đúng một việc: round-trip `.kicad_sch` là
+chỗ dễ sai **lặng lẽ** nhất, vì một trường bị bỏ khi ghi lại thì KiCad vẫn mở được tệp — nó
+chỉ mất thông tin, và người dùng phát hiện ba tuần sau khi bố cục họ sửa biến mất.
+
+### Ba chỗ tôi chọn khó hơn để phép kiểm còn ý nghĩa
+
+**1. Ghi bản ĐÃ CHUẨN HOÁ để round-trip đòi khớp từng ký tự.** `kiutils` chuẩn hoá cách viết
+số (`40.0` → `40`), nên bản đầu và bản đọc-lại khác nhau vài ký tự dù **không mất gì**. Hai
+cách xử: nới phép kiểm thành "đọc lại được là đủ", hay ghi thẳng điểm bất động. Nới là rẻ
+hơn, nhưng nó bỏ đúng thứ phép kiểm sinh ra để bắt — một trường bị mất khi ghi lại vẫn "đọc
+lại được". Chọn cách hai: cho kiutils đọc-ghi một lượt rồi lưu kết quả đó.
+
+**2. uuid sinh từ `sha256(ref)`, không phải `uuid4()`** (SCH-20). KiCad dùng uuid để khớp ký
+hiệu giữa hai lần mở tệp; uuid ngẫu nhiên nghĩa là lần sinh lại tạo ký hiệu "mới" và KiCad
+ném đi mọi thứ người dùng đã sửa. Đây là chỗ mà **tính ngẫu nhiên không phải tính năng mà là
+mất dữ liệu**.
+
+**3. Cỡ chữ do lớp BỐ CỤC sở hữu, bộ vẽ đọc lại.** Đo lần đầu: hộp bao chữ cao 1,27 mm trong
+khi chữ vẽ ra cao 2,8 mm — phép kiểm "chữ không đè" nói về một hình **khác** hình người thấy,
+nên nó luôn đạt. Nay một hằng số (`CAO_CHU_MM`), bố cục dùng nó để giãn nhãn, bộ vẽ đổi sang
+px. Hai bên tự đoán riêng là cách một phép kiểm trở thành trang trí.
+
+### Hai giới hạn nói thẳng, không giấu
+
+**Không đi dây giữa các khối.** §4 đề nghị A* trên lưới có phạt gấp; bản này chỉ nối dây khi
+hai chân **thẳng hàng trong cùng vùng**, còn lại dùng nhãn net. Lý do: một mạch có dây vẽ sai
+tệ hơn một mạch dùng nhãn — nhãn thì người đọc vẫn truy được net, dây sai thì họ tin mắt
+mình. Hệ quả đo được: tỉ lệ nhãn cao, và tiêu chí *≤ 70 % net dùng nhãn* của §4 sẽ **cảnh
+báo**. Đó là một cảnh báo ĐÚNG, không phải con số cần lách. Đi dây thật là việc của SCH-C.
+
+**Kích thước ký hiệu ước theo số chân**, chưa đọc hình vẽ thật từ `.kicad_sym`. Ước **rộng
+tay**: một ký hiệu bị coi nhỏ hơn thực tế sẽ chồng lên cái bên cạnh, và phép kiểm "0 chồng
+nhau" sẽ nói đạt trong khi hình vẽ thì không.
+
+### Hai lỗi do việc đo phơi ra
+
+**1. Bố cục xếp mọi lá thành MỘT cột.** Ca đo nhồi 40 điện trở vào một khối: vùng cao hơn cả
+khổ A3. Nới vùng 20 % năm lần chỉ làm nó tràn xa hơn — một vùng cao hơn trang không phải "bố
+cục chật" mà là bố cục **không dùng được**. Nay cuộn sang cột mới khi hết chiều cao trang.
+
+**2. Tên hàm trùng tên module.** `from eide.sch import bo_cuc` lấy được **hàm** `bo_cuc` chứ
+không phải module — và lỗi đó im lặng cho tới khi ai đó gọi `bo_cuc.O(...)`. Đổi hàm thành
+`tinh_bo_cuc`.
+
+### Số đo
+
+`679 ca đơn vị` (+18) · `tools/thu_sch.py` **35/35** (từ 21) qua giao diện thật ·
+`80 công cụ` khi cờ bật, **74 khi cờ tắt** (y nguyên) · lược đồ tool chênh **988 token**
+(vẫn dưới ~1,2 k của §2.2 nhờ nạp trễ).
+
+**Bằng chứng SCH-19 — hồi quy hai chế độ:** HIER **38/38 giống hệt** · CKM **35/35 giống
+hệt** · G5 **35/35 giống hệt**. G5 có một lần báo khác biệt rồi chạy lại khớp — ca hội thoại,
+mô hình không xác định; ghi lại đúng như thế chứ không gọi là "đã giống hệt ngay từ đầu".
+
+Mười một bộ E2E cũ chạy với cờ tắt đều giữ nguyên: G3 31 · G4 23 · G5 35 · ING-A 29 ·
+ING-B 25 · MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35 · HIER 38.

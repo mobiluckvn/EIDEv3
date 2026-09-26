@@ -18,6 +18,12 @@ dependencies = [
     # ngữ thì sản phẩm NÓI RÕ và từ chối đọc, chứ không OCR bằng gói sai.
     "pytesseract>=0.3",
     "pillow>=10.0",
+    # SCH-B — đọc/ghi .kicad_sch. Thư viện Python THUẦN, KHÔNG phải KiCad: quyết định
+    # 25/09/2026 cấm cài KiCad, không cấm đọc định dạng của nó. Chọn nó thay vì tự viết vì
+    # round-trip .kicad_sch là chỗ dễ sai LẶNG LẼ nhất (một trường bị bỏ khi ghi lại thì
+    # KiCad vẫn mở được tệp nhưng mất thông tin), và SCH-44 §3 bước 5 đòi đúng phép kiểm
+    # "kiutils parse lại được".
+    "kiutils>=1.4",
 ]
 
 [project.optional-dependencies]
