@@ -28,6 +28,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..errors import EideError
+from ..knowledge import cay as KC
 from ..knowledge import ckm as K
 from ..protocol import uicommand as uic
 from .registry import Registry, ToolResult
@@ -48,6 +49,23 @@ def _loi(kq: K.KetQuaKiem, *, goi_thay: list[str]) -> ToolResult:
     return ToolResult(False, error=EideError(
         kq.ma_loi or "E8003", kq.vi, hint_for_agent=kq.goi_y,
         alternatives=goi_thay, details=kq.chi_tiet, blame="agent"))
+
+
+def _ho_chieu_cua(ctx: Any, chip: str) -> str:
+    """Mã hộ chiếu của một chip, tra theo TÊN chip.
+
+    Không tra bằng `store.get(chip)`: `passport.pin` ghi hiện vật dưới mã `ns.part@semver`
+    (ví dụ `atmel.atmega328p@1.0.0`), nên tra theo id chỉ trúng khi người gọi tình cờ
+    truyền đúng mã đó. Ca đo bắt được: ghim hộ chiếu xong, `ckm.build` vẫn báo "thiếu hộ
+    chiếu" — một lời từ chối đúng luật nhưng sai sự thật, tức loại tệ nhất.
+    """
+    if ctx.store.get(chip) is not None:
+        return chip
+    ten = _ten_chip(chip).strip().lower()
+    for a in ctx.store.list(type="passport", limit=200):
+        if str(a["canonical"].get("chip", "")).strip().lower() == ten:
+            return a["id"]
+    return ""
 
 
 def _bang_gan(ctx: Any, ref: str) -> list[dict[str, Any]]:
@@ -126,18 +144,18 @@ def register(r: Registry) -> Registry:
             else:
                 nhan.append(c.to_dict())
 
-        hc = ctx.store.get(chip)
+        hc = _ho_chieu_cua(ctx, chip)
         ma = K.ma_chip(ref)
         cs = ctx.history.ghi_kho(
             author=f"agent:{ctx.run_id}", artefact_id=ma, type="ckm",
             op="update" if ctx.store.get(ma) else "create",
-            canonical={"chip": ten, "ref": ref, "ho_chieu": chip if hc else "",
+            canonical={"chip": ten, "ref": ref, "ho_chieu": hc,
                        "chan": nhan, "chan_bo_qua": bo_qua},
             explain=explain, run_id=ctx.run_id)
         K.chieu(ctx.store)
         return {
             "chip": ten, "ref": ref, "so_chan_vao_ban_do": len(nhan), "chan_bo_qua": bo_qua,
-            "co_ho_chieu": hc is not None, "changeset": cs.id,
+            "co_ho_chieu": bool(hc), "ho_chieu": hc, "changeset": cs.id,
             "note_vi": (f"Đã đưa {ten} ({ref}) vào bản đồ với {len(nhan)} chân."
                         + (f" BỎ QUA {len(bo_qua)} chân vì chỉ có ở tầng phỏng đoán: "
                            + ", ".join(bo_qua[:6]) + ". Nói cho người dùng biết."
@@ -164,6 +182,9 @@ def register(r: Registry) -> Registry:
                  "rail": {"type": "string", "description": "Nguồn cấp cho khối: 3V3, 5V…"},
                  "dap_ung_req": {"type": "array", "items": {"type": "string"},
                                  "description": "Mã REQ mà khối này thực hiện"},
+                 "cha": {"type": "string",
+                         "description": "Mã khối CHA nếu đây là khối con (để rỗng = khối "
+                                        "cấp một của mạch). Mạch là một CÂY: khối trong khối."},
                  "explain": EXPLAIN_SCHEMA},
              "required": ["ma", "ten", "muc_dich", "explain"]},
             risk="R2", writes_artefact=True, needs_explain=True,
@@ -174,12 +195,26 @@ def register(r: Registry) -> Registry:
                    linh_kien: list[str] | None = None,
                    tin_hieu_vao: list[str] | None = None,
                    tin_hieu_ra: list[str] | None = None, rail: str = "",
-                   dap_ung_req: list[str] | None = None):
+                   dap_ung_req: list[str] | None = None, cha: str = ""):
+        cu = ctx.store.get(K.MA_DO_THI)
+        ds_cu = [K.Module.from_dict(d) for d in (cu["canonical"].get("khoi") if cu else [])]
+        if cha:
+            if cha == ma:
+                return ToolResult(False, error=EideError(
+                    "E9001", f"Khối {ma} không thể là cha của chính nó.",
+                    hint_for_agent="Bỏ tham số cha, hoặc chỉ đúng khối cha.", blame="agent"))
+            if not any(x.ma == cha for x in ds_cu):
+                return ToolResult(False, error=EideError(
+                    "E2001", f"Chưa có khối nào mã {cha} để làm cha.",
+                    hint_for_agent=("Ghi khối cha trước rồi mới ghi khối con — cây dựng từ "
+                                    "trên xuống. Khối đang có: "
+                                    + (", ".join(x.ma for x in ds_cu) or "chưa có khối nào")),
+                    alternatives=["ckm.module_set", "ckm.graph"], blame="agent"))
         m = K.Module(ma=ma, ten=ten, muc_dich=muc_dich, linh_kien=linh_kien or [],
                      tin_hieu_vao=tin_hieu_vao or [], tin_hieu_ra=tin_hieu_ra or [],
-                     rail=rail, dap_ung_req=dap_ung_req or [])
-        cu = ctx.store.get(K.MA_DO_THI)
-        ds = [K.Module.from_dict(d) for d in (cu["canonical"].get("khoi") if cu else [])]
+                     rail=rail, dap_ung_req=dap_ung_req or [], cha=cha,
+                     kind="subblock" if cha else "block")
+        ds = list(ds_cu)
         ds = [x for x in ds if x.ma != ma] + [m]
         canh = K.canh_giua_module(ds)
         treo = K.tin_hieu_treo(ds)
@@ -199,11 +234,13 @@ def register(r: Registry) -> Registry:
         K.chieu(ctx.store)
 
         req_la = [rq for rq in m.dap_ung_req if ctx.store.get(rq) is None]
+        nut = ctx.store.ckm_nut(K.ma_module(ma)) or {}
         return {
             "khoi": ma, "so_khoi": len(ds), "changeset": cs.id, "canh_suy_ra": canh,
+            "duong": nut.get("path", ""), "kind": nut.get("kind", ""),
             "tin_hieu_treo": treo, "req_khong_co_trong_kho": req_la,
-            "note_vi": (f"Bản đồ có {len(ds)} khối, {len(canh)} liên kết suy ra từ tên "
-                        "tín hiệu."
+            "note_vi": (f"Khối ở {nut.get('path', '?')}. Bản đồ có {len(ds)} khối, "
+                        f"{len(canh)} liên kết suy ra từ tên tín hiệu."
                         + (f" Tín hiệu {', '.join(treo['vao_khong_ai_cap'][:5])} chưa khối "
                            "nào cấp — hoặc còn thiếu khối, hoặc tên tín hiệu lệch nhau."
                            if treo["vao_khong_ai_cap"] else "")
@@ -238,6 +275,73 @@ def register(r: Registry) -> Registry:
         # Một công cụ đọc mà cũng đẩy hình lên tab thì sẽ có hai đường vẽ cùng một thứ, và
         # sớm muộn hai đường đó lệch nhau.
         return ra
+
+    @r.tool("ckm.port_set", "Thiết kế",
+            "Khai một PORT ở biên một khối — tức hợp đồng của khối với bên ngoài: tên, "
+            "hướng (vào/ra/hai chiều/nguồn), và ràng buộc. Chỉ khối mới cần khai Port; "
+            "Port của linh kiện là chân của nó, sinh sẵn từ Fact.",
+            {"type": "object",
+             "properties": {
+                 "khoi": {"type": "string", "description": "Mã khối (MOD-MCU…)"},
+                 "ten": {"type": "string", "description": "Tên Port: VDD, I2C0, ALERT…"},
+                 "huong": {"type": "string", "enum": list(KC.HUONG),
+                           "description": "power_in = khối NHẬN nguồn; power_out = khối CẤP"},
+                 "loai": {"type": "string", "enum": list(KC.LOAI_PORT)},
+                 "members": {"type": "array", "items": {"type": "string"},
+                             "description": "Với bus: tên các tín hiệu thành viên (SDA, SCL)"},
+                 "rang_buoc": {"type": "object",
+                               "description": "v_min/v_max/i_max/level — số nào cũng phải "
+                                              "có nguồn, đừng đoán"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["khoi", "ten", "huong", "explain"]},
+            risk="R2", writes_artefact=True, needs_explain=True, produces=["block_diagram"],
+            keywords=["port", "biên khối", "hợp đồng", "chân khối", "giao tiếp"])
+    def port_set(ctx: Any, khoi: str, ten: str, huong: str, explain: dict[str, Any],
+                 loai: str = "single", members: list[str] | None = None,
+                 rang_buoc: dict[str, Any] | None = None):
+        a = ctx.store.get(K.MA_DO_THI)
+        ds = [K.Module.from_dict(d) for d in (a["canonical"].get("khoi") if a else [])]
+        m = next((x for x in ds if x.ma == khoi), None)
+        if m is None:
+            return ToolResult(False, error=EideError(
+                "E2001", f"Chưa có khối nào mã {khoi}.",
+                hint_for_agent="Ghi khối bằng ckm.module_set trước khi khai biên của nó. "
+                               "Khối đang có: " + (", ".join(x.ma for x in ds) or "chưa có"),
+                alternatives=["ckm.module_set", "ckm.graph"], blame="agent"))
+        if loai == "bus" and not (members or []):
+            return ToolResult(False, error=EideError(
+                "E9005", f"Port bus {ten} phải nói rõ gồm những tín hiệu nào.",
+                hint_for_agent="Truyền members, ví dụ [\"SDA\", \"SCL\"]. Một bus không "
+                               "kể thành viên thì hai đầu không kiểm khớp được.",
+                blame="agent"))
+
+        # Port nằm trong HIỆN VẬT sơ đồ khối, không ghi thẳng vào bảng `ckm_port` — bảng đó
+        # là hình chiếu. Cùng lý do với mọi thứ khác của bản đồ: hoàn tác phải lùi được.
+        canon = dict(a["canonical"]) if a else {"so_khoi": len(ds), "khoi": []}
+        khoi_moi = []
+        for x in ds:
+            d = x.to_dict()
+            if x.ma == khoi:
+                ps = [p for p in (d.get("port") or []) if p.get("ten") != ten]
+                ps.append({"ten": ten, "huong": huong, "loai": loai,
+                           "members": list(members or []),
+                           "rang_buoc": dict(rang_buoc or {})})
+                d["port"] = sorted(ps, key=lambda z: str(z.get("ten")))
+            khoi_moi.append(d)
+        canon["khoi"], canon["so_khoi"] = khoi_moi, len(khoi_moi)
+        cs = ctx.history.ghi_kho(
+            author=f"agent:{ctx.run_id}", artefact_id=K.MA_DO_THI, type="block_diagram",
+            op="update", canonical=canon, explain=explain, run_id=ctx.run_id)
+        K.chieu(ctx.store)
+
+        nut = ctx.store.ckm_nut(K.ma_module(khoi)) or {}
+        sv = ctx.store.ckm_cac_port(module_id=K.ma_module(khoi))
+        return {"khoi": khoi, "port": ten, "huong": huong, "so_port": len(sv),
+                "changeset": cs.id, "duong": nut.get("path", ""),
+                "note_vi": (f"Khối {khoi} giờ có {len(sv)} Port: "
+                            + ", ".join(f"{p['ten']}({p['huong']})" for p in sv)
+                            + ". Port là hợp đồng — sửa ruột khối mà không đổi Port thì "
+                              "bên ngoài không phải cập nhật gì.")}
 
     # ====================================================================== pinout
     @r.tool("ckm.pinout_set", "Thiết kế",
@@ -339,13 +443,21 @@ def register(r: Registry) -> Registry:
                           "items": {"type": "array", "items": {"type": "string"}},
                           "description": 'Cặp [ref, chân]: [["U1","27"],["U2","5"]]'},
                  "bus": {"type": "string", "description": "Thuộc bus nào: I2C1, SPI2…"},
+                 "trong_khoi": {"type": "string",
+                                "description": "Mã khối SỞ HỮU net này (để rỗng = net của "
+                                               "cả mạch). Net chỉ nối được Port của khối "
+                                               "con TRỰC TIẾP — dây không đi xuyên cấp."},
+                 "noi_port": {"type": "array", "items": {"type": "array",
+                                                        "items": {"type": "string"}},
+                              "description": 'Cặp [mã khối, tên Port]: [["MOD-MCU","VDD"]]'},
                  "explain": EXPLAIN_SCHEMA},
              "required": ["ten", "loai", "explain"]},
             risk="R2", writes_artefact=True, needs_explain=True, produces=["netlist"],
             keywords=["net", "nối", "dây", "netlist", "bus", "nguồn", "rail"])
     def net_set(ctx: Any, ten: str, loai: str, explain: dict[str, Any],
                 ap_danh_dinh: str = "", chan: list[list[str]] | None = None,
-                bus: str = ""):
+                bus: str = "", trong_khoi: str = "",
+                noi_port: list[list[str]] | None = None):
         cap = [(str(x[0]), str(x[1])) for x in (chan or []) if len(x) >= 2]
 
         # Chân của chip đã có trong bản đồ thì phải tồn tại thật. Chân của linh kiện thụ
@@ -368,7 +480,10 @@ def register(r: Registry) -> Registry:
         canon = dict(a["canonical"]) if a else {"nguon": "CKM", "net": [], "linh_kien": []}
         nets = [n for n in (canon.get("net") or []) if n.get("ten") != ten]
         nets.append({"ten": ten, "loai": loai, "ap_danh_dinh": ap_danh_dinh, "bus": bus,
-                     "chan": [f"{r}.{p}" for r, p in cap], "tier": "NGUOI"})
+                     "chan": [f"{r}.{p}" for r, p in cap], "tier": "NGUOI",
+                     "trong_khoi": trong_khoi,
+                     "noi_port": [[str(x[0]), str(x[1])] for x in (noi_port or [])
+                                  if len(x) >= 2]})
         nets.sort(key=lambda n: str(n.get("ten")))
         canon["net"], canon["so_net"], canon["nguon"] = nets, len(nets), "CKM"
 
@@ -471,7 +586,7 @@ def register(r: Registry) -> Registry:
              "required": []},
             risk="R1", keywords=["bản đồ", "ckm", "tra", "đồ thị", "graph", "xem mạch"])
     def graph(ctx: Any, loai: str = "", chip: str = ""):
-        dem = ctx.store.ckm_dem()
+        dem = _dem_day_du(ctx)
         ra: dict[str, Any] = {"dem": dem}
         if chip:
             ten, ref, loi = _tim_linh_kien(ctx, _ten_chip(chip))
@@ -491,9 +606,15 @@ def register(r: Registry) -> Registry:
         if not loai and not chip:
             a = ctx.store.get(K.MA_DO_THI)
             ms = [K.Module.from_dict(d) for d in (a["canonical"].get("khoi") if a else [])]
+            cay = KC.Cay.doc(ctx.store)
             ra["khoi"] = [m.ma for m in ms]
+            ra["cay"] = _cay_chu(cay)
             ra["tin_hieu_treo"] = K.tin_hieu_treo(ms) if ms else {}
             ra["thieu_de_sinh_so_do"] = K.thieu_gi(dem)
+            ra["vi_pham_bat_bien"] = K.vi_pham_cay(ctx.store)
+            sau = KC.canh_bao_do_sau(cay)
+            if sau:
+                ra["canh_bao_do_sau"] = sau
         return ra
 
     @r.tool("ckm.build", "Thiết kế",
@@ -507,7 +628,8 @@ def register(r: Registry) -> Registry:
     def build(ctx: Any, explain: dict[str, Any]):
         # Dựng lại đồ thị trước khi đọc nó: nếu hiện vật bị đổi bằng đường khác (hoàn
         # tác, sửa tay, phát lại sự kiện) thì đây là chỗ đồ thị khớp lại.
-        dem = K.chieu(ctx.store)
+        K.chieu(ctx.store)
+        dem = _dem_day_du(ctx)
         thieu = K.thieu_gi(dem)
         nut_pin = ctx.store.ckm_cac_nut(loai="pin")
         nets = ctx.store.ckm_cac_nut(loai="net")
@@ -518,7 +640,14 @@ def register(r: Registry) -> Registry:
         chips = ctx.store.ckm_cac_nut(loai="chip")
         bom = ctx.store.list(type="bom", limit=5)
 
+        cay = KC.Cay.doc(ctx.store)
+        phang = KC.flatten(cay)
+        vi_pham = K.vi_pham_cay(ctx.store)
+        canh_sau = KC.canh_bao_do_sau(cay)
         canon = {
+            "cay": _cay_chu(cay),
+            "flatten": {k: list(v) for k, v in phang.items()},
+            "vi_pham_bat_bien": vi_pham,
             "chip": [{"ten": c["ten"], "ho_chieu": c["canonical"].get("ho_chieu", ""),
                       "ref": c["canonical"].get("ref", "")} for c in chips],
             "so_chan": len(nut_pin),
@@ -552,11 +681,61 @@ def register(r: Registry) -> Registry:
             ho.append(f"net chưa nối gì: {', '.join(dut['net_khong_chan'][:5])}")
         if not bom:
             ho.append("chưa có BOM (store.bom_set)")
+        # Vi phạm bất biến làm bản đồ KHÔNG dùng được để sinh sơ đồ, dù đủ tiền đề. Một
+        # cái cây có chu trình hay một net đi xuyên cấp thì `flatten` ra một mạch khác với
+        # mạch người vẽ — và mọi thứ hạ nguồn đọc cái sai đó mà không biết.
+        du = (not thieu) and not vi_pham
+        if vi_pham:
+            nd = ("Bản đồ VI PHẠM bất biến cây, chưa dùng được để sinh sơ đồ: "
+                  + "; ".join(f"{v['ma']} {v['vi']}" for v in vi_pham[:3])
+                  + (f" (và {len(vi_pham) - 3} chỗ nữa)" if len(vi_pham) > 3 else ""))
         return {"ckm": K.MA_CKM, "changeset": cs.id, "dem": dem, "thieu": thieu,
-                "cho_dut": dut, "du_de_sinh_so_do": not thieu,
-                "note_vi": nd + (" Chỗ hở: " + "; ".join(ho) + "." if ho else "")}
+                "cho_dut": dut, "du_de_sinh_so_do": du,
+                "vi_pham_bat_bien": vi_pham, "so_net_phang": len(phang),
+                "canh_bao_do_sau": canh_sau,
+                "note_vi": (nd + (" Chỗ hở: " + "; ".join(ho) + "." if ho else "")
+                            + (" " + canh_sau if canh_sau else ""))}
 
     return r
+
+
+def _dem_day_du(ctx: Any) -> dict[str, int]:
+    """Bảng đếm của kho, cộng thêm thứ kho không biết: chip nào đã có hộ chiếu.
+
+    Kho đếm nút; "đã ghim hộ chiếu" là một tính chất của hiện vật, nên nó được cộng ở đây
+    thay vì bắt lớp kho biết về hộ chiếu.
+    """
+    dem = dict(ctx.store.ckm_dem())
+    dem["chip_co_ho_chieu"] = sum(
+        1 for c in ctx.store.ckm_cac_nut(loai="chip") if c["canonical"].get("ho_chieu"))
+    return dem
+
+
+def _cay_chu(cay: Any) -> list[str]:
+    """Cây dạng chữ, thụt đầu dòng — dạng người đọc được trong Console.
+
+    Giao diện có khối cây riêng (A5.9, bước HIER-B); dạng này để tác tử và người đọc thấy
+    hình dáng mạch ngay trong kết quả công cụ, không phải gọi thêm gì.
+    """
+    if not cay.goc:
+        return []
+    ra: list[str] = []
+
+    def di(nid: str, sau: int) -> None:
+        n = cay.nut[nid]
+        so_port = len(cay.port_cua.get(nid, []))
+        nhan = f"{'  ' * sau}{n.get('path') or n['ten']}"
+        if n.get("kind") == "leaf":
+            nhan += f" [lá · {so_port} chân]"
+        else:
+            net = [x for x in cay.con.get(nid, []) if cay.nut[x]["loai"] == "net"]
+            nhan += f" [{n.get('kind')} · {so_port} Port · {len(net)} net]"
+        ra.append(nhan)
+        for con in cay.con_truc_tiep(nid):
+            di(con, sau + 1)
+
+    di(cay.goc, 0)
+    return ra
 
 
 def _doan_loai_net(ten: str) -> str:

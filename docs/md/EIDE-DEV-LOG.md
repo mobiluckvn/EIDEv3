@@ -1295,3 +1295,98 @@ quy chín bộ cũ giữ nguyên. MEM-C có một lần 22/26 rồi xanh lại 2
 tiêu chí đo của NFR-01 bị mô hình trả "không biết", hệ thống **bỏ cuộc và giữ nguyên ngữ
 cảnh** — đường an toàn đang chạy, không phải hồi quy. Đã ghi cảnh báo đó vào docstring
 của bộ để lần sau không ai đọc nhầm.
+
+---
+
+### [DEV-268] 26/09/2026 · HIER-A — cây khối phân cấp, và một mô hình phẳng vừa ship bị sửa
+
+EIDE-HIER-45 khác ba tài liệu bổ sung trước ở một điểm: nó **sửa** mô hình dữ liệu mà bước
+CKM vừa đẩy cùng ngày. Bản đồ phẳng (khối là danh sách, net toàn cục, liên kết suy theo
+TÊN chuỗi) thành cây: mạch → khối → khối con → linh kiện (lá), Port ở biên khối, net theo
+phạm vi, `flatten(cây)` cấp netlist phẳng cho mọi tool cũ.
+
+**Chỗ đổi quan trọng nhất không phải cái cây — mà là Port.** Trước, hai khối "nối nhau" vì
+cùng viết chuỗi `"3V3"` vào `tin_hieu_ra`/`tin_hieu_vao`. Đó là phỏng đoán theo tên, và nó
+không trả lời được ba câu: khối này *cấp* hay *nhận* 3V3? chịu bao nhiêu dòng? sửa ruột
+khối có làm hỏng người dùng khối không? Port là hợp đồng có hướng, có ràng buộc, có Fact
+chống lưng — và nó mua được **đóng gói**, thứ mô hình phẳng không có.
+
+Lược đồ lên v3, cộng thêm, có `down()`: bốn cột `parent_id/kind/path/lib_ref` trên
+`ckm_nodes`, hai bảng `ckm_port`/`ckm_connection`, chỉ mục `UNIQUE(path)`.
+
+### Bốn chỗ làm khác tài liệu, mỗi chỗ một lý do
+
+**1. `parent_id` dùng cho MỌI loại nút.** §2.3 tách `module.parent_id` và
+`net.scope_module_id`. Cả hai là cùng một quan hệ "nút này nằm trong nút nào": khối → cha,
+net → khối sở hữu, Port → khối có nó, chân → lá có nó. Một cột thì `path` tính được cho
+mọi thứ bằng một hàm, và **không có chỗ nào để hai cột lệch nhau**.
+
+**2. `ALTER TABLE module` — không có bảng `module`.** Module là hàng trong `ckm_nodes`. Và
+`ALTER TABLE ADD COLUMN` không có dạng `IF NOT EXISTS`, nên viết migration thành SQL thuần
+sẽ phá luật của chính tệp kho: *"up phải chạy lại được nhiều lần mà không hỏng"*. Luật đó
+không hình thức — nó cho phép gọi `nang_cap()` trên một kho không biết đang ở đâu mà không
+phải cầu nguyện. Nên `Migration.up/down` nay nhận **cả hàm**, và bậc v3 đi qua
+`PRAGMA table_info`.
+
+**3. Bất biến kiểm trong `chieu()`.** §3 nói "kiểm bằng mã sau mỗi thay đổi" mà không nói
+ai gọi. `chieu()` là **một cửa duy nhất** mọi thay đổi bản đồ phải đi qua. Vi phạm được
+TRẢ VỀ, không nổ — khác với chỉ mục ĐƯỢC_GÁN (kho từ chối ghi), một cái cây lệch vẫn phải
+dựng lên được, vì nếu không thì người mất luôn đường nhìn thấy nó lệch ở đâu. `ckm.build`
+liệt kê và đặt `du_de_sinh_so_do = false`.
+
+**4. Mã lỗi E9001–E9006 thay vì E8001–E8006.** Ba tài liệu (SCH-44, HIER-45) và mã đang
+chạy cùng đánh số E8001–E8006 với ba nghĩa khác nhau; sáu mã E8002–E8008 đã nằm trong ca
+đo đã xanh. Anh chốt mở họ mới (26/09) — xem EIDE-GAP-44 §2c.3.
+
+### Năm lỗi thật do việc đo phơi ra
+
+**1. `flatten` để hai net khác nhau cùng tên ĐÈ nhau.** Mỗi khối có một "VDD" cục bộ là
+chuyện thường. Nhóm thứ hai ghi lên khoá cũ trong dict ⇒ netlist phẳng **mất một net** và
+không ai biết. Nay nhóm trùng tên mang đường đầy đủ.
+
+**2. Di cư đánh mất chân của linh kiện chỉ netlist biết.** U3, U9 chưa có datasheet nên
+bước CKM không tạo nút linh kiện nào cho chúng; `_noi_net` bỏ rơi chân của chúng và
+`flatten` trả về một mạch **thiếu chân** — mạch trông như đã nối đủ. Nay ref nào có chân
+thì có lá, kèm `chua_co_bang_chan: True` để E9004 không kết luận gì về nó (N6).
+
+**3. E9006 mù đúng chỗ nguy hiểm nhất.** Bất biến "sửa nội bộ không thấy được từ ngoài" ban
+đầu chỉ so `flatten` sau khi **lọc bỏ chân bên trong khối**. Gỡ Port VDD của khối MCU khỏi
+net 3V3 làm khối **mất nguồn**, nhưng `U1.7` là chân bên trong nên phép lọc bỏ nó đi và
+phép kiểm kết luận "không có gì đổi" — một câu sai về một mạch không còn chạy được. Nay
+E9006 có **hai vế**: chân ngoài khối không đổi, **và** biên khối `{Port: net ở cha}` không
+đổi. Vế hai bắt được ngay.
+
+**4. `khoi_con()` trả về cả LÁ.** Một hàm tên "khối con" mà tính cả lá làm mọi phép đếm
+khối lệch, và lệch âm thầm: gốc có hai khối + một lá (U2 — linh kiện chưa khối nào nhận) và
+phép đếm trả 3. Tách thành `khoi_con` (chỉ khối) và `con_truc_tiep` (kể cả lá, đúng tập mà
+một net được phép chạm Port của).
+
+**5. Tiền đề "hộ chiếu chip đã ghim" TỰ THOẢ.** Nó đếm nút `chip`, mà `ckm.chip_add` tạo ra
+đúng nút đó — nên tiền đề luôn đúng ngay khi chip vào bản đồ, kể cả khi chưa ai ghim hộ
+chiếu. Tệ hơn: `ckm.chip_add` tra hộ chiếu bằng `store.get(chip)`, còn `passport.pin` ghi
+hiện vật dưới mã `ns.part@semver` — nên ghim xong, `ckm.build` **vẫn** báo "thiếu hộ chiếu".
+Một lời từ chối đúng luật nhưng sai sự thật là loại tệ nhất. Nay đếm chip CÓ hộ chiếu, và
+tra theo tên chip.
+
+### Một lỗi bộ kiểm, gặp lần thứ hai cùng ngày
+
+`thu_ing_a` đỏ một ca với bằng chứng *"Sổ cái đang bị lệch thứ tự ở dòng 25"* — đúng triệu
+chứng `thu_ckm` đã gặp sáng nay. `Ledger` ghi nhớ `seq` lúc khởi tạo và chỉ an toàn trong
+MỘT tiến trình; bộ kiểm là người ghi thứ hai. Lần đầu tôi sửa tại chỗ trong một tệp; lần
+này nó quay lại ở tệp khác, nên đã đưa `PathsThu` vào `tools/thu_giao_dien.py` cho mọi bộ
+dùng chung. **Bài học: một lỗi sửa tại chỗ là một lỗi sẽ quay lại ở chỗ khác.**
+
+Hai bộ đọc sổ cái của app (`thu_mem_b`, `thu_mem_c`) **không** đổi — với chúng, sổ cái của
+app chính là thứ đang đo.
+
+### Số đo
+
+`580 ca đơn vị` (+35 cho cây) · `tools/thu_hier.py` **25/25** qua giao diện thật ·
+`flatten(cây sau di cư) == netlist phẳng cũ` **100 %** (HIER01) · lược đồ v3 lên/xuống/lên
+lại sạch, gỡ cây không mất Fact hay netlist (HIER-15).
+
+**Hồi quy HIER-18, so bằng `tools/so_ket_qua.py`:** chín bộ **GIỐNG HỆT** (G3 31 · G4 23 ·
+G5 35 · ING-A 29 · ING-B 25 · MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36). Bộ thứ mười
+(`thu_ckm` 35/35) khác **đúng một tên ca**: "chip chưa ghim hộ chiếu thì nói ra" thành
+"chip đã ghim hộ chiếu thì bản đồ ghi nhận" — vì luật siết theo SCH-44 §4, có chủ ý. Không
+ca nào đi từ *đạt* sang *không đạt*.

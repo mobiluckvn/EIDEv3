@@ -30,7 +30,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "tools"))
 
-from thu_giao_dien import Bo, GiaoDien        # noqa: E402
+from thu_giao_dien import Bo, GiaoDien, PathsThu        # noqa: E402
 
 XANH, HET = "\033[92m", "\033[0m"
 EX = {"summary": "dựng bản đồ mạch", "why": "để sinh sơ đồ từ dữ liệu có nguồn",
@@ -58,25 +58,15 @@ def _ctx(du_an):
     Kho hiện vật thì vẫn dùng chung, vì đó chính là thứ tác tử phải thấy.
     """
     from eide import Config
-    from eide.config import Paths
     from eide.history import History
     from eide.ids import IdGen
     from eide.protocol.ledger import Ledger
     from eide.store import EideMd, Store
     from eide.tools import build_registry
 
-    class PathsThu(Paths):
-        @property
-        def state_dir(self):
-            return self.project_root / ".eide-thu"
-
-        @property
-        def store_db(self):
-            return self.project_root / ".eide" / "store.sqlite"
-
     class C:
         config = Config.for_project(du_an)
-        paths = PathsThu(project_root=du_an)
+        paths = PathsThu(du_an)
         store = Store(paths.store_db)
         eide_md = EideMd.load(config.paths.eide_md, create_name="thu-ckm")
         registry = build_registry()
@@ -133,12 +123,18 @@ def chay(du_an: pathlib.Path) -> int:
                                 "source": {"doc_id": "DS-328P", "page": 13},
                                 "explain": {"summary": f"AF của chân {so}"}})
 
+    # Ghim hộ chiếu: từ 26/09 `ckm.build` đòi đúng thứ SCH-44 §4 đòi — `passport` — thay vì
+    # tự thoả bằng một nút chip. Bộ đo phải đi qua đường thật đó.
+    ctx.store.apply(artefact_id="DS-328P", type="doc", op="create", author="human",
+                    explain=EX, canonical={"ten": "ATmega328P datasheet", "so_trang": 660})
+    goi("passport.pin", chip="ATmega328P", doc_ids=["DS-328P"])
+
     r = goi("ckm.chip_add", chip="ATmega328P", ref="U1")
     b.kiem("Có Fact rồi thì 5 chân vào bản đồ",
            r.ok and r.data["so_chan_vao_ban_do"] == 5,
            r.data["note_vi"][:130] if r.ok else str(r.error.message_vi)[:130])
-    b.kiem("Chip chưa ghim hộ chiếu thì NÓI RA",
-           r.ok and "CHƯA có hộ chiếu" in r.data["note_vi"], r.data["note_vi"][-90:])
+    b.kiem("Chip đã ghim hộ chiếu thì bản đồ ghi nhận",
+           r.ok and r.data["co_ho_chieu"] is True, r.data.get("ho_chieu", "")[:70])
 
     b.phan("B · GÁN CHÂN — chân phải có thật, chức năng phải nằm trong AF")
     r = goi("ckm.pinout_set", chip="U1", chan="27", chuc_nang="SDA", net="SDA")

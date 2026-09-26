@@ -30,7 +30,9 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **ING-E** | Hình → figure · OCR có điểm tin cậy từng từ · nhận ngôn ngữ và kiểm gói OCR · bí danh đa ngữ | xong |
 | **MEM-D** | C3 bậc thang · C4 khẩn cấp 0 token · dọn theo tham chiếu · sáu chỉ số §13 | xong |
 | **CKM** | Bản đồ tri thức mạch §C2: KG nodes/edges · khối + luồng tín hiệu suy từ tên · pinout không bịa chân, ĐƯỢC_GÁN duy nhất do chỉ mục kho · net/netlist · gộp `ckm.build` | xong |
-| SCH-A…D | Sinh sơ đồ KiCad từ CKM (SKiDL → ERC → bố cục → `.kicad_sch` → SVG) | chưa |
+| **HIER-A** | Cây khối phân cấp §2–3: lược đồ v3 có `down()` · Port ở biên khối · net theo phạm vi · `flatten(cây)` = netlist cũ 100 % · sáu bất biến E9001–E9006 | xong |
+| HIER-B…D | Fact/REQ theo cấp · ERC + STALE theo cây · UI cây A5.9 · thư viện khối `block@semver` | chưa |
+| SCH-A…D | Sinh sơ đồ KiCad từ cây (SKiDL theo khối → ERC → sheet phân cấp → SVG) | chưa |
 | G6 | Build/Sim + subagent | chưa |
 | G7 | Mạch thật | chưa |
 
@@ -100,6 +102,7 @@ ui/EIDEApp/Sources/EIDE/
 .venv/bin/python tools/thu_mem_c.py                  # 26 ca nén có kiểm chứng + 7 đường hỏng
 .venv/bin/python tools/thu_cuoi.py                    # 36 ca ING-C/D/E + MEM-D + 9 đường hỏng
 .venv/bin/python tools/thu_ckm.py                     # 35 ca bản đồ tri thức mạch + 8 đường hỏng
+.venv/bin/python tools/thu_hier.py                    # 25 ca cây khối phân cấp + 7 đường hỏng
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_ing_a.py   # hồi quy hai chế độ cờ
 .venv/bin/python tools/chay_kich_ban.py --lan 5      # bộ 76 TC, mỗi ca 5 lần
 .venv/bin/python tools/theo_doi.py --du-an <thư mục> # theo dõi phiên thật qua sổ cái

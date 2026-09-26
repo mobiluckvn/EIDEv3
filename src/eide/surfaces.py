@@ -338,9 +338,35 @@ def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:
     kèm từng dòng là chỗ quan trọng nhất: một chân gán theo lời người dùng và một chân gán
     theo datasheet KHÔNG được trông giống nhau trên màn hình.
     """
+    from .knowledge import cay as _C
     from .knowledge import ckm as K
 
     ra: list[dict[str, Any]] = []
+
+    # A5.9 — Cây khối phân cấp (HIER-45 §8). Đặt TRƯỚC sơ đồ khối vì từ HIER-45 cây là
+    # hình dáng thật của mạch; bảng khối là một cách nhìn phẳng của cùng dữ liệu.
+    ckm_a = store.get(K.MA_CKM)
+    cay_chu = (ckm_a["canonical"].get("cay") or []) if ckm_a else []
+    if cay_chu:
+        vp = (ckm_a["canonical"].get("vi_pham_bat_bien") or [])
+        sau = max((len([x for x in d.split("/") if x.strip()])
+                   for d in cay_chu if d.strip().startswith("/")), default=0)
+        ra.append(khoi_hien_vat(
+            "A5.9", "Cây khối phân cấp", "table", ckm_a,
+            summary=(f"{len(cay_chu)} nút · sâu {sau} cấp"
+                     + (f" · {len(vp)} VI PHẠM bất biến cây" if vp else "")
+                     + (f" · quá mức khuyến nghị {_C.SAU_KHUYEN_NGHI} cấp, bố cục nên "
+                        "chuyển sang sheet phân cấp" if sau > _C.SAU_KHUYEN_NGHI else "")),
+            columns=["Nút", "Loại", "Port", "Net"],
+            rows=[_hang_cay(d) for d in cay_chu],
+            stale=[ckm_a["id"]] if ckm_a["stale"] else []))
+        if vp:
+            ra.append(block(
+                "A5.9b", "Vi phạm bất biến cây", "table",
+                summary="Bản đồ chưa dùng được để sinh sơ đồ cho tới khi những chỗ này sạch.",
+                columns=["Mã", "Chỗ", "Vấn đề", "Cách sửa"],
+                rows=[[v.get("ma", ""), v.get("o_dau", ""), v.get("vi", ""),
+                       v.get("goi_y", "")] for v in vp]))
 
     mg = store.get(K.MA_DO_THI)
     if mg:
@@ -435,6 +461,22 @@ def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:
                    "khối có thật, và pinout chỉ nhận chức năng chân có trong Fact.",
             can_gi="Nạp datasheet chip, rồi bảo tác tử chia khối và gán chân.", buoc="G4"))
     return ra
+
+
+def _hang_cay(dong: str) -> list[str]:
+    """Một dòng cây dạng chữ → bốn cột. Thụt đầu dòng giữ nguyên để người thấy phân cấp
+    ngay trên bảng, vì giao diện chưa có khối cây gập/mở (đó là bước HIER-B)."""
+    thut = len(dong) - len(dong.lstrip())
+    than = dong.strip()
+    if "[" in than and than.endswith("]"):
+        duong, _, mo = than.partition("[")
+        phan = [x.strip() for x in mo.rstrip("]").split("·")]
+    else:
+        duong, phan = than, []
+    loai = phan[0] if phan else ""
+    port = next((x for x in phan if "Port" in x or "chân" in x), "")
+    net = next((x for x in phan if "net" in x), "")
+    return [" " * thut + duong.strip(), loai, port, net]
 
 
 def _tang_vi(ma: str) -> str:

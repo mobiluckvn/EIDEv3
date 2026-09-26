@@ -186,11 +186,11 @@ def test_ghi_lai_cung_canh_khong_nhan_doi(kho):
 def test_luoc_do_v2_go_duoc_va_khong_cham_bang_cu(kho):
     """SCH-18: migration cộng thêm phải có đường lui, và lui không được xoá dữ liệu cũ."""
     kho.ckm_dat_nut(node_id="pin:X.1", loai="pin", ten="1", canonical={})
-    assert kho.ha_cap(1) == [2]
+    assert kho.ha_cap(1) == [3, 2], "hạ tới v1 phải gỡ cả cây (v3) rồi tới CKM (v2)"
     assert kho.query_facts(limit=5), "hạ CKM không được chạm bảng facts"
     with pytest.raises(sqlite3.OperationalError):
         kho.ckm_cac_nut()
-    assert kho.nang_cap() == [2]
+    assert kho.nang_cap() == [2, 3]
     assert kho.ckm_cac_nut() == [], "lên lại thì bảng rỗng, không phải dữ liệu cũ"
 
 
@@ -367,17 +367,35 @@ def test_build_noi_ro_thieu_gi_va_KHONG_no(tac_tu):
     r = _goi(tac_tu, "ckm.build")
     assert r.ok and r.data["du_de_sinh_so_do"] is False
     thieu = {t["loai"] for t in r.data["thieu"]}
-    assert thieu == {"module", "net", "chip"}
+    assert thieu == {"block", "net", "chip_co_ho_chieu"}, \
+        "khối đếm theo kind; chip đếm theo HỘ CHIẾU, không theo nút chip"
     assert "ckm.module_set" in r.data["note_vi"]
 
 
+def test_build_chip_chua_ghim_ho_chieu_thi_CHUA_du(tac_tu):
+    """Tiền đề "hộ chiếu chip đã ghim" không được tự thoả bởi `ckm.chip_add`.
+
+    SCH-44 §4 đòi `passport`; một chip chưa ghim là chip chưa ai đối chiếu với tài liệu
+    nào. Trước khi sửa, tiền đề này đếm nút `chip` nên nó tự đúng.
+    """
+    _goi(tac_tu, "ckm.chip_add", chip="ATmega328P", ref="U1")
+    _goi(tac_tu, "ckm.module_set", ma="M1", ten="MCU", muc_dich="chạy firmware")
+    _goi(tac_tu, "ckm.net_set", ten="SDA", loai="bus", chan=[["U1", "27"], ["U1", "28"]])
+    r = _goi(tac_tu, "ckm.build")
+    assert r.ok and r.data["du_de_sinh_so_do"] is False
+    assert [t["goi"] for t in r.data["thieu"]] == ["passport.pin"]
+
+
 def test_build_du_tien_de_thi_noi_du(tac_tu):
+    tac_tu.store.apply(artefact_id="DS-328P", type="doc", op="create", author="human",
+                       explain=EX, canonical={"ten": "datasheet"})
+    _goi(tac_tu, "passport.pin", chip="ATmega328P", doc_ids=["DS-328P"])
     _goi(tac_tu, "ckm.chip_add", chip="ATmega328P", ref="U1")
     _goi(tac_tu, "ckm.module_set", ma="M1", ten="MCU", muc_dich="chạy firmware")
     _goi(tac_tu, "ckm.net_set", ten="SDA", loai="bus",
          chan=[["U1", "27"], ["U1", "28"]])
     r = _goi(tac_tu, "ckm.build")
-    assert r.ok and r.data["du_de_sinh_so_do"] is True
+    assert r.ok and r.data["du_de_sinh_so_do"] is True, r.data["note_vi"]
     assert r.data["cho_dut"]["so_chan_chua_gan"] == 3
     assert "chưa gán" in r.data["note_vi"]
 

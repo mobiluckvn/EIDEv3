@@ -25,7 +25,7 @@ sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "tools"))
 sys.path.insert(0, str(REPO / "tests"))
 
-from thu_giao_dien import Bo, GiaoDien        # noqa: E402
+from thu_giao_dien import Bo, GiaoDien, PathsThu        # noqa: E402
 
 XANH, HET = "\033[92m", "\033[0m"
 
@@ -190,12 +190,13 @@ def _ctx(du_an):
 
     class C:
         config = Config.for_project(du_an)
-        store = Store(config.paths.store_db)
+        paths = PathsThu(du_an)          # sổ cái RIÊNG, kho dùng chung — xem thu_giao_dien
+        store = Store(paths.store_db)
         eide_md = EideMd.load(config.paths.eide_md, create_name="thu-ing-a")
         registry = build_registry()
-        ids = IdGen(config.paths.state_dir)
-        history = History(paths=config.paths, store=store,
-                          ledger=Ledger(config.paths.ledger), ids=ids)
+        ids = IdGen(paths.state_dir)
+        history = History(paths=paths, store=store,
+                          ledger=Ledger(paths.ledger), ids=ids)
         run_id = "run-thu"
         tai_lieu: dict = {}
         pending_cards: list = []

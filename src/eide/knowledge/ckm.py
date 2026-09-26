@@ -213,6 +213,12 @@ def kiem_af(chuc_nang: str, c: ChanCKM) -> KetQuaKiem:
 # =========================================================================== module_graph
 @dataclass(slots=True)
 class Module:
+    """Một khối. `cha` và `kind` là phần HIER-45 thêm vào.
+
+    Hai trường đó nằm trong HIỆN VẬT, không chỉ trong đồ thị — vì đồ thị là hình chiếu, và
+    một cái cây chỉ tồn tại trong hình chiếu thì hoàn tác sẽ xoá nó mà không ai ghi lại.
+    """
+
     ma: str
     ten: str
     muc_dich: str = ""
@@ -221,12 +227,16 @@ class Module:
     tin_hieu_ra: list[str] = field(default_factory=list)
     rail: str = ""
     dap_ung_req: list[str] = field(default_factory=list)
+    cha: str = ""                 # mã khối cha; rỗng = con của gốc
+    kind: str = "block"           # block | subblock
+    port: list[dict[str, Any]] = field(default_factory=list)   # hợp đồng của khối (§2.1)
 
     def to_dict(self) -> dict[str, Any]:
         return {"ma": self.ma, "ten": self.ten, "muc_dich": self.muc_dich,
                 "linh_kien": list(self.linh_kien), "tin_hieu_vao": list(self.tin_hieu_vao),
                 "tin_hieu_ra": list(self.tin_hieu_ra), "rail": self.rail,
-                "dap_ung_req": list(self.dap_ung_req)}
+                "dap_ung_req": list(self.dap_ung_req), "cha": self.cha, "kind": self.kind,
+                "port": [dict(p) for p in self.port]}
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "Module":
@@ -236,7 +246,9 @@ class Module:
                       tin_hieu_vao=list(d.get("tin_hieu_vao") or []),
                       tin_hieu_ra=list(d.get("tin_hieu_ra") or []),
                       rail=d.get("rail", ""),
-                      dap_ung_req=list(d.get("dap_ung_req") or []))
+                      dap_ung_req=list(d.get("dap_ung_req") or []),
+                      cha=d.get("cha", ""), kind=d.get("kind") or "block",
+                      port=[dict(x) for x in (d.get("port") or [])])
 
 
 def canh_giua_module(ms: list[Module]) -> list[dict[str, str]]:
@@ -320,17 +332,24 @@ def bang_khoi(ms: list[Module]) -> str:
 # Ba tiền đề đó viết ra ở đây MỘT lần, để `ckm.build` và (sau này) `sch.compose` không
 # thể có hai ý kiến khác nhau về "đủ chưa".
 TIEN_DE_SO_DO = (
-    ("module", 1, "sơ đồ khối: ít nhất một khối", "ckm.module_set"),
-    ("net", 1, "netlist nội bộ: ít nhất một net", "ckm.net_set hoặc ckm.import_netlist"),
-    ("chip", 1, "hộ chiếu chip đã ghim", "passport.pin"),
+    # Đếm theo `kind:block`/`kind:subblock`, KHÔNG theo số nút loại `module` — vì từ
+    # HIER-45 cây luôn có một nút gốc `kind=board` do mã tự tạo, và đếm nó là tự trả lời
+    # "đã có khối" cho một bản đồ chưa có khối nào. Một tiền đề tự thoả là một tiền đề bỏ.
+    (("kind:block", "kind:subblock"), 1, "sơ đồ khối: ít nhất một khối", "ckm.module_set"),
+    (("net",), 1, "netlist nội bộ: ít nhất một net", "ckm.net_set hoặc ckm.import_netlist"),
+    # Đếm chip CÓ HỘ CHIẾU, không phải chip có trong bản đồ. SCH-44 §4 đòi `passport`, và
+    # một chip chưa ghim hộ chiếu là một chip chưa ai đối chiếu với tài liệu nào — đúng thứ
+    # không được làm nền cho một sơ đồ. Ca đo bắt được chỗ này: tiền đề ghi "hộ chiếu đã
+    # ghim" nhưng lại tự thoả bởi `ckm.chip_add`.
+    (("chip_co_ho_chieu",), 1, "hộ chiếu chip đã ghim", "passport.pin"),
 )
 
 
 def thieu_gi(dem: dict[str, int]) -> list[dict[str, str]]:
     ra = []
-    for loai, toi_thieu, nhan, cong_cu in TIEN_DE_SO_DO:
-        if dem.get(loai, 0) < toi_thieu:
-            ra.append({"loai": loai, "can": nhan, "goi": cong_cu})
+    for khoa, toi_thieu, nhan, cong_cu in TIEN_DE_SO_DO:
+        if sum(dem.get(k, 0) for k in khoa) < toi_thieu:
+            ra.append({"loai": khoa[0].removeprefix("kind:"), "can": nhan, "goi": cong_cu})
     return ra
 
 
@@ -461,7 +480,55 @@ def chieu(store: Any) -> dict[str, int]:
                 store.ckm_dat_nut(node_id=f"rail:{m.rail}", loai="rail", ten=m.rail,
                                   canonical={"ten": m.rail})
                 store.ckm_dat_canh(loai="CAP", tu=f"rail:{m.rail}", den=ma_module(m.ma))
-    return store.ckm_dem()
+
+    # 5) CÂY — HIER-45. Chạy cuối, vì nó đọc mọi thứ bốn bước trên vừa dựng.
+    from . import cay as _cay
+    _cay.dung_cay(store)
+
+    # 6) Bất biến cây. §3 nói "kiểm bằng mã sau mỗi thay đổi" mà không nói ai gọi; đặt ở
+    #    đây vì `chieu()` là MỘT CỬA duy nhất mọi thay đổi bản đồ phải đi qua.
+    #
+    #    Vi phạm được TRẢ VỀ, không nổ. Khác với chỉ mục ĐƯỢC_GÁN (nơi kho từ chối ghi),
+    #    một cái cây lệch vẫn phải dựng lên được — vì nếu không, người dùng mất luôn đường
+    #    nhìn thấy nó lệch ở đâu. Người gọi có trách nhiệm nói ra: `ckm.build` liệt kê,
+    #    giao diện tô, và không ai được coi bản đồ có vi phạm là bản đồ dùng được.
+    cay = _cay.Cay.doc(store)
+    vi_pham = _cay.kiem_bat_bien(cay, chan_theo_fact=_chan_theo_fact(store, cay))
+    d = store.ckm_dem()
+    if vi_pham:
+        d["vi_pham_cay"] = len(vi_pham)
+    store._ckm_vi_pham = [v.to_dict() for v in vi_pham]     # noqa: SLF001 — xem ghi chú
+    return d
+
+
+def vi_pham_cay(store: Any) -> list[dict[str, str]]:
+    """Vi phạm bất biến của lần `chieu()` gần nhất.
+
+    Cất trên đối tượng kho thay vì trả kèm `chieu()` vì `chieu()` đã có 12 chỗ gọi và
+    không chỗ nào cần con số này — đổi chữ ký của nó để phục vụ một chỗ đọc là bắt mười
+    một chỗ khác chịu thay đổi. Ai cần thì gọi hàm này.
+    """
+    return list(getattr(store, "_ckm_vi_pham", []) or [])
+
+
+def _chan_theo_fact(store: Any, cay: Any) -> dict[str, set[str]]:
+    """Tập chân mà Fact nói một lá CÓ — vế "đúng" của bất biến E9004.
+
+    Chỉ trả về ref nào thật sự có Fact. Lá chưa có datasheet không có mặt ở đây, nên E9004
+    **không kết luận gì** về nó (N6) thay vì báo thiếu cả 28 chân.
+    """
+    ra: dict[str, set[str]] = {}
+    for nid, n in cay.nut.items():
+        if n.get("kind") != "leaf":
+            continue
+        ref = n["canonical"].get("ref") or n["ten"]
+        ten_chip = n["canonical"].get("ten") or n["ten"]
+        chan = chan_tu_fact(store.query_facts(subject=f"pin:{ten_chip}.", limit=2000),
+                            ten_chip)
+        if chan:
+            ra[nid] = {c for c, v in chan.items()
+                       if not v.tier or v.tier.upper() in TANG_THIET_KE}
+    return ra
 
 
 def cho_dut(nut_pin: list[dict[str, Any]], canh_gan: list[dict[str, Any]],

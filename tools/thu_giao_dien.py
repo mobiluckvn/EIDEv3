@@ -353,3 +353,55 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# =========================================================================== ngữ cảnh đo
+class PathsThu:
+    """Đường dẫn cho TIẾN TRÌNH KIỂM: sổ cái riêng, kho dùng chung.
+
+    Vì sao cần: `Ledger` ghi nhớ `seq` và hash đầu chuỗi lúc khởi tạo, và docstring của nó
+    nói rõ "an toàn với nhiều luồng trong MỘT tiến trình". App đang chạy là tiến trình
+    khác. Hai bên cấp `seq` độc lập ⇒ chuỗi đứt ⇒ app phát hiện đúng và **dành cả lượt để
+    báo** thay vì làm việc bộ kiểm nhờ.
+
+    Triệu chứng đã gặp hai lần (thu_ckm 26/09, rồi thu_ing_a cùng ngày): một ca hội thoại
+    đỏ với bằng chứng *"Sổ cái đang bị lệch thứ tự ở dòng 25"*. Cả hai lần lỗi ở bộ kiểm,
+    không ở sản phẩm — một dự án một tiến trình là ranh giới thiết kế, và phát hiện vi phạm
+    ranh giới đó là hành vi ĐÚNG.
+
+    Kho hiện vật vẫn dùng chung, vì đó chính là thứ tác tử phải thấy.
+
+    KHÔNG dùng cho bộ nào ĐỌC sổ cái của app (thu_mem_b, thu_mem_c đọc `ledger.query` và
+    nhật ký nén) — với chúng, sổ cái của app chính là thứ đang đo.
+    """
+
+    def __init__(self, project_root: pathlib.Path):
+        self.project_root = pathlib.Path(project_root)
+
+    @property
+    def state_dir(self) -> pathlib.Path:
+        return self.project_root / ".eide-thu"
+
+    @property
+    def ledger(self) -> pathlib.Path:
+        return self.state_dir / "ledger.jsonl"
+
+    @property
+    def changesets(self) -> pathlib.Path:
+        return self.state_dir / "changesets.jsonl"
+
+    @property
+    def store_db(self) -> pathlib.Path:
+        return self.project_root / ".eide" / "store.sqlite"     # DÙNG CHUNG với app
+
+    @property
+    def blobs(self) -> pathlib.Path:
+        return self.state_dir / "blobs"
+
+    @property
+    def transcripts(self) -> pathlib.Path:
+        return self.state_dir / "transcripts"
+
+    @property
+    def eide_md(self) -> pathlib.Path:
+        return self.project_root / "EIDE.md"                    # DÙNG CHUNG với app
