@@ -249,7 +249,7 @@ def chay(du_an: pathlib.Path) -> int:
     b.kiem("Không khối nào thuộc loại giao diện chưa biết vẽ",
            all(k["type"] in ("table", "code", "empty", "kv", "list", "text",
                              "timeline", "changesets", "procedure", "snapshots",
-                             "sections")
+                             "sections", "cay")
                for k in a["khoi_tren_tab"]),
            "; ".join(f"{k['code']}:{k['type']}" for k in a["khoi_tren_tab"]))
     b.kiem("Bảng nào cũng đã qua bộ dựng markdown",

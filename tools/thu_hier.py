@@ -13,6 +13,10 @@ tab Thiết kế hiện cây · tác tử thật khai Port qua hội thoại.
 
 Unhappy (bảy đường): nối xuyên cấp · Port lá thừa · cha không tồn tại · tự làm cha mình ·
 bus không kể thành viên · cây sâu 6 cấp (cảnh báo, KHÔNG cấm) · hạ lược đồ rồi lên lại.
+
+HIER-B thêm: ERC bốn ràng buộc báo theo path (HIER06–08) · STALE theo cây, nội bộ KHÔNG lan
+sang anh em (HIER05) · lớp giải thích khối bảy câu (HIER14) · cây trên tab Thiết kế có tô
+nút (HIER15).
 """
 
 from __future__ import annotations
@@ -192,17 +196,131 @@ def chay(du_an: pathlib.Path) -> int:
     b.kiem("Có khối A5.9 Cây khối phân cấp", "A5.9" in kh,
            "; ".join(sorted(kh)) or "không có khối nào")
     b.kiem("Cây trên tab có đủ nút (gốc + khối + lá)",
-           kh.get("A5.9", {}).get("so_hang", 0) >= 5,
-           f"{kh.get('A5.9', {}).get('so_hang')} dòng · "
-           + kh.get("A5.9", {}).get("summary", "")[:90])
+           kh.get("A5.9", {}).get("so_nut_cay", 0) >= 5,
+           f"{kh.get('A5.9', {}).get('so_nut_cay')} nút · sâu "
+           f"{kh.get('A5.9', {}).get('sau_nhat')} · "
+           + kh.get("A5.9", {}).get("summary", "")[:80])
     b.kiem("Không khối nào thuộc loại giao diện chưa biết vẽ",
            all(k["type"] in ("table", "code", "empty", "kv", "list", "text", "timeline",
-                             "changesets", "procedure", "snapshots", "sections")
+                             "changesets", "procedure", "snapshots", "sections", "cay")
                for k in anh["khoi_tren_tab"]),
            "; ".join(f"{k['code']}:{k['type']}" for k in anh["khoi_tren_tab"]))
 
+    b.phan("E · ERC THEO CÂY (HIER06–08)")
+    # Kiểm TRƯỚC khi nạp Fact: đường "chưa đủ dữ kiện" là ca quan trọng nhất của ERC, và nó
+    # chỉ đo được khi Fact còn thiếu. Nạp Fact rồi mới kiểm thì mất hẳn đường đó.
+    r0 = goi("board.check")
+    thieu0 = r0.data["ket_qua"]["chua_du_du_kien"] if r0.ok else []
+    b.kiem("Thiếu Fact thì nói CHƯA ĐỦ DỮ KIỆN, không gọi là đạt (N6)",
+           bool(thieu0) and "CHƯA ĐỦ DỮ KIỆN" in r0.data["note_vi"],
+           (thieu0[0]["vi"] if thieu0 else "không có chỗ nào chưa đủ")[:150])
+
+    # Nạp Fact cho bốn ràng buộc §4.2. Con số thật: AMS1117 800 mA, ATmega328P 12 mA,
+    # TMP102 85 µA ở 0x48.
+    ctx.store.put_fact({"fact_id": "f-ldo-i", "subject": "leaf:U3", "key": "iout_max",
+                        "value": 0.8, "unit": "A", "tier": "VANG", "origin": "extract",
+                        "source": {"doc_id": "DS-AMS1117", "page": 4}, "explain": {}})
+    ctx.store.put_fact({"fact_id": "f-mcu-i", "subject": "leaf:U1", "key": "i_max",
+                        "value": 0.012, "unit": "A", "tier": "VANG", "origin": "extract",
+                        "source": {"doc_id": "DS-328P", "page": 316}, "explain": {}})
+    ctx.store.put_fact({"fact_id": "f-t-i", "subject": "leaf:U2", "key": "i_max",
+                        "value": 0.000085, "unit": "A", "tier": "VANG", "origin": "extract",
+                        "source": {"doc_id": "DS-TMP102", "page": 5}, "explain": {}})
+    ctx.store.put_fact({"fact_id": "f-t-a", "subject": "leaf:U2", "key": "i2c.addr",
+                        "value": "0x48", "tier": "VANG", "origin": "extract",
+                        "source": {"doc_id": "DS-TMP102", "page": 9}, "explain": {}})
+
+    r = goi("board.check")
+    b.kiem("ERC chạy và mọi phát hiện nói rõ Ở KHỐI NÀO (HIER-17)",
+           r.ok and r.data["so_phat_hien"] > 0
+           and all(x["path"] for v in r.data["ket_qua"].values() for x in v),
+           r.data["note_vi"][:170] if r.ok else str(r.error.message_vi)[:130])
+
+    goi("ckm.net_set", ten="3V3", loai="power", ap_danh_dinh="3,3 V",
+        chan=[["U1", "7"], ["U3", "3"]], noi_port=[["MOD-PWR", "VOUT"],
+                                                  ["MOD-MCU", "VDD"]])
+    r = goi("board.check")
+    dong = [x for v in r.data["ket_qua"].values() for x in v
+            if x["luat"] == "ngan_sach_dong"]
+    b.kiem("Ngân sách dòng cộng được theo cây và nói còn dư bao nhiêu",
+           any(x["ket_luan"] == "dat" and "còn dư" in x["vi"] for x in dong),
+           (dong[0]["vi"] if dong else "không xét được")[:170])
+
+    # Hai con TMP102 cùng 0x48 trên một bus — bus vẫn ACK, số của con nào thì không ai biết.
+    ctx.store.put_fact({"fact_id": "f-t2-a", "subject": "leaf:U5", "key": "i2c.addr",
+                        "value": "0x48", "tier": "VANG", "origin": "extract",
+                        "source": {"doc_id": "DS-TMP102", "page": 9}, "explain": {}})
+    goi("ckm.net_set", ten="SDA", loai="bus", bus="I2C1",
+        chan=[["U1", "27"], ["U2", "5"], ["U5", "5"]])
+    r = goi("board.check")
+    trung = [x for v in r.data["ket_qua"].values() for x in v
+             if x["luat"] == "trung_dia_chi"]
+    b.kiem("Hai con cùng địa chỉ I2C bị phát hiện, kèm khối (HIER08)",
+           any(x["ket_luan"] == "khong_dat" and "U2" in x["vi"] and "U5" in x["vi"]
+               for x in trung),
+           (trung[0]["vi"] if trung else "không phát hiện")[:170])
+    pu = [x for v in r.data["ket_qua"].values() for x in v if x["luat"] == "pull_up"]
+    b.kiem("Bus I2C thiếu pull-up bị gọi tên, có cách sửa",
+           any(x["ket_luan"] == "khong_dat" and "open-drain" in x["vi"] for x in pu),
+           (pu[0]["cach_sua"] if pu else "không xét")[:150])
+
+    b.phan("F · STALE THEO CÂY (HIER05, HIER06) VÀ GIẢI THÍCH KHỐI (HIER14)")
+    r = goi("ckm.port_set", khoi="MOD-MCU", ten="VDD", huong="bidir",
+            rang_buoc={"ghi_chu": "đổi hướng để thử lan STALE"})
+    nut = (ctx.store.get(K.MA_DO_THI)["canonical"].get("stale_nut") or {})
+    b.kiem("Đổi Port lan tới cha và khối cùng nối net (bảng §6 dòng 2)",
+           "/board/MOD-MCU" in nut and "/board" in nut and "/board/MOD-PWR" in nut,
+           ", ".join(sorted(nut)) or "không lan gì")
+    lan_noi_bo = C.lan_stale(C.Cay.doc(ctx.store), loai="noi_bo",
+                             muc_tieu="/board/MOD-SENSE", ly_do="cs-thu")
+    b.kiem("Sửa nội bộ khối KHÔNG lan sang anh em; cha chỉ nhận cờ thông tin",
+           "/board/MOD-MCU" not in lan_noi_bo.stale
+           and "/board" in lan_noi_bo.chi_bao_tin
+           and "/board" not in lan_noi_bo.stale,
+           f"stale: {sorted(lan_noi_bo.stale)} · thông tin: {sorted(lan_noi_bo.chi_bao_tin)}")
+
+    r = goi("stale.accept", id="/board/MOD-MCU", why="anh chấp nhận, sửa ở đợt sau")
+    canon = ctx.store.get(K.MA_DO_THI)["canonical"]
+    b.kiem("Chấp nhận STALE cho một nút, và lý do được GIỮ chứ không xoá trắng",
+           r.ok and "/board/MOD-MCU" not in (canon.get("stale_nut") or {})
+           and "anh chấp nhận" in (canon.get("stale_da_chap_nhan") or {})
+                                  .get("/board/MOD-MCU", ""),
+           str(canon.get("stale_da_chap_nhan", {}))[:140])
+
+    from eide.knowledge import erc as ERC
+    ex = ERC.explain_khoi(C.Cay.doc(ctx.store), "/board/MOD-MCU")
+    b.kiem("Lớp giải thích khối có hai câu do MÃ dựng: giao tiếp gì · gồm gì (HIER14)",
+           "VDD" in ex["giao_tiep"] and "U1" in ex["gom"],
+           f"giao tiếp: {ex['giao_tiep'][:60]} · gồm: {ex['gom'][:60]}")
+
+    b.phan("G · TÁC TỬ BÁO ERC, VÀ TAB TÔ ĐÚNG NÚT (HIER15)")
+    # Lượt này cần thiết về mặt KỸ THUẬT: bề mặt chỉ được vẽ lại ở cuối mỗi lượt, nên muốn
+    # thấy STALE theo nút và bảng ERC trên tab thì phải có một lượt nữa sau khi chúng sinh.
+    g.go("Kiểm mạch giúp mình xem có vấn đề gì không, và nói rõ vấn đề ở khối nào.")
+    a2 = g.doi_xong(420)
+    loi2 = a2["loi_tac_tu_cuoi"]
+    b.kiem("Tác tử nêu được vấn đề và nói ở KHỐI nào",
+           any(t in loi2 for t in ("MOD-SENSE", "MOD-MCU", "/board")) 
+           and any(t in loi2.lower() for t in ("địa chỉ", "pull-up", "0x48")),
+           loi2[:200])
+
+    g.mo_tab("design")
+    anh2 = g.chup("thiet-ke-2")
+    kh2 = {k["code"]: k for k in anh2["khoi_tren_tab"]}
+    cay_kh = kh2.get("A5.9", {})
+    b.kiem("Cây tô đúng nút cần cập nhật, và tách khỏi nút 'con đã đổi' (§6)",
+           bool(cay_kh.get("nut_can_cap_nhat")),
+           f"cần cập nhật: {cay_kh.get('nut_can_cap_nhat')} · "
+           f"con đã đổi: {cay_kh.get('nut_con_da_doi')}")
+    b.kiem("Tab có bảng ERC theo khối", "A5.9c" in kh2,
+           kh2.get("A5.9c", {}).get("summary", "")[:150])
+    b.kiem("Bảng ERC không gọi 'chưa đủ dữ kiện' là 'đạt'",
+           "chưa đủ dữ kiện" in kh2.get("A5.9c", {}).get("chu_da_dung", "").lower()
+           or "chưa đủ dữ kiện" in kh2.get("A5.9c", {}).get("summary", "").lower(),
+           kh2.get("A5.9c", {}).get("summary", "")[:150])
+
     # ================================================================== UNHAPPY
-    b.phan("E · BẢY ĐƯỜNG HỎNG")
+    b.phan("H · BẢY ĐƯỜNG HỎNG")
 
     b.buoc("1. Nối xuyên cấp (HIER03)")
     ctx.store.ckm_dat_nut(node_id="net:XUYEN", loai="net", ten="XUYEN",
@@ -258,6 +376,10 @@ def chay(du_an: pathlib.Path) -> int:
            cb[:140])
 
     b.buoc("7. Hạ lược đồ cây rồi lên lại (HIER-15)")
+    # So với ảnh NGAY TRƯỚC khi hạ, không với ảnh đầu bộ: giữa hai mốc đó bộ đo đã thêm
+    # khối, net và Port, nên flatten khác đi là đúng. So sai mốc thì ca đo đỏ vì một lý do
+    # không phải lỗi sản phẩm.
+    truoc_ha = C.flatten(C.Cay.doc(ctx.store))
     ctx.store.ha_cap(2)
     con_fact = len(ctx.store.query_facts(limit=5)) > 0
     con_netlist = ctx.store.get(K.MA_NETLIST) is not None
@@ -266,9 +388,11 @@ def chay(du_an: pathlib.Path) -> int:
            con_fact and con_netlist,
            f"fact còn: {con_fact} · netlist còn: {con_netlist}")
     K.chieu(ctx.store)
-    b.kiem("Lên lại thì cây dựng lại đúng như trước",
-           C.flatten(C.Cay.doc(ctx.store)) == moi,
-           "khớp" if C.flatten(C.Cay.doc(ctx.store)) == moi else "LỆCH")
+    sau_len = C.flatten(C.Cay.doc(ctx.store))
+    b.kiem("Lên lại thì cây dựng lại đúng như trước khi hạ",
+           sau_len == truoc_ha,
+           f"{len(truoc_ha)} net → {len(sau_len)} net"
+           + ("" if sau_len == truoc_ha else " · LỆCH"))
 
     print()
     return b.tong()

@@ -68,6 +68,56 @@ def _ho_chieu_cua(ctx: Any, chip: str) -> str:
     return ""
 
 
+def _nut_la(ctx: Any, ref: str) -> str | None:
+    """node_id của lá theo ref. Chip vào bản đồ dưới `chip:<ref>`, linh kiện chỉ netlist
+    biết thì dưới `linh_kien:<ref>` — hai tiền tố, một ref."""
+    for tt in ("chip:", "linh_kien:"):
+        if ctx.store.ckm_nut(tt + ref) is not None:
+            return tt + ref
+    return None
+
+
+def _ghi_stale_nut(ctx: Any, *, loai: str, muc_tieu: str, ly_do: str,
+                   net_lien_quan: str = "") -> dict[str, Any]:
+    """Tính STALE theo cây rồi ghi vào hiện vật sơ đồ khối. Trả phần vừa thêm.
+
+    Ghi vào `MG-1` chứ không gọi `store.mark_stale`: STALE của cây là **theo NÚT**, còn
+    `mark_stale` làm việc theo hiện vật — và cả cây nằm trong một hiện vật. Xem ghi chú dài
+    ở `knowledge/cay.py` về lý do không tách mỗi khối một hiện vật.
+
+    Ghi bằng `store.apply` chứ không `history.ghi_kho`: đây không phải một thay đổi mới của
+    người hay tác tử, nó là **hệ quả** của changeset vừa ghi. Sinh thêm một changeset ở đây
+    sẽ làm lịch sử có hai dòng cho một việc.
+    """
+    a = ctx.store.get(K.MA_DO_THI)
+    if a is None:
+        return {}
+    cay = KC.Cay.doc(ctx.store)
+    if KC.tim_nut(cay, muc_tieu) is None:
+        # Nút chưa vào cây (ví dụ gán chân cho một ref chưa có trong bản đồ): không có gì
+        # để lan. `lan_stale` cố ý NỔ với id lạ, nên phải hỏi trước thay vì bắt ngoại lệ —
+        # bắt ngoại lệ ở đây sẽ che luôn những id lạ do lỗi lập trình.
+        return {}
+    lan = KC.lan_stale(cay, loai=loai, muc_tieu=muc_tieu, ly_do=ly_do,
+                       net_lien_quan=net_lien_quan)
+    if not lan.stale and not lan.chi_bao_tin:
+        return {}
+    canon = dict(a["canonical"])
+    nut = dict(canon.get("stale_nut") or {})
+    nut.update(lan.stale)
+    tin = dict(canon.get("con_da_doi") or {})
+    tin.update(lan.chi_bao_tin)
+    # Nút vừa được cập nhật thì thôi mang cờ "con đã đổi" — nếu không, cờ cũ đọng lại và
+    # người thấy một thông tin về một việc đã xong.
+    for k in lan.stale:
+        tin.pop(k, None)
+    canon["stale_nut"], canon["con_da_doi"] = nut, tin
+    ctx.store.apply(artefact_id=K.MA_DO_THI, type="block_diagram", op="update",
+                    author=f"agent:{ctx.run_id}", canonical=canon,
+                    explain=a["explain"], view_hint=a.get("view_hint"))
+    return lan.to_dict()
+
+
 def _bang_gan(ctx: Any, ref: str) -> list[dict[str, Any]]:
     """Bảng gán chân hiện tại của MỘT linh kiện (theo ref), đọc từ hiện vật pinout."""
     a = ctx.store.get(K.ma_pinout(ref))
@@ -334,14 +384,20 @@ def register(r: Registry) -> Registry:
             op="update", canonical=canon, explain=explain, run_id=ctx.run_id)
         K.chieu(ctx.store)
 
+        lan = _ghi_stale_nut(ctx, loai="port", muc_tieu=K.ma_module(khoi),
+                             ly_do=f"{cs.id} (Port {ten} của khối {khoi} đổi)")
         nut = ctx.store.ckm_nut(K.ma_module(khoi)) or {}
         sv = ctx.store.ckm_cac_port(module_id=K.ma_module(khoi))
         return {"khoi": khoi, "port": ten, "huong": huong, "so_port": len(sv),
                 "changeset": cs.id, "duong": nut.get("path", ""),
+                "stale_theo_nut": lan.get("stale", {}),
                 "note_vi": (f"Khối {khoi} giờ có {len(sv)} Port: "
                             + ", ".join(f"{p['ten']}({p['huong']})" for p in sv)
                             + ". Port là hợp đồng — sửa ruột khối mà không đổi Port thì "
-                              "bên ngoài không phải cập nhật gì.")}
+                              "bên ngoài không phải cập nhật gì."
+                            + (" Đổi Port thì CÓ lan: "
+                               + ", ".join(sorted(lan.get("stale", {})))
+                               + " cần xem lại (§6)." if lan.get("stale") else ""))}
 
     # ====================================================================== pinout
     @r.tool("ckm.pinout_set", "Thiết kế",
@@ -414,6 +470,10 @@ def register(r: Registry) -> Registry:
             canonical={"chip": ten, "ref": ref, "so_gan": len(gan), "gan": gan},
             explain=explain, run_id=ctx.run_id)
         K.chieu(ctx.store)
+        nid_la = _nut_la(ctx, ref)
+        lan = (_ghi_stale_nut(ctx, loai="fact_la", muc_tieu=nid_la,
+                              ly_do=f"{cs.id} (gán chân {chan} của {ref})")
+               if nid_la else {})
 
         canh_bao = []
         if not moi["af_kiem_duoc"]:
@@ -423,7 +483,7 @@ def register(r: Registry) -> Registry:
         for cb in canh_bao:
             ctx.emit(uic.notice(cb, level="warn", code="CKM-02"))
         return {"chip": ten, "ref": ref, "chan": chan, "chuc_nang": chuc_nang,
-                "tier_chan": c.tier,
+                "tier_chan": c.tier, "stale_theo_nut": lan.get("stale", {}),
                 "so_chan_da_gan": len(gan), "changeset": cs.id, "canh_bao": canh_bao,
                 "note_vi": (f"Đã gán {ref}.{chan} ({ten}) → {chuc_nang}"
                             + (f" (thay cho {cu.get('chuc_nang')}: {vi_sao})" if cu else "")
@@ -573,6 +633,52 @@ def register(r: Registry) -> Registry:
                             + (f" Ghi đè {len(ghi_de)} net đã khai tay: "
                                + ", ".join(ghi_de[:5]) + "." if ghi_de else ""))}
 
+    @r.tool("board.check", "Thiết kế",
+            "Kiểm mạch bằng bốn ràng buộc tính được từ Fact: ngân sách dòng theo cây, mức "
+            "logic hai đầu net, trùng địa chỉ I2C, pull-up của bus. Mỗi phát hiện nói rõ Ở "
+            "KHỐI NÀO. Thiếu Fact thì trả 'chưa đủ dữ kiện' — không đoán.",
+            {"type": "object",
+             "properties": {
+                 "khoi": {"type": "string",
+                          "description": "Chỉ xem phát hiện trong một khối (đường dẫn như "
+                                         "/board/mcu). Để rỗng = cả mạch."}},
+             "required": []},
+            risk="R1",
+            keywords=["erc", "kiểm mạch", "ngân sách dòng", "pull-up", "địa chỉ i2c",
+                      "mức logic", "board.check"])
+    def board_check(ctx: Any, khoi: str = ""):
+        from ..knowledge import erc as ERC
+
+        ds = ERC.erc(ctx.store)
+        if khoi:
+            ds = [x for x in ds if x.path == khoi or x.path.startswith(khoi.rstrip("/") + "/")]
+        theo = {"khong_dat": [], "canh_bao": [], "chua_du_du_kien": [], "dat": []}
+        for x in ds:
+            theo.setdefault(x.ket_luan, []).append(x.to_dict())
+
+        if not ds:
+            return {"so_phat_hien": 0, "ket_qua": theo,
+                    "note_vi": ("Chưa kiểm được gì: bản đồ chưa có net nguồn hay bus nào để "
+                                "xét. Dựng cây và net trước (ckm.net_set / ckm.port_set).")}
+        # Thứ tự câu nói theo mức độ hậu quả, không theo thứ tự luật chạy.
+        phan = []
+        if theo["khong_dat"]:
+            phan.append(f"{len(theo['khong_dat'])} lỗi CHẶN: "
+                        + "; ".join(f"[{x['path']}] {x['vi']}" for x in theo["khong_dat"][:3]))
+        if theo["canh_bao"]:
+            phan.append(f"{len(theo['canh_bao'])} cảnh báo: "
+                        + "; ".join(f"[{x['path']}] {x['vi']}" for x in theo["canh_bao"][:2]))
+        if theo["chua_du_du_kien"]:
+            phan.append(f"{len(theo['chua_du_du_kien'])} chỗ CHƯA ĐỦ DỮ KIỆN — đây không "
+                        "phải 'đạt', và nói với người dùng cần nạp Fact gì: "
+                        + "; ".join(f"[{x['path']}] {x['vi']}"
+                                    for x in theo["chua_du_du_kien"][:2]))
+        if theo["dat"] and not (theo["khong_dat"] or theo["canh_bao"]):
+            phan.append(f"{len(theo['dat'])} ràng buộc kiểm được và ĐẠT")
+        return {"so_phat_hien": len(ds), "ket_qua": theo,
+                "theo_khoi": sorted({x.path for x in ds}),
+                "note_vi": ". ".join(phan) + "."}
+
     # ====================================================================== đọc & gộp
     @r.tool("ckm.graph", "Thiết kế",
             "Tra Bản đồ tri thức mạch: có bao nhiêu chip/chân/net/khối, chân nào gán gì, "
@@ -644,8 +750,10 @@ def register(r: Registry) -> Registry:
         phang = KC.flatten(cay)
         vi_pham = K.vi_pham_cay(ctx.store)
         canh_sau = KC.canh_bao_do_sau(cay)
+        from ..knowledge import erc as ERC
         canon = {
             "cay": _cay_chu(cay),
+            "erc": [x.to_dict() for x in ERC.erc(ctx.store)],
             "flatten": {k: list(v) for k, v in phang.items()},
             "vi_pham_bat_bien": vi_pham,
             "chip": [{"ten": c["ten"], "ho_chieu": c["canonical"].get("ho_chieu", ""),

@@ -484,3 +484,21 @@ def test_chan_chua_gan_khong_gop_voi_chan_khong_co_bang_chan(tac_tu):
     assert d["chan_chua_gan"] == ["U1.28", "U1.7"]
     assert d["chan_khong_co_bang_chan"] == ["U2.5", "U2.6"]
     assert d["so_chan_chua_gan"] == 2
+
+
+def test_gan_chan_khi_DA_co_so_do_khoi_thi_khong_no(tac_tu):
+    """Ca này canh một lỗi mà ca đơn vị cũ KHÔNG thấy được.
+
+    `_ghi_stale_nut` trả về rỗng ngay khi chưa có hiện vật sơ đồ khối — nên mọi ca gán chân
+    trước đây không bao giờ đi tới phép lan STALE. Khi `lan_stale` được làm cho NỔ với id
+    lạ, `pinout_set` vẫn gọi nó bằng một id đoán (`linh_kien:U1` trong khi nút thật là
+    `chip:U1`), và chỉ bộ E2E — nơi có sơ đồ khối — mới đỏ.
+
+    Bài học: một đường về sớm là một đoạn mã KHÔNG được ca đo nào đi qua.
+    """
+    _goi(tac_tu, "ckm.chip_add", chip="ATmega328P", ref="U1")
+    _goi(tac_tu, "ckm.module_set", ma="MOD-MCU", ten="MCU", muc_dich="x",
+         linh_kien=["U1"])
+    r = _goi(tac_tu, "ckm.pinout_set", chip="U1", chan="27", chuc_nang="SDA")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["stale_theo_nut"], "phải lan STALE lên theo đường Port"

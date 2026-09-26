@@ -174,6 +174,11 @@ class Cay:
 
 # =========================================================================== flatten §3
 def flatten(cay: Cay) -> dict[str, list[str]]:
+    """Xem `flatten_chi_tiet` — hàm này chỉ trả phần netlist."""
+    return flatten_chi_tiet(cay)[0]
+
+
+def flatten_chi_tiet(cay: Cay) -> tuple[dict[str, list[str]], dict[str, str]]:
     """`flatten(cây)` → `{tên net: [ref.pin đã sắp]}`. HIER-04.
 
     Đây là hàm nối mô hình mới với **mọi tool phẳng đã có**: `eda.bom_check`,
@@ -185,6 +190,10 @@ def flatten(cay: Cay) -> dict[str, list[str]]:
     """
     hn = HopNhat()
     chan_cua_net: dict[str, set[str]] = {}
+    # net_id → tên nhóm điện. Người gọi cần nó để hỏi "net điện này gồm những net phạm vi
+    # nào", ví dụ ERC: một ràng buộc dòng nói về MỘT net điện, không phải về từng net cục
+    # bộ — xét từng net sẽ báo trùng bốn lần cho cùng một đường nguồn.
+    thuoc_nhom: dict[str, str] = {}
 
     for nid, n in cay.nut.items():
         if n["loai"] != "net":
@@ -225,7 +234,9 @@ def flatten(cay: Cay) -> dict[str, list[str]]:
             else:
                 ten = f"{ten}#{sorted(nhom)[0]}"
         ra[ten] = sorted(chan, key=_khoa_chan)
-    return ra
+        for nid in nhom:
+            thuoc_nhom[nid] = ten
+    return ra, thuoc_nhom
 
 
 def _ten_cap_cao_nhat(cay: Cay, nhom: Iterable[str]) -> str:
@@ -798,9 +809,12 @@ def _noi_net(store: Any, goc: str, khoi: dict[str, dict[str, Any]],
     so_len_cha = 0
 
     for nid, n in net.items():
-        if store.ckm_cac_noi(net_id=nid):
-            continue          # net này đã nối bằng Port rồi (cây dựng thật, không di cư)
         ten_net = _ten_sach(n["ten"])
+        # KHÔNG bỏ qua net đã có kết nối Port. Đo trên bộ E2E: một net khai CẢ `noi_port`
+        # (Port của khối) lẫn `chan` (chân linh kiện) thì phần `chan` bị bỏ hẳn, và mạch
+        # mất chân — netlist phẳng thiếu `U1.7`, `U3.3` mà không ai biết. Hai cách khai là
+        # hai mức chi tiết của cùng một net, không phải hai net.
+        da_noi = {x["port_id"] for x in store.ckm_cac_noi(net_id=nid)}
         for canh in store.ckm_cac_canh(loai="NOI", tu=nid):
             ref, _, so = canh["den"].removeprefix("pin:").partition(".")
             nid_la = la_theo_ref.get(ref)
@@ -816,20 +830,26 @@ def _noi_net(store: Any, goc: str, khoi: dict[str, dict[str, Any]],
                 continue
             # Lá nằm trong một khối → phải đi qua biên khối đó.
             kpath = store.ckm_nut(khoi_chua).get("path") or khoi_chua
-            pid = ma_port(kpath, ten_net)
+            # Khối này đã có Port NGƯỜI KHAI nối vào chính net này thì đi qua Port đó, thay
+            # vì sinh thêm một Port trùng vai. Người khai `VDD`; sinh thêm `3V3` bên cạnh
+            # là làm hợp đồng của khối có hai cửa cho cùng một đường.
+            khai = next((x for x in store.ckm_cac_port(module_id=khoi_chua)
+                         if x["port_id"] in da_noi), None)
+            pid = khai["port_id"] if khai else ma_port(kpath, ten_net)
             if not store.ckm_cac_port(port_id=pid):
                 store.ckm_dat_port(
                     port_id=pid, module_id=khoi_chua, ten=ten_net, huong="passive",
                     rang_buoc={"di_cu": "Port sinh khi di cư mô hình phẳng: net ở gốc "
                                         "chạm chân một lá bên trong khối này"})
                 so_len_cha += 1
-            trong = f"net:{kpath}.{ten_net}"
+            ten_trong = _ten_sach(khai["ten"]) if khai else ten_net
+            trong = f"net:{kpath}.{ten_trong}"
             if store.ckm_nut(trong) is None:
                 store.ckm_dat_nut(node_id=trong, loai="net", ten=n["ten"],
                                   canonical={"ten": n["ten"], "di_cu": True},
                                   tier=n.get("tier"))
                 store.ckm_dat_cay(trong, parent_id=khoi_chua, kind=None,
-                                  path=f"{kpath}.{ten_net}")
+                                  path=f"{kpath}.{ten_trong}")
             store.ckm_noi(net_id=nid, port_id=pid)
             store.ckm_noi(net_id=trong, port_id=pid)
             store.ckm_noi(net_id=trong, port_id=port_la)
@@ -841,3 +861,159 @@ def _tim_port(store: Any, module_id: str, chan: str) -> str | None:
         if (p.get("chan") or p["ten"]) == chan:
             return p["port_id"]
     return None
+
+
+# =========================================================================== STALE theo cây §6
+# Bảng §6 nói một điều mà STALE theo LOẠI hiện vật không diễn đạt được:
+#
+#   "Sửa nội bộ khối X … KHÔNG lan tới: anh em của X; cha của X chỉ nhận cờ 'con đã đổi'"
+#
+# Chuỗi `HA_NGUON` trong `deps.py` là bảng loại→loại: sửa một khối làm STALE **mọi** netlist
+# và **mọi** mã. Đúng ở mức thô, nhưng trên một mạch 40 khối thì nó bật đèn ở 40 chỗ cho một
+# thay đổi ở một chỗ — và người học được rằng băng cảnh báo không có nghĩa gì. Đó là cách
+# tệ nhất để mất một cơ chế an toàn: không phải nó tắt, mà là nó luôn bật.
+#
+# Nên STALE của cây là **theo NÚT**, lưu trong hiện vật sơ đồ khối (`stale_nut: {path: lý
+# do}`), và tính bằng mã từ *loại thay đổi*. Bốn loại, đúng bốn dòng đầu bảng §6.
+LOAI_THAY_DOI = ("noi_bo", "port", "fact_la", "req")
+
+
+@dataclass(slots=True)
+class LanStale:
+    stale: dict[str, str] = field(default_factory=dict)      # path → lý do
+    chi_bao_tin: dict[str, str] = field(default_factory=dict)  # path → cờ "con đã đổi"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"stale": dict(self.stale), "chi_bao_tin": dict(self.chi_bao_tin)}
+
+
+def tim_nut(cay: Cay, khoa: str) -> str | None:
+    """Tìm nút theo `node_id` HOẶC theo đường dẫn. Trả node_id, hoặc None.
+
+    Nhận cả hai vì hai thứ này trông giống nhau và rất dễ lẫn: `module:MOD-MCU` là node_id,
+    `/board/MOD-MCU` là đường dẫn, và `module:/board/MOD-MCU` là **không có thật** — nhưng
+    nó trông đúng nhất trong ba cái. Bộ đo của tôi gọi bằng dạng thứ ba và mọi phép lan
+    STALE trả về rỗng, tức "đổi Port không ảnh hưởng gì" — một câu sai và im.
+    """
+    if khoa in cay.nut:
+        return khoa
+    if khoa.startswith("/"):
+        for nid, n in cay.nut.items():
+            if (n.get("path") or "") == khoa:
+                return nid
+        return None
+    # `<loại>:<đường dẫn>` — dạng lẫn kể trên. Thử lấy phần đường dẫn.
+    _, _, than = khoa.partition(":")
+    if than.startswith("/"):
+        return tim_nut(cay, than)
+    return None
+
+
+def lan_stale(cay: Cay, *, loai: str, muc_tieu: str, ly_do: str,
+              net_lien_quan: str = "") -> LanStale:
+    """STALE lan tới đâu theo §6. `muc_tieu` là node_id của khối/lá vừa đổi.
+
+    Trả hai thứ **khác nhau**, và việc tách chúng là phần quan trọng nhất của hàm này:
+
+      `stale`        nút phải cập nhật — băng cảnh báo, chặn "đủ để sinh sơ đồ"
+      `chi_bao_tin`  nút chỉ cần BIẾT là con nó đã đổi — không phải việc phải làm
+
+    §6 ghi rõ cha của khối vừa sửa nội bộ "chỉ nhận cờ 'con đã đổi' (thông tin), không
+    STALE". Gộp hai thứ này là biến một thông tin thành một việc, và mười thông tin thành
+    mười việc không có thật.
+    """
+    if loai not in LOAI_THAY_DOI:
+        raise ValueError(f"loại thay đổi lạ: {loai!r}. Chỉ nhận: {', '.join(LOAI_THAY_DOI)}")
+    ra = LanStale()
+
+    if loai == "req":
+        # `muc_tieu` ở đây là MÃ REQ, không phải node_id — nên phải xét trước phép tra nút
+        # bên dưới. Đo mới thấy: đặt sau, `cay.nut.get("FR-02")` trả None và hàm **lặng lẽ
+        # trả rỗng**, tức "đổi REQ không làm gì lỗi thời" — một câu sai và im.
+        for nid, nut in cay.nut.items():
+            if (nut.get("kind") or "") not in KIND_KHOI:
+                continue
+            if muc_tieu in (nut["canonical"].get("dap_ung_req") or []):
+                ra.stale[nut.get("path") or nid] = ly_do
+        return ra
+
+    nid = tim_nut(cay, muc_tieu)
+    if nid is None:
+        # KHÔNG trả rỗng: rỗng nghĩa là "không lan gì", và đó là một câu sai nghe như đúng.
+        # Người gọi truyền id từ kho, nên id lạ là lỗi lập trình — phải thấy được.
+        raise KeyError(
+            f"không có nút nào ứng với {muc_tieu!r} trong cây. Truyền node_id "
+            f"(module:MOD-MCU) hoặc đường dẫn (/board/MOD-MCU).")
+    n = cay.nut[nid]
+    muc_tieu = nid
+    path = n.get("path") or muc_tieu
+
+    if loai == "noi_bo":
+        ra.stale[path] = ly_do
+        for x in _hau_due(cay, muc_tieu):
+            ra.stale[cay.nut[x].get("path") or x] = f"{ly_do} — nằm trong khối vừa đổi"
+        cha = cay.cha(muc_tieu)
+        if cha:
+            ra.chi_bao_tin[cay.nut[cha].get("path") or cha] = (
+                f"con đã đổi ({path}) — nội bộ, không cần cập nhật gì")
+        return ra
+
+    if loai == "port":
+        ra.stale[path] = ly_do
+        cha = cay.cha(muc_tieu)
+        if cha:
+            ra.stale[cay.nut[cha].get("path") or cha] = (
+                f"{ly_do} — Port của khối con đổi thì net ở đây phải xem lại")
+        for x in _anh_em_noi_cung_net(cay, muc_tieu, net_lien_quan):
+            ra.stale[cay.nut[x].get("path") or x] = (
+                f"{ly_do} — cùng nối vào net đã đổi")
+        return ra
+
+    if loai == "fact_la":
+        # Fact của lá đổi → mọi ràng buộc dùng Fact đó, "từ lá lên tới gốc theo đường Port".
+        ra.stale[path] = ly_do
+        for x in _to_tien(cay, muc_tieu):
+            ra.stale[cay.nut[x].get("path") or x] = (
+                f"{ly_do} — ràng buộc ở cấp này tính từ Fact của lá bên trong")
+        return ra
+
+    return ra
+
+
+def _hau_due(cay: Cay, nid: str) -> list[str]:
+    ra: list[str] = []
+    ds = list(cay.con_truc_tiep(nid))
+    while ds:
+        x = ds.pop()
+        ra.append(x)
+        ds += cay.con_truc_tiep(x)
+    return sorted(ra)
+
+
+def _to_tien(cay: Cay, nid: str) -> list[str]:
+    ra: list[str] = []
+    cur = cay.cha(nid)
+    while cur:
+        ra.append(cur)
+        cur = cay.cha(cur)
+    return ra
+
+
+def _anh_em_noi_cung_net(cay: Cay, nid: str, ten_net: str) -> list[str]:
+    """Khối anh em cùng nối vào net đã đổi. KHÔNG phải mọi anh em — chỉ những cái có nối.
+
+    §6: "mọi khối anh em nối vào net đó" · "Các nhánh không nối" thì không lan. Đây là chỗ
+    phân biệt một cảnh báo có nghĩa với một cảnh báo phát cho cả bo.
+    """
+    cha = cay.cha(nid)
+    if not cha:
+        return []
+    net_ids = [x for x in cay.con.get(cha, []) if cay.nut[x]["loai"] == "net"
+               and (not ten_net or cay.nut[x]["ten"] == ten_net)]
+    ra: set[str] = set()
+    for net in net_ids:
+        for pid in cay.noi.get(net, []):
+            m = cay.port.get(pid, {}).get("module_id")
+            if m and m != nid and cay.cha(m) == cha:
+                ra.add(m)
+    return sorted(ra)

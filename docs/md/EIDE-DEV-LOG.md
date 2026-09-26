@@ -1390,3 +1390,84 @@ G5 35 · ING-A 29 · ING-B 25 · MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36).
 (`thu_ckm` 35/35) khác **đúng một tên ca**: "chip chưa ghim hộ chiếu thì nói ra" thành
 "chip đã ghim hộ chiếu thì bản đồ ghi nhận" — vì luật siết theo SCH-44 §4, có chủ ý. Không
 ca nào đi từ *đạt* sang *không đạt*.
+
+---
+
+### [DEV-269] 26/09/2026 · HIER-B — Fact theo cấp, ERC theo cây, STALE theo nút, UI cây
+
+Bốn phần của HIER-45 §4/§6/§8. Phần nặng nhất **không có trong tài liệu**: HIER-17 nói
+*"ERC/BOM/truy vết báo theo path khối"* — giả định đã có `board.check`. Mã chưa có ERC nào
+cả: phép kiểm mạch duy nhất là `net_mot_chan()`. Nên HIER-B phải dựng ERC từ đầu.
+
+**Bốn ràng buộc §4.2, và việc khó không phải phép so sánh.** `compare.py` đã biết so hai
+Fact; cái thiếu là biết **Fact nào với Fact nào**. Một net nguồn ở gốc chạm chân lá qua hai
+tầng Port, nên muốn biết ai cấp và ai tiêu thụ thì phải đi xuống tới lá. Đó là lý do
+`knowledge/erc.py` tồn tại thay vì thêm luật vào `compare.py`.
+
+**ERC xét theo NET ĐIỆN, không theo net phạm vi.** Một đường nguồn qua ba khối gồm bốn net
+phạm vi; xét từng net thì cùng một ràng buộc bị báo **bốn lần**, và người học được cách bỏ
+qua bảng ERC. Thêm `flatten_chi_tiet()` trả kèm `net_id → tên nhóm điện`.
+
+**"Chưa đủ dữ kiện" là một kết luận, không phải một mức nhẹ của "đạt".** Cộng được 12 mA mà
+còn một linh kiện chưa có Fact thì tổng THẬT lớn hơn — kết luận "đủ dòng" ở đó là một câu
+đúng về một con số sai. Bảng ERC trên tab xếp theo **hậu quả**, và `_ket_luan_vi` dịch
+`chua_du_du_kien` thành "chưa đủ dữ kiện" chứ không thành một sắc thái của "đạt".
+
+**STALE theo NÚT, không theo loại hiện vật.** Bảng §6 nói *"sửa nội bộ khối X không lan tới
+anh em của X; cha của X chỉ nhận cờ 'con đã đổi'"*. Chuỗi `HA_NGUON` là bảng loại→loại: sửa
+một khối làm STALE **mọi** netlist và **mọi** mã. Trên mạch 40 khối, một thay đổi bật đèn ở
+40 chỗ — và người học được rằng băng cảnh báo không có nghĩa gì. Đó là cách tệ nhất để mất
+một cơ chế an toàn: không phải nó tắt, mà là nó **luôn bật**.
+
+`lan_stale()` trả **hai** thứ khác nhau: `stale` (việc phải làm) và `chi_bao_tin` (chỉ cần
+biết). Gộp chúng là biến mười thông tin thành mười việc không có thật. `stale.accept` nhận
+cả đường dẫn nút và `ca_nhanh`, và lý do được **giữ** trong `stale_da_chap_nhan` chứ không
+xoá trắng — một cảnh báo người đã cân nhắc rồi bỏ qua là thông tin, không phải rác.
+
+**Hai câu của lớp giải thích khối do MÃ dựng** (§8, HIER-14): "giao tiếp gì (Port)" và "gồm
+gì (con)" là **dữ liệu**, đọc được từ cây một cách xác định. Bắt mô hình viết chúng là mời
+nó mô tả một khối theo trí nhớ — nó sẽ viết đúng chín lần rồi lần thứ mười viết một Port
+không tồn tại.
+
+### Bốn lỗi thật do việc đo phơi ra
+
+**1. Khối cấp nguồn bị gate theo HƯỚNG Port.** Port của lá sinh khi di cư mô hình phẳng có
+hướng `passive` (cố ý — `_huong_theo_ten` không đoán hướng tín hiệu). Nên một LDO có Fact
+`iout_max` hẳn hoi vẫn "không phải khối cấp", và cả ràng buộc im lặng biến thành "chưa đủ
+dữ kiện". Sửa: nhận diện bằng **Fact**, hướng Port là dữ liệu bổ trợ có thể chưa biết.
+
+**2. Net khai cả `noi_port` lẫn `chan` thì MẤT CHÂN.** `_noi_net` bỏ qua net nào đã có kết
+nối Port, nên phần `chan` bị bỏ hẳn và netlist phẳng thiếu `U1.7`, `U3.3` mà không ai biết.
+Hai cách khai là hai **mức chi tiết** của cùng một net, không phải hai net. Sửa kèm: chân
+đi qua **Port người đã khai** (`VDD`) thay vì sinh thêm một Port `3V3` trùng vai — một hợp
+đồng có hai cửa cho cùng một đường thì không còn là hợp đồng.
+
+**3. `lan_stale` trả RỖNG khi `muc_tieu` không phải nút.** Ba dạng trông giống nhau:
+`module:MOD-MCU` (node_id), `/board/MOD-MCU` (đường dẫn), `module:/board/MOD-MCU` (**không
+có thật** nhưng trông đúng nhất). Bộ đo của tôi gọi bằng dạng thứ ba và mọi phép lan trả
+rỗng — "đổi Port không ảnh hưởng gì", sai và im. Sửa: `tim_nut()` nhận cả ba dạng, và id lạ
+thì **NỔ** thay vì trả rỗng. Cùng lỗi với nhánh `req` trong chính hàm đó: `muc_tieu` là mã
+REQ chứ không phải node_id, nên phép tra nút ở đầu hàm làm nó lặng lẽ trả rỗng.
+
+**4. Một đường về sớm là một đoạn mã KHÔNG ca đo nào đi qua.** `_ghi_stale_nut` trả rỗng
+ngay khi chưa có hiện vật sơ đồ khối, nên **mọi** ca đơn vị gán chân trước đây không bao giờ
+chạm tới phép lan STALE. Khi `lan_stale` được làm cho nổ với id lạ, `pinout_set` vẫn gọi nó
+bằng id đoán (`linh_kien:U1` trong khi nút thật là `chip:U1`) — và chỉ bộ E2E, nơi có sơ đồ
+khối, mới đỏ. Đã thêm ca đơn vị đi qua đúng đường đó.
+
+### Một lỗi không thuộc sản phẩm, nhưng mất 20 phút
+
+Bộ E2E báo *"App không trả 'kenh_mo' sau 60s"* sau khi tôi thêm khối Swift mới. Nguyên nhân:
+`swift build` dựng tệp thực thi nhưng **không đóng gói lại `EIDE.app`** — app đang chạy là
+bản 21:17 hôm trước. Phải chạy `ui/EIDEApp/dong-goi.sh`. Ba ca đỏ vì lý do đó (dump trả
+`None` cho khoá mới) không phải lỗi mã. Ghi lại vì nó sẽ tái diễn: **sửa Swift thì phải
+đóng gói lại trước khi chạy bộ đo.**
+
+### Số đo
+
+`622 ca đơn vị` (+43) · `tools/thu_hier.py` **38/38** (từ 25) · `74 công cụ` (thêm
+`board.check`, `ckm.port_set`).
+
+**Hồi quy:** mười bộ E2E **GIỐNG HỆT** khi so bằng `tools/so_ket_qua.py` (G3 31 · G4 23 ·
+G5 35 · ING-A 29 · ING-B 25 · MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35). Bộ HIER
+chỉ **thêm** 13 ca, không ca nào đi từ *đạt* sang *không đạt*.

@@ -507,21 +507,71 @@ def register(r: Registry) -> Registry:
                 "note_vi": "Đã giải thích trong Console. Không có thay đổi nào được ghi."}
 
     @r.tool("stale.accept", "Lịch sử",
-            "Đánh dấu 'chấp nhận STALE' cho một hiện vật: nó lỗi thời nhưng người dùng "
-            "quyết định giữ nguyên. Phải nêu lý do.",
+            "Đánh dấu 'chấp nhận STALE': lỗi thời nhưng người dùng quyết định giữ nguyên. "
+            "Nhận mã hiện vật, HOẶC đường dẫn một nút trong cây khối (/board/mcu) — thêm "
+            "ca_nhanh=true thì áp cho cả nhánh dưới nút đó. Phải nêu lý do.",
             {"type": "object",
-             "properties": {"id": {"type": "string"}, "why": {"type": "string"}},
+             "properties": {"id": {"type": "string",
+                                   "description": "Mã hiện vật, hoặc đường dẫn nút cây"},
+                            "why": {"type": "string"},
+                            "ca_nhanh": {"type": "boolean",
+                                         "description": "Áp cho cả nhánh dưới nút (§6)"}},
              "required": ["id", "why"]},
-            risk="R2", core=False, keywords=["chấp nhận", "stale", "bỏ qua cảnh báo"])
-    def stale_accept(ctx: Any, id: str, why: str):
+            risk="R2", core=False,
+            keywords=["chấp nhận", "stale", "bỏ qua cảnh báo", "nhánh", "nút cây"])
+    def stale_accept(ctx: Any, id: str, why: str, ca_nhanh: bool = False):
+        if id.startswith("/"):
+            return _chap_nhan_nut(ctx, id, why, ca_nhanh)
         a = ctx.store.get(id)
         if a is None:
             return ToolResult(False, error=EideError(
-                "E5005", f"Không có hiện vật {id}.", blame="agent"))
+                "E5005", f"Không có hiện vật {id}.",
+                hint_for_agent="Đường dẫn nút cây bắt đầu bằng '/' (ví dụ /board/mcu); mã "
+                               "hiện vật thì không. Kiểm lại bằng store.list hay ckm.graph.",
+                alternatives=["store.list", "ckm.graph"], blame="agent"))
         ctx.store.accept_stale(id, why)
         return {"id": id, "note_vi": f"Đã tắt băng cảnh báo cho {id}. Lý do được ghi lại."}
 
     return r
+
+
+def _chap_nhan_nut(ctx: Any, duong: str, why: str, ca_nhanh: bool):
+    """§6 — "Chấp nhận STALE áp cho một nút hoặc cả nhánh".
+
+    Xoá cờ khỏi hiện vật sơ đồ khối, và ghi lý do vào `stale_da_chap_nhan` chứ không xoá
+    trắng: một cảnh báo đã được người cân nhắc và bỏ qua là **thông tin**, không phải rác.
+    Người đọc lịch sử sau này cần biết nó từng bật và ai tắt.
+    """
+    from ..knowledge import cay as KC
+    from ..knowledge import ckm as K
+
+    a = ctx.store.get(K.MA_DO_THI)
+    if a is None:
+        return ToolResult(False, error=EideError(
+            "E2001", "Chưa có sơ đồ khối nào, nên không có nút nào để chấp nhận.",
+            hint_for_agent="Dựng khối bằng ckm.module_set trước.",
+            alternatives=["ckm.module_set"], blame="agent"))
+    canon = dict(a["canonical"])
+    nut = dict(canon.get("stale_nut") or {})
+    chon = [p for p in nut
+            if p == duong or (ca_nhanh and p.startswith(duong.rstrip("/") + "/"))]
+    if not chon:
+        return ToolResult(False, error=EideError(
+            "E5005", f"Nút {duong} không đang ở trạng thái cần cập nhật.",
+            hint_for_agent=("Những nút đang cần cập nhật: "
+                            + (", ".join(sorted(nut)) or "không có nút nào")),
+            alternatives=["ckm.graph"], blame="agent"))
+    da = dict(canon.get("stale_da_chap_nhan") or {})
+    for p in chon:
+        da[p] = f"{nut.pop(p)} — người chấp nhận: {why}"
+    canon["stale_nut"], canon["stale_da_chap_nhan"] = nut, da
+    ctx.store.apply(artefact_id=K.MA_DO_THI, type="block_diagram", op="update",
+                    author="human", canonical=canon, explain=a["explain"],
+                    view_hint=a.get("view_hint"))
+    return {"nut": sorted(chon), "con_lai": sorted(nut),
+            "note_vi": (f"Đã tắt băng cảnh báo cho {len(chon)} nút"
+                        + (" (cả nhánh)" if ca_nhanh else "")
+                        + ". Lý do được ghi lại, không xoá — lịch sử vẫn thấy nó từng bật.")}
 
 
 def _note_stale(cs: Any) -> str:

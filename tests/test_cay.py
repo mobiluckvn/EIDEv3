@@ -546,3 +546,49 @@ def test_net_cham_port_cua_LA_con_truc_tiep_van_hop_le(bo_mach):
     n = _net(bo_mach, "VIN", trong="module:/board", path="/board.VIN")
     bo_mach.ckm_noi(net_id=n, port_id=p)
     assert [x for x in C.kiem_bat_bien(C.Cay.doc(bo_mach)) if x.ma == C.E_XUYEN_CAP] == []
+
+
+def test_net_khai_ca_noi_port_va_chan_thi_KHONG_mat_chan(make_agent):
+    """Hai cách khai là hai MỨC CHI TIẾT của cùng một net, không phải hai net.
+
+    Trước khi sửa, `_noi_net` bỏ qua net nào đã có kết nối Port — nên một net khai cả
+    `noi_port` (biên khối) lẫn `chan` (chân linh kiện) mất hẳn phần chân, và netlist phẳng
+    thiếu `U1.7` mà không ai biết.
+    """
+    a = _tac_tu_phang(make_agent)
+    from eide.loop import TurnContext
+    ex = {"summary": "s", "why": "w", "sources": [], "diff_prev": "—", "next": "—",
+          "confidence": "VANG"}
+    ctx = TurnContext(config=a.config, store=a.store, ledger=a.ledger, eide_md=a.eide_md,
+                      ids=a.ids, registry=a.registry, emit=lambda c: None,
+                      history=a.history, run_id="run-2")
+    a.registry.run("ckm.port_set", {"khoi": "MOD-MCU", "ten": "VDD",
+                                    "huong": "power_in", "explain": ex}, ctx)
+    r = a.registry.run("ckm.net_set", {"ten": "3V3", "loai": "power",
+                                       "chan": [["U1", "7"], ["U3", "3"]],
+                                       "noi_port": [["MOD-MCU", "VDD"]],
+                                       "explain": ex}, ctx)
+    assert r.ok, getattr(r.error, "message_vi", "")
+    f = C.flatten(C.Cay.doc(a.store))
+    assert "U1.7" in f["3V3"] and "U3.3" in f["3V3"], f
+
+
+def test_di_cu_dung_lai_Port_nguoi_da_khai_thay_vi_sinh_Port_trung_vai(make_agent):
+    """Người khai `VDD`; sinh thêm một Port `3V3` bên cạnh là làm hợp đồng của khối có hai
+    cửa cho cùng một đường."""
+    a = _tac_tu_phang(make_agent)
+    from eide.loop import TurnContext
+    ex = {"summary": "s", "why": "w", "sources": [], "diff_prev": "—", "next": "—",
+          "confidence": "VANG"}
+    ctx = TurnContext(config=a.config, store=a.store, ledger=a.ledger, eide_md=a.eide_md,
+                      ids=a.ids, registry=a.registry, emit=lambda c: None,
+                      history=a.history, run_id="run-2")
+    a.registry.run("ckm.port_set", {"khoi": "MOD-MCU", "ten": "VDD",
+                                    "huong": "power_in", "explain": ex}, ctx)
+    a.registry.run("ckm.net_set", {"ten": "3V3", "loai": "power",
+                                    "chan": [["U1", "7"]],
+                                    "noi_port": [["MOD-MCU", "VDD"]],
+                                    "explain": ex}, ctx)
+    ten = {p["ten"] for p in a.store.ckm_cac_port(module_id="module:MOD-MCU")}
+    assert "VDD" in ten
+    assert "3V3" not in ten, f"không được sinh Port trùng vai: {sorted(ten)}"

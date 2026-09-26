@@ -173,6 +173,16 @@ final class UITestChannel {
                 "chu_da_dung": chuDaDung(b),
                 "so_buoc": b.arr("buoc").count,
                 "so_hang": b.arr("rows").count,
+                // Cây khối (A5.9): phơi ra thứ người NHÌN THẤY trên cây, để ca đo hỏi được
+                // "nút nào đang cần cập nhật" thay vì chỉ đếm dòng bảng.
+                "so_nut_cay": b.arr("cay_nut").count,
+                "nut_can_cap_nhat": b.arr("cay_nut")
+                    .filter { $0["tinh_trang"]?.stringValue == "stale" }
+                    .compactMap { $0["duong"]?.stringValue },
+                "nut_con_da_doi": b.arr("cay_nut")
+                    .filter { $0["tinh_trang"]?.stringValue == "con_da_doi" }
+                    .compactMap { $0["duong"]?.stringValue },
+                "sau_nhat": b.arr("cay_nut").map { $0["muc"]?.intValue ?? 0 }.max() ?? 0,
                 "so_muc": b.arr("items").count,
                 // Ô trống trung thực: ba trường này là thứ người ĐỌC khi chưa có gì.
                 // Không phơi ra thì mọi phép kiểm về ô trống đều đậu giả vì chuỗi rỗng.
@@ -245,6 +255,9 @@ final class UITestChannel {
         }
         for x in b.arr("sections") {
             phan += [x["ten"]?.stringValue ?? "", x["than"]?.stringValue ?? ""]
+        }
+        for x in b.arr("cay_nut") {
+            phan += [x["ten"]?.stringValue ?? "", x["ly_do"]?.stringValue ?? ""]
         }
         return phan.filter { !$0.isEmpty }
             .map { Markdown.chuThuan($0) }.joined(separator: "\n")

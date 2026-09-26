@@ -347,19 +347,45 @@ def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:
     # hình dáng thật của mạch; bảng khối là một cách nhìn phẳng của cùng dữ liệu.
     ckm_a = store.get(K.MA_CKM)
     cay_chu = (ckm_a["canonical"].get("cay") or []) if ckm_a else []
+    mg0 = store.get(K.MA_DO_THI)
+    stale_nut = ((mg0["canonical"].get("stale_nut") or {}) if mg0 else {})
+    con_da_doi = ((mg0["canonical"].get("con_da_doi") or {}) if mg0 else {})
     if cay_chu:
         vp = (ckm_a["canonical"].get("vi_pham_bat_bien") or [])
         sau = max((len([x for x in d.split("/") if x.strip()])
                    for d in cay_chu if d.strip().startswith("/")), default=0)
         ra.append(khoi_hien_vat(
-            "A5.9", "Cây khối phân cấp", "table", ckm_a,
+            # Loại `cay`: giao diện có khối riêng vẽ cây gập/mở (A5.9.1). Vẫn gửi kèm
+            # `columns`/`rows` để chỗ nào chỉ biết vẽ bảng thì vẫn đọc được — một khối mới
+            # không được làm màn hình trống.
+            "A5.9", "Cây khối phân cấp", "cay", ckm_a,
             summary=(f"{len(cay_chu)} nút · sâu {sau} cấp"
                      + (f" · {len(vp)} VI PHẠM bất biến cây" if vp else "")
+                     + (f" · {len(stale_nut)} nút CẦN CẬP NHẬT" if stale_nut else "")
                      + (f" · quá mức khuyến nghị {_C.SAU_KHUYEN_NGHI} cấp, bố cục nên "
                         "chuyển sang sheet phân cấp" if sau > _C.SAU_KHUYEN_NGHI else "")),
-            columns=["Nút", "Loại", "Port", "Net"],
-            rows=[_hang_cay(d) for d in cay_chu],
+            columns=["Nút", "Loại", "Port", "Net", "Tình trạng"],
+            rows=[_hang_cay(d, stale_nut, con_da_doi) for d in cay_chu],
+            # §6 — giao diện tô màu theo NÚT. Danh sách đường dẫn, không phải mã hiện vật.
+            stale_nut=dict(stale_nut), con_da_doi=dict(con_da_doi),
+            **_du_lieu_cay(store, cay_chu, ckm_a, stale_nut, con_da_doi),
             stale=[ckm_a["id"]] if ckm_a["stale"] else []))
+        erc = (ckm_a["canonical"].get("erc") or [])
+        if erc:
+            nang = [x for x in erc if x.get("ket_luan") == "khong_dat"]
+            cb = [x for x in erc if x.get("ket_luan") == "canh_bao"]
+            thieu = [x for x in erc if x.get("ket_luan") == "chua_du_du_kien"]
+            ra.append(block(
+                "A5.9c", "Kiểm mạch theo cây (ERC)", "table",
+                summary=(f"{len(nang)} lỗi chặn · {len(cb)} cảnh báo · "
+                         f"{len(thieu)} chỗ CHƯA ĐỦ DỮ KIỆN · "
+                         f"{len(erc) - len(nang) - len(cb) - len(thieu)} đạt"
+                         + (" — 'chưa đủ dữ kiện' KHÔNG phải đạt" if thieu else "")),
+                columns=["Khối", "Luật", "Kết luận", "Điều gì", "Cách sửa"],
+                rows=[[x.get("path", ""), x.get("luat", ""),
+                       _ket_luan_vi(x.get("ket_luan", "")), x.get("vi", ""),
+                       x.get("cach_sua", "") or "—"]
+                      for x in sorted(erc, key=_uu_tien_erc)]))
         if vp:
             ra.append(block(
                 "A5.9b", "Vi phạm bất biến cây", "table",
@@ -463,9 +489,74 @@ def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:
     return ra
 
 
-def _hang_cay(dong: str) -> list[str]:
-    """Một dòng cây dạng chữ → bốn cột. Thụt đầu dòng giữ nguyên để người thấy phân cấp
-    ngay trên bảng, vì giao diện chưa có khối cây gập/mở (đó là bước HIER-B)."""
+def _du_lieu_cay(store: Any, cay_chu: list[str], ckm_a: dict[str, Any],
+                 stale_nut: dict[str, str], con_da_doi: dict[str, str]) -> dict[str, Any]:
+    """Dữ liệu cho khối cây gập/mở: mỗi nút một bản ghi, kèm Port/net/ERC của CHÍNH nút đó.
+
+    Gửi sẵn cả ba thứ thay vì để giao diện gọi lại: §E2 nói nút "Vì sao?" và các panel phụ
+    phải hiện ra **0 token**. Người bấm vào một khối là muốn xem ngay, không phải chờ một
+    lượt mô hình.
+    """
+    from .knowledge import cay as KC
+
+    c = KC.Cay.doc(store)
+    nut: list[dict[str, Any]] = []
+    port_theo: dict[str, list[dict[str, Any]]] = {}
+    net_theo: dict[str, list[str]] = {}
+    for nid, n in c.nut.items():
+        d = n.get("path")
+        if not d or (n.get("kind") or "") not in KC.KIND:
+            continue
+        ports = [c.port[p] for p in c.port_cua.get(nid, [])]
+        nets = [c.nut[x]["ten"] for x in c.con.get(nid, []) if c.nut[x]["loai"] == "net"]
+        nut.append({
+            "duong": d, "ten": n["ten"], "kind": n.get("kind") or "",
+            "muc": KC.do_sau(d), "cha": (c.nut.get(n.get("parent_id") or "", {}) or {}).get("path", ""),
+            "so_port": len(ports), "so_net": len(nets),
+            "tier": n.get("tier") or "",
+            "tinh_trang": ("stale" if d in stale_nut else
+                           "con_da_doi" if d in con_da_doi else ""),
+            "ly_do": stale_nut.get(d) or con_da_doi.get(d) or "",
+        })
+        port_theo[d] = [{"ten": p["ten"], "huong": p["huong"], "loai": p["loai"],
+                         "chan": p.get("chan") or "",
+                         "rang_buoc": "; ".join(f"{k}={v}" for k, v in
+                                                sorted((p.get("rang_buoc") or {}).items()))}
+                        for p in ports]
+        if nets:
+            net_theo[d] = sorted(nets)
+    erc_theo: dict[str, list[dict[str, Any]]] = {}
+    for x in (ckm_a["canonical"].get("erc") or []):
+        erc_theo.setdefault(x.get("path", ""), []).append(x)
+    return {"cay_nut": sorted(nut, key=lambda z: z["duong"]),
+            "port_theo_nut": port_theo, "net_theo_nut": net_theo,
+            "erc_theo_nut": erc_theo,
+            "sau_khuyen_nghi": KC.SAU_KHUYEN_NGHI}
+
+
+_KET_LUAN_VI = {"khong_dat": "LỖI CHẶN", "canh_bao": "cảnh báo",
+                "chua_du_du_kien": "chưa đủ dữ kiện", "dat": "đạt"}
+
+
+def _ket_luan_vi(ma: str) -> str:
+    """"chưa đủ dữ kiện" phải đọc ra đúng là chưa kiểm được, không phải một mức độ nhẹ hơn
+    của "đạt" (N6)."""
+    return _KET_LUAN_VI.get(ma, ma or "?")
+
+
+def _uu_tien_erc(x: dict[str, Any]) -> tuple[int, str, str]:
+    """Xếp theo HẬU QUẢ, không theo thứ tự luật chạy: lỗi chặn lên trước."""
+    thu = {"khong_dat": 0, "canh_bao": 1, "chua_du_du_kien": 2, "dat": 3}
+    return (thu.get(x.get("ket_luan", ""), 9), x.get("path", ""), x.get("luat", ""))
+
+
+def _hang_cay(dong: str, stale_nut: dict[str, str] | None = None,
+              con_da_doi: dict[str, str] | None = None) -> list[str]:
+    """Một dòng cây dạng chữ → năm cột. Thụt đầu dòng giữ nguyên để người thấy phân cấp.
+
+    Cột "Tình trạng" phân biệt hai thứ §6 cố ý tách: **cần cập nhật** (việc phải làm) và
+    **con đã đổi** (chỉ thông tin). Gộp chúng là biến mười thông tin thành mười việc không
+    có thật, và người sẽ học cách bỏ qua cả hai."""
     thut = len(dong) - len(dong.lstrip())
     than = dong.strip()
     if "[" in than and than.endswith("]"):
@@ -476,7 +567,13 @@ def _hang_cay(dong: str) -> list[str]:
     loai = phan[0] if phan else ""
     port = next((x for x in phan if "Port" in x or "chân" in x), "")
     net = next((x for x in phan if "net" in x), "")
-    return [" " * thut + duong.strip(), loai, port, net]
+    d = duong.strip()
+    tt = ""
+    if (stale_nut or {}).get(d):
+        tt = "CẦN CẬP NHẬT — " + stale_nut[d]
+    elif (con_da_doi or {}).get(d):
+        tt = "con đã đổi (thông tin)"
+    return [" " * thut + d, loai, port, net, tt]
 
 
 def _tang_vi(ma: str) -> str:

@@ -139,6 +139,7 @@ struct BlockView: View {
         case "empty":    KhoiRong(block: block)
         case "kv":       KhoiKV(block: block)
         case "table":    KhoiBang(block: block)
+        case "cay":      KhoiCay(block: block)
         case "timeline": KhoiDongThoiGian(block: block)
         case "changesets": KhoiChangeset(block: block)
         case "procedure": KhoiQuyTrinh(block: block)
@@ -929,5 +930,162 @@ struct KhoiMuc: View {
                 }
             }
         }
+    }
+}
+
+
+// MARK: - Cây khối phân cấp (A5.9 · EIDE-HIER-45 §8)
+
+/// Cây gập/mở của mạch: mạch → khối → khối con → linh kiện (lá).
+///
+/// Ba điều khối này phải làm được, và mỗi điều trả lời một câu người thật sự hỏi:
+///
+///   **gập/mở**   "mạch có bao nhiêu khối" — một danh sách phẳng 200 dòng không trả lời được
+///   **chọn nút** "khối này giao tiếp bằng gì" — Port, net cục bộ, ERC của chính nó
+///   **tô nút**   "chỗ nào cần cập nhật" — §6 tách *cần cập nhật* khỏi *con đã đổi*
+///
+/// Lõi gửi sẵn Port/net/ERC theo từng nút, nên bấm vào một khối **không tốn token** (§E2).
+/// Giao diện không tự tính gì về mạch — nó chỉ vẽ (I3).
+struct KhoiCay: View {
+    let block: SurfaceBlock
+    @State private var dongLai: Set<String> = []
+    @State private var dangChon: String?
+
+    private struct Nut: Identifiable {
+        let duong: String, ten: String, kind: String, cha: String, lyDo: String
+        let muc: Int, soPort: Int, soNet: Int
+        let tinhTrang: String
+        var id: String { duong }
+    }
+
+    private var nut: [Nut] {
+        block.arr("cay_nut").map { v in
+            Nut(duong: v["duong"]?.stringValue ?? "",
+                ten: v["ten"]?.stringValue ?? "",
+                kind: v["kind"]?.stringValue ?? "",
+                cha: v["cha"]?.stringValue ?? "",
+                lyDo: v["ly_do"]?.stringValue ?? "",
+                muc: v["muc"]?.intValue ?? 1,
+                soPort: v["so_port"]?.intValue ?? 0,
+                soNet: v["so_net"]?.intValue ?? 0,
+                tinhTrang: v["tinh_trang"]?.stringValue ?? "")
+        }
+    }
+
+    /// Nút bị ẩn vì một tổ tiên của nó đang gập. Tính bằng đường dẫn — cây nào cũng đúng.
+    private func bienAn(_ n: Nut) -> Bool {
+        for g in dongLai where n.duong.hasPrefix(g + "/") { return true }
+        return false
+    }
+
+    private var sauKhuyenNghi: Int { block.payload["sau_khuyen_nghi"]?.intValue ?? 4 }
+    private var sauNhat: Int { nut.map(\.muc).max() ?? 0 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if sauNhat > sauKhuyenNghi {
+                Label("Cây sâu \(sauNhat) cấp, quá mức khuyến nghị \(sauKhuyenNghi). "
+                      + "Vẫn hợp lệ — nhưng bố cục nên chuyển sang sheet phân cấp.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 10)).foregroundStyle(Color.staleAmber)
+            }
+            ForEach(nut.filter { !bienAn($0) }) { n in
+                dong(n)
+            }
+            if let d = dangChon { chiTiet(d) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private func dong(_ n: Nut) -> some View {
+        let coCon = nut.contains { $0.cha == n.duong }
+        HStack(spacing: 4) {
+            Spacer().frame(width: CGFloat(max(0, n.muc - 1)) * 14)
+            if coCon {
+                Button {
+                    if dongLai.contains(n.duong) { dongLai.remove(n.duong) }
+                    else { dongLai.insert(n.duong) }
+                } label: {
+                    Image(systemName: dongLai.contains(n.duong)
+                          ? "chevron.right" : "chevron.down")
+                        .font(.system(size: 8))
+                }
+                .buttonStyle(.plain).frame(width: 12)
+            } else {
+                Spacer().frame(width: 12)
+            }
+            Image(systemName: bieuTuong(n.kind)).font(.system(size: 9))
+                .foregroundStyle(.secondary)
+            Button { dangChon = (dangChon == n.duong) ? nil : n.duong } label: {
+                Text(n.ten.isEmpty ? n.duong : n.ten)
+                    .font(.system(size: 11, weight: dangChon == n.duong ? .semibold : .regular))
+            }
+            .buttonStyle(.plain)
+            Text(n.kind == "leaf" ? "\(n.soPort) chân"
+                                  : "\(n.soPort) Port · \(n.soNet) net")
+                .font(.system(size: 9)).foregroundStyle(.tertiary)
+            if n.tinhTrang == "stale" {
+                Text("cần cập nhật").font(.system(size: 9))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Color.staleAmber.opacity(0.18),
+                                in: RoundedRectangle(cornerRadius: 3))
+                    .foregroundStyle(Color.staleAmber)
+                    .help(n.lyDo)
+            } else if n.tinhTrang == "con_da_doi" {
+                // §6: cha của khối vừa sửa nội bộ chỉ nhận THÔNG TIN. Vẽ nó như một việc
+                // phải làm là biến mười thông tin thành mười việc không có thật.
+                Text("con đã đổi").font(.system(size: 9))
+                    .foregroundStyle(.tertiary).help(n.lyDo)
+            }
+            Spacer()
+        }
+    }
+
+    private func bieuTuong(_ kind: String) -> String {
+        switch kind {
+        case "board": return "square.grid.2x2"
+        case "leaf":  return "cpu"
+        default:      return "square.on.square"
+        }
+    }
+
+    @ViewBuilder private func chiTiet(_ duong: String) -> some View {
+        let ports = block.payload["port_theo_nut"]?[duong]?.arrayValue ?? []
+        let nets = block.payload["net_theo_nut"]?[duong]?.arrayValue ?? []
+        let erc = block.payload["erc_theo_nut"]?[duong]?.arrayValue ?? []
+        VStack(alignment: .leading, spacing: 4) {
+            Divider()
+            Text(duong).font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+            if ports.isEmpty {
+                Text("Chưa khai Port nào — bên ngoài chưa biết khối này giao tiếp bằng gì.")
+                    .font(.system(size: 10)).foregroundStyle(Color.staleAmber)
+            } else {
+                ForEach(Array(ports.enumerated()), id: \.offset) { _, p in
+                    HStack(spacing: 5) {
+                        Text(p["ten"]?.stringValue ?? "").font(.system(size: 10, weight: .medium))
+                        Text(p["huong"]?.stringValue ?? "").font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                        if let rb = p["rang_buoc"]?.stringValue, !rb.isEmpty {
+                            Text(rb).font(.system(size: 9)).foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+            if !nets.isEmpty {
+                Text("Net cục bộ: " + nets.compactMap(\.stringValue).joined(separator: ", "))
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            ForEach(Array(erc.enumerated()), id: \.offset) { _, e in
+                Text("• " + (e["vi"]?.stringValue ?? ""))
+                    .font(.system(size: 10))
+                    .foregroundStyle(e["ket_luan"]?.stringValue == "khong_dat"
+                                     ? Color.red : .secondary)
+            }
+        }
+        .padding(7)
+        .background(Color(nsColor: .underPageBackgroundColor),
+                    in: RoundedRectangle(cornerRadius: 5))
     }
 }
