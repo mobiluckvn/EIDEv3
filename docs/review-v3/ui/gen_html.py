@@ -265,5 +265,5 @@ HTML = f"""<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>EID
 <div id="modal"><div class="box"></div></div><div class="notice" id="notice"></div>
 <script>const MODEL={model_json};const SETTINGS={json.dumps(settings_html, ensure_ascii=False)};{JS}</script>
 </body></html>"""
-open(str(__import__('pathlib').Path(__file__).resolve().parent / 'EIDE_v3.0_UI_prototype.html'), 'w').write(HTML)
+open('./EIDE_v3.0_UI_prototype.html', 'w').write(HTML)
 print('html ok', len(HTML) // 1024, 'KB')

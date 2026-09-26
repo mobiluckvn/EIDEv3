@@ -132,5 +132,5 @@ for i, g in enumerate(groups, 2):
     put(wg, i, [g, f"=COUNTIF('Yeu cau'!B2:B{NR},A{i})", f"=COUNTIFS('Yeu cau'!B2:B{NR},A{i},'Yeu cau'!F2:F{NR},\"Đã phủ\")", f"=COUNTIF('Anh xa'!E2:E{NP},A{i})"])
 
 wb.move_sheet('Kiem tra', offset=-(len(wb.sheetnames) - 2))
-wb.save(str(__import__('pathlib').Path(__file__).resolve().parent / 'EIDE_v3.0_Anh_xa_Yeu_cau_UI.xlsx'))
+wb.save('./EIDE_v3.0_Anh_xa_Yeu_cau_UI.xlsx')
 print('xlsx ok', len(pairs), 'cặp')

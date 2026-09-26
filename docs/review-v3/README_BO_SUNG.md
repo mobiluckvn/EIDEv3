@@ -1,4 +1,4 @@
-# EIDE v3.0 — GÓI BỔ SUNG (nâng cấp) cho Claude Code: Bộ nhớ (MEM-42) + Nạp & trích xuất tài liệu (ING-43) + Sơ đồ KiCad (SCH-44)
+# EIDE v3.0 — GÓI BỔ SUNG (nâng cấp) cho Claude Code: Bộ nhớ (MEM-42) + Nạp & trích xuất tài liệu (ING-43) + Sơ đồ KiCad (SCH-44) + Cây khối phân cấp (HIER-45)
 
 Ngày: 25/09/2026 · Chủ sản phẩm: Vũ Trí Công · Repo: github.com/mobiluckvn/EIDE
 Tiền đề: repo đã (hoặc đang) làm theo gói `docs/review-v3/` (EIDE-MDD-40 v3.0). Gói này **bổ sung**, không thay thế, MDD-40.
@@ -10,9 +10,10 @@ Tiền đề: repo đã (hoặc đang) làm theo gói `docs/review-v3/` (EIDE-MD
 | `docs/md/EIDE-MEM-42_Quan_ly_Bo_nho_va_Nen_Bo_nho.md` | **Thay thế mục B6 của MDD-40.** Năm tầng bộ nhớ M0–M4; 8 nguyên tắc; ngân sách ngữ cảnh 10 khối + 4 ngưỡng; quản lý theo lượt (cắt theo tool, blob, dedup, ghim); nén 5 cấp C0–C4 với lược đồ tóm tắt 10 mục và kiểm sau nén; EIDE.md quy tắc cứng; store/ledger/blob/retention; resume 5 bước; bộ nhớ người dùng; truy hồi; UI A14.6; sự cố; đo lường; MEM01–14; API `memory.*`; yêu cầu MEM-01…MEM-24 |
 | `docs/md/EIDE-ING-43_Duong_ong_Nap_Tai_lieu_va_Trich_xuat.md` | **Chi tiết hoá mục C3 và tool ingest.file/fact.extract của MDD-40.** Sửa bỏ sót Office (**docx/xlsx/pptx** + .doc/.xls/.ppt/.odt), Markdown/HTML, EDA (.kicad_sch, Eagle, EasyEDA, BOM), cấu hình vendor (.ioc/sdkconfig/.dts/.ld/map → tầng CẤU HÌNH), hình trong tài liệu, đa ngôn ngữ, chuẩn hoá đơn vị; bộ phân loại theo nội dung (Office TRƯỚC archive); mã lỗi E1001–E1008; ING01–16; yêu cầu ING-01…ING-20 |
 | `docs/md/EIDE-SCH-44_Sinh_So_do_KiCad_va_Render.md` | **Tính năng mới, cộng thêm, cách ly.** CKM → SKiDL → netlist/ERC → bố cục theo module (tiêu chí số) → .kicad_sch (kiutils) → SVG bằng **renderer nội bộ** → xuất gói / nạp lại. **Máy KHÔNG cài KiCad**: không kicad-cli, thư viện ký hiệu chỉ tải như dữ liệu. Cờ `features.schematic` mặc định TẮT; 7 lớp bảo vệ hệ thống cũ; hồi quy hai chế độ; SCH01–18; SCH-01…SCH-22 |
-| `docs/docx/` | Bản Word của ba tài liệu (cho chủ sản phẩm) |
+| `docs/md/EIDE-HIER-45_Mo_hinh_Cay_khoi_Phan_cap.md` | **Sửa mô hình dữ liệu CKM** (thay MDD-40 C2 Module/Net, E5.4): mạch → khối → khối con → linh kiện (lá); Port ở biên khối; Net theo phạm vi; `flatten(cây)` bằng mã cấp netlist phẳng cho mọi tool cũ; bất biến E8001–E8006; Fact/REQ theo cấp + ràng buộc theo cây; STALE theo cây; thư viện khối `block@semver`; ánh xạ SKiDL/KiCad phân cấp; UI cây (A5.9); migration cộng thêm có down(); HIER01–16; HIER-01…18. **Làm HIER-A trước SCH-A** |
+| `docs/docx/` | Bản Word của bốn tài liệu (cho chủ sản phẩm) |
 | `docs/img/` | 2 sơ đồ bộ nhớ (tầng, bậc thang nén) |
-| `ui/` | Mô hình UI + HTML prototype + Excel ánh xạ **đã gồm** khối A14.6 (Bộ nhớ tác tử, 16 widget) và A3.6 (Nạp & trích xuất theo định dạng, 14 widget). và A5.8 (Sơ đồ KiCad, 11 widget) + cờ tính năng ở Thiết lập. Kiểm hai chiều: **264 yêu cầu ↔ 233 widget, ĐẠT**. Thay thế thư mục `ui/` của gói v3 |
+| `ui/` | Mô hình UI + HTML prototype + Excel ánh xạ **đã gồm** khối A14.6 (Bộ nhớ tác tử, 16 widget) và A3.6 (Nạp & trích xuất theo định dạng, 14 widget). A5.8 (Sơ đồ KiCad, 11 widget), A5.9 (Cây khối phân cấp, 12 widget) + cờ tính năng ở Thiết lập. Kiểm hai chiều: **282 yêu cầu ↔ 245 widget, ĐẠT**. Thay thế thư mục `ui/` của gói v3 |
 | `diag/` | Trình sinh sơ đồ HTML/CSS (nếu cần vẽ thêm) |
 
 ## 2. Việc cần làm (theo thứ tự)
@@ -37,6 +38,13 @@ Tiền đề: repo đã (hoặc đang) làm theo gói `docs/review-v3/` (EIDE-MD
 4. **SCH-D**: hierarchical sheets; symbol sinh từ Fact có giao diện xác nhận; gói vào snapshot. Ca: SCH07.
 Ràng buộc cứng: không cài KiCad, không gọi kicad-cli, không đề nghị cài KiCad ở bất kỳ thông điệp nào; kiểm "mở được trong KiCad 8/9" làm ở CI/máy khác.
 
+### Phần D — Cây khối phân cấp (HIER-45 §9; sửa mô hình dữ liệu, tương thích ngược)
+1. **HIER-A** (trước SCH-A): lược đồ cộng thêm (parent_id/kind/path/lib_ref, bảng port/connection, net.scope) + migration có down() + `flatten(cây)` + bất biến E8001–E8006; mọi tool phẳng cũ chạy trên flatten; **hồi quy toàn bộ giống 100 %**. Ca: HIER01–04, 16.
+2. **HIER-B** (cùng G3/G4): Fact/REQ theo cấp + kiểm ràng buộc theo cây (Iout ≥ Σ I, mức logic, trùng addr, pull-up) + STALE theo cây + UI cây A5.9. Ca: HIER05–08, 14, 15.
+3. **HIER-C**: thư viện khối `block@semver` (dự án → người dùng → M4), instantiate có nguồn, trích khối. Ca: HIER09–10.
+4. **HIER-D** (cùng SCH-B/C): SKiDL theo hàm/khối, KiCad hierarchical sheet = khối, round-trip → cây. Ca: HIER11–13.
+Quyết định đã chốt (26/09): linh kiện là lá; độ sâu không giới hạn, > 4 cảnh báo; khối tái dùng có phiên bản.
+
 ## 3. Điểm chờ chủ sản phẩm chốt (ghi vào gap report, không tự quyết)
 - ING-19: tài liệu Office **do người dùng tự viết** (spec nội bộ, bảng đo) gán tầng **NGƯỜI** (đề xuất) hay BẠC?
 - MEM: giá trị K (10 lượt giữ nguyên văn) và ngưỡng 70 % — giữ mặc định trừ khi đo thấy khác.
@@ -44,7 +52,7 @@ Ràng buộc cứng: không cài KiCad, không gọi kicad-cli, không đề ngh
 
 ## 4. Nguyên tắc làm việc (như gói v3)
 - Đọc `README_BO_SUNG.md` → đọc **toàn bộ** MEM-42 rồi ING-43 → rà mã → **gap report bổ sung** `docs/md/EIDE-GAP-44_Ra_soat_MEM_ING.md` (mỗi mục MEM-01…24, ING-01…20: CÓ / MỘT PHẦN / KHÔNG / KHÁC, tệp:dòng, ca đo, bước) → **dừng chờ gật** → làm theo thứ tự §2.
-- Mỗi bước một nhánh/commit; unit test cho phần xác định (classify, envelope, compact C1, PostCompact, chuẩn hoá đơn vị); chạy 14 MEM + 16 ING + 18 SCH + hồi quy 16 ca đang đạt của bộ 76 TC (với SCH: hồi quy cả hai chế độ cờ).
+- Mỗi bước một nhánh/commit; unit test cho phần xác định (classify, envelope, compact C1, PostCompact, chuẩn hoá đơn vị); chạy 14 MEM + 16 ING + 18 SCH + 16 HIER + hồi quy 16 ca đang đạt của bộ 76 TC (với SCH: hồi quy cả hai chế độ cờ).
 - Sai lệch mã ↔ tài liệu → `docs/md/EIDE-DEV-LOG.md` dạng `[DEV-2xx]`; không sửa tài liệu trong gói.
 - Thay thư mục `ui/` của gói v3 bằng `ui/` của gói này (mô hình đã cộng dồn MEM + ING; kiểm tra Excel phải ra "ĐẠT — kín hai chiều").
 - Ngôn ngữ: mã tiếng Anh; thông điệp người dùng, explain, tài liệu tiếng Việt.

@@ -130,6 +130,18 @@ SCH = ["Sinh sơ đồ từ CKM qua SKiDL; mô hình viết SKiDL, mã kiểm", 
        "uuid ổn định theo ref; giữ bố cục người đã sửa khi sinh lại", "Mọi tệp sch là changeset hoàn tác được; G-FILE khi ghi đè tệp người sửa", "PCB/Gerber vẫn ngoài phạm vi"]
 for i, d in enumerate(SCH, 1): R(f"SCH-{i:02d}", "Sơ đồ KiCad (SCH-44)", d, "EIDE-SCH-44")
 
+
+HIER = ["Module là nút cây có parent/kind/path; linh kiện là lá; độ sâu đệ quy; > 4 cảnh báo", "Port ở biên khối: tên, hướng, kiểu, ràng buộc; lá có Port = pin từ Fact",
+        "Net theo phạm vi khối; nối chỉ Port của con trực tiếp hoặc Port lên cha", "flatten(cây) bằng mã là nguồn cho mọi tool phẳng; tool cũ không đổi",
+        "Bất biến E8001–E8006 kiểm sau mỗi thay đổi", "Fact/REQ gắn được ở mọi cấp; ràng buộc theo cây kiểm bằng mã",
+        "STALE theo cây: nội bộ không lan; Port lan tới cha và anh em nối", "Thư viện khối block@semver: manifest, params, instantiate có nguồn, 3 tầng lưu",
+        "Trích khối từ mạch thành thư viện có kiểm khép kín", "SKiDL 1-1 với cây; netlist SKiDL = flatten",
+        "KiCad hierarchical: sheet = khối, sheet pin = Port; flat = vùng + global label", "Round-trip .kicad_sch phân cấp → cây",
+        "UI cây gập/mở, breadcrumb, sơ đồ khối con, bảng Port, ERC theo khối, kéo thả = changeset", "Lớp giải thích cho khối (7 câu)",
+        "Migration cộng thêm có down(); dự án cũ chạy như trước", "Snapshot/hộ chiếu ghi block@semver đã dùng",
+        "ERC/BOM/truy vết báo theo path khối", "Hồi quy toàn bộ giống 100 % sau migration"]
+for i, d in enumerate(HIER, 1): R(f"HIER-{i:02d}", "Cây khối phân cấp (HIER-45)", d, "EIDE-HIER-45")
+
 # ---------------------------------------------------------------- CÂY UI 3 CẤP
 # L1 = vùng; L2 = khối; L3 = widget/hành động: (id_suffix, tên, loại, [req...])
 # loại: display | action | edit | nav
@@ -303,6 +315,21 @@ W(k, 8, "Cảnh báo pinout chưa duyệt (E7002) / netlist lệch CKM (E7001) v
 W(k, 9, "Xuất gói sch (.kicad_sch + .kicad_sym + .net + SVG) vào snapshot", "action", ["SCH-16", "SN-human"])
 W(k, 10, "Giữ bố cục người đã sửa khi sinh lại (uuid theo ref); ghi đè tệp người sửa → G-FILE", "display", ["SCH-20", "SCH-21", "G-FILE"])
 W(k, 11, "Kết quả hồi quy hai chế độ (cờ tắt/bật) trước khi bật tính năng", "display", ["SCH-19", "SCH-17"])
+
+
+k = K(a, 9, "Cây khối phân cấp (HIER-45)", "AR06", ["HIER-01", "HIER-13"])
+W(k, 1, "Cây gập/mở: mạch → khối → khối con → linh kiện (lá); breadcrumb path; cảnh báo depth > 4", "display", ["HIER-01", "HIER-13"])
+W(k, 2, "Bấm khối → sơ đồ khối con + bảng Port (tên, hướng, kiểu, ràng buộc) + net cục bộ + ERC của khối + BOM con", "display", ["HIER-02", "HIER-03", "HIER-17"])
+W(k, 3, "Bấm lá → Fact pinout/BOM; Port của lá = pin (từ Fact, không bịa)", "display", ["HIER-02", "N1"])
+W(k, 4, "Kéo thả lá/khối giữa cha; thêm/bớt/nối Port (= thay đổi cấu trúc → changeset)", "edit", ["HIER-13", "HIER-05", "HA-edit"])
+W(k, 5, "Lỗi bất biến E8001–E8006 với gợi ý (ví dụ 'khai Port')", "display", ["HIER-05", "HIER-03"])
+W(k, 6, "Tô STALE theo nút cây + lý do (changeset); Chấp nhận STALE cho nút/nhánh", "action", ["HIER-07", "CS-stale"])
+W(k, 7, "Ràng buộc theo cây: Iout ≥ Σ I, mức logic, trùng địa chỉ bus, pull-up theo bus — kết quả + 'chưa đủ dữ kiện'", "display", ["HIER-06", "N2", "PR5"])
+W(k, 8, "Thêm khối từ thư viện (block@semver, params) → thẻ G-DESIGN; 'Lưu làm khối thư viện' có kiểm khép kín", "action", ["HIER-08", "HIER-09", "G-DESIGN"])
+W(k, 9, "Lớp giải thích khối: làm gì / giao tiếp gì / gồm gì / dựa vào đâu / khác bản trước / tiếp theo / tin được đến đâu", "display", ["HIER-14", "N8"])
+W(k, 10, "Chế độ xem: cây · phẳng (flatten) · sheet KiCad phân cấp; đối chiếu netlist SKiDL = flatten", "display", ["HIER-04", "HIER-10", "HIER-11"])
+W(k, 11, "Nạp lại .kicad_sch phân cấp → cây; cấu trúc lệch → thẻ hỏi", "action", ["HIER-12", "SCH-13"])
+W(k, 12, "Trạng thái migration dự án cũ + kết quả hồi quy; block@semver trong snapshot", "display", ["HIER-15", "HIER-18", "HIER-16"])
 
 k = K(a, 7, "Chuẩn bị sản xuất", "", ["UC15"])
 W(k, 1, "Nút Gerber/DRC/file gắp đặt hiển thị 'ngoài phạm vi v3' (không giả vờ có)", "display", ["UC15", "PR5"])

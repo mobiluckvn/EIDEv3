@@ -198,6 +198,180 @@ bằng chứng mà §8 bước B và C đòi.
 
 ---
 
+## 2c. HIER-01 … HIER-18 (EIDE-HIER-45, đọc 26/09/2026)
+
+Tài liệu này khác ba tài liệu trước ở một điểm quyết định: **nó không bổ sung, nó SỬA một
+mô hình dữ liệu vừa được làm xong.** Bước CKM (DEV-267, đẩy sáng 26/09) dựng bản đồ mạch
+*phẳng*; HIER-45 thay chính chỗ đó bằng một cái cây. Nên phần này nói thẳng: cái gì của
+CKM còn dùng được, cái gì phải đổi, và vì sao SCH-A vẫn chưa được bắt đầu.
+
+### 2c.1 Sáu lỗ hổng HIER-45 nêu — mã hiện tại đúng là đang mắc cả sáu
+
+| # | Lỗ hổng HIER-45 §1 | Trong mã | Bằng chứng |
+|---|---|---|---|
+| 1 | Không có Module → Module | `Module` là bản ghi phẳng: `ma, ten, muc_dich, linh_kien[], tin_hieu_vao/ra[], rail, dap_ung_req[]` — không có `parent_id`/`kind`/`path` | `knowledge/ckm.py:215` |
+| 2 | Net toàn cục, không có Port | Mọi net nằm trong MỘT hiện vật `netlist:CKM`, không có phạm vi; `Port` không tồn tại ở đâu trong `src/` | `tools/ckm.py` `net_set`, `knowledge/ckm.py` (không có `Port`) |
+| 3 | Chuỗi STALE cứng theo LOẠI | `HA_NGUON` là bảng loại→loại; không biết gì về cha/con | `deps.py:25` |
+| 4 | SCH-44 nói sheet phân cấp mà không có cây | chưa có `eide/sch/` | — |
+| 5 | Sơ đồ khối/BOM/ERC phẳng | `A5.1` là một bảng khối; `cho_dut` đếm toàn mạch, không theo khối | `surfaces.py:354`, `knowledge/ckm.py` `cho_dut` |
+| 6 | Không có thư viện khối | không có `blocks/`, không có `block@semver` | — |
+
+Một điều mã **đã** làm đúng hướng cây mà tài liệu không đòi: bản đồ là **hình chiếu của
+hiện vật**, không phải nguồn sự thật. Đó là điều kiện để `flatten(cây)` của §3 có chỗ
+đứng — netlist phẳng trở thành dẫn xuất mà không phải viết lại lớp lưu trữ lần nữa.
+
+### 2c.2 Bảng HIER-01 … HIER-18
+
+| Mã | Yêu cầu | Tình trạng | Bằng chứng / khoảng cách | Việc | Bước |
+|---|---|---|---|---|---|
+| HIER-01 | Module là nút cây (parent/kind/path), linh kiện là lá, depth > 4 cảnh báo | **KHÔNG** | `Module` phẳng (`ckm.py:215`); chip và linh kiện là **loại nút khác**, không phải lá của khối (`LOAI_NUT`) | Thêm `parent_id/kind/path/lib_ref`; gộp chip/linh_kien thành `kind=leaf` | HIER-A |
+| HIER-02 | Port ở biên khối; lá có Port = pin từ Fact | **KHÔNG** | Không có Port. Quan hệ khối↔tín hiệu hiện là **so khớp TÊN chuỗi** (`canh_giua_module`, `ckm.py:242`) | Bảng `port`; sinh Port của lá từ Fact pinout (đã có `chan_tu_fact`) | HIER-A |
+| HIER-03 | Net theo phạm vi, chỉ nối con trực tiếp hoặc Port lên cha | **KHÔNG** | net không có `scope`; `NOI` nối net ↔ pin bất kể cấp | `net.scope_module_id` + bảng `connection` + chặn nối xuyên cấp | HIER-A |
+| HIER-04 | `flatten(cây)` bằng mã cấp netlist phẳng cho mọi tool cũ | **KHÔNG** | Không có `flatten`; netlist phẳng đang là dữ liệu **gốc** (`ckm.net_set` ghi thẳng) | Viết `flatten` (UnionFind theo §3); `netlist:CKM` thành dẫn xuất | HIER-A |
+| HIER-05 | Bất biến E8001–E8006 kiểm sau mỗi thay đổi | **KHÔNG** | Chỉ có một bất biến cấu trúc: ĐƯỢC_GÁN duy nhất (chỉ mục UNIQUE, `db.py:127`) | Sáu phép kiểm; **mã lỗi phải đánh số lại — xem 2c.3** | HIER-A |
+| HIER-06 | Fact/REQ gắn mọi cấp; ràng buộc theo cây kiểm bằng mã | **MỘT PHẦN** | Fact `pin:<ref>.<n>` đã dùng đúng quy ước; `module:`/`port:`/`net:`/`leaf:` chưa. `fact.compare` có 8 luật nhưng **không** tổng hợp theo cây | Bốn phép kiểm §4.2 (Iout ≥ ΣI, mức logic, trùng addr, pull-up) | HIER-B |
+| HIER-07 | STALE theo cây: nội bộ không lan, Port lan tới cha và anh em nối | **KHÔNG** | `HA_NGUON` theo loại; sửa một khối làm STALE mọi thứ cùng loại | `deps` nhận đường cây; `danh_dau_stale` theo nút | HIER-B |
+| HIER-08 | Thư viện khối `block@semver`, params, instantiate có nguồn, ba tầng lưu | **KHÔNG** | — | Gói khối + `.eide/blocks/` + `~/.eide/blocks/` | HIER-C |
+| HIER-09 | Trích khối thành thư viện có kiểm khép kín | **KHÔNG** | — | Kiểm "chỉ giao tiếp qua Port" rồi đóng gói | HIER-C |
+| HIER-10 | SKiDL 1-1 với cây; netlist SKiDL = flatten | **KHÔNG** | chưa có `eide/sch/` | — | HIER-D |
+| HIER-11 | KiCad hierarchical: sheet = khối; flat = vùng + global label | **KHÔNG** | — | — | HIER-D |
+| HIER-12 | Round-trip `.kicad_sch` phân cấp → cây | **MỘT PHẦN** | `doc_kicad_sch` đọc được nhãn nhưng **phẳng**, và tự khai giới hạn đó trong `canh_bao` (`knowledge/eda.py:163`) | Đọc sheet → Module, sheet pin → Port | HIER-D |
+| HIER-13 | UI cây gập/mở, breadcrumb, bảng Port, ERC theo khối, kéo thả = changeset | **KHÔNG** | `A5.1` là bảng phẳng (`surfaces.py:354`); giao diện Swift chưa có khối loại `tree` (`SurfaceView.swift:138`) | Khối `A5.9` + `KhoiCay` bên Swift | HIER-B |
+| HIER-14 | Lớp giải thích khối — bảy câu | **MỘT PHẦN** | `explain` sáu trường đã bắt buộc (N8); HIER-45 §8 đòi thêm câu "giao tiếp gì (Port)" và "gồm gì (con)" | Dựng hai câu đó **bằng mã** từ cây, không bắt mô hình viết | HIER-B |
+| HIER-15 | Migration cộng thêm có `down()`; dự án cũ chạy như trước | **CÓ (hạ tầng)** | Khung migration + `down()` + `PRAGMA user_version` đã có từ SCH-0, đang ở v2 (`db.py:112–180`) | Chỉ cần viết v3 | HIER-A |
+| HIER-16 | Snapshot/hộ chiếu ghi `block@semver` đã dùng | **KHÔNG** | `Snapshot` ghi `chip`, không có chỗ cho khối (`snapshot.py:59`) | Thêm trường, cộng thêm | HIER-C |
+| HIER-17 | ERC/BOM/truy vết báo theo path khối | **KHÔNG** | **Chưa có ERC nào cả**: `board.check` không tồn tại; phép kiểm mạch duy nhất là `net_mot_chan()` (`eda.py:129`) | ERC phải được dựng trước khi nói tới "theo path" | HIER-B |
+| HIER-18 | Hồi quy toàn bộ giống 100 % sau migration | **CÓ (phương tiện)** | 544 ca đơn vị + 10 bộ E2E ghi JSONL; `tools/so_ket_qua.py` so được hai lần chạy | Chạy và đính kèm báo cáo | HIER-A |
+
+**Tổng HIER: CÓ 2 · MỘT PHẦN 3 · KHÔNG 13.**
+
+### 2c.3 Xung đột mã lỗi lần BA — và lần này là ba chiều
+
+Ba tài liệu cùng đánh số `E8001`…`E8006` với ba nghĩa khác nhau, và một nhánh trong đó
+**đã chạy trong mã kèm ca đo**:
+
+| Mã | SCH-44 nói | HIER-45 nói | Mã hiện tại đang dùng (đã ship) |
+|---|---|---|---|
+| E8001 | netlist lệch CKM | cây có chu trình | — (chưa dùng) |
+| E8002 | thiếu pinout đã duyệt | Port bị nối sai phạm vi | **chưa có Fact chân cho chip** |
+| E8003 | — | Port "lên cha" nối sai | **chân không có trong bảng chân** |
+| E8004 | — | Port của lá ≠ tập pin Fact | **chân đã được gán rồi** |
+| E8005 | — | members của bus không khớp | *(chừa cho "CKM chưa đủ tiền đề")* |
+| E8006 | — | flatten đổi sau thay đổi nội bộ | **tầng phỏng đoán không vào bản đồ** |
+| E8007 | — | — | **chức năng không nằm trong AF** |
+| E8008 | — | — | **nhiều con cùng loại, phải nói rõ ref** |
+
+Theo đúng quyết định của anh ở DEV-249 (*"mã xung đột bạn tạo mã mới"*), **đề nghị**: giữ
+nguyên E8xxx đang chạy, và mở họ **E9xxx cho bất biến cây**:
+
+| HIER-45 | Đề nghị | Nghĩa |
+|---|---|---|
+| E8001 | **E9001** | cây có chu trình / một module có hai cha |
+| E8002 | **E9002** | net chạm Port không thuộc con trực tiếp (nối xuyên cấp) |
+| E8003 | **E9003** | Port "lên cha" không nối đúng một net mỗi phía |
+| E8004 | **E9004** | Port của lá ≠ tập pin trong Fact pinout |
+| E8005 | **E9005** | bus hai đầu khác tên/số lượng member |
+| E8006 | **E9006** | thay đổi "nội bộ" lại làm flatten đổi — vi phạm đóng gói |
+
+Lý do không đổi theo chiều ngược (dời mã của mình sang E9xxx): sáu mã E8002…E8008 đang
+nằm trong 46 ca đơn vị và bộ E2E 35 ca đã xanh, và đổi mã lỗi đã ship là đổi thứ người
+dùng có thể đã thấy trên màn hình. Mã lỗi rẻ; một lần đổi số vô ích thì không.
+
+### 2c.4 CKM vừa làm còn lại gì
+
+Đây là câu tôi phải trả lời trung thực, vì bước trước vừa đẩy hôm nay.
+
+**Còn dùng được nguyên (khoảng 70 %)**
+
+- Lớp lưu trữ đồ thị `ckm_nodes`/`ckm_edges` — lược đồ đồ thị chịu được việc thêm loại
+  nút/cạnh, nên Port/Connection vào được mà **không** cần bỏ bảng nào. Đây chính là lý do
+  đã chọn đồ thị thay vì một bảng cho mỗi thực thể (`db.py:88`).
+- **Bản đồ là hình chiếu của hiện vật** (`knowledge/ckm.chieu`). HIER-45 §3 đòi netlist
+  phẳng thành *dẫn xuất*; kiến trúc này đã sẵn chỗ cho `flatten` — chỉ là thêm một tầng
+  chiếu nữa, không phải viết lại.
+- Kỷ luật chân: `chan_tu_fact`, `kiem_chan`, `kiem_af`, tầng ít tin cậy nhất, không bịa
+  chân. HIER-02 nói "Port của lá = pin theo Fact" — tức **dùng lại đúng hàm này**.
+- ĐƯỢC_GÁN duy nhất bằng chỉ mục; changeset/STALE/hoàn tác; kỷ luật `explain`.
+- Khoá theo **ref** (DEV-267) — HIER-45 §2.2 mục 4 đòi đúng thế: *"ref linh kiện duy nhất
+  toàn mạch"*.
+
+**Phải đổi (khoảng 30 %)**
+
+| Chỗ | Đổi thành |
+|---|---|
+| `Module.tin_hieu_vao/ra` + `canh_giua_module` so khớp TÊN | Port có hướng + Connection; so khớp tên còn lại làm **đường di cư** cho khối cũ |
+| `ckm.net_set` ghi netlist phẳng là gốc | net có `scope`; `netlist:CKM` do `flatten` sinh |
+| `chip` và `linh_kien` là loại nút riêng | `kind=leaf` trong cùng cây |
+| `cho_dut` đếm toàn mạch | đếm **theo khối**, và ERC báo theo `path` |
+| `A5.1` bảng phẳng | `A5.9` cây gập/mở (cần một khối Swift mới) |
+
+Việc bỏ đi: `canh_giua_module` mất vai trò *nguồn sự thật* về liên kết. Nó vẫn còn giá trị
+ở một chỗ — di cư khối cũ sang Port — nên không xoá, nhưng phải nói rõ nó là suy đoán.
+
+### 2c.5 Ba chỗ HIER-45 chưa nói cách làm, mã phải tự quyết
+
+**(a) `ALTER TABLE module` — không có bảng `module`.** §2.3 viết DDL cho một lược đồ quan
+hệ mỗi thực thể một bảng; mã lưu module là **hàng trong `ckm_nodes`**. Đề nghị: `parent_id`,
+`kind`, `path`, `lib_ref` thành **cột thật** của `ckm_nodes` (cần cho truy vấn cây và cho
+`UNIQUE(path)`), còn `port`/`connection` thành **bảng riêng** như tài liệu — vì Port có
+ràng buộc `UNIQUE(module_id,name)` mà lược đồ đồ thị không giữ được.
+
+**(b) Bất biến kiểm "sau mỗi thay đổi" — nhưng ai gọi?** Tài liệu nói *"kiểm bằng mã sau
+mỗi thay đổi"* mà không nói chỗ. Đề nghị: kiểm trong `chieu()`, vì đó là **một cửa duy
+nhất** mọi thay đổi cây phải đi qua. Lợi thế đo được: một hiện vật hỏng làm việc dựng lại
+**nổ**, giống cách chỉ mục ĐƯỢC_GÁN đang làm, thay vì để một cái cây có chu trình sống âm
+thầm trong kho.
+
+**(c) E9006 (flatten không đổi sau thay đổi nội bộ) cần "trước" và "sau".** Muốn so thì
+phải có ảnh flatten của bản trước — mà bản trước nằm trong `events` của kho. Đề nghị: tính
+flatten từ `canonical` bản `version-1` rồi so; không cần lưu thêm gì. Đây là chỗ
+event-sourcing trả lãi.
+
+### 2c.6 Ảnh hưởng tới SCH — trả lời câu anh hỏi
+
+**SCH-A chưa được bắt đầu, và lần này lý do khác lần trước.** Lần trước là *thiếu đầu vào*
+(không có CKM). Lần này CKM đã có, nhưng HIER-45 §7 **sửa chính hai bước đầu của SCH-44**:
+
+| SCH-44 §4 nói | HIER-45 §7 sửa thành |
+|---|---|
+| `sch.compose`: mỗi module → một vùng trên một sheet | mỗi khối → **một hàm SKiDL có tham số là Port**; cây → cấu trúc gọi hàm 1-1 |
+| `sch.netlist`: đẳng cấu với "netlist CKM" | đẳng cấu với **`flatten(cây)`** — và đó là phép kiểm E9006 |
+| bố cục: vùng theo module, một tầng | đệ quy theo cây; **depth > 4 tự chuyển hierarchical** |
+| `sch.import`: diff netlist ↔ CKM | diff **cây ↔ cây theo path**, sheet → Module, sheet pin → Port |
+
+Làm SCH-A trước HIER-A nghĩa là viết `sch.compose` sinh SKiDL phẳng, rồi viết lại nó ở
+HIER-D. Cả `README_BO_SUNG` §2 phần D và bảng lộ trình HIER-45 đều nói *"HIER-A đi trước
+SCH-A"*. Đề nghị theo đúng thứ tự đó.
+
+Hai việc chuẩn bị cho SCH đã nêu ở 2b.4 vẫn còn nợ và **không** bị HIER ảnh hưởng:
+SCH-09 (chốt chặn ở hook `Stop`: không bao giờ đề nghị cài KiCad) và SCH-19 (`so_ket_qua.py`
+— phương tiện đã có từ SCH-0, còn thiếu việc chạy và đính kèm báo cáo hai chế độ).
+
+### 2c.7 Gói `ui/` v3.1 — đã kiểm
+
+Kiểm ánh xạ hai chiều bằng **mã** (`ui_model.check()`), không đọc công thức Excel: hai
+danh sách "yêu cầu chưa được UI nào phủ" và "UI chưa ánh xạ yêu cầu nào" đều **rỗng** —
+282 yêu cầu ↔ 1 161 cặp ánh xạ, **ĐẠT kín hai chiều**. Gói thêm hai khối: `A5.8` Sơ đồ KiCad
+(11 widget) và `A5.9` Cây khối phân cấp (12 widget). Cả HIER-01…18 đều có chỗ trên giao
+diện, nên không có yêu cầu nào không có nơi hiện ra.
+
+Một ghi chú về ước lượng công: `A5.9` là khối **UI nặng nhất** của cả gói — cây gập/mở,
+breadcrumb, kéo thả đổi cha, tô STALE theo nút. Phần Swift của nó lớn hơn phần Python.
+
+### 2c.8 Ước lượng công
+
+| Bước | Nội dung | Công |
+|---|---|---|
+| HIER-A | Lược đồ v3 + migration + Port/Connection + `flatten` + sáu bất biến E9001–E9006 + di cư khối phẳng + hồi quy toàn bộ | 3 ngày |
+| HIER-B | Fact/REQ theo cấp + bốn ràng buộc theo cây + **ERC cơ bản** + STALE theo cây + `A5.9` (Python + Swift) | 3,5 ngày |
+| HIER-C | Thư viện khối, instantiate, trích khối, snapshot ghi `block@semver` | 2 ngày |
+| HIER-D | SKiDL theo khối + KiCad hierarchical + round-trip (đi cùng SCH-B/C) | cộng vào SCH |
+
+HIER-B lớn hơn tài liệu gợi ý vì nó phải **dựng ERC từ đầu** (HIER-17 giả định đã có
+`board.check`, mà mã chưa có gì).
+
+---
+
 ## 3. Mười sai lệch quan trọng nhất
 
 Xếp theo *hậu quả cho người dùng thật*, không theo thứ tự tài liệu.
