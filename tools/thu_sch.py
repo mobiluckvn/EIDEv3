@@ -18,6 +18,10 @@ render SVG kiểm chữ không đè · tác tử thật sinh sơ đồ qua hội
 
 Unhappy (bảy đường): mô hình bịa net trong tệp · tệp lỗi cú pháp · thiếu pinout · cây vi phạm
 bất biến · chưa đủ tiền đề · gọi sch.netlist trước sch.compose · đề nghị cài KiCad.
+
+HIER-D/SCH-C thêm: sheet phân cấp — mỗi khối một tệp, sheet pin = Port, đọc lại dựng ĐÚNG cây
+(HIER13) · cây sâu > 4 cấp TỰ chuyển sang phân cấp (HIER11) · xuất gói mở được ở máy có KiCad
+(SCH11) · nạp lại sơ đồ người sửa, phân loại ba loại thay đổi, cấu trúc thì HỎI (SCH10, 12, 13).
 """
 
 from __future__ import annotations
@@ -102,6 +106,7 @@ def chay(du_an: pathlib.Path) -> int:
     print(f"{XANH}Kênh kiểm thử giao diện đã mở{HET}\n")
 
     from eide.knowledge import cay as C
+    from eide.knowledge import ckm as K
     from eide.sch import doc_skidl
 
     ctx = _ctx(du_an)
@@ -217,11 +222,14 @@ def chay(du_an: pathlib.Path) -> int:
            "ty_le_net_dung_nhan" in tc,
            f"{tc.get('ty_le_net_dung_nhan', 0):.0%} net dùng nhãn")
 
-    b.phan("E · GHI .kicad_sch (SCH20, SCH21) VÀ RENDER (SCH06–07)")
-    r = goi("sch.write")
+    b.phan("E · GHI .kicad_sch MỘT TRANG (SCH20, SCH21) VÀ RENDER (SCH06–07)")
+    r = goi("sch.write", style="flat")
     b.kiem("Ghi được, và ĐỌC LẠI khớp từng ký tự (round-trip ổn định)",
            r.ok and r.data["round_trip"] is True,
            r.data["note_vi"][:170] if r.ok else str(r.error.message_vi)[:160])
+    b.kiem("Ghi một trang mạch CÓ khối thì NÓI RÕ là cây khối không còn trong tệp",
+           r.ok and r.data["mat_cay"] is True and "cây khối KHÔNG còn" in r.data["note_vi"],
+           r.data["note_vi"][:130] if r.ok else "")
     p_sch = du_an / "sch/mach.kicad_sch"
     txt_sch = p_sch.read_text("utf-8") if p_sch.exists() else ""
     b.kiem("Tệp có đủ ref và có .kicad_pro đi kèm",
@@ -245,7 +253,92 @@ def chay(du_an: pathlib.Path) -> int:
            r.ok and r.data["chu_de_nhau"] == [],
            str(r.data.get("chu_de_nhau"))[:150] if r.ok else "")
 
-    b.phan("G · TÁC TỬ THẬT SINH SƠ ĐỒ QUA HỘI THOẠI")
+    b.phan("F · SHEET PHÂN CẤP VÀ VÒNG ĐI–VỀ (HIER11, HIER13)")
+    r = goi("sch.write")
+    b.kiem("Mặc định auto: mạch CÓ khối thì tự ghi phân cấp, không phải một trang",
+           r.ok and r.data.get("style") == "hierarchical",
+           r.data["note_vi"][:130] if r.ok else str(r.error.message_vi)[:130])
+    r = goi("sch.write", style="hierarchical")
+    b.kiem("Mỗi khối một sheet, Port thành sheet pin",
+           r.ok and r.data.get("style") == "hierarchical" and r.data["so_sheet"] >= 3,
+           r.data["note_vi"][:170] if r.ok else str(r.error.message_vi)[:150])
+    b.kiem("Đọc lại gói dựng lại ĐÚNG cây (HIER13)",
+           r.ok and r.data["doc_lai_dung_cay"] is True,
+           str(r.data.get("so_cay"))[:170] if r.ok else "")
+    tep_sheet = sorted(x.name for x in (du_an / "sch").glob("*.kicad_sch"))
+    b.kiem("Có tệp sheet riêng cho từng khối, tên theo đường dẫn",
+           {"mach.kicad_sch", "mach_MOD-MCU.kicad_sch", "mach_MOD-PWR.kicad_sch"}
+           <= set(tep_sheet), ", ".join(tep_sheet))
+
+    for i in range(1, 5):
+        goi("ckm.module_set", ma=f"L{i}", ten=f"Tầng {i}", muc_dich="thử độ sâu",
+            cha=("MOD-MCU" if i == 1 else f"L{i-1}"))
+    r = goi("sch.write", style="flat")
+    b.kiem("Cây sâu hơn 4 cấp thì TỰ chuyển sang phân cấp (HIER11)",
+           r.ok and r.data.get("style") == "hierarchical"
+           and "TỰ chuyển sang phân cấp" in r.data["note_vi"],
+           r.data["note_vi"][:180] if r.ok else str(r.error.message_vi)[:150])
+
+    r = goi("sch.render")
+    b.kiem("Vẽ MỌI sheet — gốc phân cấp chỉ có hộp sheet nên vẽ riêng nó là ảnh rỗng",
+           r.ok and len(r.data["tep"]) >= 3 and r.data["so_ky_hieu"] >= 1
+           and r.data["so_sheet"] >= 1,
+           r.data["note_vi"][:160] if r.ok else str(r.error.message_vi)[:150])
+
+    b.phan("G · XUẤT GÓI VÀ NẠP LẠI (SCH10–13)")
+    r = goi("sch.export")
+    b.kiem("Gói có đủ tệp và tệp hướng dẫn nói rõ máy này KHÔNG cài KiCad (SCH11)",
+           r.ok and (du_an / "sch/goi/DOC-TRUOC-KHI-MO.md").exists()
+           and "không cài KiCad" in r.data["note_vi"],
+           ", ".join(r.data["tep"][:6]) if r.ok else str(r.error.message_vi)[:140])
+
+    r = goi("sch.import")
+    b.kiem("Nạp lại khi chưa ai sửa gì: KHÔNG có thay đổi, KHÔNG đánh STALE (SCH10)",
+           r.ok and r.data["so_thay_doi"] == 0 and r.data["can_hoi"] is False,
+           r.data["note_vi"][:160] if r.ok else str(r.error.message_vi)[:150])
+
+    # Người sửa GIÁ TRỊ một linh kiện trong KiCad.
+    p_mcu = du_an / "sch/mach_MOD-MCU.kicad_sch"
+    assert p_mcu.exists(), sorted(x.name for x in (du_an / "sch").glob("*.kicad_sch"))
+    txt = p_mcu.read_text("utf-8")
+    p_mcu.write_text(txt.replace('(property "Value" "ATmega328P"',
+                                 '(property "Value" "ATmega328PB"'), "utf-8")
+    r = goi("sch.import")
+    gia = r.data["theo_loai"]["gia_tri"] if r.ok else []
+    b.kiem("Đổi GIÁ TRỊ linh kiện: vào loại giá trị, KHÔNG phải hỏi",
+           r.ok and len(gia) >= 1 and r.data["can_hoi"] is False,
+           (gia[0]["vi"] if gia else r.data.get("note_vi", ""))[:150])
+    p_mcu.write_text(txt, "utf-8")
+
+    # Người THÊM một linh kiện trong KiCad — đây là thay đổi CẤU TRÚC.
+    them = ('  (symbol (lib_id "Device:R") (at 100 100 0) (unit 1)\n'
+            '    (in_bom yes) (on_board yes) (dnp no)\n'
+            '    (uuid 11111111-2222-4333-8444-555555555555)\n'
+            '    (property "Reference" "R99" (at 100 98 0)\n'
+            '      (effects (font (size 1.27 1.27)))\n'
+            "    )\n"
+            '    (property "Value" "4k7" (at 100 102 0)\n'
+            '      (effects (font (size 1.27 1.27)))\n'
+            "    )\n"
+            "  )\n")
+    p_mcu.write_text(txt.rstrip()[:-1] + them + ")\n", "utf-8")
+    truoc_khoi = ctx.store.get(K.MA_DO_THI)["canonical"]["khoi"]
+    r = goi("sch.import")
+    ct = r.data["theo_loai"]["cau_truc"] if r.ok else []
+    b.kiem("Thêm linh kiện = CẤU TRÚC → tạo thẻ hỏi (SCH12, SCH13)",
+           r.ok and r.data["can_hoi"] is True and any("R99" in x["vi"] for x in ct),
+           (ct[0]["vi"] if ct else "không phát hiện")[:150])
+    b.kiem("Thẻ hỏi nêu HAI lựa chọn, mỗi cái nói hậu quả, và nói rõ KHÔNG chọn hộ",
+           r.ok and r.data["the_hoi"] and len(r.data["the_hoi"]["lua_chon"]) == 2
+           and all(x["hau_qua"] for x in r.data["the_hoi"]["lua_chon"])
+           and "không chọn hộ" in r.data["the_hoi"]["khong_tu_chon"],
+           str([x["nhan"] for x in r.data["the_hoi"]["lua_chon"]]) if r.ok else "")
+    b.kiem("KHÔNG tự ghi đè bản đồ mạch — đó là cả nội dung của SCH13",
+           ctx.store.get(K.MA_DO_THI)["canonical"]["khoi"] == truoc_khoi,
+           "bản đồ giữ nguyên")
+    p_mcu.write_text(txt, "utf-8")
+
+    b.phan("H · TÁC TỬ THẬT SINH SƠ ĐỒ QUA HỘI THOẠI")
     g.go("Mình muốn có sơ đồ nguyên lý của mạch này. Sinh giúp mình, rồi nói rõ đã kiểm "
          "được những gì và chưa kiểm được gì.")
     a = g.doi_xong(420)
@@ -259,7 +352,7 @@ def chay(du_an: pathlib.Path) -> int:
            loi[:200])
 
     # ================================================================== UNHAPPY
-    b.phan("H · MƯỜI ĐƯỜNG HỎNG")
+    b.phan("I · MƯỜI ĐƯỜNG HỎNG")
 
     b.buoc("1. Mô hình BỊA một net trong tệp SKiDL (SCH14)")
     goc = p_py.read_text("utf-8")
@@ -283,7 +376,6 @@ def chay(du_an: pathlib.Path) -> int:
     ctx.store.apply(artefact_id="ckm:chip:U9", type="ckm", op="create",
                     author=f"agent:{ctx.run_id}", explain=EX,
                     canonical={"chip": "ChipLa", "ref": "U9", "ho_chieu": "", "chan": []})
-    from eide.knowledge import ckm as K
     K.chieu(ctx.store)
     r = goi("sch.symbols")
     b.kiem("Từ chối kèm tên linh kiện, không bịa chân",

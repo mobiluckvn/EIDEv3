@@ -23,6 +23,7 @@ from typing import Any
 from ..errors import EideError
 from ..knowledge import cay as KC
 from ..knowledge import ckm as K
+from ..protocol import uicommand as uic
 from .registry import Registry, Requirement, ToolResult
 from .writing import EXPLAIN_SCHEMA
 
@@ -37,6 +38,7 @@ TEP_SYM = "sch/eide-sinh.kicad_sym"
 TEP_SCH = "sch/mach.kicad_sch"
 TEP_PRO = "sch/mach.kicad_pro"
 TEP_SVG = "sch/mach.svg"
+THU_MUC_GOI = "sch/goi"
 
 
 def register(r: Registry) -> Registry:
@@ -328,13 +330,41 @@ def register(r: Registry) -> Registry:
             {"type": "object",
              "properties": {
                  "ten_sheet": {"type": "string"},
+                 "style": {"type": "string", "enum": ["auto", "hierarchical", "flat"],
+                           "description": "auto (mặc định) = có khối thì phân cấp, mạch một "
+                                          "tầng thì một trang. hierarchical = mỗi khối một "
+                                          "sheet (giữ được CÂY khi người mở trong KiCad); "
+                                          "flat = một trang. Cây sâu hơn 4 cấp thì tự chuyển "
+                                          "sang hierarchical."},
                  "explain": EXPLAIN_SCHEMA},
              "required": ["explain"]},
             risk="R2", feature="schematic", core=False, writes_artefact=True,
             needs_explain=True, produces=["code"],
             keywords=["ghi", "kicad_sch", "write", "xuất tệp"])
-    def write(ctx: Any, explain: dict[str, Any], ten_sheet: str = "mach"):
+    def write(ctx: Any, explain: dict[str, Any], ten_sheet: str = "mach",
+              style: str = "auto"):
+        from ..knowledge.cay import SAU_KHUYEN_NGHI
         from ..sch import ghi as G
+        from ..sch import phan_cap as PC
+
+        cay = KC.Cay.doc(ctx.store)
+        sau, sau_o = cay.sau_nhat()
+        co_khoi = bool(cay.khoi_con(cay.goc)) if cay.goc else False
+        if style == "auto":
+            # Hình tệp đi theo hình thiết kế: có khối thì phân cấp (một sheet mỗi khối), mạch
+            # một tầng thì một trang. Mặc định cứng "hierarchical" từng làm sheet gốc của mạch
+            # phẳng rỗng không, còn mặc định cứng "flat" thì mọi mạch có khối đều mất cây khi
+            # mở trong KiCad.
+            style = "hierarchical" if co_khoi else "flat"
+        if style == "flat" and sau > SAU_KHUYEN_NGHI:
+            # HIER-45 §7: "depth > 4 → tự chuyển sang hierarchical và cảnh báo". Không hỏi
+            # lại: một cây sâu thế này trên một trang là một trang không ai đọc được, và đó
+            # là lý do kỹ thuật chứ không phải khẩu vị.
+            style = "hierarchical"
+
+        if style == "hierarchical" and cay.goc:
+            return _ghi_phan_cap(ctx, cay, explain, ten_sheet=ten_sheet,
+                                 tu_chuyen=(sau > SAU_KHUYEN_NGHI), sau=sau, sau_o=sau_o)
 
         a = ctx.store.get(MA_BO_CUC)
         if a is None:
@@ -364,10 +394,14 @@ def register(r: Registry) -> Registry:
             run_id=ctx.run_id)
         _ghi(ctx, TEP_SCH, noi_dung)
         _ghi(ctx, TEP_PRO, G.kicad_pro(ten_sheet))
-        return {"tep": [TEP_SCH, TEP_PRO], "so_ky_hieu": len(bc.o),
-                "round_trip": True, "changeset": cs.id,
+        mat_cay = ("" if not co_khoi else
+                   f" Mạch này có {len(cay.khoi_con(cay.goc))} khối nhưng ghi ở dạng MỘT "
+                   "trang, nên cây khối KHÔNG còn trong tệp: mở trong KiCad sẽ thấy một "
+                   "trang phẳng. Muốn giữ cây thì ghi lại với style=hierarchical.")
+        return {"tep": [TEP_SCH, TEP_PRO], "so_ky_hieu": len(bc.o), "style": "flat",
+                "round_trip": True, "changeset": cs.id, "mat_cay": bool(co_khoi),
                 "uuid_mau": {z.ref: G.uuid_theo(f"sym:{z.ref}") for z in bc.o[:3]},
-                "note_vi": (f"Đã ghi {TEP_SCH} ({len(bc.o)} ký hiệu) và đọc lại được khớp "
+                "note_vi": (mat_cay + f" Đã ghi {TEP_SCH} ({len(bc.o)} ký hiệu) và đọc lại được khớp "
                             "từng ký tự. uuid sinh theo ref, nên sinh lại KHÔNG làm mất bố "
                             "cục người dùng đã sửa trong KiCad. Máy này không cài KiCad — "
                             "muốn mở bằng KiCad thì xuất gói rồi mở ở máy khác.")}
@@ -385,30 +419,219 @@ def register(r: Registry) -> Registry:
     def render(ctx: Any, explain: dict[str, Any]):
         from ..sch import ve_svg
 
-        p = _duong(ctx, TEP_SCH)
-        if not p.exists():
+        d = _duong(ctx, "sch")
+        ds = sorted(d.glob("*.kicad_sch")) if d.exists() else []
+        if not ds:
             return _r3(ctx, f"Chưa có {TEP_SCH} để vẽ.", goi=["sch.place", "sch.write"])
         a = ctx.store.get(MA_BO_CUC)
         hop = {z["ref"]: (z["rong"], z["cao"])
                for z in ((a["canonical"].get("o") or []) if a else [])}
-        kq = ve_svg.ve(p.read_text("utf-8", errors="replace"), hop=hop)
+
+        # Vẽ MỌI sheet, không chỉ sheet gốc. Với mạch phân cấp, gốc chỉ có hộp sheet — vẽ một
+        # mình nó ra một ảnh không có linh kiện nào, và người mở ra tưởng render hỏng.
+        tep_svg: list[str] = []
+        tong = {"so_ky_hieu": 0, "so_nhan": 0, "so_day": 0, "so_sheet": 0}
+        ref: list[str] = []
+        de_nhau: list[str] = []
+        canh_bao: list[str] = []
+        for p in ds:
+            kq = ve_svg.ve(p.read_text("utf-8", errors="replace"), hop=hop)
+            ten_svg = f"sch/{p.stem}.svg"
+            _ghi(ctx, ten_svg, kq.svg)
+            tep_svg.append(ten_svg)
+            for k in tong:
+                tong[k] += getattr(kq, k)
+            ref += kq.ref_trong_svg
+            de_nhau += [f"{p.name}: {x}" for x in kq.chu_de_nhau]
+            canh_bao += [f"{p.name}: {x}" for x in kq.canh_bao]
 
         cs = ctx.history.ghi_tep(
-            author=f"agent:{ctx.run_id}", paths=[TEP_SVG], summary="render sơ đồ ra SVG",
-            explain=explain, noi_dung_truoc=_noi_dung_cu(ctx, TEP_SVG), run_id=ctx.run_id)
-        _ghi(ctx, TEP_SVG, kq.svg)
+            author=f"agent:{ctx.run_id}", paths=tep_svg,
+            summary=f"render {len(tep_svg)} sheet ra SVG",
+            explain=explain, run_id=ctx.run_id)
+        canon = {**tong, "tep": tep_svg, "ref_trong_svg": sorted(ref),
+                 "chu_de_nhau": de_nhau, "canh_bao": canh_bao}
         ctx.store.apply(artefact_id="report:sch-render", type="report", op="update"
                         if ctx.store.get("report:sch-render") else "create",
-                        author=f"agent:{ctx.run_id}", canonical=kq.to_dict(),
-                        explain=explain,
-                        view_hint={"kind": "svg", "path": TEP_SVG})
-        return {"tep": TEP_SVG, **kq.to_dict(), "changeset": cs.id,
-                "note_vi": (f"Đã vẽ {kq.so_ky_hieu} ký hiệu, {kq.so_nhan} nhãn, "
-                            f"{kq.so_day} dây ra {TEP_SVG}."
-                            + (" " + " ".join(kq.canh_bao) if kq.canh_bao else
-                               " Chữ không đè nhau, ảnh không rỗng."))}
+                        author=f"agent:{ctx.run_id}", canonical=canon, explain=explain,
+                        view_hint={"kind": "svg", "path": tep_svg[0]})
+        return {**canon, "changeset": cs.id,
+                "note_vi": (f"Đã vẽ {len(tep_svg)} sheet: {tong['so_ky_hieu']} ký hiệu, "
+                            f"{tong['so_nhan']} nhãn, {tong['so_sheet']} hộp sheet con."
+                            + (" " + " ".join(canh_bao[:3]) if canh_bao else
+                               " Chữ không đè nhau, không ảnh nào rỗng."))}
+
+    # ====================================================================== 7. xuất gói
+    @r.tool("sch.export", "Thiết kế",
+            "Xuất gói sơ đồ (.kicad_sch + .kicad_sym + .net + SVG + .kicad_pro) vào một thư "
+            "mục để người mở ở máy KHÁC đã có KiCad. Máy này không cài KiCad.",
+            {"type": "object",
+             "properties": {"explain": EXPLAIN_SCHEMA},
+             "required": ["explain"]},
+            risk="R2", feature="schematic", core=False, writes_artefact=True,
+            needs_explain=True, produces=["report"],
+            keywords=["xuất", "export", "gói", "gửi", "mở ở máy khác"])
+    def export(ctx: Any, explain: dict[str, Any]):
+        import shutil
+
+        goc = _duong(ctx, "sch")
+        dich = _duong(ctx, THU_MUC_GOI)
+        if not goc.exists():
+            return _r3(ctx, "Chưa có tệp sơ đồ nào để xuất.",
+                       goi=["sch.place", "sch.write"])
+        dich.mkdir(parents=True, exist_ok=True)
+        da: list[str] = []
+        for p in sorted(goc.iterdir()):
+            if p.is_file() and p.suffix in (".kicad_sch", ".kicad_sym", ".kicad_pro",
+                                            ".net", ".svg"):
+                shutil.copy2(p, dich / p.name)
+                da.append(p.name)
+        if not da:
+            return _r3(ctx, "Thư mục sch/ không có tệp nào xuất được.",
+                       goi=["sch.write", "sch.render"])
+
+        doc = _doc_me(ctx, da)
+        (dich / "DOC-TRUOC-KHI-MO.md").write_text(doc, "utf-8")
+        da.append("DOC-TRUOC-KHI-MO.md")
+        cs = ctx.history.ghi_tep(
+            author=f"agent:{ctx.run_id}",
+            paths=[f"{THU_MUC_GOI}/{x}" for x in da],
+            summary=f"xuất gói sơ đồ ({len(da)} tệp)", explain=explain, run_id=ctx.run_id)
+        ctx.store.apply(artefact_id="report:sch-export", type="report",
+                        op="update" if ctx.store.get("report:sch-export") else "create",
+                        author=f"agent:{ctx.run_id}",
+                        canonical={"thu_muc": THU_MUC_GOI, "tep": da}, explain=explain)
+        return {"thu_muc": THU_MUC_GOI, "tep": da, "changeset": cs.id,
+                "note_vi": (f"Đã xuất {len(da)} tệp vào {THU_MUC_GOI}/. Mở `mach.kicad_sch` "
+                            "ở máy đã có KiCad 8 hoặc 9. Máy này không cài KiCad, nên ảnh "
+                            "SVG trong gói là do bộ vẽ nội bộ của EIDE — nó đọc được nhưng "
+                            "không cam kết giống KiCad từng nét.")}
+
+    # ====================================================================== 8. nạp lại
+    @r.tool("sch.import", "Thiết kế",
+            "Nạp lại sơ đồ người dùng đã sửa trong KiCad. So với bản đồ mạch rồi phân loại: "
+            "chỉ bố cục · đổi giá trị linh kiện · đổi CẤU TRÚC. Cấu trúc đổi thì HỎI, không "
+            "bao giờ tự ghi đè bản đồ.",
+            {"type": "object",
+             "properties": {
+                 "thu_muc": {"type": "string",
+                             "description": "Thư mục chứa .kicad_sch (mặc định sch/)"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["explain"]},
+            risk="R2", feature="schematic", core=False, writes_artefact=True,
+            needs_explain=True, produces=["report"],
+            keywords=["nạp lại", "import", "round-trip", "người sửa", "kicad"])
+    def sch_import(ctx: Any, explain: dict[str, Any], thu_muc: str = "sch"):
+        from ..sch import nap_lai as NL
+        from ..sch import phan_cap as PC
+
+        d = _duong(ctx, thu_muc)
+        tep = {p.name: p.read_text("utf-8", errors="replace")
+               for p in sorted(d.glob("*.kicad_sch"))} if d.exists() else {}
+        if not tep:
+            return _r3(ctx, f"Không có tệp .kicad_sch nào trong {thu_muc}/.",
+                       goi=["sch.write"])
+
+        doc = PC.doc_phan_cap(tep)
+        cay = KC.Cay.doc(ctx.store)
+        so = PC.so_cay(doc, cay)
+        sm = ctx.store.get(MA_SYMBOL)
+        gia_tri_kho = PC.gia_tri_mong_doi(
+            cay, (sm["canonical"].get("anh_xa") or {}) if sm else {})
+        kq = NL.phan_loai(doc=doc, cay=cay, so=so, gia_tri_kho=gia_tri_kho)
+
+        # Changeset của NGƯỜI: thay đổi này do họ làm trong KiCad, không do tác tử.
+        cs = ctx.history.ghi_kho(
+            author="human", artefact_id="report:sch-import", type="report",
+            op="update" if ctx.store.get("report:sch-import") else "create",
+            canonical={"thu_muc": thu_muc, "so_tep": len(tep), "so_cay": so,
+                       **kq.to_dict()},
+            explain=explain, run_id=ctx.run_id,
+            # Chỉ bố cục thì KHÔNG đánh STALE (§7 mục 3a): mỗi lần người sắp lại trang mà cả
+            # chuỗi hạ nguồn sáng đèn thì họ học được rằng băng cảnh báo vô nghĩa.
+            gay_stale=bool(kq.theo_loai["gia_tri"] or kq.theo_loai["cau_truc"]))
+
+        the = NL.the_hoi(kq)
+        if the:
+            ctx.pending_cards.append({"loai": "clarify", "nguon": "sch.import", **the})
+            ctx.emit(uic.notice(
+                f"Sơ đồ có {len(kq.theo_loai['cau_truc'])} thay đổi cấu trúc — cần anh quyết.",
+                level="warn", code="SCH-13"))
+        return {"so_tep": len(tep), "so_cay": so, **kq.to_dict(),
+                "the_hoi": the, "changeset": cs.id,
+                "note_vi": (kq.cau_vi()
+                            + (" EIDE KHÔNG tự chọn: hai lựa chọn dẫn tới hai mạch khác "
+                               "nhau. Hỏi người dùng bằng thẻ vừa tạo." if the else "")
+                            + (" " + " ".join(kq.canh_bao) if kq.canh_bao else ""))}
 
     return r
+
+
+def _doc_me(ctx: Any, tep: list[str]) -> str:
+    """Tệp hướng dẫn trong gói. Nói rõ hai điều người nhận cần biết ngay."""
+    return (
+        "# Gói sơ đồ do EIDE sinh\n\n"
+        f"Tệp trong gói: {', '.join(sorted(tep))}.\n\n"
+        "## Mở thế nào\n\n"
+        "Mở `mach.kicad_sch` bằng KiCad 8 hoặc 9 trên một máy ĐÃ CÓ KiCad. Máy sinh ra gói "
+        "này không cài KiCad — đó là một quyết định của dự án, không phải một thiếu sót.\n\n"
+        "## Hai điều cần biết\n\n"
+        "1. **Ảnh SVG là do bộ vẽ nội bộ của EIDE.** Nó đọc được và đúng về chân/nhãn, nhưng "
+        "không cam kết giống KiCad từng nét.\n"
+        "2. **Sửa trong KiCad thì nạp lại bằng `sch.import`.** EIDE sẽ phân loại thay đổi của "
+        "anh: chỉ bố cục · đổi giá trị · đổi cấu trúc. Riêng cấu trúc thì nó HỎI trước khi "
+        "chạm vào bản đồ mạch.\n")
+
+
+def _ghi_phan_cap(ctx: Any, cay: Any, explain: dict[str, Any], *, ten_sheet: str,
+                  tu_chuyen: bool, sau: int, sau_o: str) -> Any:
+    """Ghi gói sheet phân cấp — HIER-45 §7, mỗi khối một tệp."""
+    from ..sch import ghi as G
+    from ..sch import phan_cap as PC
+
+    sm = ctx.store.get(MA_SYMBOL)
+    sym = (sm["canonical"].get("anh_xa") or {}) if sm else {}
+    a = ctx.store.get(MA_BO_CUC)
+    kho = (a["canonical"].get("kho") if a else "A4") or "A4"
+
+    goi = PC.viet_phan_cap(cay, symbol=sym, kho=kho)
+    if not goi.tep:
+        return _r3(ctx, "Không ghi được sheet phân cấp: " + "; ".join(goi.canh_bao),
+                   goi=["ckm.module_set", "ckm.build"])
+    for ten, nd in sorted(goi.tep.items()):
+        ok, vi = G.doc_lai_duoc(nd)
+        if not ok:
+            return ToolResult(False, error=EideError(
+                "E8001", f"Sheet {ten} không qua được phép kiểm round-trip: {vi}",
+                hint_for_agent="Đừng ghi gói này. Báo cho người dùng và thử style=flat.",
+                alternatives=["sch.write", "diagram.render"], blame="system"))
+
+    paths = [f"sch/{t}" for t in sorted(goi.tep)] + [TEP_PRO]
+    cu = {}
+    for t in paths:
+        cu.update(_noi_dung_cu(ctx, t))
+    cs = ctx.history.ghi_tep(
+        author=f"agent:{ctx.run_id}", paths=paths,
+        summary=f"ghi sơ đồ KiCad phân cấp ({goi.so_sheet} sheet)", explain=explain,
+        noi_dung_truoc=cu, run_id=ctx.run_id)
+    for t, nd in sorted(goi.tep.items()):
+        _ghi(ctx, f"sch/{t}", nd)
+    _ghi(ctx, TEP_PRO, G.kicad_pro(ten_sheet))
+
+    # Kiểm ngay: đọc lại gói vừa ghi và so cây. HIER13 đòi "nạp lại dựng lại đúng cây".
+    doc = PC.doc_phan_cap(goi.tep)
+    so = PC.so_cay(doc, cay)
+    return {"tep": paths, "style": "hierarchical", "so_sheet": goi.so_sheet,
+            "round_trip": True, "doc_lai_dung_cay": so["khop"], "so_cay": so,
+            "changeset": cs.id, "canh_bao": goi.canh_bao,
+            "note_vi": (f"Đã ghi {goi.so_sheet} sheet phân cấp — mỗi khối một tệp, Port của "
+                        "khối thành sheet pin. "
+                        + (f"Cây sâu {sau} cấp ({sau_o}) nên TỰ chuyển sang phân cấp: một "
+                           "cây sâu thế này trên một trang là một trang không ai đọc được. "
+                           if tu_chuyen else "")
+                        + ("Đọc lại gói dựng đúng cây." if so["khop"] else
+                           "CẢNH BÁO: đọc lại gói KHÔNG dựng đúng cây — "
+                           + str(so)[:200]))}
 
 
 def _bo_cuc_tu(canon: dict[str, Any]):

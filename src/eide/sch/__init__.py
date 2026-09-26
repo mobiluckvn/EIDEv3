@@ -18,9 +18,10 @@ from .bo_cuc import kiem_tieu_chi, tinh_bo_cuc
 from .doc_skidl import doc_skidl
 from .ghi import doc_lai_duoc, kicad_pro, uuid_theo, viet_kicad_sch
 from .netlist import so_dang_cau, viet_net
+from .phan_cap import doc_phan_cap, so_cay, viet_phan_cap
 from .soan import soan_skidl
 from .ve_svg import ve
 
 __all__ = ["soan_skidl", "doc_skidl", "so_dang_cau", "viet_net", "tinh_bo_cuc",
            "kiem_tieu_chi", "viet_kicad_sch", "doc_lai_duoc", "uuid_theo",
-           "kicad_pro", "ve"]
+           "kicad_pro", "ve", "viet_phan_cap", "doc_phan_cap", "so_cay"]

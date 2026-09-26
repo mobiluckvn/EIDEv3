@@ -1716,3 +1716,70 @@ toàn màu xanh mà chưa chạm đường thành công là một bộ đo chưa
 
 Hồi quy: mười hai bộ E2E đều giữ nguyên — G3 31 · G4 23 · G5 35 · ING-A 29 · ING-B 25 ·
 MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35 · HIER 46 · SCH 35.
+
+---
+
+### [DEV-273] 26/09/2026 · HIER-D + SCH-C — sheet phân cấp, và vòng đi–về với KiCad
+
+**Tài liệu:** EIDE-HIER-45 §7 (cây → sheet phân cấp 1-1, `depth > 4` tự chuyển),
+EIDE-SCH-44 §3 bước 5 và bước 7, §7 (ba loại thay đổi khi nạp lại). Ca HIER11–13, SCH10–13, SCH16.
+
+Đến bước này EIDE mới **trả sơ đồ lại được cho người dùng rồi nhận lại**: ghi mỗi khối một
+`.kicad_sch`, xuất một gói mở được ở máy có KiCad, và khi người dùng sửa xong thì đọc lại và
+phân loại họ đã sửa cái gì. Ba tệp mới: `src/eide/sch/phan_cap.py` (ghi/đọc sheet, `so_cay`),
+`src/eide/sch/nap_lai.py` (phân loại ba loại), và hai công cụ `sch.export` / `sch.import`.
+
+**Sheet phân cấp giữ được CÂY trong tệp.** Port của khối thành *hierarchical label* trong sheet
+của nó và thành *sheet pin* trên hộp sheet ở cha — tức hợp đồng ở biên khối vẫn là hợp đồng sau
+khi tệp rời khỏi EIDE. `viet_phan_cap` ghi từ sâu ra ngoài, rồi **đọc lại chính gói vừa ghi** và
+so bằng `so_cay`: khối chỉ có ở tệp, khối chỉ có ở kho, Port lệch. Ghi mà không đọc lại thì
+"đã ghi phân cấp" chỉ là một lời khai.
+
+**Nạp lại thì ba loại thay đổi làm ba việc khác nhau,** và gộp chúng là làm mất đúng thứ quan
+trọng nhất: *bố cục* (người kéo ký hiệu) không làm gì lỗi thời — đánh STALE ở đây thì mỗi lần
+họ sắp lại trang là một lần cả chuỗi hạ nguồn sáng đèn, và họ học được rằng băng cảnh báo vô
+nghĩa; *giá trị* là một quyết định kỹ thuật của họ, vào BOM và thành Fact tầng NGƯỜI, ERC chạy
+lại; *cấu trúc* thì **hỏi** — hai lựa chọn viết bằng hậu quả, kèm câu "EIDE không chọn hộ".
+`sch.import` **không ghi gì vào bản đồ** khi có thay đổi cấu trúc; ca E2E đo đúng điều đó bằng
+cách so bản đồ trước và sau.
+
+### Bốn lỗi thật, và cả bốn cùng một họ: **hai chỗ tự tính riêng cùng một thứ**
+
+**1. `Sheetname` mang tên hiển thị thì đọc lại KHÔNG dựng lại được cây.** Bên ghi đặt
+`Sheetname = "Vi điều khiển"`, bên đọc lại dùng nó làm đoạn path — nên đường dẫn dựng lại là
+`/board/Vi điều khiển`, `so_cay` báo lệch toàn bộ. Nay `Sheetname` mang **mã khối**, tên hiển
+thị đi trong `EIDE_ten`.
+
+**2. `sch.render` chỉ vẽ sheet gốc — và sheet gốc phân cấp KHÔNG có ký hiệu nào.** Kết quả là
+một SVG rỗng được báo là render thành công. Nay `render` vẽ **mọi** sheet, và `ve_svg` vẽ cả
+hộp sheet con kèm sheet pin; câu "ảnh rỗng" chỉ phát khi sheet không có *cả* ký hiệu *lẫn* hộp
+sheet. Đây lại là N6 áp vào chính cái thước: không đo được thì không được in ra là đạt.
+
+**3. `sch.write` mặc định cứng `hierarchical` — sai với mạch một tầng, và sai với chính bộ đo.**
+Nay mặc định là `auto`: **hình tệp đi theo hình thiết kế** — có khối thì phân cấp, một tầng thì
+một trang. Ghi `flat` cho một mạch *có* khối vẫn được, nhưng kết quả nói thẳng "cây khối KHÔNG
+còn trong tệp".
+
+**4. Một lần nạp lại báo "đổi giá trị" mà không ai đổi gì.** Bên ghi điền trường `Value` bằng
+**tên chip** khi lá chưa có `gia_tri` (KiCad cần trường đó có nội dung), còn bên so lấy giá trị
+*thô* trong kho — rỗng. Mọi lần `sch.import` đều thấy một thay đổi tưởng tượng. Nay một hàm
+`phan_cap.gia_tri_mong_doi()` cho cả hai bên dùng, và `gia_tri_kho` thành **tham số bắt buộc**
+của `phan_loai`: một mặc định âm thầm so với cơ sở khác thì tệ hơn là không có mặc định.
+
+### Bài học lặp lại lần thứ năm
+
+Cả bốn lỗi trên đều là **hai chỗ tự tính riêng cùng một quy ước** (tên đoạn path, danh sách
+tệp cần vẽ, kiểu ghi mặc định, giá trị mong đợi). Sửa tại chỗ là sửa lại lần nữa ở chỗ khác —
+đã thấy ở sổ cái (DEV-266) và ở ref-vs-tên-chip (DEV-267, 269, 272). Cách sửa đúng vẫn là:
+**một hàm, hai bên gọi.**
+
+### Số đo
+
+`730 ca đơn vị` (+18) · `tools/thu_sch.py` **48/48** (từ 35) qua giao diện thật, thêm hai mục
+F (sheet phân cấp) và G (xuất gói, nạp lại) · `86 công cụ` khi cờ sơ đồ bật, 78 khi tắt.
+
+Hồi quy: mười ba bộ E2E đều giữ nguyên hoặc tăng — G3 31 · G4 23 · G5 35 · ING-A 29 · ING-B 25
+· MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35 · HIER 46 · SCH 48.
+
+Bằng chứng SCH-19 (`so_ket_qua.py --hai-che-do tools/thu_cuoi.py`): **36/36 giống hệt** giữa
+cờ tắt và cờ bật — so bằng mã, vì thứ nguy hiểm là một ô lặng lẽ đổi từ đạt sang không đạt.

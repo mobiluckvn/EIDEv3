@@ -730,9 +730,13 @@ def test_place_write_render_chay_het_duong_ong(make_agent):
 
     r = goi("sch.render")
     assert r.ok, getattr(r.error, "message_vi", "")
-    svg = (a.config.paths.project_root / "sch/mach.svg").read_text("utf-8")
-    assert svg.startswith("<svg") and "data-ref=" in svg
-    assert r.data["so_ky_hieu"] == r.data["so_ky_hieu"]
+    # Vẽ MỌI sheet: với mạch phân cấp, gốc chỉ có hộp sheet nên một ảnh của riêng nó không có
+    # linh kiện nào — và người mở ra sẽ tưởng render hỏng.
+    assert len(r.data["tep"]) == r.data["tep"].__len__() >= 1
+    assert r.data["so_ky_hieu"] >= 1, r.data
+    noi = "".join((a.config.paths.project_root / t).read_text("utf-8")
+                  for t in r.data["tep"])
+    assert "data-ref=" in noi and noi.count("<svg") == len(r.data["tep"])
 
 
 def test_place_tu_choi_khi_netlist_chua_kiem(make_agent):
@@ -755,3 +759,283 @@ def test_render_chua_co_tep_thi_suy_giam_R3(make_agent):
     r = goi("sch.render")
     assert not r.ok and "mức R3" in r.error.message_vi
     assert "diagram.render" in r.error.alternatives
+
+
+# =========================================================================== 14. sheet phân cấp §7
+def test_HIER13_moi_khoi_mot_sheet_va_sheet_pin_la_Port(bo):
+    """HIER-45 §7 — "mỗi khối một sheet; Port của khối → hierarchical sheet pin"."""
+    from eide.sch import phan_cap as PC
+
+    cay = C.Cay.doc(bo)
+    g = PC.viet_phan_cap(cay, symbol=SYM)
+    assert set(g.tep) == {"mach.kicad_sch", "mach_pwr.kicad_sch", "mach_mcu.kicad_sch",
+                          "mach_mcu_xtal.kicad_sch"}, sorted(g.tep)
+    con = g.tep["mach_mcu.kicad_sch"]
+    assert "(hierarchical_label" in con or "hierarchical_label" in con
+    assert '"VDD"' in con, "Port của khối thành nhãn phân cấp trong sheet con"
+    goc = g.tep["mach.kicad_sch"]
+    assert goc.count("(sheet ") == 2, "gốc có hai hộp sheet (pwr, mcu)"
+    assert '"Sheetfile"' in goc and "mach_mcu.kicad_sch" in goc
+
+
+def test_HIER13_doc_lai_goi_dung_lai_DUNG_cay(bo):
+    """Điều kiện để `sch.import` dựng lại CÂY thay vì chỉ dựng lại netlist."""
+    from eide.sch import phan_cap as PC
+
+    cay = C.Cay.doc(bo)
+    g = PC.viet_phan_cap(cay, symbol=SYM)
+    d = PC.doc_phan_cap(g.tep)
+    assert d.canh_bao == [], d.canh_bao
+    so = PC.so_cay(d, cay)
+    assert so["khop"], so
+    assert set(d.la) == {"U1", "U3", "Y1"}
+    assert d.la["Y1"]["path"] == "/board/mcu/xtal"
+
+
+def test_Sheetname_mang_DOAN_PATH_chu_khong_mang_ten_hien_thi(bo):
+    """Đo lần đầu: ghi tên hiển thị làm `Sheetname` thì đọc lại ra `/board/Vi điều khiển` trong
+    khi cây có `/board/mcu` — và `so_cay` báo MỌI khối đều "chỉ có ở tệp", tức một round-trip
+    đúng bị kết luận là lệch hoàn toàn."""
+    from eide.sch import phan_cap as PC
+
+    bo.ckm_dat_nut(node_id="module:/board/mcu", loai="module", ten="Vi điều khiển",
+                   canonical={"ten": "Vi điều khiển"})
+    bo.ckm_dat_cay("module:/board/mcu", parent_id="module:/board", kind="block",
+                   path="/board/mcu")
+    cay = C.Cay.doc(bo)
+    d = PC.doc_phan_cap(PC.viet_phan_cap(cay, symbol=SYM).tep)
+    assert "/board/mcu" in d.khoi, sorted(d.khoi)
+    assert d.khoi["/board/mcu"]["ten"] == "Vi điều khiển", "tên hiển thị KHÔNG mất"
+    assert PC.so_cay(d, cay)["khop"]
+
+
+def test_thieu_mot_sheet_trong_goi_thi_NOI_RA(bo):
+    """Thiếu một sheet nghĩa là thiếu cả một khối của mạch — không được bỏ qua im lặng."""
+    from eide.sch import phan_cap as PC
+
+    g = PC.viet_phan_cap(C.Cay.doc(bo), symbol=SYM)
+    thieu = {k: v for k, v in g.tep.items() if k != "mach_mcu_xtal.kicad_sch"}
+    d = PC.doc_phan_cap(thieu)
+    assert any("thiếu cả một khối" in c for c in d.canh_bao), d.canh_bao
+
+
+def test_ghi_phan_cap_XAC_DINH(bo):
+    from eide.sch import phan_cap as PC
+
+    a = PC.viet_phan_cap(C.Cay.doc(bo), symbol=SYM).tep
+    b = PC.viet_phan_cap(C.Cay.doc(bo), symbol=SYM).tep
+    assert a == b
+
+
+def test_moi_sheet_qua_duoc_phep_kiem_round_trip(bo):
+    from eide.sch import ghi as G
+    from eide.sch import phan_cap as PC
+
+    for ten, nd in PC.viet_phan_cap(C.Cay.doc(bo), symbol=SYM).tep.items():
+        ok, vi = G.doc_lai_duoc(nd)
+        assert ok, f"{ten}: {vi}"
+
+
+# =========================================================================== 15. phân loại §7
+def _doc_gia(la: dict[str, dict], khoi: dict[str, dict] | None = None):
+    class D:
+        canh_bao: list = []
+    d = D()
+    d.la = la
+    d.khoi = khoi if khoi is not None else {}
+    d.nhan = {}
+    return d
+
+
+def test_SCH10_chi_doi_BO_CUC_thi_khong_lam_gi_loi_thoi(bo):
+    """§7 mục 3(a). Nếu đánh STALE ở đây thì mỗi lần người sắp lại trang là một lần cả chuỗi
+    hạ nguồn sáng đèn, và họ học được rằng băng cảnh báo vô nghĩa."""
+    from eide.sch import nap_lai as NL
+    from eide.sch import phan_cap as PC
+
+    cay = C.Cay.doc(bo)
+    d = PC.doc_phan_cap(PC.viet_phan_cap(cay, symbol=SYM).tep)
+    kq = NL.phan_loai(doc=d, cay=cay, so=PC.so_cay(d, cay),
+                       gia_tri_kho=PC.gia_tri_mong_doi(cay, SYM))
+    assert kq.thay_doi == [], [t.to_dict() for t in kq.thay_doi]
+    assert not kq.can_hoi
+    assert any("KHÔNG so từng toạ độ" in c for c in kq.canh_bao), \
+        "phải nói ra giới hạn, không giả vờ đã đo"
+
+
+def test_doi_GIA_TRI_linh_kien_thi_vao_loai_gia_tri(bo):
+    from eide.sch import nap_lai as NL
+    from eide.sch import phan_cap as PC
+
+    cay = C.Cay.doc(bo)
+    so = PC.so_cay(PC.doc_phan_cap(PC.viet_phan_cap(cay, symbol=SYM).tep), cay)
+    d = _doc_gia({"U3": {"ten": "AMS1117", "gia_tri": "AMS1117-5.0",
+                         "path": "/board/pwr"},
+                  "U1": {"ten": "ATmega328P", "gia_tri": "ATmega328P",
+                         "path": "/board/mcu"},
+                  "Y1": {"ten": "16MHz", "gia_tri": "16MHz", "path": "/board/mcu/xtal"}},
+                 khoi={p: {"ten": p, "cha": "", "port": v}
+                       for p, v in (("/board", []), ("/board/pwr", ["VOUT"]),
+                                    ("/board/mcu", ["VDD"]),
+                                    ("/board/mcu/xtal", ["XI"]))})
+    kq = NL.phan_loai(doc=d, cay=cay, so=so,
+                      gia_tri_kho={"U3": "AMS1117-3.3", "U1": "ATmega328P", "Y1": "16MHz"})
+    gt = kq.theo_loai["gia_tri"]
+    assert len(gt) == 1 and "AMS1117-3.3 → AMS1117-5.0" in gt[0].vi
+    assert not kq.can_hoi, "đổi giá trị KHÔNG cần hỏi — đó là quyết định của họ"
+
+
+def test_SCH12_them_linh_kien_moi_thi_PHAI_HOI(bo):
+    """Ca SCH12 — "người thêm net mới trong KiCad rồi nạp lại: thẻ hỏi, không ghi đè im lặng"."""
+    from eide.sch import nap_lai as NL
+    from eide.sch import phan_cap as PC
+
+    cay = C.Cay.doc(bo)
+    so = PC.so_cay(PC.doc_phan_cap(PC.viet_phan_cap(cay, symbol=SYM).tep), cay)
+    d = _doc_gia({"U1": {"ten": "ATmega328P", "gia_tri": "", "path": "/board/mcu"},
+                  "U3": {"ten": "AMS1117", "gia_tri": "", "path": "/board/pwr"},
+                  "Y1": {"ten": "16MHz", "gia_tri": "", "path": "/board/mcu/xtal"},
+                  "R9": {"ten": "R", "gia_tri": "4k7", "path": "/board/mcu"}})
+    kq = NL.phan_loai(doc=d, cay=cay, so=so,
+                      gia_tri_kho=PC.gia_tri_mong_doi(cay, SYM))
+    assert kq.can_hoi
+    ct = kq.theo_loai["cau_truc"]
+    assert any("R9" in x.vi for x in ct), [x.vi for x in ct]
+
+    the = NL.the_hoi(kq)
+    assert the and len(the["lua_chon"]) == 2
+    assert all(x["hau_qua"] for x in the["lua_chon"]), "mỗi lựa chọn phải nói HẬU QUẢ"
+    assert "không chọn hộ" in the["khong_tu_chon"]
+
+
+def test_SCH13_doi_CAU_TRUC_cay_thi_phai_hoi(bo):
+    from eide.sch import nap_lai as NL
+    from eide.sch import phan_cap as PC
+
+    cay = C.Cay.doc(bo)
+    so = {"khop": False, "khoi_chi_co_o_tep": ["/board/rf"], "khoi_chi_co_o_kho": [],
+          "port_lech": {"/board/mcu": {"o_tep": ["VDD", "ALERT"], "o_kho": ["VDD"]}}}
+    kq = NL.phan_loai(doc=_doc_gia({}), cay=cay, so=so,
+                      gia_tri_kho=PC.gia_tri_mong_doi(cay, SYM))
+    assert kq.can_hoi and len(kq.theo_loai["cau_truc"]) >= 2
+    assert any("lệch tập Port" in x.vi for x in kq.theo_loai["cau_truc"])
+
+
+def test_la_chuyen_sang_khoi_khac_la_CAU_TRUC_khong_phai_bo_cuc(bo):
+    """Chuyển một linh kiện sang sheet khác đổi khối chứa nó, tức đổi cả biên khối mà nó nằm
+    trong — không phải kéo ký hiệu cho dễ đọc."""
+    from eide.sch import nap_lai as NL
+    from eide.sch import phan_cap as PC
+
+    cay = C.Cay.doc(bo)
+    so = PC.so_cay(PC.doc_phan_cap(PC.viet_phan_cap(cay, symbol=SYM).tep), cay)
+    d = _doc_gia({"U1": {"ten": "ATmega328P", "gia_tri": "", "path": "/board/pwr"},
+                  "U3": {"ten": "AMS1117", "gia_tri": "", "path": "/board/pwr"},
+                  "Y1": {"ten": "16MHz", "gia_tri": "", "path": "/board/mcu/xtal"}})
+    kq = NL.phan_loai(doc=d, cay=cay, so=so,
+                      gia_tri_kho=PC.gia_tri_mong_doi(cay, SYM))
+    assert kq.can_hoi
+    assert any("chuyển từ khối" in x.vi for x in kq.theo_loai["cau_truc"])
+
+
+# =========================================================================== 16. công cụ C
+def test_write_style_hierarchical_ghi_nhieu_sheet(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    for b in ("sch.symbols", "sch.compose", "sch.netlist", "sch.place"):
+        assert goi(b).ok, b
+    r = goi("sch.write", style="hierarchical")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["style"] == "hierarchical" and r.data["so_sheet"] >= 2
+    assert r.data["doc_lai_dung_cay"] is True, r.data["so_cay"]
+    d = a.config.paths.project_root / "sch"
+    assert (d / "mach.kicad_sch").exists() and (d / "mach_MCU.kicad_sch").exists()
+
+
+def test_HIER11_cay_sau_hon_4_cap_thi_TU_chuyen_sang_phan_cap(make_agent):
+    """HIER-45 §7 — "depth > 4 → tự chuyển sang hierarchical và cảnh báo"."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    cha = "MCU"
+    for i in range(1, 5):
+        assert goi("ckm.module_set", ma=f"L{i}", ten=f"Tầng {i}", muc_dich="thử sâu",
+                   cha=cha).ok
+        cha = f"L{i}"
+    for b in ("sch.symbols", "sch.compose", "sch.netlist", "sch.place"):
+        goi(b)
+    r = goi("sch.write", style="flat")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["style"] == "hierarchical", "phải TỰ chuyển, không cần hỏi lại"
+    assert "TỰ chuyển sang phân cấp" in r.data["note_vi"]
+
+
+def test_export_goi_co_tep_huong_dan_va_noi_ro_may_nay_khong_cai_kicad(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    for b in ("sch.symbols", "sch.compose", "sch.netlist", "sch.place", "sch.write",
+              "sch.render"):
+        goi(b)
+    r = goi("sch.export")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    d = a.config.paths.project_root / "sch/goi"
+    assert (d / "mach.kicad_sch").exists() and (d / "mach.svg").exists()
+    doc = (d / "DOC-TRUOC-KHI-MO.md").read_text("utf-8")
+    assert "không cài KiCad" in doc and "sch.import" in doc
+    assert "không cài KiCad" in r.data["note_vi"]
+
+
+def test_export_chua_co_gi_thi_suy_giam_R3(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    r = goi("sch.export")
+    assert not r.ok and "mức R3" in r.error.message_vi
+
+
+def test_import_khong_doi_gi_thi_KHONG_danh_STALE(make_agent):
+    """§7 mục 3(a) — chỉ bố cục thì không có gì lỗi thời."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    for b in ("sch.symbols", "sch.compose", "sch.netlist", "sch.place"):
+        goi(b)
+    goi("sch.write", style="hierarchical")
+    r = goi("sch.import")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["can_hoi"] is False and r.data["so_thay_doi"] == 0
+    assert "khớp bản đồ mạch" in r.data["note_vi"]
+
+
+def test_import_them_linh_kien_thi_TAO_THE_HOI_khong_tu_ghi(make_agent):
+    """Ca SCH12/SCH13 qua công cụ: sửa tệp trong KiCad rồi nạp lại."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    for b in ("sch.symbols", "sch.compose", "sch.netlist", "sch.place"):
+        goi(b)
+    goi("sch.write", style="hierarchical")
+
+    p = a.config.paths.project_root / "sch/mach_MCU.kicad_sch"
+    txt = p.read_text("utf-8")
+    them = ('  (symbol (lib_id "Device:R") (at 100 100 0) (unit 1)\n'
+            '    (in_bom yes) (on_board yes) (dnp no)\n'
+            '    (uuid 11111111-2222-4333-8444-555555555555)\n'
+            '    (property "Reference" "R99" (at 100 98 0)\n'
+            '      (effects (font (size 1.27 1.27)))\n'
+            "    )\n"
+            '    (property "Value" "4k7" (at 100 102 0)\n'
+            '      (effects (font (size 1.27 1.27)))\n'
+            "    )\n"
+            "  )\n")
+    p.write_text(txt.rstrip()[:-1] + them + ")\n", "utf-8")
+
+    truoc = a.store.get("MG-1")["canonical"]
+    r = goi("sch.import")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["can_hoi"] is True
+    assert any("R99" in x["vi"] for x in r.data["theo_loai"]["cau_truc"])
+    assert r.data["the_hoi"] and len(r.data["the_hoi"]["lua_chon"]) == 2
+    # KHÔNG tự ghi đè bản đồ — đó là cả nội dung của SCH13.
+    assert a.store.get("MG-1")["canonical"]["khoi"] == truoc["khoi"]
+
+
+def test_import_khong_co_tep_thi_suy_giam_R3(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    r = goi("sch.import")
+    assert not r.ok and "mức R3" in r.error.message_vi

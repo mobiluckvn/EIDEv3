@@ -33,10 +33,11 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **HIER-A** | Cây khối phân cấp §2–3: lược đồ v3 có `down()` · Port ở biên khối · net theo phạm vi · `flatten(cây)` = netlist cũ 100 % · sáu bất biến E9001–E9006 | xong |
 | **HIER-B** | Fact theo cấp · ERC bốn ràng buộc §4.2 báo theo path (`board.check`) · STALE theo NÚT, nội bộ không lan sang anh em · cây gập/mở A5.9 · giải thích khối 7 câu | xong |
 | **HIER-C** | Thư viện khối `block@semver` ba tầng · `instantiate` mọi số có công thức và NGUỒN, thiếu nguồn thì không đặt · trích khối có kiểm khép kín · snapshot ghi `block@semver` | xong |
-| HIER-D | SKiDL/KiCad phân cấp + round-trip → cây (đi cùng SCH-C) | chưa |
+| **HIER-D** | Sheet phân cấp: mỗi khối một `.kicad_sch`, Port → sheet pin/hierarchical label · đọc lại gói dựng lại ĐÚNG cây (`so_cay`) · `depth > 4` tự chuyển phân cấp | xong |
 | **SCH-A** | Cờ + `eide/sch/` + `sch.compose` (khối → hàm SKiDL) · `sch.netlist` kiểm đẳng cấu bằng cách ĐỌC LẠI tệp · `sch.symbols` sinh từ Fact có ghi nguồn · R3 · chốt chặn không đề nghị cài KiCad | xong |
 | **SCH-B** | `sch.place` bố cục xác định, tiêu chí đo bằng số · `sch.write` `.kicad_sch` qua kiutils, uuid theo ref · `sch.render` SVG tự vẽ, kiểm chữ không đè | xong |
-| SCH-C…D | Round-trip `sch.import`/`export` · sheet phân cấp · đi dây thật | chưa |
+| **SCH-C** | `sch.export` gói mở được ở máy có KiCad · `sch.import` phân loại ba loại thay đổi (bố cục / giá trị / cấu trúc), cấu trúc thì HỎI và KHÔNG ghi đè bản đồ | xong |
+| SCH-D | Đi dây thật · xác nhận ký hiệu trên giao diện · gói vào bản ưng ý | chưa |
 | G6 | Build/Sim + subagent | chưa |
 | G7 | Mạch thật | chưa |
 
@@ -92,7 +93,7 @@ ui/EIDEApp/Sources/EIDE/
 ## Kiểm thử
 
 ```bash
-.venv/bin/python -m pytest -q                        # 135 test: hook, policy, công cụ, sổ cái, vòng lặp
+.venv/bin/python -m pytest -q                        # 730 test: hook, policy, công cụ, sổ cái, cây khối, sơ đồ
 .venv/bin/python tools/kiem_tra_day_du.py --nhanh    # an toàn qua cầu giao thức, 0 token
 .venv/bin/python tools/kiem_tra_day_du.py            # một mạch công việc thật, lõi + Gemini
 .venv/bin/python tools/thu_giao_dien.py              # 24 ca qua GIAO DIỆN THẬT
@@ -107,7 +108,8 @@ ui/EIDEApp/Sources/EIDE/
 .venv/bin/python tools/thu_cuoi.py                    # 36 ca ING-C/D/E + MEM-D + 9 đường hỏng
 .venv/bin/python tools/thu_ckm.py                     # 35 ca bản đồ tri thức mạch + 8 đường hỏng
 .venv/bin/python tools/thu_hier.py                    # 46 ca cây khối + ERC + STALE + thư viện khối
-EIDE_FEATURE_SCHEMATIC=1 .venv/bin/python tools/thu_sch.py    # 35 ca sinh sơ đồ + 10 đường hỏng
+EIDE_FEATURE_SCHEMATIC=1 .venv/bin/python tools/thu_sch.py    # 48 ca sinh sơ đồ, sheet phân cấp, nạp lại + 10 đường hỏng
+.venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_cuoi.py  # bằng chứng SCH-19: 36/36 giống hệt
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_g5.py   # bằng chứng SCH-19
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_ing_a.py   # hồi quy hai chế độ cờ
 .venv/bin/python tools/chay_kich_ban.py --lan 5      # bộ 76 TC, mỗi ca 5 lần

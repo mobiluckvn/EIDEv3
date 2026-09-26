@@ -42,13 +42,17 @@ class KetQuaVe:
     so_ky_hieu: int = 0
     so_nhan: int = 0
     so_day: int = 0
+    so_sheet: int = 0
     ref_trong_svg: list[str] = field(default_factory=list)
+    sheet_con: list[str] = field(default_factory=list)
     chu_de_nhau: list[str] = field(default_factory=list)
     canh_bao: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {"so_ky_hieu": self.so_ky_hieu, "so_nhan": self.so_nhan,
-                "so_day": self.so_day, "ref_trong_svg": list(self.ref_trong_svg),
+                "so_day": self.so_day, "so_sheet": self.so_sheet,
+                "sheet_con": list(self.sheet_con),
+                "ref_trong_svg": list(self.ref_trong_svg),
                 "chu_de_nhau": list(self.chu_de_nhau), "canh_bao": list(self.canh_bao),
                 "byte_svg": len(self.svg.encode("utf-8"))}
 
@@ -85,7 +89,18 @@ def doc_kicad_sch(noi_dung: str) -> dict[str, Any]:
             if pts and len(pts) >= 2:
                 day.append({"tu": [float(pts[0].X), float(pts[0].Y)],
                             "den": [float(pts[-1].X), float(pts[-1].Y)]})
-        return {"kho": kho, "ky_hieu": ky_hieu, "nhan": nhan, "day": day, "bang": "kiutils"}
+        # Hộp sheet con — sheet gốc của một mạch phân cấp KHÔNG có ký hiệu nào, nó chỉ có
+        # các hộp sheet. Không vẽ chúng thì ảnh gốc rỗng và người mở ra tưởng render hỏng.
+        sheet = []
+        for hs in (s.sheets or []):
+            ten = getattr(getattr(hs, "sheetName", None), "value", None) or "?"
+            tep_con = getattr(getattr(hs, "fileName", None), "value", None) or ""
+            sheet.append({"ten": str(ten), "tep": str(tep_con),
+                          "x": float(hs.position.X), "y": float(hs.position.Y),
+                          "rong": float(hs.width or 0), "cao": float(hs.height or 0),
+                          "pin": [str(p.name) for p in (hs.pins or [])]})
+        return {"kho": kho, "ky_hieu": ky_hieu, "nhan": nhan, "day": day,
+                "sheet": sheet, "bang": "kiutils"}
     except Exception:                                     # noqa: BLE001
         return _doc_tho(noi_dung)
 
@@ -108,7 +123,8 @@ def _doc_tho(noi_dung: str) -> dict[str, Any]:
             "den": [float(m.group(3)), float(m.group(4))]}
            for m in re.finditer(r"\(wire \(pts \(xy (" + _SO + r") (" + _SO + r")\) "
                                 r"\(xy (" + _SO + r") (" + _SO + r")\)\)", noi_dung)]
-    return {"kho": kho, "ky_hieu": ky_hieu, "nhan": nhan, "day": day, "bang": "regex"}
+    return {"kho": kho, "ky_hieu": ky_hieu, "nhan": nhan, "day": day, "sheet": [],
+            "bang": "regex"}
 
 
 # =========================================================================== vẽ
@@ -163,6 +179,29 @@ def ve(noi_dung_sch: str, *, hop: dict[str, tuple[float, float]] | None = None) 
         kq.so_ky_hieu += 1
         kq.ref_trong_svg.append(ref)
 
+    # Hộp sheet con: vẽ khung, tên, tệp và danh sách sheet pin. Đây là toàn bộ nội dung của
+    # một sheet gốc phân cấp, nên bỏ nó đi là biến ảnh gốc thành một trang trắng.
+    for sh in sorted(d.get("sheet") or [], key=lambda z: (z["ten"], z["x"])):
+        x, y = sh["x"] * PX_MOI_MM, sh["y"] * PX_MOI_MM
+        w, h = max(sh["rong"], 20.0) * PX_MOI_MM, max(sh["cao"], 12.0) * PX_MOI_MM
+        L.append(f'<g data-sheet="{html.escape(sh["ten"])}">')
+        L.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
+                 'fill="#f2f6ff" stroke="#3352a0" stroke-dasharray="4 2"/>')
+        L.append(_chu(x + 3, y - 3, sh["ten"], weight="bold", mau="#27407d"))
+        chu.append((*_bbox(sh["ten"], x + 3, y - 3), sh["ten"]))
+        py = y + CO_CHU_PX
+        for ten_pin in sh["pin"]:
+            L.append(f'<circle cx="{x:.1f}" cy="{py:.1f}" r="1.6" fill="#3352a0" '
+                     'stroke="none"/>')
+            L.append(_chu(x + 4, py + 3, ten_pin, mau="#27407d"))
+            chu.append((*_bbox(ten_pin, x + 4, py + 3), ten_pin))
+            py += CO_CHU_PX * 1.4
+        if sh["tep"]:
+            L.append(_chu(x + 3, y + h + 11, sh["tep"], mau="#6b7ba8"))
+        L.append("</g>")
+        kq.so_sheet += 1
+        kq.sheet_con.append(sh["ten"])
+
     for n in sorted(d["nhan"], key=lambda z: (z["text"], z["x"], z["y"])):
         x, y = n["x"] * PX_MOI_MM, n["y"] * PX_MOI_MM
         L.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="1.6" fill="#1f6f3f" stroke="none"/>')
@@ -177,9 +216,11 @@ def ve(noi_dung_sch: str, *, hop: dict[str, tuple[float, float]] | None = None) 
         kq.canh_bao.append(f"{len(kq.chu_de_nhau)} cặp chữ đè nhau — người đọc sẽ thấy một "
                            "chuỗi ký tự vô nghĩa ở đúng chỗ họ cần đọc: "
                            + "; ".join(kq.chu_de_nhau[:4]))
-    if kq.so_ky_hieu == 0:
-        kq.canh_bao.append("Ảnh KHÔNG có ký hiệu nào — đây là một hình rỗng, không phải một "
-                           "sơ đồ.")
+    if kq.so_ky_hieu == 0 and kq.so_sheet == 0:
+        # Sheet gốc phân cấp KHÔNG có ký hiệu, và đó là đúng — nó có hộp sheet. Nên chỉ gọi là
+        # rỗng khi không có cả hai.
+        kq.canh_bao.append("Ảnh KHÔNG có ký hiệu cũng không có sheet con nào — đây là một hình "
+                           "rỗng, không phải một sơ đồ.")
     return kq
 
 
