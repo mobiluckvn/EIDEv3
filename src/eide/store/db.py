@@ -286,6 +286,8 @@ ARTEFACT_TYPES = (
     "doc",             # tài liệu đã nạp theo trang (§C3 cần, §E2 bảng thiếu)
     "procedure",       # quy trình từng bước (EIDE-NOTE-42)
     "classification",  # kết quả phân loại một tệp (ING-43 §8, khối A3.6)
+    # SCH-44 §3.1 — hiện vật của đường ống sinh sơ đồ. Cộng thêm; cờ tắt thì không ai ghi.
+    "skidl_src", "netlist_kicad", "symbol_map", "layout", "symbol_lib",
 )
 
 

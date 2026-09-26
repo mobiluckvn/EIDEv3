@@ -310,6 +310,41 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                        "tiếp theo. Nếu không làm được việc họ nhờ, nói thẳng là không làm "
                        "được và vì sao.\n</system-reminder>"))
 
+    # SCH-44 SCH-09 — "không đề nghị cài KiCad ở BẤT KỲ thông điệp nào".
+    #
+    # Đây là một ràng buộc về *thứ không được xuất hiện*, và loại ràng buộc đó không tự giữ
+    # được. Mô hình rất dễ "giúp" bằng câu "anh cài KiCad rồi mở tệp này" — đúng lúc nó
+    # tưởng đang hữu ích nhất. Cấm bằng một dòng trong hiến pháp là cấm KHÔNG ĐO ĐƯỢC: lời
+    # nhắc trôi đi sau vài lần nén, và không ai biết nó đã trôi.
+    #
+    # Nên luật nằm ở đây, đọc `ctx.loi_da_noi` — mọi câu tác tử nói ra đều đi qua đó.
+    _CAM_KICAD = (
+        "cài kicad", "cai kicad", "install kicad", "tải kicad", "tai kicad",
+        "download kicad", "kicad-cli", "brew install kicad", "apt install kicad",
+    )
+
+    @bus.on_stop
+    def khong_de_nghi_cai_kicad(ctx: Any) -> StopResult:
+        """Quyết định 25/09/2026: máy này KHÔNG cài KiCad, và tác tử không được đề nghị."""
+        thay: list[str] = []
+        for cau in getattr(ctx, "loi_da_noi", []) or []:
+            t = (cau or "").lower()
+            for m in _CAM_KICAD:
+                if m in t:
+                    thay.append(m)
+        if not thay:
+            return StopResult()
+        return StopResult(
+            another_round=True, reason_vi="đề nghị cài KiCad — quyết định 25/09 cấm",
+            fired=["khong_cai_kicad"],
+            injection=("<system-reminder>\nBạn vừa đề nghị cài hoặc gọi KiCad ("
+                       + ", ".join(sorted(set(thay)))
+                       + "). Quyết định của chủ sản phẩm ngày 25/09/2026: **máy này không "
+                         "cài KiCad**, và không đề nghị người dùng cài.\n\nNói lại không có "
+                         "câu đó. EIDE tự đọc/ghi tệp KiCad bằng thư viện Python và tự render "
+                         "SVG; muốn mở trong KiCad thì dùng sch.export để xuất gói rồi mở ở "
+                         "máy KHÁC đã có sẵn KiCad.\n</system-reminder>"))
+
     return bus
 
 

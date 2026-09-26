@@ -1471,3 +1471,97 @@ bản 21:17 hôm trước. Phải chạy `ui/EIDEApp/dong-goi.sh`. Ba ca đỏ v
 **Hồi quy:** mười bộ E2E **GIỐNG HỆT** khi so bằng `tools/so_ket_qua.py` (G3 31 · G4 23 ·
 G5 35 · ING-A 29 · ING-B 25 · MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35). Bộ HIER
 chỉ **thêm** 13 ca, không ca nào đi từ *đạt* sang *không đạt*.
+
+---
+
+### [DEV-270] 26/09/2026 · SCH-A — sinh sơ đồ: ba bước đầu, và một phép kiểm phải thật
+
+Ba công cụ đầu của đường ống bảy bước (SCH-44 §3): `sch.compose` → `sch.netlist` →
+`sch.symbols`, tất cả sau cờ `features.schematic` (mặc định TẮT).
+
+**HIER-45 §7 sửa SCH-44 ở chỗ quan trọng.** SCH-44 bản đầu coi mỗi module là một *vùng trên
+sheet*; HIER-45 đổi thành *"mỗi khối → một hàm Python có tham số là các Port"*. Khác biệt
+không phải hình thức: một hàm có tham số là một **hợp đồng kiểm được** — khối MCU cần ba
+Port thì hàm có ba tham số, và gọi thiếu một cái là lỗi cú pháp Python, phát hiện trước khi
+có ai vẽ gì. Một vùng trên sheet không kiểm được gì.
+
+### Chỗ khó nhất: phép kiểm đẳng cấu phải ĐỘC LẬP
+
+SCH-44 bước 2 nói `sch.netlist` chạy SKiDL rồi so netlist sinh ra với netlist CKM. Máy này
+không có `skidl` (và cài nó cần thư viện ký hiệu KiCad, mà quyết định 25/09 nói không cài
+KiCad). Đường dễ là: viết `.net` từ cây, rồi so với `flatten(cây)`.
+
+**Đường dễ đó so chính mình với chính mình.** Nó **luôn đạt**, và một phép kiểm luôn đạt tệ
+hơn không có phép kiểm — nó tạo ra niềm tin không có cơ sở. Đúng loại "đậu vì lý do sai" mà
+DEV-266 ghi lại.
+
+Đường thật: **đọc lại tệp SKiDL đã sinh** bằng `ast` (`sch/doc_skidl.py`). Tệp đó là một
+hiện vật — mã sinh nó, người có thể sửa nó, và SCH14 nói thẳng mô hình có thể *"sinh net
+không có trong CKM"*. Đọc nó rồi so với cây là kiểm đúng thứ cần kiểm.
+
+Không `exec` tệp, và lý do thứ hai mới là lý do thật: chạy một tệp Python mà mô hình có thể
+đã sửa là **thực thi mã không kiểm soát**. `ast.parse` đọc cấu trúc mà không gọi gì.
+
+Đổi lại, bộ đọc chỉ hiểu đúng tập con `soan.py` sinh ra — nên gặp gì không hiểu thì **nói
+ra** (`khong_hieu`), kể cả câu lệnh ở cấp ngoài cùng. Một dòng bị bỏ qua im lặng là một net
+biến mất khỏi phép kiểm; một `import os` chèn vào mà không ai nhắc thì người đọc báo cáo
+tưởng tệp vẫn đúng như lúc sinh.
+
+### Bốn quyết định khác, mỗi cái một lý do
+
+**Nạp trễ theo §2.2.** Chỉ `sch.compose` hiện; `sch.netlist`/`sch.symbols` qua `tool.search`.
+Đo được: lược đồ tool cờ tắt 17 071 token, cờ bật 17 619 — chênh **548** thay vì ~1 200 nếu
+hiện hết.
+
+**Ký hiệu sinh từ Fact ghi rõ nguồn.** §5 gọi đó là "N1 áp vào ký hiệu": `Description` của
+symbol mang câu *"Sinh từ DS-328P trang 13 — EIDE"*. Kiểu chân suy từ hướng Port, và chân
+chưa rõ thì `passive` — đoán `input` sẽ làm ERC của KiCad báo lỗi **sai** ở máy người khác.
+
+**Thư viện chính thức lệch Fact thì không dùng im lặng** (§5). So theo SỐ chân, không theo
+tên: tên chân khác nhau giữa các phiên bản thư viện là chuyện thường (`VCC` vs `VDD`), còn
+số chân khác nhau nghĩa là **hai con chip khác nhau**.
+
+**Không ghi `tstamp` bịa vào `.net`.** KiCad dùng nó để khớp linh kiện khi cập nhật PCB; một
+giá trị bịa làm lần cập nhật sau gán sai chân. Thiếu thì để KiCad tự sinh.
+
+### SCH-09: cấm bằng lời là cấm không đo được
+
+*"Không đề nghị cài KiCad ở BẤT KỲ thông điệp nào"* là ràng buộc về **thứ không được xuất
+hiện**, và loại đó không tự giữ được: mô hình rất dễ "giúp" bằng câu *"anh cài KiCad rồi mở
+tệp này"* — đúng lúc nó tưởng đang hữu ích nhất. Một dòng trong hiến pháp sẽ trôi đi sau vài
+lần nén, và không ai biết nó đã trôi.
+
+Nên luật nằm ở hook `Stop`, đọc `ctx.loi_da_noi` (mọi câu tác tử nói ra đều đi qua đó). Nó
+chặn và **chỉ đường đúng**: `sch.export` để mở ở máy khác. Có ca đo cho cả chiều ngược —
+nói *về* định dạng KiCad mà không đề nghị cài thì KHÔNG bị chặn, vì chặn quá tay thì tác tử
+không nói được về thứ nó đang làm.
+
+### Ba lỗi do việc đo phơi ra
+
+**1. `requires` che mất câu R3 giàu thông tin hơn.** `check_preconditions` chạy trước thân
+công cụ và trả *"thiếu 1 ckm"*; thân công cụ dựng được câu liệt kê đúng thứ đang thiếu, gọi
+gì để có, và nhắc rằng sơ đồ khối vẫn dùng được (mức R3, §6). Bỏ `requires` ở `sch.compose`:
+hai chỗ kiểm cùng một điều kiện thì chỗ có nhiều ngữ cảnh hơn phải là chỗ nói.
+
+**2. `sch.compose` tin vào giá trị đã GHI NHỚ.** Nó đọc `vi_pham_cay()` — kết quả của lần
+chiếu trước. Nếu đồ thị bị đổi bằng đường khác kể từ lúc đó thì nó đang nói về một cái cây
+không còn tồn tại. Nay nó **tính lại**: một phép chặn đứng trước bước tốn kém nhất phải được
+tính, không được nhớ.
+
+**3. Ca đo SCH14 ĐẬU vì nó không làm gì.** Bộ E2E chèn net bịa bằng mốc chuỗi
+`"khoi_board_MOD_MCU(n_3V3)"`; khối có thêm một Port nên lời gọi thành hai tham số, mốc
+không khớp, **tệp không bị sửa**, và ca đo báo đạt trong khi nó chẳng kiểm gì. Nay chèn theo
+CẤU TRÚC (sau `def mach():`) và ném nếu không tìm thấy chỗ chèn. *Một ca đo đậu vì không làm
+gì là ca đo tệ nhất* — nó chiếm chỗ của một phép kiểm thật.
+
+### Số đo
+
+`661 ca đơn vị` (+39) · `tools/thu_sch.py` **21/21** qua giao diện thật · `77 công cụ` khi
+cờ bật, **74 khi cờ tắt** (y nguyên).
+
+**Bằng chứng SCH-19 — hồi quy HAI CHẾ ĐỘ, `so_ket_qua.py --hai-che-do`:** G5 **35/35 giống
+hệt** · CKM **35/35 giống hệt** · HIER **38/38 giống hệt**. Cờ tắt và cờ bật cho cùng kết
+quả từng ca.
+
+Mười một bộ E2E chạy lại với cờ tắt (như người dùng thật) đều giữ nguyên: G3 31 · G4 23 ·
+G5 35 · ING-A 29 · ING-B 25 · MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35 · HIER 38.

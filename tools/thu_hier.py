@@ -135,7 +135,7 @@ def chay(du_an: pathlib.Path) -> int:
     b.kiem("Net gốc chạm chân trong khối con → sinh Port 'lên cha' ở biên khối",
            {"3V3", "GND", "SDA"} <= ten_port, ", ".join(sorted(ten_port)))
     b.kiem("Không vi phạm bất biến nào sau di cư",
-           C.kiem_bat_bien(cay, chan_theo_fact=K._chan_theo_fact(ctx.store, cay)) == [],
+           C.kiem_bat_bien(cay, chan_theo_fact=K.chan_theo_fact(ctx.store, cay)) == [],
            "sạch")
 
     b.phan("B · DỰNG CÂY THẬT BẰNG PORT (HIER02)")
@@ -338,7 +338,7 @@ def chay(du_an: pathlib.Path) -> int:
     ctx.store.ckm_dat_port(port_id=f"port:{u1['path']}.99", module_id=u1["node_id"],
                            ten="99", huong="passive", chan="99")
     cay2 = C.Cay.doc(ctx.store)
-    v = C.kiem_bat_bien(cay2, chan_theo_fact=K._chan_theo_fact(ctx.store, cay2))
+    v = C.kiem_bat_bien(cay2, chan_theo_fact=K.chan_theo_fact(ctx.store, cay2))
     x = next((i for i in v if i.ma == C.E_PORT_LA), None)
     b.kiem("Bắt được, và nói rõ hậu quả là sơ đồ vẽ chân không tồn tại",
            x is not None and "KHÔNG có" in x.vi,

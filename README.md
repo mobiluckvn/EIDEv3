@@ -33,7 +33,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **HIER-A** | Cây khối phân cấp §2–3: lược đồ v3 có `down()` · Port ở biên khối · net theo phạm vi · `flatten(cây)` = netlist cũ 100 % · sáu bất biến E9001–E9006 | xong |
 | **HIER-B** | Fact theo cấp · ERC bốn ràng buộc §4.2 báo theo path (`board.check`) · STALE theo NÚT, nội bộ không lan sang anh em · cây gập/mở A5.9 · giải thích khối 7 câu | xong |
 | HIER-C…D | Thư viện khối `block@semver` · SKiDL/KiCad phân cấp + round-trip | chưa |
-| SCH-A…D | Sinh sơ đồ KiCad từ cây (SKiDL theo khối → ERC → sheet phân cấp → SVG) | chưa |
+| **SCH-A** | Cờ + `eide/sch/` + `sch.compose` (khối → hàm SKiDL) · `sch.netlist` kiểm đẳng cấu bằng cách ĐỌC LẠI tệp · `sch.symbols` sinh từ Fact có ghi nguồn · R3 · chốt chặn không đề nghị cài KiCad | xong |
+| SCH-B…D | Bố cục xác định · `.kicad_sch` · render SVG nội bộ · round-trip | chưa |
 | G6 | Build/Sim + subagent | chưa |
 | G7 | Mạch thật | chưa |
 
@@ -104,6 +105,8 @@ ui/EIDEApp/Sources/EIDE/
 .venv/bin/python tools/thu_cuoi.py                    # 36 ca ING-C/D/E + MEM-D + 9 đường hỏng
 .venv/bin/python tools/thu_ckm.py                     # 35 ca bản đồ tri thức mạch + 8 đường hỏng
 .venv/bin/python tools/thu_hier.py                    # 38 ca cây khối + ERC + STALE theo cây
+EIDE_FEATURE_SCHEMATIC=1 .venv/bin/python tools/thu_sch.py    # 21 ca sinh sơ đồ + 7 đường hỏng
+.venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_g5.py   # bằng chứng SCH-19
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_ing_a.py   # hồi quy hai chế độ cờ
 .venv/bin/python tools/chay_kich_ban.py --lan 5      # bộ 76 TC, mỗi ca 5 lần
 .venv/bin/python tools/theo_doi.py --du-an <thư mục> # theo dõi phiên thật qua sổ cái

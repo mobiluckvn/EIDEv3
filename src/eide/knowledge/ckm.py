@@ -493,7 +493,7 @@ def chieu(store: Any) -> dict[str, int]:
     #    nhìn thấy nó lệch ở đâu. Người gọi có trách nhiệm nói ra: `ckm.build` liệt kê,
     #    giao diện tô, và không ai được coi bản đồ có vi phạm là bản đồ dùng được.
     cay = _cay.Cay.doc(store)
-    vi_pham = _cay.kiem_bat_bien(cay, chan_theo_fact=_chan_theo_fact(store, cay))
+    vi_pham = _cay.kiem_bat_bien(cay, chan_theo_fact=chan_theo_fact(store, cay))
     d = store.ckm_dem()
     if vi_pham:
         d["vi_pham_cay"] = len(vi_pham)
@@ -511,7 +511,7 @@ def vi_pham_cay(store: Any) -> list[dict[str, str]]:
     return list(getattr(store, "_ckm_vi_pham", []) or [])
 
 
-def _chan_theo_fact(store: Any, cay: Any) -> dict[str, set[str]]:
+def chan_theo_fact(store: Any, cay: Any) -> dict[str, set[str]]:
     """Tập chân mà Fact nói một lá CÓ — vế "đúng" của bất biến E9004.
 
     Chỉ trả về ref nào thật sự có Fact. Lá chưa có datasheet không có mặt ở đây, nên E9004

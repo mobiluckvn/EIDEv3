@@ -68,20 +68,54 @@ def test_cong_cu_khong_gan_co_thi_khong_bi_anh_huong():
 
 
 def test_co_tat_thi_luoc_do_tool_khong_tang_mot_token_nao():
-    """§2.2: điểm chạm registry phải đo được bằng token khối 2 (MEM-42 §4.1)."""
+    """§2.2: điểm chạm registry phải đo được bằng token khối 2 (MEM-42 §4.1).
+
+    Ca này được viết ở SCH-0 khi chưa có tool `sch.*` nào, nên nó chỉ so hai con số bằng
+    nhau. SCH-A thêm tool thật, nên nay nó đo ba điều **có nội dung**:
+
+      1. cờ tắt thì KHÔNG có tool `sch.*` nào — không phải bị giấu, mà không tồn tại;
+      2. bật cờ KHÔNG làm đổi khai báo của một tool cũ nào (không sửa lây);
+      3. cờ tắt thì lược đồ tool NHỎ HƠN thật — tức cờ tiết kiệm token thật, không chỉ
+         tiết kiệm trên giấy.
+    """
+    from eide.context.assemble import approx_tokens
     from eide.tools import build_registry
 
     tat = build_registry(Features(schematic=False))
     bat = build_registry(Features(schematic=True))
-    # Chưa có tool sch nào nên hai bên bằng nhau. Ca này canh cho LÚC SAU: khi SCH-A
-    # thêm 8 tool, bên TẮT phải không đổi một công cụ, một token nào.
-    #
-    # Cố ý KHÔNG chốt cứng con số 48: bước khác thêm công cụ là chuyện bình thường, và
-    # một ca đo đỏ vì lý do bình thường sẽ bị người ta sửa cho qua thay vì đọc.
-    assert len(tat.all()) == len(bat.all())
-    assert ([d["name"] for d in tat.declarations()]
-            == [d["name"] for d in bat.declarations()])
-    assert tat.bo_qua_vi_co == bat.bo_qua_vi_co == []
+
+    assert [t.name for t in tat.all() if t.name.startswith("sch.")] == []
+    assert sorted(tat.bo_qua_vi_co) == sorted(t.name for t in bat.all()
+                                              if t.name.startswith("sch."))
+
+    # Khai báo của tool CŨ phải y nguyên — bật một tính năng không được sửa lời mô tả của
+    # thứ khác, vì đó là thứ mô hình đọc để quyết định gọi gì.
+    cu_tat = {d["name"]: d for d in tat.declarations()}
+    cu_bat = {d["name"]: d for d in bat.declarations() if not d["name"].startswith("sch.")}
+    assert cu_tat == cu_bat
+
+    def token(r):
+        import json
+        return approx_tokens(json.dumps(r.declarations(), ensure_ascii=False))
+
+    assert token(tat) < token(bat), "cờ tắt phải rẻ hơn thật"
+
+
+def test_nap_tre_chi_sch_compose_hien_con_lai_qua_tool_search():
+    """§2.2 — "chỉ sch.compose và sch.render hiển thị, còn lại qua tool.search".
+
+    Lý do là token: tám tool sch thêm ~1,2 k token vào khối 2 của ngân sách ngữ cảnh. Nạp
+    trễ giữ chỗ đó cho thứ mô hình đang cần.
+    """
+    from eide.tools import build_registry
+
+    bat = build_registry(Features(schematic=True))
+    hien = {t.name for t in bat.visible() if t.name.startswith("sch.")}
+    assert hien == {"sch.compose"}, hien
+
+    # `tool.search` mở khoá được — nếu không thì "nạp trễ" thành "không bao giờ nạp".
+    bat.search("netlist kicad")
+    assert "sch.netlist" in {t.name for t in bat.visible()}
 
 
 def test_co_doc_tu_bien_moi_truong(monkeypatch):
