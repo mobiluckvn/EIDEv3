@@ -251,6 +251,256 @@ def register(r: Registry) -> Registry:
                             "này, vì nó phụ thuộc phông chữ và khổ giấy. Trích dẫn "
                             "chính vẫn theo đường tiêu đề của bản Word.")}
 
+    @r.tool("doc.figures", "Tri thức",
+            "Rút hình trong một PDF thành các đoạn tri thức 'figure': ảnh + chú thích + "
+            "chữ OCR. Kết quả đọc HÌNH là tầng ĐỒNG — nó là suy đoán từ ảnh.",
+            {"type": "object",
+             "properties": {"doc_id": {"type": "string"},
+                            "ocr": {"type": "boolean",
+                                    "description": "có OCR từng hình không, mặc định có"}},
+             "required": ["doc_id"]},
+            risk="R1", core=False,
+            keywords=["hình", "figure", "sơ đồ khối", "timing", "ảnh trong tài liệu"])
+    def doc_figures(ctx: Any, doc_id: str, ocr: bool = True):
+        from ..knowledge import ocr as ocr_mod
+        from .builtin import _rel
+
+        tl = ctx.tai_lieu.get(doc_id)
+        if tl is None:
+            return ToolResult(False, error=EideError(
+                "E2001", f"Tài liệu {doc_id} chưa được nạp.",
+                hint_for_agent="Gọi doc.load trước.", alternatives=["doc.load"],
+                blame="agent"))
+        if tl.loai != "pdf":
+            return ToolResult(False, error=EideError(
+                "E2002", f"{doc_id} là {tl.loai} — rút hình hiện chỉ làm với PDF.",
+                hint_for_agent="Với Office, ảnh nhúng nằm trong tệp; xin bản PDF nếu cần.",
+                alternatives=[], blame="agent"))
+
+        ds, canh = ocr_mod.rut_hinh_tu_pdf(
+            Path(tl.duong_dan), ctx.config.paths.state_dir / "hinh")
+        ng = ocr_mod.nhan_ngon_ngu(" ".join(t.chu for t in tl.trang[:5]))
+        thieu_goi = ""
+        if ocr and ds:
+            duoc, vi_sao = ocr_mod.kiem_goi(ng.ma or "eng")
+            if duoc:
+                for h in ds:
+                    h.ocr = ocr_mod.ocr_anh(Path(h.duong_dan), ma_ngon_ngu=ng.ma or "eng")
+            else:
+                thieu_goi = vi_sao
+                ctx.emit(uic.notice(vi_sao, level="warn", code="E1014"))
+
+        return {
+            "doc_id": doc_id, "so_hinh": len(ds),
+            "ngon_ngu": ng.to_dict(), "thieu_goi_ocr": thieu_goi,
+            "hinh": [h.to_dict() for h in ds[:20]],
+            "canh_bao": canh,
+            "note_vi": (
+                (f"KHÔNG OCR được: {thieu_goi}" if thieu_goi else
+                 "Chữ đọc từ hình là tầng ĐỒNG — dùng để hiểu, KHÔNG dùng làm vế so "
+                 "sánh và không đưa vào mã. Người xác nhận thì mới lên tầng.")
+                + (f" {canh}" if canh else "")),
+        }
+
+    @r.tool("doc.language", "Tri thức",
+            "Nhận diện ngôn ngữ của một tài liệu đã nạp và cho biết máy có gói OCR "
+            "tương ứng chưa.",
+            {"type": "object", "properties": {"doc_id": {"type": "string"}},
+             "required": ["doc_id"]},
+            risk="R1", core=False,
+            keywords=["ngôn ngữ", "tiếng", "ocr", "gói ngôn ngữ", "tiếng Trung"])
+    def doc_language(ctx: Any, doc_id: str):
+        from ..knowledge import ocr as ocr_mod
+
+        tl = ctx.tai_lieu.get(doc_id)
+        if tl is None:
+            return ToolResult(False, error=EideError(
+                "E2001", f"Tài liệu {doc_id} chưa được nạp.",
+                hint_for_agent="Gọi doc.load trước.", alternatives=["doc.load"],
+                blame="agent"))
+        ng = ocr_mod.nhan_ngon_ngu(" ".join(t.chu for t in tl.trang[:10]))
+        duoc, vi_sao = ocr_mod.kiem_goi(ng.ma or "eng")
+        return {"doc_id": doc_id, "ngon_ngu": ng.to_dict(),
+                "co_goi_ocr": duoc, "thieu_goi": vi_sao,
+                "goi_da_cai": ocr_mod.goi_da_cai(),
+                "note_vi": ("" if duoc else
+                            f"{vi_sao} Nói thẳng điều này cho người dùng — đừng OCR bằng "
+                            "gói sai rồi đưa số cho họ tin.")}
+
+    @r.tool("eda.netlist", "Thiết kế",
+            "Đọc netlist KiCad (.net) hoặc sơ đồ (.kicad_sch) thành cấu trúc: linh kiện, "
+            "net, chân. Dùng trước khi kiểm mạch hoặc đối chiếu với BOM.",
+            {"type": "object",
+             "properties": {"path": {"type": "string"},
+                            "explain": EXPLAIN_SCHEMA},
+             "required": ["path", "explain"]},
+            risk="R2", writes_artefact=True, needs_explain=True, produces=["netlist"],
+            keywords=["netlist", "kicad", "sơ đồ", "linh kiện", "net", "ckm"])
+    def eda_netlist(ctx: Any, path: str, explain: dict[str, Any]):
+        from ..knowledge import eda
+        from .builtin import _rel, _resolve
+
+        p = _resolve(ctx, path)
+        if not p.exists():
+            raise path_not_found(_rel(ctx, p))
+        duoi = p.suffix.lower()
+        if duoi in (".net", ".cir", ".kicad_netlist"):
+            m, vi_sao = eda.doc_netlist(p)
+        elif duoi == ".kicad_sch":
+            m, vi_sao = eda.doc_kicad_sch(p)
+        else:
+            return ToolResult(False, error=EideError(
+                "E1001", f"{p.name}: chỉ đọc được .net và .kicad_sch.",
+                hint_for_agent="Gọi ingest.file để biết tệp này là gì.",
+                alternatives=["ingest.file", "xin người dùng xuất netlist"],
+                blame="user"))
+        if m is None:
+            return ToolResult(False, error=EideError(
+                "E1002", vi_sao, hint_for_agent="Nói thẳng là tệp không đúng định dạng.",
+                alternatives=["ingest.file"], blame="user"))
+
+        ma = f"netlist:{_rel(ctx, p)}"
+        ctx.history.ghi_kho(
+            author=f"agent:{ctx.run_id}", artefact_id=ma, type="netlist",
+            op="update" if ctx.store.get(ma) else "create",
+            canonical=m.to_dict(), explain=explain, run_id=ctx.run_id)
+        for c in m.canh_bao:
+            ctx.emit(uic.notice(c, level="info", code="ING-09"))
+
+        mot_chan = m.net_mot_chan()
+        return {
+            "nguon": m.nguon, "so_linh_kien": len(m.linh_kien), "so_net": len(m.net),
+            "linh_kien": [l.ref for l in m.linh_kien][:80],
+            "net_mot_chan": mot_chan, "canh_bao": m.canh_bao,
+            "note_vi": (f"{len(mot_chan)} net chỉ nối MỘT chân — gần như luôn là lỗi vẽ. "
+                        "Nói cho người dùng." if mot_chan else ""),
+        }
+
+    @r.tool("eda.bom_check", "Thiết kế",
+            "Đối chiếu BOM (.csv) với netlist đã đọc: linh kiện thiếu, thừa, và giá trị "
+            "khác nhau. Loại lệch nguy hiểm nhất là giá trị khác — mạch hàn xong CHẠY "
+            "nhưng sai.",
+            {"type": "object",
+             "properties": {"bom": {"type": "string", "description": "đường dẫn .csv"},
+                            "netlist": {"type": "string",
+                                        "description": "mã hiện vật netlist đã đọc"}},
+             "required": ["bom", "netlist"]},
+            risk="R1",
+            keywords=["bom", "đối chiếu", "linh kiện", "mua", "thiếu", "thừa"])
+    def eda_bom_check(ctx: Any, bom: str, netlist: str):
+        from ..knowledge import eda
+        from .builtin import _rel, _resolve
+
+        a = ctx.store.get(netlist) or ctx.store.get(f"netlist:{netlist}")
+        if a is None:
+            return ToolResult(False, error=EideError(
+                "E2001", f"Chưa có netlist nào mã {netlist}.",
+                hint_for_agent="Gọi eda.netlist trước.",
+                alternatives=["eda.netlist", "store.list(type='netlist')"],
+                blame="agent"))
+        p = _resolve(ctx, bom)
+        if not p.exists():
+            raise path_not_found(_rel(ctx, p))
+
+        ds, vi_sao = eda.doc_bom_csv(p)
+        if vi_sao:
+            return ToolResult(False, error=EideError(
+                "E1005", vi_sao,
+                hint_for_agent="Hỏi người dùng cột nào là cột mã linh kiện, đừng đoán.",
+                alternatives=["ask_user"], blame="user"))
+
+        canon = a["canonical"]
+        m = eda.Mach(nguon=canon.get("nguon", netlist))
+        m.linh_kien = [eda.LinhKien(ref=l["ref"], gia_tri=l.get("gia_tri", ""))
+                       for l in canon.get("linh_kien", [])]
+        kq = eda.doi_chieu_bom_netlist(ds, m)
+        for d in kq["se_mat_vi"]:
+            ctx.emit(uic.notice(d, level="warn", code="TC062"))
+        return kq
+
+    @r.tool("config.load", "Tri thức",
+            "Đọc một tệp cấu hình của dự án (.ioc, sdkconfig, .dts, .ld, .map) thành "
+            "Fact tầng CẤU HÌNH. Tầng này nói dự án ĐANG ĐẶT gì, KHÔNG nói chip chịu "
+            "được gì — nên nó không bao giờ được dùng làm vế giới hạn vật lý.",
+            {"type": "object",
+             "properties": {"path": {"type": "string"},
+                            "explain": EXPLAIN_SCHEMA},
+             "required": ["path", "explain"]},
+            risk="R2", writes_artefact=True, needs_explain=True, produces=["fact"],
+            keywords=["cấu hình", "ioc", "sdkconfig", "devicetree", "linker", "map",
+                      "cubemx", "clock", "pinmux"])
+    def config_load(ctx: Any, path: str, explain: dict[str, Any]):
+        from ..knowledge import vendor as vd
+        from .builtin import _rel, _resolve
+
+        p = _resolve(ctx, path)
+        if not p.exists():
+            raise path_not_found(_rel(ctx, p))
+        c, vi_sao = vd.doc_cau_hinh(p)
+        if c is None:
+            return ToolResult(False, error=EideError(
+                "E1001", vi_sao,
+                hint_for_agent=("Gọi ingest.file để biết tệp này là gì. Cấu hình đọc "
+                                "được: .ioc, sdkconfig, .dts/.dtsi, .ld, .map."),
+                alternatives=["ingest.file"], blame="user"))
+
+        for khoa, gt in c.khoa.items():
+            ctx.store.put_fact(vd.fact_cau_hinh(c, khoa, gt))
+        ctx.history.ghi_kho(
+            author=f"agent:{ctx.run_id}", artefact_id=f"cfg:{_rel(ctx, p)}",
+            type="target", op="update" if ctx.store.get(f"cfg:{_rel(ctx, p)}") else "create",
+            canonical=c.to_dict(), explain=explain, run_id=ctx.run_id)
+
+        # Đối chiếu ngay với Fact từ tài liệu — đây là toàn bộ giá trị của tầng này.
+        ch = [f for f in ctx.store.query_facts(limit=500) if f["tier"] == vd.TANG_CAU_HINH]
+        ds = [f for f in ctx.store.query_facts(limit=500) if f["tier"] != vd.TANG_CAU_HINH]
+        lech = vd.doi_chieu_cau_hinh(ch, ds)
+        for l in lech:
+            ctx.emit(uic.notice(l["message_vi"],
+                                level="error" if l["muc"] == "vuot" else "warn",
+                                code="ING-11"))
+        return {
+            "loai": c.loai, "so_khoa": len(c.khoa), "khoa": c.khoa,
+            "tang": vd.TANG_CAU_HINH, "canh_bao": c.canh_bao,
+            "lech_voi_tai_lieu": lech,
+            "note_vi": (
+                ("Fact ở tầng CẤU HÌNH: nó nói dự án ĐANG đặt gì, không nói chip chịu "
+                 "được gì. KHÔNG dùng nó làm vế giới hạn vật lý trong so sánh.")
+                + (f" CÓ {len(lech)} chỗ lệch với tài liệu — nói ngay cho người dùng, "
+                   "đây là loại lỗi không lộ ra lúc biên dịch." if lech else "")),
+        }
+
+    @r.tool("fact.cross_check", "Tri thức",
+            "Tìm những thông số mà NHIỀU NGUỒN cho số khác nhau. Gọi sau khi nạp từ hai "
+            "tài liệu trở lên, hoặc khi người dùng hỏi 'tin bản nào'. Công cụ ĐỀ XUẤT "
+            "một bên kèm lý do — người chọn, bạn không tự chọn.",
+            {"type": "object",
+             "properties": {"thuc_the": {"type": "string",
+                                         "description": "để trống = mọi thực thể"}}},
+            risk="R1",
+            keywords=["đối chiếu", "khác nhau", "mâu thuẫn", "hai bản", "tin bản nào",
+                      "chéo nguồn"])
+    def fact_cross_check(ctx: Any, thuc_the: str = ""):
+        ds = ctx.store.query_facts(subject=thuc_the or None, limit=500)
+        import json as _j
+        chuan = []
+        for f in ds:
+            g = dict(f)
+            if isinstance(g.get("source"), str):
+                try:
+                    g["source"] = _j.loads(g["source"])
+                except ValueError:
+                    g["source"] = {}
+            chuan.append(g)
+        lech = cmp_mod.doi_chieu_cheo(chuan)
+        return {
+            "so_lech": len(lech), "lech": lech,
+            "note_vi": ("" if not lech else
+                        f"{len(lech)} thông số có nhiều nguồn khác nhau. Trình BẢNG hai "
+                        "cột cho người dùng — mỗi bên kèm nguồn và tầng — nêu đề xuất "
+                        "và lý do, rồi HỎI họ chọn. Đừng tự chọn."),
+        }
+
     @r.tool("fact.extract", "Tri thức",
             "Trích Fact ứng viên từ một tài liệu đã nạp. Giá trị được đọc BẰNG MÃ từ "
             "trang PDF, kèm số trang và trích đoạn nguyên văn. Fact ra ở tầng BẠC — "

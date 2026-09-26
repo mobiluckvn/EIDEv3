@@ -952,7 +952,23 @@ class Agent:
         if muc in ("C0", "C1"):
             return
 
-        # --- C2: tóm tắt có cấu trúc, có kiểm ngược.
+        if muc == "C4":
+            # §6.5 — mức 95 %: bỏ mọi kết quả công cụ thô, KHÔNG gọi mô hình. Ở mức này
+            # mỗi lời gọi thêm vào là một rủi ro hỏng giữa chừng.
+            bc4 = mem.c4(self.messages, ghim=mem.chi_so_ghim(self.messages))
+            self.ledger.append("compact", {"run_id": ctx.run_id, "buoc": "c4", **bc4})
+            self.transcript.thay_toan_bo(list(self.messages))
+            self.nhat_ky_nen.append({"muc": "C4", "ok": True, **bc4,
+                                     "kiem": "không kiểm (khẩn cấp)"})
+            ctx.emit(uic.notice(
+                f"[Hệ thống] Ngữ cảnh gần đầy — đã bỏ {bc4['stub']} kết quả công cụ khỏi "
+                f"ngữ cảnh (giảm {bc4['giam_phan_tram']:.0f} %). Không mất gì: đọc lại "
+                "bằng blob.read. Nên mở một lượt mới cho việc tiếp theo.",
+                level="warn", code="C4"))
+            ctx.said_anything = True
+            return
+
+        # --- C2/C3: tóm tắt có cấu trúc, có kiểm ngược.
         k = mem.K_LUOT if muc == "C2" else 6      # §6.4 — C3 hạ K xuống 6
         inv = ctx.build_inventory().render()
         kq = self.bo_nen.nen(self.messages, run_id=ctx.run_id, inventory_text=inv,

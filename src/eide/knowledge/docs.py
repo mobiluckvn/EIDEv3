@@ -191,13 +191,15 @@ class FactUngVien:
     thuc_the: str
     do_tin: float = 1.0
     nguyen_van: str = ""
+    dieu_kien: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         si, dv = ve_si(self.gia_tri, self.don_vi)
         return {"khoa": self.khoa, "gia_tri": self.gia_tri, "don_vi": self.don_vi,
                 "si": si, "don_vi_si": dv, "trang": self.trang,
                 "trich_doan": self.trich_doan, "thuc_the": self.thuc_the,
-                "do_tin": self.do_tin, "nguyen_van": self.nguyen_van}
+                "do_tin": self.do_tin, "nguyen_van": self.nguyen_van,
+                "dieu_kien": dict(self.dieu_kien)}
 
 
 # Mẫu nhận dạng: tên thông số (tiếng Anh trong datasheet) → khoá chuẩn.
@@ -314,30 +316,42 @@ def _tu_hang_bang(t: "Trang", thuc_the: str) -> list["FactUngVien"]:
     if khoa_goc is None:
         return []
 
+    from .chuan_hoa import chuan_hoa
+
+    # Chú thích của hàng (Note 1, Note 2) và điều kiện ghi ngay trong ô Conditions.
+    dieu_kien_hang: dict[str, str] = {}
+    for i, c in enumerate(thap):
+        if c in ("conditions", "condition", "điều kiện") and i < len(t.o):
+            dieu_kien_hang.update(__import__(
+                "eide.knowledge.chuan_hoa", fromlist=["x"]).tach_dieu_kien(str(t.o[i])))
+
     ra: list[FactUngVien] = []
     for i, c in enumerate(thap):
         hau_to = _HAU_TO_COT.get(c)
         if hau_to is None or i >= len(t.o):
             continue
-        o = str(t.o[i]).strip()
-        if not o:
+        g = chuan_hoa(str(t.o[i]), don_vi_cot=don_vi_chung, ngu_canh=ten)
+        if not g.co_so:
+            # Ô ghi "—", "N/A", "TBD": KHÔNG tạo Fact, và không biến thành 0. Ô như thế
+            # là một thông tin ("chưa có số"), nhưng nó không phải một con số.
             continue
-        m = re.search(r"-?\d+(?:[.,]\d+)?", o)
-        if not m:
-            continue
-        try:
-            gt = float(m.group(0).replace(",", "."))
-        except ValueError:
-            continue
-        # Đơn vị: ưu tiên đơn vị viết ngay trong ô, sau đó tới cột Đơn vị.
-        dv_o = re.sub(r"^-?\d+(?:[.,]\d+)?\s*", "", o).strip()
-        dv = dv_o or don_vi_chung
-        if not dv:
-            continue
-        ra.append(FactUngVien(
-            khoa=f"{khoa_goc}.{hau_to}", gia_tri=gt, don_vi=dv, trang=t.so,
-            trich_doan=t.chu[:200], thuc_the=thuc_the,
-            nguyen_van=f"{m.group(0)} {dv}".strip()))
+
+        # Một ô có thể chứa cả min/typ/max hoặc một dải — tách thành nhiều ứng viên,
+        # mỗi cái mang đúng hậu tố của nó, thay vì nhét cả cụm vào một khoá.
+        cap: list[tuple[str, float]] = []
+        if g.la_dai or g.vtyp is not None:
+            for ht, v in (("min", g.vmin), ("typ", g.vtyp), ("max", g.vmax)):
+                if v is not None:
+                    cap.append((ht, v))
+        elif g.gia_tri is not None:
+            cap.append((hau_to, g.gia_tri))
+
+        for ht, v in cap:
+            ra.append(FactUngVien(
+                khoa=f"{khoa_goc}.{ht}", gia_tri=v, don_vi=g.don_vi, trang=t.so,
+                trich_doan=t.chu[:200], thuc_the=thuc_the,
+                nguyen_van=g.raw.strip(),
+                dieu_kien={**dieu_kien_hang, **g.dieu_kien}))
     return ra
 
 
@@ -384,7 +398,8 @@ def fact_tu_ung_vien(uv: FactUngVien, *, doc: TaiLieu, tier: str = "BAC") -> dic
     return {
         "fact_id": fid, "subject": uv.thuc_the, "key": uv.khoa,
         "value": uv.gia_tri, "unit": uv.don_vi,
-        "condition": "", "tier": tier, "origin": "extract",
+        "condition": "; ".join(f"{k}={v}" for k, v in sorted(uv.dieu_kien.items())),
+        "tier": tier, "origin": "extract",
         "source": {"doc_id": doc.doc_id, "version": doc.phien_ban,
                    "page": uv.trang, "cite": doc.trich_dan(uv.trang),
                    "quote": uv.trich_doan},

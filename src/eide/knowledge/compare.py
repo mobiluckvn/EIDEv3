@@ -25,6 +25,109 @@ from .docs import ve_si
 
 TANG_DUNG_DUOC = frozenset({"VANG", "BAC", "NGUOI"})
 
+# Tên tầng cho người đọc — MỘT nguồn sự thật, ở ngay cạnh chỗ định nghĩa tầng.
+#
+# Trước đây bảng này bị sao ra hai chỗ (`store/inventory.py` và `surfaces.py`). Thêm
+# tầng CẤU HÌNH, mình sửa một bản và bỏ sót bản kia — và nó vỡ bằng cách tệ nhất có
+# thể: `KeyError` trong hàm dựng `<inventory>`, tức **giết cả lượt** trước khi mô hình
+# được gọi. Một phép tra TÊN HIỂN THỊ không bao giờ được phép làm chết một lượt.
+TEN_TANG_VI = {"VANG": "VÀNG", "BAC": "BẠC", "NGUOI": "NGƯỜI", "DONG": "ĐỒNG",
+               "CAUHINH": "CẤU HÌNH"}
+
+# Thứ tự hiện cho người. CAUHINH cuối vì nó không phải một mức tin cậy về giới hạn vật
+# lý — nó là một loại nguồn khác hẳn (ING-43 §4.5).
+THU_TU_TANG = ("VANG", "BAC", "NGUOI", "DONG", "CAUHINH")
+
+
+def ten_tang(ma: str) -> str:
+    """Tầng lạ thì hiện nguyên mã, KHÔNG nổ."""
+    return TEN_TANG_VI.get((ma or "").upper(), ma or "?")
+
+# ING-43 §5.3 — khi cùng một khoá có nhiều nguồn, ai thắng?
+#
+# Thứ tự này KHÔNG phải để hệ thống tự chọn rồi im lặng. Nó là **đề xuất** kèm lý do,
+# và người chọn. Lý do: một errata mới hơn thường đúng hơn, nhưng không phải luôn —
+# có khi errata nói về một mã chip khác, có khi bản cũ mới là bản đang chạy trên bo.
+# Tự chọn là lấy mất của người đúng cái quyết định họ cần biết là mình đang ra.
+UU_TIEN_NGUON = ["errata", "datasheet_moi", "datasheet_cu", "config", "code"]
+
+_UU_TIEN_VI = {
+    "errata": "errata — nhà sản xuất sửa lại chính tài liệu của họ",
+    "datasheet_moi": "datasheet bản mới hơn",
+    "datasheet_cu": "datasheet bản cũ",
+    "config": "tệp cấu hình của dự án — nói dự án ĐANG đặt gì, không nói chip chịu được gì",
+    "code": "hằng số trong mã — chỉ để đối chiếu, không phải nguồn sự thật",
+}
+
+
+def _hang_nguon(f: dict[str, Any]) -> str:
+    """Xếp một Fact vào một hạng nguồn để so."""
+    src = f.get("source") or {}
+    if isinstance(src, str):
+        import json as _j
+        try:
+            src = _j.loads(src)
+        except ValueError:
+            src = {}
+    if src.get("errata") or "errata" in str(src.get("doc_id", "")).lower():
+        return "errata"
+    og = f.get("origin", "")
+    if og == "config":
+        return "config"
+    if og == "code":
+        return "code"
+    return "datasheet_moi" if src.get("version") else "datasheet_cu"
+
+
+def doi_chieu_cheo(facts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Cùng (thực thể, khoá) mà nhiều nguồn cho số khác nhau → một bảng khác biệt.
+
+    ING-43 §5.3 và ca TC011 (hai phiên bản datasheet). Điều bộ này cố ý KHÔNG làm là
+    tự chọn một bên: nó xếp hạng, nói vì sao, và để người quyết. Một hệ thống tự hoà
+    giải mâu thuẫn giữa hai tài liệu sẽ đúng phần lớn thời gian — và lần sai thì không
+    ai biết là đã có mâu thuẫn.
+    """
+    from .docs import ve_si
+
+    nhom: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for f in facts:
+        nhom.setdefault((f.get("subject", ""), f.get("key", "")), []).append(f)
+
+    ra: list[dict[str, Any]] = []
+    for (tt, khoa), ds in sorted(nhom.items()):
+        if len(ds) < 2:
+            continue
+        si = {}
+        for f in ds:
+            v = f.get("value")
+            if v is None:
+                continue
+            si[f.get("fact_id", "")] = ve_si(float(v), f.get("unit", ""))
+        if len({round(x[0], 9) for x in si.values()}) < 2:
+            continue                      # cùng giá trị, khác cách viết → không lệch
+
+        xep = sorted(ds, key=lambda f: UU_TIEN_NGUON.index(_hang_nguon(f))
+                     if _hang_nguon(f) in UU_TIEN_NGUON else 99)
+        de_xuat = xep[0]
+        ra.append({
+            "thuc_the": tt, "khoa": khoa,
+            "so_nguon": len(ds),
+            "cac_ban": [{
+                "fact_id": f.get("fact_id"), "gia_tri": f.get("value"),
+                "don_vi": f.get("unit"), "tang": f.get("tier"),
+                "hang_nguon": _hang_nguon(f),
+                "nguon": (f.get("source") or {}) if isinstance(f.get("source"), dict)
+                         else f.get("source"),
+            } for f in xep],
+            "de_xuat": de_xuat.get("fact_id"),
+            "vi_sao": (f"Ưu tiên {_UU_TIEN_VI.get(_hang_nguon(de_xuat), 'nguồn này')}."),
+            "can_nguoi_chon": True,
+            "note_vi": ("Hai nguồn nói hai con số khác nhau. ĐỪNG tự chọn — trình cả "
+                        "hai cho người dùng kèm nguồn, nêu đề xuất và lý do, rồi để họ "
+                        "quyết."),
+        })
+    return ra
+
 
 @dataclass(slots=True)
 class KetQuaSoSanh:

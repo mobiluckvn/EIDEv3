@@ -26,8 +26,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Thứ tự dòng cố định — mô hình học được chỗ nào nói gì.
-_TIER_ORDER = ("VANG", "BAC", "NGUOI", "DONG")
-_TIER_VI = {"VANG": "VÀNG", "BAC": "BẠC", "NGUOI": "NGƯỜI", "DONG": "ĐỒNG"}
+# Tên và thứ tự tầng lấy từ MỘT nguồn (xem `knowledge/compare.py`) — bảng này từng bị
+# sao ra hai chỗ, và thêm một tầng làm vỡ chỗ không ai để ý (xem DEV-261).
+from ..knowledge.compare import THU_TU_TANG as _TIER_ORDER
+from ..knowledge.compare import ten_tang as _ten_tang
 
 # Chặng C1–C7 suy ra từ cái đang có, không hỏi mô hình (§A4).
 _STAGE_RULES = [
@@ -75,7 +77,7 @@ class Inventory:
         else:
             L.append("Hộ chiếu chip: CHƯA GHIM. Không có chip nào được ghim trong dự án này.")
         if self.fact_tiers:
-            tiers = " · ".join(f"{_TIER_VI[t]} {self.fact_tiers.get(t, 0)}"
+            tiers = " · ".join(f"{_ten_tang(t)} {self.fact_tiers.get(t, 0)}"
                                for t in _TIER_ORDER if self.fact_tiers.get(t))
             L.append(f"Fact: {sum(self.fact_tiers.values())} ({tiers})")
         else:

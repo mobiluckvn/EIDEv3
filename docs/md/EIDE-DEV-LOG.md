@@ -1072,3 +1072,145 @@ thì **không so được với chính nó** (SCH-19). Nay luôn chấm, và "C2
 
 Đo được: 359 ca đơn vị · ING-B 25/25 và MEM-C 26/26 qua giao diện thật · hồi quy G3
 31/31, G4 23/23, G5 35/35, ING-A 29/29, MEM-A 21/21, MEM-B 20/20.
+
+---
+
+### [DEV-261] 26/09/2026 · Tên tầng nằm ở hai chỗ — thêm một tầng giết cả lượt
+
+Thêm tầng **CẤU HÌNH** (ING-10/11) làm hỏng một thứ không ai ngờ: `KeyError: 'CAUHINH'`
+trong `Inventory.render()`, tức **cả lượt chết trước khi mô hình được gọi**. Sổ cái ghi
+đúng một dòng `incident` và không có `llm_call` nào.
+
+Nguyên nhân: bảng tên tầng cho người đọc bị sao ra **hai chỗ** — `surfaces.py` và
+`store/inventory.py`. Mình sửa bản thứ nhất, không biết bản thứ hai tồn tại.
+
+Hai chỗ sửa, và chỗ thứ hai quan trọng hơn:
+
+1. Một nguồn sự thật: `TEN_TANG_VI`, `THU_TU_TANG`, `ten_tang()` đặt ngay cạnh
+   `TANG_DUNG_DUOC` trong `knowledge/compare.py` — nơi định nghĩa tầng.
+2. **`ten_tang()` không bao giờ nổ.** Tầng lạ thì hiện nguyên mã. Một phép tra *tên hiển
+   thị* không được phép có sức mạnh giết một lượt; nếu nó có, thì mỗi lần thêm một giá
+   trị enum ta lại đánh cược cả sản phẩm vào việc mình có tìm hết bản sao hay không.
+
+Ca đo `test_ten_tang_KHONG_BAO_GIO_lam_chet_mot_luot` canh cả hai.
+
+Chỉ bắt được vì bài E2E có một ô cho **tác tử thật** làm việc qua giao diện. Ca đơn vị
+gọi thẳng công cụ nên không đi qua `Inventory.render()`.
+
+---
+
+### [DEV-262] 26/09/2026 · ING-C — chuẩn hoá bằng mã, và bảng đọc như bảng
+
+§5.2 giao việc này cho mã, không cho mô hình, và lý do đáng nhắc lại: `4R7` là 4,7 Ω,
+`3V3` là 3,3 V, `100n` cạnh chữ "tụ" là 100 nF. Một mô hình đọc đúng chín lần rồi sai lần
+thứ mười, và lần thứ mười đi thẳng vào một con điện trở người ta đi mua. Quy tắc này hữu
+hạn nên nó phải là mã.
+
+Ba quyết định trong `chuan_hoa.py` đáng ghi:
+
+- **`raw` luôn còn.** Người rà soát đối chiếu với tài liệu bằng chuỗi nguyên văn, không
+  bằng con số ta đã diễn dịch. Mất `raw` là mất khả năng cãi lại.
+- **`—`/`N/A`/`TBD` là null CÓ LÝ DO, không phải 0.** Mỗi ký hiệu mang một lý do khác
+  nhau ("nhà sản xuất chưa chốt" khác "không áp dụng"). Biến chúng thành 0 là cách nhanh
+  nhất để một mạch chạy sai mà không ai hiểu vì sao.
+- **Không đoán đơn vị khi không chắc.** `100n` không có ngữ cảnh thì trả `None` kèm lý
+  do, không đoán nF. Một đơn vị sai tệ hơn không có đơn vị.
+
+`M` hoa và `m` thường cách nhau một tỉ lần, nên bảng tiền tố phân biệt hoa/thường và có
+ca đo riêng cho chuyện đó.
+
+**Đối chiếu chéo nguồn (§5.3)** cố ý **không** tự hoà giải: nó xếp hạng theo
+errata > DS mới > DS cũ > cấu hình > mã, nói vì sao, rồi để người chọn. Một hệ thống tự
+chọn bên sẽ đúng phần lớn thời gian — và lần sai thì không ai biết là đã có mâu thuẫn.
+
+---
+
+### [DEV-263] 26/09/2026 · ING-D — tầng CẤU HÌNH giữ bằng cấu trúc, không bằng lời dặn
+
+`.ioc`, `sdkconfig`, `.dts`, `.ld`, `map` nói **dự án đang đặt gì**, không nói **chip
+chịu được gì**. Hai câu đó khác nhau về bản chất, và gộp vào một tầng thì phép so sánh
+lấy `.ld` khai 64 KB làm sự thật trong khi chip có 32 KB.
+
+Cách hiện thực ING-11 rất gọn và đó là điểm đáng nói: tầng `CAUHINH` **không nằm trong
+`TANG_DUNG_DUOC`**, nên `fact.compare` tự động từ chối nó. Không ai phải nhớ quy tắc, vì
+phép so sánh không cho lách.
+
+Giá trị thật của tầng này ở chiều ngược lại: `doi_chieu_cau_hinh()` so từng cặp khoá và
+phân biệt hai mức — **vượt** (mạch sẽ hỏng, chỉ là chưa biết khi nào) và **dùng gần hết**
+(còn chạy nhưng hết chỗ thêm việc). Thông điệp nói thẳng: *"đây là lỗi sẽ không lộ ra lúc
+biên dịch — nó lộ ra khi chạy, ở chỗ không ai ngờ"*.
+
+**EDA**: bộ đọc S-expression viết tay 40 dòng thay vì thêm `sexpdata`/`kiutils` — định
+dạng KiCad là S-expression thuần và ta chỉ cần `components` + `nets`. Mỗi phụ thuộc là
+một thứ phải giải trình khi bảo vệ đề án mà không đổi được kết quả.
+
+`doc_kicad_sch` nối net theo **nhãn**, không theo toạ độ dây, và **nói thẳng giới hạn
+đó** trong cảnh báo trả về. Hứa nhiều hơn khả năng ở đây nghĩa là người tin một netlist
+thiếu net.
+
+Đối chiếu BOM ↔ netlist (TC062) tách ba loại lệch, và loại thứ ba tệ nhất: **giá trị
+khác nhau** — mạch hàn xong *chạy* nhưng sai, nên không ai nghi ngờ nó.
+
+BOM không có cột mã linh kiện thì **từ chối**, không đoán cột nào là cột nào: đoán sai
+một cột là so sai cả bảng.
+
+---
+
+### [DEV-264] 26/09/2026 · ING-E — OCR sai không trông như sai
+
+Một PDF hỏng thì báo lỗi. Một OCR sai thì trả về **chữ** — đọc được, có vẻ hợp lý, và
+một con số trong đó có thể là `5.5` đọc từ `8.8`. Nên mọi đường ra của `ocr.py` mang ba
+thứ: điểm tin cậy theo **từng từ**, trần tầng BẠC (§6, TC044), và kiểm gói ngôn ngữ.
+
+**Gói ngôn ngữ là chỗ quan trọng nhất.** Máy này chỉ có `eng`. Đọc tiếng Việt bằng mô
+hình tiếng Anh cho ra chữ nhìn như chữ mà sai, nên `kiem_goi()` **từ chối** và nói rõ
+cách cài, thay vì OCR bừa rồi đưa số cho người dùng tin.
+
+Điểm trung bình cả trang che mất chỗ hỏng — một bảng đọc tốt 95 % mà đúng cột số bị mờ
+thì trung bình vẫn cao. Nên kết quả giữ cả danh sách từ dưới ngưỡng và liệt kê chúng ra.
+
+**Nhận diện ngôn ngữ viết tay, không thêm phụ thuộc.** Việc cần làm chỉ là *chọn gói
+OCR*, và đếm ký tự theo dải Unicode trả lời đúng câu đó — đồng thời giải trình được: ai
+đọc mã cũng thấy vì sao nó kết luận "tiếng Việt". Kana thắng Hán vì văn bản tiếng Nhật
+có cả hai còn tiếng Trung chỉ có Hán.
+
+**Một ca đo của mình đo sai thứ, đã sửa:** ca OCR ban đầu kiểm "có đọc ra chữ VDD
+không". Ảnh phông nhỏ cho ra `voDmaxs5V` điểm 0,16 — và hệ thống **gắn cờ đúng** là dưới
+ngưỡng, bắt người rà. Độ chính xác của tesseract không phải việc của ta; việc của ta là
+gắn cờ. Ca đo nay đo đúng tính chất đó, nên nó không đỏ theo phông chữ của từng máy.
+
+---
+
+### [DEV-265] 26/09/2026 · MEM-D — C4 thô có chủ đích, và dọn theo tham chiếu
+
+**C4 (§6.5)** cố ý thô: không gọi mô hình, không tóm tắt, không phán xét cái gì quan
+trọng. Ở mức 95 % thì mỗi lời gọi mô hình thêm vào là một rủi ro hỏng giữa chừng. Nó chỉ
+thay mọi kết quả công cụ bằng một dòng có `blob_ref`. Hai thứ nó không chạm: message
+ghim, và câu trả lời đang stream.
+
+**Dọn rác (§7.4) theo THAM CHIẾU, không theo tuổi.** Một blob 400 ngày mà một snapshot có
+tên đang trỏ tới là bằng chứng của một bản người dùng sẽ quay về; xoá nó theo tuổi là
+biến "khôi phục được" thành một lời hứa suông. `_tham_chieu()` quét rộng tay bằng regex
+trên mọi tệp có thể trỏ, thay vì đi theo lược đồ từng loại: giữ thừa một blob tốn vài KB,
+xoá thiếu một blob làm một snapshot không khôi phục được.
+
+`memory.gc` mặc định **chỉ đề xuất**; `thuc_hien=true` mới xoá.
+
+**Đo lường (§13) đọc từ SỔ CÁI**, không từ biến đếm trong bộ nhớ: một biến đếm chỉ đúng
+khi tiến trình còn sống, mà câu hỏi "bộ nhớ có tốt lên không" là câu hỏi qua nhiều phiên.
+Và `dat_khong()` trả **"chưa đủ dữ liệu"** khi chưa đủ mẫu — N6 áp vào chính phép đo:
+không có dữ liệu không phải là đạt.
+
+---
+
+### [DEV-266] 26/09/2026 · Một ca đo của mình ĐẬU VÌ LÝ DO SAI
+
+Ô unhappy "tầng CẤU HÌNH làm vế so sánh" xanh — nhưng đọc `giai_thich` thì thấy
+`"Không có luật tên 'bo_nho'"`. `fact.compare` trả `chua_kiem_chung` vì **tên luật lạ**,
+không vì vế CẤU HÌNH. Tám luật thật tên là `ngan_sach_bo_nho`, không phải `bo_nho`.
+
+Đây đúng loại "an toàn do tai nạn" mà ghi chú đầu `knowledge/ingest.py` nói tới, và nó
+lọt vào chính bài kiểm của mình. Sửa: dùng tên luật thật, **và** thêm một câu khẳng định
+rằng lý do từ chối không được chứa chữ "luật".
+
+Bài học giữ lại: một ô xanh chưa nói gì cho tới khi biết nó xanh **vì cơ chế nào**.

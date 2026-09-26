@@ -392,6 +392,43 @@ def register(r: Registry) -> Registry:
                 alternatives=["memory.status"], blame="user"))
         return kq
 
+    @r.tool("memory.gc", "Store",
+            "Dọn blob không còn ai trỏ tới và quá hạn giữ. Mặc định chỉ ĐỀ XUẤT — "
+            "`thuc_hien=true` mới xoá thật.",
+            {"type": "object",
+             "properties": {"thuc_hien": {"type": "boolean",
+                                          "description": "false = chỉ đề xuất"}}},
+            risk="R2", core=False,
+            keywords=["dọn", "xoá rác", "gc", "đĩa", "retention"])
+    def memory_gc(ctx: Any, thuc_hien: bool = False):
+        from ..memory import gc as _gc
+
+        bc = _gc(ctx.config.paths, thu=not thuc_hien, ledger=ctx.ledger)
+        if thuc_hien and bc.blob_se_xoa:
+            ctx.ledger.append("note", {"run_id": ctx.run_id, "gc": bc.to_dict()})
+        return {**bc.to_dict(), "dong_vi": bc.dong_vi(),
+                "note_vi": ("Dọn theo THAM CHIẾU, không theo tuổi: blob nào còn snapshot "
+                            "hay changeset trỏ tới thì giữ, dù bao nhiêu ngày. "
+                            + ("Chưa xoá gì — hỏi người dùng rồi gọi lại với "
+                               "thuc_hien=true." if not thuc_hien else "Đã xoá."))}
+
+    @r.tool("memory.metrics", "Store",
+            "Sáu chỉ số đo bộ nhớ của §13: token mỗi lượt, tần suất nén, tỉ lệ kiểm "
+            "đạt lần đầu, chi phí nén. Tính từ SỔ CÁI nên đúng qua nhiều phiên.",
+            {"type": "object", "properties": {}},
+            risk="R1", core=False,
+            keywords=["đo lường", "chỉ số", "token", "hiệu quả nén", "metrics"])
+    def memory_metrics(ctx: Any):
+        from ..memory import do_luong
+
+        d = do_luong(ctx.ledger, cua_so=ctx.config.model.context_window)
+        bang = d.dat_khong()
+        chua_du = [b for b in bang if b["ket_qua"] == "chưa đủ dữ liệu"]
+        return {**d.to_dict(), "danh_gia": bang,
+                "note_vi": ("Trình bảng này cho người dùng. "
+                            + (f"{len(chua_du)}/{len(bang)} chỉ số CHƯA đủ dữ liệu — nói "
+                               "rõ là chưa đủ, đừng báo đạt." if chua_du else ""))}
+
     @r.tool("memory.status", "Store",
             "Xem bộ nhớ đang chứa gì: EIDE.md bao nhiêu token trên trần, có gì nên "
             "lược, đã quên những gì, ngữ cảnh đang dùng bao nhiêu.",

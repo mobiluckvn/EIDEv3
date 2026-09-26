@@ -437,3 +437,32 @@ class BoNen:
 def nen_c1_truoc(messages: list[dict[str, Any]], **kw: Any) -> dict[str, Any]:
     """Tiện: luôn chạy C1 (0 token) trước khi nghĩ tới C2."""
     return c1(messages, **kw)
+
+
+# =========================================================================== C4 khẩn cấp
+def c4(messages: list[dict[str, Any]], *, ghim: set[int] | None = None) -> dict[str, Any]:
+    """§6.5 — ở 95 %: bỏ MỌI tool_result thô, kể cả trong K lượt gần nhất. 0 token.
+
+    Đây là biện pháp cuối, và nó cố ý thô: không gọi mô hình, không tóm tắt, không phán
+    xét cái gì quan trọng. Nó chỉ làm một việc — thay mọi kết quả công cụ bằng một dòng
+    có `blob_ref` — vì ở mức 95 % thì mỗi lời gọi mô hình thêm vào là một rủi ro hỏng
+    giữa chừng.
+
+    Hai thứ C4 **không** chạm, và đó là toàn bộ lý do nó an toàn: message ghim, và câu
+    trả lời đang stream. §6.5 nói thẳng "không bao giờ cắt câu trả lời đang stream giữa
+    chừng để nhét thêm".
+    """
+    from .compact import _stub, danh_dau_luot
+
+    ghim = ghim or set()
+    danh_dau_luot(messages)
+    bc = {"truoc": sum(len(str(m)) for m in messages), "stub": 0}
+    for i, m in enumerate(messages):
+        if i in ghim or m.get("role") != "tool" or m.get("_stub"):
+            continue
+        messages[i] = _stub(m, "ngữ cảnh đầy (C4) — giữ lại một dòng")
+        bc["stub"] += 1
+    bc["sau"] = sum(len(str(m)) for m in messages)
+    bc["giam_phan_tram"] = (round(100 * (1 - bc["sau"] / bc["truoc"]), 1)
+                            if bc["truoc"] else 0.0)
+    return bc

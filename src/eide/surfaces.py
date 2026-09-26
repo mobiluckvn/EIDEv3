@@ -41,7 +41,8 @@ SURFACES: list[tuple[str, str, str]] = [
 
 # Tên tầng tin cậy cho người đọc — §C1. Đây là bản dịch DUY NHẤT; giao diện tô màu
 # theo mã (`VANG`/`BAC`/…), lõi hiện chữ theo bảng này.
-_TIER_VI = {"VANG": "VÀNG", "BAC": "BẠC", "NGUOI": "NGƯỜI", "DONG": "ĐỒNG"}
+from .knowledge.compare import TEN_TANG_VI as _TIER_VI    # một nguồn sự thật (DEV-261)
+from .knowledge.compare import ten_tang as _ten_tang
 
 
 def block(code: str, title: str, type: str, **kw: Any) -> dict[str, Any]:
