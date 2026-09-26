@@ -7,6 +7,7 @@ import WebKit
 /// khối mới vào tab Thiết kế, giao diện này vẽ được ngay mà không phải sửa dòng nào.
 /// Và khi lõi gửi một loại khối chưa biết, nó **nói ra** chứ không bỏ qua im lặng.
 struct SurfaceView: View {
+    @EnvironmentObject var state: AppState
     let surface: SurfaceModel?
     let key: String
 
@@ -23,6 +24,10 @@ struct SurfaceView: View {
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .coordinateSpace(name: "be-mat")
+                .onPreferenceChange(KhungKhoiKey.self) { k in
+                    state.khungKhoi = k
+                }
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "rectangle.dashed").font(.largeTitle).foregroundStyle(.tertiary)
@@ -104,6 +109,11 @@ struct BlockView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor),
                     in: RoundedRectangle(cornerRadius: 9))
+        // Khai ra khung thật của khối để bộ đo hỏi được "khối nào đè lên khối nào".
+        .background(GeometryReader { g in
+            Color.clear.preference(key: KhungKhoiKey.self,
+                                   value: [block.code: g.frame(in: .named("be-mat"))])
+        })
     }
 
     /// §E3.3 — hai nút khác nhau, và khác nhau ở chỗ tốn tiền hay không.
@@ -167,6 +177,14 @@ struct BlockView: View {
     }
 }
 
+/// Gom khung của mọi khối trên một bề mặt về một chỗ.
+struct KhungKhoiKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { _, m in m }
+    }
+}
+
 // MARK: - Khối rỗng trung thực
 
 /// Ba câu: hiện chưa có gì · vì sao chưa có · cần gì để có.
@@ -225,10 +243,25 @@ struct KhoiKV: View {
 
 // MARK: - Bảng
 
+/// Bảng — §E2 "dạng NGƯỜI" của một hiện vật.
+///
+/// **Bảng dài phải tự giới hạn chiều cao, không dựa vào khung cha.** Ruột bảng nằm trong một
+/// `ScrollView(.horizontal)` (để bảng rộng kéo ngang được), mà cuộn ngang **không cắt theo
+/// chiều dọc**: đặt `.frame(maxHeight: 460)` lên nó chỉ nói "tôi muốn cao chừng này", còn nội
+/// dung vẫn vẽ tràn ra ngoài.
+///
+/// Đo được trên dự án thật: tab Tri thức mạch của một bo có 256 Fact vẽ ra một trang mà các
+/// khối **đè lên nhau** — tiêu đề khối, bảng Fact và bảng chờ rà soát chồng chữ lên nhau,
+/// không đọc được dòng nào. Nên bảng cắt bớt số dòng vẽ ra và **nói rõ còn bao nhiêu dòng**,
+/// thay vì vẽ hết rồi hỏng cả trang.
 struct KhoiBang: View {
     @EnvironmentObject var state: AppState
     let block: SurfaceBlock
     @State private var dangSua: String?          // "hàng|cột"
+    @State private var hienHet = false
+
+    /// Số dòng vẽ khi chưa bung. Đủ để thấy hình dạng bảng, không đủ để làm hỏng trang.
+    private static let DONG_MAC_DINH = 40
 
     private var cols: [String] { block.arr("columns").compactMap(\.stringValue) }
     private var rows: [[JSONValue]] { block.arr("rows").map(\.arrayValue) }
@@ -239,6 +272,11 @@ struct KhoiBang: View {
     private func meta(_ ma: String) -> JSONValue? {
         block.payload["row_meta"]?[ma]
     }
+
+    private var rowsHien: [[JSONValue]] {
+        hienHet ? rows : Array(rows.prefix(Self.DONG_MAC_DINH))
+    }
+    private var conLai: Int { rows.count - rowsHien.count }
 
     var body: some View {
         if rows.isEmpty {
@@ -265,13 +303,33 @@ struct KhoiBang: View {
                     }
                     .background(Color(nsColor: .underPageBackgroundColor))
                     Divider()
-                    ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
+                    ForEach(Array(rowsHien.enumerated()), id: \.offset) { i, r in
                         hang(r, chan: i % 2 == 0)
                         Divider().opacity(0.35)
                     }
                 }
             }
-            .frame(maxHeight: 460)
+            .fixedSize(horizontal: false, vertical: true)
+            if conLai > 0 {
+                Button {
+                    hienHet = true
+                } label: {
+                    Label("Còn \(conLai) dòng nữa — hiện tất cả",
+                          systemImage: "chevron.down.circle")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .padding(.top, 6)
+                .help("Bảng dài được cắt bớt để trang còn đọc được")
+            } else if hienHet && rows.count > Self.DONG_MAC_DINH {
+                Button { hienHet = false } label: {
+                    Label("Thu gọn về \(Self.DONG_MAC_DINH) dòng đầu",
+                          systemImage: "chevron.up.circle")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary).padding(.top, 6)
+            }
         }
     }
 

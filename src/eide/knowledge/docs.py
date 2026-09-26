@@ -98,6 +98,10 @@ class Trang:
     # đánh mất liên hệ giữa con số và đơn vị của nó.
     o: list[str] = field(default_factory=list)
     cot: list[str] = field(default_factory=list)
+    # "thong_so" (số kèm đơn vị) · "chan" (bản đồ chân) · "" (bảng trình bày).
+    # Hai loại bảng này được ĐỌC khác nhau: bảng thông số cho ra số, bảng chân cho ra
+    # quan hệ chân ↔ net ↔ hướng. Gộp chúng thì một trong hai bị đọc sai.
+    loai_bang: str = ""
 
     @property
     def trich_dan(self) -> str:
@@ -417,3 +421,143 @@ def fact_tu_ung_vien(uv: FactUngVien, *, doc: TaiLieu, tier: str = "BAC") -> dic
             "confidence": tier,
         },
     }
+
+
+# =================================================== bản đồ chân từ bảng (ING-43 §5, N1)
+@dataclass(slots=True)
+class ChanUngVien:
+    """Một hàng của bảng bản đồ chân, đã tách thành các phần có nghĩa.
+
+    Khác `FactUngVien` ở bản chất: ứng viên thông số là **một con số kèm đơn vị**, còn ứng
+    viên chân là **một quan hệ** (chân này nối vào net kia, theo hướng nọ). Ép chân vào khuôn
+    của số thì mất đúng phần mang thông tin.
+    """
+
+    so_chan: str                   # "D4" — tên người dùng gọi trên bo
+    cong: str = ""                 # "PD4" — tên cổng của vi điều khiển
+    huong: str = ""                # vào | ra | hai_chieu | ""
+    net: str = ""                  # "DIR1"
+    khoi: str = ""                 # "A4988 #1"
+    chuc_nang: str = ""
+    don_vi_trich_dan: int = 0      # số thứ tự `Trang` để tra lại trích dẫn
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"so_chan": self.so_chan, "cong": self.cong, "huong": self.huong,
+                "net": self.net, "khoi": self.khoi, "chuc_nang": self.chuc_nang}
+
+
+_HUONG_VI = {
+    "vào": "vao", "vao": "vao", "in": "vao", "input": "vao", "đầu vào": "vao",
+    "ra": "ra", "out": "ra", "output": "ra", "đầu ra": "ra",
+    "hai chiều": "hai_chieu", "hai chieu": "hai_chieu", "bidir": "hai_chieu",
+    "i/o": "hai_chieu", "io": "hai_chieu", "inout": "hai_chieu",
+}
+
+_COT_CHAN = ("chân", "chan", "pin", "chân số", "số chân", "pin number")
+_COT_HUONG = ("hướng", "huong", "direction", "i/o", "io", "dir")
+_COT_NET = ("net", "tín hiệu", "tin hieu", "signal", "kết nối", "net · khối", "net/khối")
+_COT_CHUC_NANG = ("chức năng", "chuc nang", "function", "mô tả", "ghi chú")
+
+
+def _chon_cot(cot: list[str], ten: tuple[str, ...]) -> int:
+    """Tìm cột theo tên, khớp cả khi tiêu đề dài hơn.
+
+    Tiêu đề thật trong tài liệu là *"Chức năng và ghi chú"*, không phải *"Chức năng"*. So
+    bằng dấu bằng thì cột đó không bao giờ khớp và phần ghi chú của từng chân — chỗ chứa
+    "Mức THẤP = tiến", "chuỗi 4 đèn", "kéo lên ngoài 10 kΩ" — bị bỏ lại trong tài liệu.
+    """
+    thap = [str(c).strip().lower() for c in cot]
+    for i, t in enumerate(thap):                      # khớp đúng trước
+        if t in ten or t.split("·")[0].strip() in ten:
+            return i
+    for i, t in enumerate(thap):                      # rồi mới khớp phần đầu
+        if any(t.startswith(x) for x in ten):
+            return i
+    return -1
+
+
+def _tach_chan_cong(o: str) -> tuple[str, str]:
+    """`"D4 · PD4"` → `("D4", "PD4")`; `"PB2"` → `("PB2", "PB2")`.
+
+    Tài liệu viết cả hai tên vì người dùng gọi chân theo nhãn trên bo (`D4`) còn thanh ghi
+    thì theo cổng (`PD4`). Giữ cả hai: mất tên cổng thì mã cấu hình DDR không viết được, mất
+    tên bo thì người cầm bo không tìm ra chân.
+    """
+    phan = [x.strip() for x in re.split(r"[·|,/]| - ", str(o)) if x.strip()]
+    if not phan:
+        return "", ""
+    if len(phan) == 1:
+        return phan[0], (phan[0] if re.fullmatch(r"P[A-F]\d", phan[0]) else "")
+    cong = next((x for x in phan if re.fullmatch(r"P[A-F]\d", x)), "")
+    ten = next((x for x in phan if x != cong), phan[0])
+    return ten, cong
+
+
+def trich_chan_ung_vien(tl: TaiLieu, *, gioi_han: int = 200) -> list[ChanUngVien]:
+    """Đọc BẢNG BẢN ĐỒ CHÂN bằng mã. Mô hình không tham gia — cùng kỷ luật với §C3 bước 4.
+
+    Chỉ đọc những hàng mà bộ đọc tài liệu đã nhận là bảng chân (`loai_bang == "chan"`), tức
+    quyết định "đây có phải bản đồ chân không" nằm ở tiêu đề cột, không nằm ở phỏng đoán.
+    """
+    ra: list[ChanUngVien] = []
+    for t in tl.trang:
+        if getattr(t, "loai_bang", "") != "chan" or not t.o or not t.cot:
+            continue
+        i_chan = _chon_cot(t.cot, _COT_CHAN)
+        if i_chan < 0 or i_chan >= len(t.o):
+            continue
+        ten, cong = _tach_chan_cong(t.o[i_chan])
+        if not ten or ten.strip().lower() in _COT_CHAN:
+            continue
+
+        def lay(cot_ten: tuple[str, ...]) -> str:
+            i = _chon_cot(t.cot, cot_ten)
+            return str(t.o[i]).strip() if 0 <= i < len(t.o) else ""
+
+        net_o = lay(_COT_NET)
+        net, khoi = "", ""
+        if net_o and net_o not in ("—", "-", ""):
+            phan = [x.strip() for x in net_o.split("·")]
+            net = phan[0]
+            khoi = phan[1] if len(phan) > 1 else ""
+        h = lay(_COT_HUONG).lower()
+        ra.append(ChanUngVien(
+            so_chan=ten, cong=cong, huong=_HUONG_VI.get(h, ""), net=net, khoi=khoi,
+            chuc_nang=lay(_COT_CHUC_NANG)[:300], don_vi_trich_dan=t.so))
+        if len(ra) >= gioi_han:
+            break
+    return ra
+
+
+def fact_tu_chan(uv: ChanUngVien, *, doc: TaiLieu, chip: str,
+                 tier: str = "BAC") -> list[dict[str, Any]]:
+    """Một hàng bảng chân → các Fact `pin:<chip>.<số>`.
+
+    Khoá theo đúng quy ước mà `knowledge/ckm.chan_tu_fact` đọc (`ten`, `af`), cộng hai khoá
+    riêng của bo: `net` và `huong`. Nhờ vậy bản đồ chân trích ra **đi thẳng** vào cây khối và
+    sơ đồ, không cần ai chép tay lần nữa — chép tay là chỗ sai không ai kiểm được.
+    """
+    cite = doc.trich_dan(uv.don_vi_trich_dan)
+    goc = {"doc_id": doc.doc_id, "version": doc.phien_ban,
+           "page": uv.don_vi_trich_dan, "cite": cite,
+           "quote": f"{uv.so_chan} | {uv.huong} | {uv.net} | {uv.chuc_nang}"[:200]}
+    ra: list[dict[str, Any]] = []
+    for khoa, gt in (("ten", uv.cong or uv.so_chan), ("net", uv.net),
+                     ("huong", uv.huong), ("af", uv.chuc_nang if uv.chuc_nang else "")):
+        if not gt:
+            continue
+        fid = "f-" + hashlib.sha1(
+            f"pin:{chip}.{uv.so_chan}|{khoa}|{gt}|{doc.hash[:8]}".encode()).hexdigest()[:10]
+        ra.append({
+            "fact_id": fid, "subject": f"pin:{chip}.{uv.so_chan}", "key": khoa,
+            "value": gt, "unit": "", "condition": "", "tier": tier, "origin": "extract",
+            "source": goc,
+            "explain": {
+                "summary": f"chân {uv.so_chan} · {khoa} = {gt}",
+                "why": f"Đọc bằng mã từ bảng bản đồ chân trong {doc.ten}, {cite}.",
+                "sources": [{"kind": "doc", "ref": f"{doc.doc_id} · {cite}", "tier": tier}],
+                "diff_prev": "bản đầu tiên",
+                "next": ("Người xác nhận đúng hàng này để lên tầng VÀNG."
+                         if tier == "BAC" else "Đối chiếu với bo thật."),
+                "confidence": tier}})
+    return ra

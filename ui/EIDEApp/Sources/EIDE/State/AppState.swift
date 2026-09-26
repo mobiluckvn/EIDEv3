@@ -25,6 +25,15 @@ final class AppState: ObservableObject {
     @Published var connection: Connection = .chuaKetNoi
     @Published var coreLog: [String] = []
     @Published var busy = false
+    /// Khung THẬT của từng khối sau khi vẽ (toạ độ trong tab). Khoá là mã khối.
+    ///
+    /// Có nó để bộ đo hỏi được một câu mà trước đây không hỏi được: **khối nào đang vẽ đè lên
+    /// khối nào**. Lỗi đó đã xảy ra thật — bảng 256 dòng nằm trong một `ScrollView(.horizontal)`
+    /// (không cắt theo chiều dọc) tràn ra ngoài khung và phủ lên hai khối bên dưới, làm cả tab
+    /// Tri thức mạch không đọc được dòng nào. Mọi ca đo khi đó vẫn xanh, vì chúng đếm khối và
+    /// đếm dòng chứ không hỏi khối nằm ở đâu.
+    @Published var khungKhoi: [String: CGRect] = [:]
+
     /// Loại khối mà giao diện KHÔNG biết vẽ, do chính nhánh `default` của bộ vẽ ghi vào.
     ///
     /// Có nó vì một ca đo trước đây xanh nhờ một danh sách loại khối viết trong Python: nó

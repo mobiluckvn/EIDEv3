@@ -45,6 +45,20 @@ _TU_DIEN_COT = {
     "thông số", "ký hiệu", "đơn vị", "giá trị", "điều kiện", "nhỏ nhất", "lớn nhất",
 }
 
+# Bảng BẢN ĐỒ CHÂN là một loại bảng khác hẳn bảng thông số, và nó là loại bảng quan trọng
+# nhất trong một tài liệu BÀN GIAO PHẦN CỨNG: nó nói chân nào nối đi đâu.
+#
+# Đo được trên tài liệu thật (MOBILUCK, bảng 12 — 23 chân): từ điển cũ chỉ có tên cột của
+# datasheet điện (parameter/min/typ/max/unit), nên bảng `Chân | Hướng | Net · khối | Chức
+# năng` KHÔNG được nhận là bảng — mọi hàng bị đọc như một dòng chữ, và cả bản đồ chân biến
+# mất khỏi phần trích xuất. Tác tử sau đó chỉ trích được 7 Fact, không Fact nào là chân.
+_TU_DIEN_COT_CHAN = {
+    "chân", "chan", "pin", "chân số", "số chân", "pin number",
+    "hướng", "huong", "direction", "i/o", "io", "dir",
+    "net", "tín hiệu", "tin hieu", "signal", "net · khối", "net/khối", "kết nối",
+    "chức năng", "chuc nang", "function", "mô tả", "ghi chú", "cổng", "port",
+}
+
 MAX_O_MOI_SHEET = 20_000        # bảng đo lớn thì cắt và NÓI RA, không đọc vô hạn
 MAX_SLIDE = 500
 
@@ -83,6 +97,26 @@ def la_bang_thong_so(hang_dau: list[str]) -> bool:
     """
     thap = {str(c).strip().lower() for c in hang_dau if str(c).strip()}
     return len(thap & _TU_DIEN_COT) >= 2
+
+
+def la_bang_chan(hang_dau: list[str]) -> bool:
+    """Bảng này có phải BẢN ĐỒ CHÂN không — cũng quyết định bằng tiêu đề cột.
+
+    Đòi hai cột khớp, và một trong hai phải là cột "chân": một bảng chỉ có "Chức năng" và
+    "Ghi chú" là bảng mô tả, không phải bản đồ chân.
+    """
+    thap = {str(c).strip().lower() for c in hang_dau if str(c).strip()}
+    co_chan = any(c.split("·")[0].strip() in ("chân", "chan", "pin", "chân số", "số chân",
+                                              "pin number")
+                  for c in thap)
+    return co_chan and len(thap & _TU_DIEN_COT_CHAN) >= 2
+
+
+def loai_bang(hang_dau: list[str]) -> str:
+    """`"thong_so"` · `"chan"` · `""` (bảng trình bày)."""
+    if la_bang_thong_so(hang_dau):
+        return "thong_so"
+    return "chan" if la_bang_chan(hang_dau) else ""
 
 
 # =========================================================================== .docx
@@ -130,7 +164,8 @@ def doc_docx(path: Path, *, doc_id: str, phien_ban: str = "",
             hang = [[o.text.strip() for o in r.cells] for r in t.rows]
             if not hang:
                 continue
-            la_ts = la_bang_thong_so(hang[0])
+            lb = loai_bang(hang[0])
+            la_ts = bool(lb)
             for i, r in enumerate(hang):
                 if not any(r):
                     continue
@@ -144,7 +179,8 @@ def doc_docx(path: Path, *, doc_id: str, phien_ban: str = "",
                     so, " | ".join(r),
                     nhan=nhan_hien_tai(f"Bảng {so_bang}, dòng {i + 1}"
                                        + ("" if la_ts else " (bảng trình bày)")),
-                    o=list(r), cot=list(hang[0]) if la_ts and i > 0 else []))
+                    o=list(r), cot=list(hang[0]) if la_ts and i > 0 else [],
+                    loai_bang=lb if i > 0 else ""))
 
     props = d.core_properties
     return TaiLieu(

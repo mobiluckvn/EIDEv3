@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Kịch bản phiên robot cân bằng — từng bước người dùng gõ, và cách đối chiếu kết quả.
+
+Tách khỏi `phien_robot.py` (hạ tầng: app, nhật ký, ảnh chụp) vì hai thứ đổi theo hai nhịp
+khác nhau: hạ tầng gần như đứng yên, còn kịch bản thì thêm bước mỗi lần dự án đi xa hơn.
+
+Sự thật để đối chiếu nằm trong `docs/robot/…v1.1.docx` — bảng 12 (bản đồ chân), bảng 30 và 33
+(đấu dây A4988), bảng 91 (giá trị thanh ghi), bảng 84 (trình tự khởi tạo), bảng 83 (cấu trúc
+bị cấm). Các hằng dưới đây CHÉP từ tài liệu; không suy diễn thêm.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import shutil
+import time
+from typing import Any
+
+# ============================================================ sự thật chép từ tài liệu
+# Bảng 12 — bản đồ chân đầy đủ. (chân Arduino, cổng AVR, hướng, net)
+CHAN_TAI_LIEU: list[tuple[str, str, str, str]] = [
+    ("D0", "PD0", "vao", "JQ6500_TX"),
+    ("D1", "PD1", "ra", "JQ6500_RX"),
+    ("D2", "PD2", "vao", "SRF04_ECHO"),
+    ("D3", "PD3", "ra", "SRF04_TRIG"),
+    ("D4", "PD4", "ra", "DIR1"),
+    ("D5", "PD5", "ra", "STEP1"),
+    ("D6", "PD6", "ra", "DIR2"),
+    ("D7", "PD7", "ra", "STEP2"),
+    ("D10", "PB2", "ra", "BUZZER"),
+    ("D11", "PB3", "ra", "WS2812_DIN"),
+    ("D12", "PB4", "vao", "BUTTON"),
+    ("A0", "PC0", "vao", "ADC_BAT"),
+    ("A4", "PC4", "hai_chieu", "SDA"),
+    ("A5", "PC5", "hai_chieu", "SCL"),
+]
+
+# Bảng 33 — mức DIR để đi tới. Hạng L: xác định bằng bài đi thẳng, không suy từ datasheet.
+DIR_DI_TOI = {"phai": ("D4", "LOW"), "trai": ("D6", "HIGH")}
+
+# Bảng 91 — giá trị thanh ghi bắt buộc.
+THANH_GHI = {
+    "TCCR2A": 0x02, "TCCR2B": 0x02, "OCR2A": 39, "TIMSK2": 0x02,
+    "TCCR0A": 0x02, "TCCR0B": 0x03, "OCR0A": 249, "TIMSK0": 0x02,
+    "TCCR1A": 0x00, "TCCR1B": 0x01,
+    "UBRR0L": 207, "UCSR0A": 0x02, "UCSR0B": 0x98, "UCSR0C": 0x06,
+    "TWSR": 0x00, "TWBR": 12, "TWCR": 0x04,
+    "ADMUX": 0x40, "ADCSRA": 0x87,
+}
+
+# Bảng 48 — khởi tạo MPU6050.
+MPU_INIT = {0x6B: 0x00, 0x1B: 0x00, 0x1C: 0x08, 0x1A: 0x03}
+
+HANG_SO = {"F_CPU": 16_000_000, "I2C_ADDR": 0x68, "I2C_HZ": 400_000,
+           "VI_BUOC": 16, "BUOC_MOI_VONG": 3200, "NGAT_US": 20,
+           "BAUD_CHAN_DOAN": 9600, "BAN_KINH_BANH_MM": 32,
+           "HE_SO_CHIA_AP": 3.55, "LECH_LAP_LSB": 102}
+
+
+def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
+    from phien_robot import RA, TAI_LIEU, ctx_cua_bo_do, hoi, mo_app
+
+    def lam(n: int) -> bool:
+        if not chi_buoc:
+            return True
+        if "-" in chi_buoc:
+            a, b = chi_buoc.split("-")
+            return int(a) <= n <= int(b)
+        return n == int(chi_buoc)
+
+    # ------------------------------------------------------------------ 1. tạo dự án
+    nk.buoc("Tạo dự án mới và mở EIDE trên nó")
+    (du_an / "README.md").write_text(
+        "# Robot hai bánh tự cân bằng — MOBILUCK\n\n"
+        "Dự án firmware cho bo BLKLab_Balancing_Robot_Shield_v1 (ATmega328P 16 MHz).\n",
+        "utf-8")
+    g = mo_app(du_an)
+    nk.ghi("Thư mục dự án", str(du_an))
+    a0 = g.chup("mo-du-an")
+    nk.ghi("Lõi đã kết nối", f"{a0.get('so_dong_hoi_thoai', 0)} dòng hội thoại, "
+                             f"tab đang mở: {a0.get('tab_dang_mo', '?')}")
+    nk.anh(g, "mo-du-an")
+    ctx = ctx_cua_bo_do(du_an)
+
+    # ------------------------------------------------------------------ 2. nạp tài liệu
+    if lam(2):
+        nk.buoc("Nạp tài liệu bàn giao phần cứng (.docx, 43 trang, 93 bảng)")
+        dich = du_an / "tai-lieu" / TAI_LIEU.name
+        dich.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(TAI_LIEU, dich)
+        nk.ghi("Đã chép tài liệu vào dự án", str(dich.relative_to(du_an)))
+        loi, cc = hoi(g, nk, du_an,
+                      "Chào bạn. Mình bắt đầu một dự án mới: robot hai bánh tự cân bằng của "
+                      "MOBILUCK. Mình vừa chép tài liệu bàn giao phần cứng vào thư mục "
+                      f"tai-lieu/{TAI_LIEU.name}. Bạn nạp tài liệu đó vào dự án giúp mình, "
+                      "rồi nói cho mình biết nó gồm những gì.")
+        docs = ctx.store.list("doc", limit=20)
+        nk.ket(bool(docs), "Tài liệu đã vào kho dưới dạng hiện vật doc",
+               "; ".join(f"{d['id']}: {d['canonical'].get('ten', '')[:60]}" for d in docs))
+        nk.anh(g, "nap-tai-lieu")
+
+    # ------------------------------------------------------------- 3. trích xuất bản đồ chân
+    if lam(3):
+        nk.buoc("Trích xuất bản đồ chân từ bảng trong tài liệu")
+        loi, cc = hoi(g, nk, du_an,
+                      "Trong tài liệu có bảng “Bảng chân đầy đủ” ở chương 4. Bạn trích xuất "
+                      "bản đồ chân từ đó ra Fact giúp mình, nhớ ghi rõ mỗi chân lấy ở đâu "
+                      "trong tài liệu. Sau đó liệt kê cho mình các chân đã trích được.")
+        fs = ctx.store.query_facts(limit=500)
+        nk.ghi("Số Fact trong kho", str(len(fs)))
+
+        # Đối chiếu TỪNG chân của bảng 12 với Fact trong kho — không tin lời kể của tác tử.
+        theo_chan: dict[str, dict[str, Any]] = {}
+        for f in fs:
+            sub = str(f.get("subject", ""))
+            if not sub.startswith("pin:"):
+                continue
+            ten = sub.split(".", 1)[-1]
+            theo_chan.setdefault(ten, {})[str(f.get("key"))] = str(f.get("value"))
+        dung, sai = [], []
+        for chan, cong, huong, net in CHAN_TAI_LIEU:
+            co = theo_chan.get(chan) or theo_chan.get(cong) or {}
+            ok_net = net.replace("_", " ") in co.get("net", "").replace("_", " ")
+            ok_h = co.get("huong", "") == huong
+            (dung if (co and ok_net and ok_h) else sai).append(
+                f"{chan}→{co.get('net', '∅')}/{co.get('huong', '∅')}"
+                + ("" if (co and ok_net and ok_h) else f" (tài liệu: {net}/{huong})"))
+        nk.ket(len(dung) == len(CHAN_TAI_LIEU),
+               f"Bản đồ chân khớp tài liệu: {len(dung)}/{len(CHAN_TAI_LIEU)} chân",
+               "ĐÚNG: " + ", ".join(dung) + ("\nLỆCH: " + "; ".join(sai) if sai else ""))
+        nk.ghi("Trích dẫn của một Fact chân (N1)",
+               str(next((f.get("source") for f in fs
+                         if str(f.get("subject", "")).startswith("pin:")), "—"))[:400])
+        nk.anh(g, "trich-xuat")
+
+    # ------------------------------------------------------------------ 4. ghim chip
+    if lam(4):
+        nk.buoc("Ghim hộ chiếu chip ATmega328P")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bo này dùng ATmega328P chạy 16 MHz. Bạn ghim hộ chiếu chip cho mình "
+                      "từ tài liệu đang có, rồi cho mình biết hộ chiếu ghi được những gì.")
+        hc = [x for x in ctx.store.list("passport", limit=10)]
+        nk.ket(bool(hc), "Hộ chiếu chip đã được ghim",
+               "; ".join(f"{p['id']}: {list(p['canonical'])[:6]}" for p in hc))
+        nk.anh(g, "ho-chieu")
+
+    # ------------------------------------------------------ 5. bản đồ mạch (cây khối CKM)
+    if lam(5):
+        nk.buoc("Dựng bản đồ mạch: khối, Port, net — lấy từ chính Fact vừa trích")
+        loi, cc = hoi(g, nk, du_an,
+                      "Giờ bạn dựng bản đồ mạch cho mình từ đúng những Fact chân vừa trích "
+                      "(đừng nhớ theo trí nhớ chung về Arduino). Bo có các khối: vi điều "
+                      "khiển ATmega328P (U1), hai mạch lái A4988 cho bánh phải và bánh trái, "
+                      "cảm biến MPU6050 trên I2C, còi chip, chuỗi WS2812 4 đèn, nút nhấn, "
+                      "cảm biến siêu âm SRF04, module âm thanh JQ6500, và cầu chia áp giám "
+                      "sát pin vào ADC0. Khai khối, Port ở biên mỗi khối và net nối chúng "
+                      "theo đúng bảng chân, rồi gộp bản đồ lại.",
+                      giay=1500)
+        from eide.knowledge import cay as C
+        from eide.knowledge import ckm as K
+        cay = C.Cay.doc(ctx.store)
+        phang = C.flatten(cay)
+        nk.ghi("Cây khối dựng được",
+               "\n".join(f"{n.get('path', ''):34} {n.get('kind', ''):9} {n['ten'][:40]}"
+                          for _, n in sorted(cay.nut.items(),
+                                             key=lambda x: x[1].get("path") or "")
+                          if n.get("kind") in ("board", "block", "subblock", "leaf")),
+               ma=True)
+        nk.ghi("Netlist phẳng",
+               "\n".join(f"{t:16} {', '.join(sorted(c))}" for t, c in sorted(phang.items())),
+               ma=True)
+        nk.anh(g, "ban-do-mach")
+
+        # Đối chiếu net ↔ chân với bảng 12: net nào của tài liệu đã có mặt và nối đúng chân?
+        chan_cua_net: dict[str, set[str]] = {}
+        for ten, chan in phang.items():
+            for c in chan:
+                chan_cua_net.setdefault(ten.upper().replace("_", " "), set()).add(c)
+        thieu, co = [], []
+        for chan, cong, huong, net in CHAN_TAI_LIEU:
+            kh = net.upper().replace("_", " ")
+            tim = [t for t in chan_cua_net if kh in t or t in kh]
+            noi = {c for t in tim for c in chan_cua_net[t]}
+            dung_chan = any(c.split(".", 1)[-1] in (chan, cong) for c in noi)
+            (co if (tim and dung_chan) else thieu).append(
+                f"{net}@{chan}" + ("" if (tim and dung_chan) else
+                                   f" (net {'có' if tim else 'KHÔNG'} trong bản đồ, "
+                                   f"chân nối: {sorted(noi) or '∅'})"))
+        nk.ket(len(co) >= 10,
+               f"Net đúng chân theo bảng 12: {len(co)}/{len(CHAN_TAI_LIEU)}",
+               "ĐÚNG: " + ", ".join(co) + ("\nCHƯA: " + "; ".join(thieu) if thieu else ""))
+
+    # ------------------------------------------- 5b. nối cho đủ hai đầu, thêm linh kiện thật
+    if lam(5):
+        nk.buoc("Hoàn thiện: đặt linh kiện thật vào từng khối và nối đủ HAI đầu mỗi net")
+        loi, cc = hoi(g, nk, du_an,
+                      "Mình xem bản đồ rồi: các khối đã có Port đúng, nhưng bên trong khối "
+                      "ngoại vi chưa có linh kiện nào, nên mỗi net mới chỉ có một đầu là chân "
+                      "của vi điều khiển. Bạn thêm linh kiện thật vào từng khối và nối cho đủ "
+                      "hai đầu: U2 và U3 là hai A4988 (chương 7.2 có bảng đấu dây từng chân: "
+                      "STEP, DIR, EN nối GND, MS1/MS2/MS3 lên +5 V, RST nối SLP, VMOT, VDD, "
+                      "1A/1B/2A/2B ra cuộn động cơ), U4 là MPU6050 nối SDA/SCL, còi, nút, "
+                      "chuỗi WS2812, SRF04 và JQ6500. Mỗi net phải chạm cả chân vi điều khiển "
+                      "lẫn chân linh kiện phía kia.",
+                      giay=1800)
+        from eide.knowledge import cay as C2
+        cay = C2.Cay.doc(ctx.store)
+        phang = C2.flatten(cay)
+        nk.ghi("Netlist sau khi hoàn thiện",
+               "\n".join(f"{t:16} {len(c)} đầu: {', '.join(sorted(c))}"
+                          for t, c in sorted(phang.items())), ma=True)
+        du_hai_dau = [t for t, c in phang.items() if len(set(c)) >= 2]
+        nk.ket(len(du_hai_dau) >= 12,
+               f"{len(du_hai_dau)}/{len(phang)} net có đủ từ hai đầu trở lên",
+               "; ".join(f"{t}({len(set(c))})" for t, c in sorted(phang.items())))
+        nk.anh(g, "ban-do-day-du")
+
+    # ------------------------------------------------------------------ 6. ERC theo cây
+    if lam(6):
+        nk.buoc("Chạy kiểm tra điện (ERC) trên bản đồ mạch")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn chạy kiểm tra điện trên bản đồ mạch này và nói cho mình biết có "
+                      "phát hiện gì. Chỗ nào chưa đủ dữ kiện để kết luận thì nói thẳng là "
+                      "chưa đủ, đừng kết luận là đạt.")
+        bc = ctx.store.get("report:board-check") or ctx.store.get("findings:erc")
+        nk.ghi("Báo cáo ERC trong kho", str((bc or {}).get("canonical", "—"))[:800], ma=True)
+        nk.anh(g, "erc")
+
+    # ------------------------------------------------------------- 7. sơ đồ nguyên lý
+    if lam(7):
+        nk.buoc("Sinh sơ đồ nguyên lý KiCad và vẽ ra ảnh")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bây giờ sinh sơ đồ nguyên lý KiCad từ bản đồ mạch giúp mình: soạn "
+                      "tệp SKiDL, kiểm netlist khớp bản đồ, chọn ký hiệu, xếp bố cục, ghi "
+                      "tệp .kicad_sch rồi vẽ ra ảnh. Nói rõ từng bước kiểm được gì.",
+                      giay=1800)
+        tep = sorted(x.name for x in (du_an / "sch").glob("*")) if (du_an / "sch").exists() \
+            else []
+        nk.ghi("Tệp sơ đồ sinh ra", "\n".join(tep) or "— chưa có tệp nào —", ma=True)
+        nk.ket(any(x.endswith(".kicad_sch") for x in tep),
+               "Có tệp .kicad_sch mở được bằng KiCad", ", ".join(tep))
+        nk.anh(g, "so-do")
+
+    nk.buoc("Kết thúc phần đã chạy", loai="ket")
+    nk.ghi("Nhật ký", str(RA / "NHAT-KY.md"))
+    return 0

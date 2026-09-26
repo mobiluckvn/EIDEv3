@@ -25,6 +25,83 @@ from .registry import Registry, ToolResult
 from .writing import EXPLAIN_SCHEMA
 
 
+def _lay_tai_lieu(ctx: Any, doc_id: str):
+    """Tài liệu đã nạp — lấy từ bộ nhớ lượt, hoặc **đọc lại từ tệp** nếu phiên đã khởi động lại.
+
+    Vì sao cần đường hồi sinh: `doc.load` giữ tài liệu đã phân tích trong bộ nhớ tiến trình
+    (`ctx.tai_lieu`). Đóng app rồi mở lại dự án thì bộ nhớ đó rỗng, trong khi hiện vật `doc`
+    vẫn nằm trong kho và tác tử vẫn thấy tài liệu trong kiểm kê. Đo được trên phiên thật: sau
+    khi mở lại dự án, `fact.extract_pinout` trả `E2001 "tài liệu chưa được nạp"` cho đúng tài
+    liệu mà tab Tài liệu đang hiện — tác tử im lặng bỏ dở việc đang làm.
+
+    Đọc lại rồi **so hash**: tệp đổi từ lần nạp thì nói ra, không lặng lẽ dùng nội dung mới
+    dưới tên cũ. Một trích dẫn trỏ vào "Bảng 13, dòng 6" của một tệp đã khác là một trích dẫn
+    sai mà không ai phát hiện được.
+
+    Trả `(tài liệu, lỗi)` — đúng một trong hai khác None.
+    """
+    tl = ctx.tai_lieu.get(doc_id)
+    if tl is not None:
+        return tl, None
+
+    a = ctx.store.get(doc_id)
+    if a is None:
+        return None, EideError(
+            "E2001", f"Tài liệu {doc_id} chưa được nạp.",
+            hint_for_agent="Gọi doc.load trước.",
+            alternatives=["doc.load", "store.list"], blame="agent")
+
+    canon = a.get("canonical") or {}
+    duong = str(canon.get("path") or "")
+    p = Path(duong)
+    if not p.is_absolute():
+        p = ctx.config.paths.project_root / duong
+    if not duong or not p.exists():
+        return None, EideError(
+            "E2001",
+            f"Tài liệu {doc_id} có trong kho nhưng tệp gốc không còn ở {duong or '(trống)'}.",
+            hint_for_agent="Hỏi người dùng chép lại tệp vào dự án rồi doc.load lại. Đừng "
+                           "trích dẫn một tài liệu mà ta không mở được.",
+            alternatives=["doc.load", "fs.glob"], blame="user")
+
+    kq = ingest_mod.phan_loai(p)
+    try:
+        if kq.loai == "pdf":
+            tl = docs_mod.nap_tai_lieu(
+                p, doc_id=doc_id, phien_ban=str(canon.get("version") or ""),
+                nha_phat_hanh=str(canon.get("publisher") or ""))
+        else:
+            from ..knowledge import office as office_mod
+            tl, vi_sao = office_mod.nap_office(
+                p, loai=kq.loai, doc_id=doc_id,
+                thu_muc_tam=ctx.config.paths.state_dir / "chuyen-doi",
+                phien_ban=str(canon.get("version") or ""),
+                nha_phat_hanh=str(canon.get("publisher") or ""))
+            if tl is None:
+                return None, EideError(
+                    "E2001", f"Không đọc lại được {doc_id}: {vi_sao}",
+                    hint_for_agent="Báo người dùng và thử doc.load lại.",
+                    alternatives=["doc.load"], blame="system")
+    except Exception as e:                      # bộ đọc hỏng thì NÓI RA, không nuốt
+        return None, EideError(
+            "E2001", f"Đọc lại tài liệu {doc_id} thất bại: {type(e).__name__}: {e}",
+            hint_for_agent="Báo người dùng; có thể tệp đã hỏng hoặc đổi định dạng.",
+            alternatives=["doc.load", "ingest.file"], blame="system")
+
+    hash_cu = str(canon.get("hash") or "")
+    if hash_cu and tl.hash != hash_cu:
+        return None, EideError(
+            "E2005",
+            f"Tệp của {doc_id} đã ĐỔI kể từ lần nạp (hash {hash_cu[:8]} → {tl.hash[:8]}).",
+            hint_for_agent=("Đừng dùng nội dung mới dưới tên cũ: mọi trích dẫn đã ghi đang "
+                            "trỏ vào bản cũ. Nói với người dùng và gọi doc.load lại để tạo "
+                            "bản mới, rồi đối chiếu Fact cũ với bản mới."),
+            alternatives=["doc.load", "fact.compare"], blame="user")
+
+    ctx.tai_lieu[doc_id] = tl
+    return tl, None
+
+
 def register(r: Registry) -> Registry:
 
     # ====================================================================== nạp tệp
@@ -217,12 +294,9 @@ def register(r: Registry) -> Registry:
         from ..knowledge import office as office_mod
         from .builtin import _rel
 
-        tl = ctx.tai_lieu.get(doc_id)
-        if tl is None:
-            return ToolResult(False, error=EideError(
-                "E2001", f"Tài liệu {doc_id} chưa được nạp.",
-                hint_for_agent="Gọi doc.load trước.", alternatives=["doc.load"],
-                blame="agent"))
+        tl, loi = _lay_tai_lieu(ctx, doc_id)
+        if loi is not None:
+            return ToolResult(False, error=loi)
         if tl.loai not in ("docx", "office_cu"):
             return ToolResult(False, error=EideError(
                 "E2002", f"{doc_id} là {tl.loai} — không cần bản PDF phái sinh.",
@@ -265,12 +339,9 @@ def register(r: Registry) -> Registry:
         from ..knowledge import ocr as ocr_mod
         from .builtin import _rel
 
-        tl = ctx.tai_lieu.get(doc_id)
-        if tl is None:
-            return ToolResult(False, error=EideError(
-                "E2001", f"Tài liệu {doc_id} chưa được nạp.",
-                hint_for_agent="Gọi doc.load trước.", alternatives=["doc.load"],
-                blame="agent"))
+        tl, loi = _lay_tai_lieu(ctx, doc_id)
+        if loi is not None:
+            return ToolResult(False, error=loi)
         if tl.loai != "pdf":
             return ToolResult(False, error=EideError(
                 "E2002", f"{doc_id} là {tl.loai} — rút hình hiện chỉ làm với PDF.",
@@ -312,12 +383,9 @@ def register(r: Registry) -> Registry:
     def doc_language(ctx: Any, doc_id: str):
         from ..knowledge import ocr as ocr_mod
 
-        tl = ctx.tai_lieu.get(doc_id)
-        if tl is None:
-            return ToolResult(False, error=EideError(
-                "E2001", f"Tài liệu {doc_id} chưa được nạp.",
-                hint_for_agent="Gọi doc.load trước.", alternatives=["doc.load"],
-                blame="agent"))
+        tl, loi = _lay_tai_lieu(ctx, doc_id)
+        if loi is not None:
+            return ToolResult(False, error=loi)
         ng = ocr_mod.nhan_ngon_ngu(" ".join(t.chu for t in tl.trang[:10]))
         duoc, vi_sao = ocr_mod.kiem_goi(ng.ma or "eng")
         return {"doc_id": doc_id, "ngon_ngu": ng.to_dict(),
@@ -515,12 +583,9 @@ def register(r: Registry) -> Registry:
             risk="R2", produces=["fact"],
             keywords=["trích", "fact", "thông số", "datasheet", "extract"])
     def fact_extract(ctx: Any, doc_id: str, thuc_the: str, gioi_han: int = 200):
-        tl = ctx.tai_lieu.get(doc_id)
-        if tl is None:
-            return ToolResult(False, error=EideError(
-                "E2001", f"Tài liệu {doc_id} chưa được nạp.",
-                hint_for_agent="Gọi doc.load trước.",
-                alternatives=["doc.load"], blame="agent"))
+        tl, loi = _lay_tai_lieu(ctx, doc_id)
+        if loi is not None:
+            return ToolResult(False, error=loi)
 
         # Tầng đi theo NGUỒN của tài liệu (§6), không cứng BẠC cho mọi thứ.
         a_doc = ctx.store.get(doc_id)
@@ -545,6 +610,71 @@ def register(r: Registry) -> Registry:
                 "Không trích được thông số nào. Có thể tài liệu trình bày dạng bảng ảnh, "
                 "hoặc dùng tên thông số không có trong bộ mẫu. Nói thẳng điều đó — đừng "
                 "bịa số từ tri thức chung.")}
+
+    @r.tool("fact.extract_pinout", "Tri thức",
+            "Trích BẢN ĐỒ CHÂN từ bảng trong tài liệu ra Fact `pin:<chip>.<chân>`: tên cổng, "
+            "net nối vào, hướng, ghi chú. Mã đọc bảng, không qua mô hình. Mỗi chân mang theo "
+            "trích dẫn tới đúng dòng bảng.",
+            {"type": "object",
+             "properties": {
+                 "doc_id": {"type": "string"},
+                 "chip": {"type": "string",
+                          "description": "ATmega328P — Fact gắn vào chân của chip nào"},
+                 "gioi_han": {"type": "integer"}},
+             "required": ["doc_id", "chip"]},
+            risk="R2", produces=["fact"],
+            keywords=["bản đồ chân", "pinout", "chân", "pin map", "net", "đấu dây",
+                      "trích chân"])
+    def fact_extract_pinout(ctx: Any, doc_id: str, chip: str, gioi_han: int = 200):
+        """Vì sao là một công cụ RIÊNG chứ không phải một nhánh của `fact.extract`.
+
+        Hai bảng, hai bản chất. Bảng thông số cho ra **số kèm đơn vị** (`vdd.max = 5,5 V`);
+        bảng bản đồ chân cho ra **quan hệ** (`D4 → net DIR1, hướng ra`). Ép chân vào khuôn của
+        số thì mất đúng phần mang thông tin, và đó là điều đã xảy ra: trên tài liệu bàn giao
+        thật, `fact.extract` trả về 7 Fact — không Fact nào là chân — trong khi bảng 12 có 23
+        chân. Cả bản đồ chân nằm ngay đó mà không có đường nào đi vào kho.
+        """
+        tl, loi = _lay_tai_lieu(ctx, doc_id)
+        if loi is not None:
+            return ToolResult(False, error=loi)
+
+        a_doc = ctx.store.get(doc_id)
+        nguon = ((a_doc or {}).get("canonical") or {}).get("nguon", "nha_san_xuat")
+        tang = docs_mod.tang_mac_dinh(nguon, tl.loai)
+
+        uv = docs_mod.trich_chan_ung_vien(tl, gioi_han=gioi_han)
+        if not uv:
+            co_bang = sum(1 for t in tl.trang if getattr(t, "loai_bang", ""))
+            return ToolResult(False, error=EideError(
+                "E2003",
+                f"Không thấy bảng bản đồ chân nào trong {doc_id}.",
+                hint_for_agent=(
+                    f"Tài liệu có {co_bang} hàng bảng có cấu trúc nhưng không hàng nào là "
+                    "bảng chân (bảng chân nhận ra qua tiêu đề cột: Chân/Pin + Hướng/Net/"
+                    "Chức năng). Có thể bảng nằm trong ảnh, hoặc tiêu đề cột đặt tên khác. "
+                    "Nói thẳng điều đó với người dùng và hỏi họ chỉ cho bảng nào — ĐỪNG suy "
+                    "bản đồ chân từ tri thức chung về chip."),
+                alternatives=["doc.figures", "fact.assert_human", "ckm.pinout_set"],
+                blame="agent"))
+
+        so_fact = 0
+        for x in uv:
+            for f in docs_mod.fact_tu_chan(x, doc=tl, chip=chip, tier=tang):
+                ctx.store.put_fact(f)
+                so_fact += 1
+
+        co_net = [x for x in uv if x.net and not x.net.startswith("—")]
+        return {
+            "doc_id": doc_id, "chip": chip, "so_chan": len(uv), "so_fact": so_fact,
+            "tang": tang,
+            "chan": [x.to_dict() for x in uv],
+            "trich_dan_mau": tl.trich_dan(uv[0].don_vi_trich_dan),
+            "note_vi": (
+                f"Đọc được {len(uv)} chân từ bảng bản đồ chân, trong đó {len(co_net)} chân có "
+                f"net. Đã ghi {so_fact} Fact ở tầng {tang}, mỗi Fact trỏ tới đúng dòng bảng "
+                f"(ví dụ: {tl.trich_dan(uv[0].don_vi_trich_dan)}). "
+                "Trình bảng này cho người dùng rà soát; họ xác nhận thì Fact lên VÀNG, và khi "
+                "đó mới dùng để gán chân được. Chưa xác nhận thì vẫn là BẠC.")}
 
     @r.tool("fact.review", "Tri thức",
             "Người xác nhận Fact: BẠC → VÀNG. Chỉ gọi khi người dùng đã thật sự xem và "

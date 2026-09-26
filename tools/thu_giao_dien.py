@@ -81,6 +81,24 @@ class GiaoDien:
         self._gui({"ui": "dump", "nhan": nhan})
         return self._doi("anh_chup", 20)
 
+    def chup_man_hinh(self, ra: pathlib.Path, nhan: str = "") -> pathlib.Path | None:
+        """Chụp ảnh thật của **cửa sổ EIDE** ra tệp PNG. Trả đường dẫn, hoặc None nếu không chụp được.
+
+        Chỉ chụp đúng khung cửa sổ mà app tự khai (`khung_cua_so`), KHÔNG chụp cả màn hình:
+        lần chụp toàn màn hình đầu tiên đã lọt vào ảnh cửa sổ trò chuyện riêng và tệp `.env`
+        kèm khoá API. Một ảnh làm sở cứ không được mang theo thứ nó không cần.
+        """
+        import subprocess as _sp
+
+        k = (self.chup(nhan or "anh") or {}).get("khung_cua_so") or {}
+        if not all(k.get(x) for x in ("rong", "cao")):
+            return None
+        ra.parent.mkdir(parents=True, exist_ok=True)
+        vung = f"{k['x']},{k['y']},{k['rong']},{k['cao']}"
+        r = _sp.run(["screencapture", "-x", "-o", "-R", vung, str(ra)],
+                    capture_output=True, text=True)
+        return ra if (r.returncode == 0 and ra.exists()) else None
+
     # ------------------------------------------------------------------ nhận
     def _dong_moi(self) -> list[dict]:
         if not self.outbox.exists():
@@ -332,6 +350,39 @@ def chay(du_an: pathlib.Path) -> int:
                a["trang_thai"]["stale"] >= 0, f"STALE = {a['trang_thai']['stale']}")
     else:
         b.kiem("Có yêu cầu trong kho để sửa", False, "kho chưa có REQ")
+
+    # ==================================================================== Đ · TRANG ĐỌC ĐƯỢC
+    #
+    # Ba ca này ra đời từ một lỗi đo được trên dự án thật: tab Tri thức mạch của một bo có
+    # 256 Fact vẽ ra một trang mà **các khối đè lên nhau** — tiêu đề khối, bảng Fact và bảng
+    # chờ rà soát chồng chữ lên nhau, không đọc được dòng nào. Mọi ca đo khi đó vẫn xanh, vì
+    # chúng đếm khối và đếm dòng chứ không hỏi khối nằm ở ĐÂU và CAO bao nhiêu.
+    b.phan("Đ · MỌI TAB PHẢI ĐỌC ĐƯỢC, KHÔNG CHỈ CÓ ĐỦ KHỐI")
+    TABS = ["requirements", "documents", "knowledge", "design", "tools", "code",
+            "simulation", "hardware", "journal", "history", "project"]
+    de_nhau: list[str] = []
+    qua_cao: list[str] = []
+    chua_ve: list[str] = []
+    cao_cua_so = 0
+    for t in TABS:
+        g.mo_tab(t)
+        time.sleep(0.8)
+        a = g.chup(f"trang-{t}")
+        cao_cua_so = max(cao_cua_so, int((a.get("khung_cua_so") or {}).get("cao") or 0))
+        de_nhau += [f"{t}:{x}" for x in (a.get("khoi_de_nhau") or [])]
+        chua_ve += [f"{t}:{k['code']}" for k in a["khoi_tren_tab"]
+                    if k.get("ve_duoc") is False]
+        # Ngưỡng 3 lần chiều cao cửa sổ: cuộn ba màn hình cho MỘT khối đã là quá dài, và
+        # đó cũng là dấu hiệu của bảng vẽ hết dòng thay vì cắt bớt.
+        for ma, cao in (a.get("cao_khoi") or {}).items():
+            if cao_cua_so and cao > 3 * cao_cua_so:
+                qua_cao.append(f"{t}:{ma}={cao}pt")
+    b.kiem("Không khối nào vẽ đè lên khối khác", not de_nhau, "; ".join(de_nhau) or "sạch")
+    b.kiem("Không khối nào cao quá ba lần cửa sổ (bảng dài phải tự cắt bớt)",
+           not qua_cao, "; ".join(qua_cao) or f"cửa sổ cao {cao_cua_so}pt, khối dài nhất "
+                                              "vẫn trong ngưỡng")
+    b.kiem("Giao diện vẽ được MỌI loại khối lõi gửi trên cả 11 tab",
+           not chua_ve, "; ".join(chua_ve) or f"{len(TABS)} tab, không khối nào lạ")
 
     return b.tong()
 

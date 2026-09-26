@@ -344,3 +344,131 @@ def test_hang_bang_khong_co_ten_thong_so_thi_bo_qua(tmp_path):
     tl = doc_docx(p, doc_id="X")
     assert trich_fact_ung_vien(tl, thuc_the="chip:X") == [], \
         "tên cột không khớp thông số nào thì KHÔNG được bịa ra Fact"
+
+
+# ============================== bảng BẢN ĐỒ CHÂN — tài liệu bàn giao phần cứng (ING-43 §5)
+@pytest.fixture
+def tep_ban_giao(tmp_path):
+    """Một tài liệu bàn giao phần cứng thu nhỏ, đúng hình dạng tài liệu thật của dự án."""
+    import docx
+
+    d = docx.Document()
+    d.add_heading("4. Bản đồ chân", level=1)
+    d.add_heading("4.2 Bảng chân đầy đủ", level=2)
+    t = d.add_table(rows=4, cols=4)
+    for j, v in enumerate(["Chân", "Hướng", "Net · khối", "Chức năng và ghi chú"]):
+        t.rows[0].cells[j].text = v
+    for i, r in enumerate((
+            ["D4 · PD4", "ra", "DIR1 · A4988 #1", "Chiều quay bánh PHẢI. Mức THẤP = tiến."],
+            ["A4 · PC4", "hai chiều", "SDA · MPU6050", "TWI SDA, 400 kHz."],
+            ["D13 · PB5", "ra", "—", "Không có net; điểm đo thời gian."]), start=1):
+        for j, v in enumerate(r):
+            t.rows[i].cells[j].text = v
+    p = tmp_path / "ban-giao.docx"
+    d.save(str(p))
+    return p
+
+
+def test_bang_ban_do_chan_duoc_nhan_la_BANG(tep_ban_giao):
+    """Từ điển cột cũ chỉ biết datasheet điện (parameter/min/max/unit), nên bảng
+    `Chân | Hướng | Net | Chức năng` bị đọc như một dòng chữ — và cả bản đồ chân của một
+    tài liệu BÀN GIAO PHẦN CỨNG biến mất khỏi phần trích xuất."""
+    tl = doc_docx(tep_ban_giao, doc_id="BG")
+    hang = [t for t in tl.trang if t.loai_bang == "chan"]
+    assert len(hang) == 3, [t.o for t in tl.trang if t.o]
+    assert hang[0].cot[0] == "Chân"
+
+
+def test_bang_chan_KHONG_bi_nham_voi_bang_thong_so(tep_ban_giao, tep_docx):
+    from eide.knowledge.office import la_bang_chan, la_bang_thong_so
+
+    assert la_bang_chan(["Chân", "Hướng", "Net · khối", "Chức năng"]) is True
+    assert la_bang_thong_so(["Chân", "Hướng", "Net · khối", "Chức năng"]) is False
+    assert la_bang_chan(["Parameter", "Min", "Max", "Unit"]) is False
+    # Bảng chỉ có mô tả thì KHÔNG phải bản đồ chân — thiếu cột "chân" thì không có gì để gán.
+    assert la_bang_chan(["Chức năng", "Ghi chú"]) is False
+
+
+def test_trich_chan_tach_ten_bo_va_ten_cong_va_net(tep_ban_giao):
+    from eide.knowledge.docs import trich_chan_ung_vien
+
+    tl = doc_docx(tep_ban_giao, doc_id="BG")
+    uv = {x.so_chan: x for x in trich_chan_ung_vien(tl)}
+    assert set(uv) == {"D4", "A4", "D13"}
+    # Giữ CẢ HAI tên: mất tên cổng thì không viết được DDR, mất tên bo thì người cầm bo
+    # không tìm ra chân.
+    assert uv["D4"].cong == "PD4" and uv["D4"].net == "DIR1" and uv["D4"].khoi == "A4988 #1"
+    assert uv["D4"].huong == "ra" and "Mức THẤP = tiến" in uv["D4"].chuc_nang
+    assert uv["A4"].huong == "hai_chieu" and uv["A4"].net == "SDA"
+    # Chân không có net vẫn phải vào danh sách — nó là một chân có thật trên bo.
+    assert uv["D13"].net in ("", "—")
+
+
+def test_moi_chan_mang_theo_TRICH_DAN_toi_dung_dong_bang(tep_ban_giao):
+    from eide.knowledge.docs import fact_tu_chan, trich_chan_ung_vien
+
+    tl = doc_docx(tep_ban_giao, doc_id="BG")
+    uv = trich_chan_ung_vien(tl)
+    fs = fact_tu_chan(uv[0], doc=tl, chip="ATmega328P")
+    assert {f["key"] for f in fs} >= {"ten", "net", "huong"}
+    assert all(f["subject"] == "pin:ATmega328P.D4" for f in fs)
+    cite = fs[0]["source"]["cite"]
+    assert "4.2 Bảng chân đầy đủ" in cite and "dòng" in cite, cite
+    # Khoá `ten` phải là TÊN CỔNG, vì đó là thứ `ckm.chan_tu_fact` và mã thanh ghi dùng.
+    assert next(f for f in fs if f["key"] == "ten")["value"] == "PD4"
+
+
+def test_fact_chan_di_THANG_vao_cay_khoi_khong_phai_chep_tay(tep_ban_giao):
+    """Chép tay bản đồ chân từ tài liệu sang bản đồ mạch là chỗ sai không ai kiểm được."""
+    from eide.knowledge.ckm import chan_tu_fact
+    from eide.knowledge.docs import fact_tu_chan, trich_chan_ung_vien
+
+    tl = doc_docx(tep_ban_giao, doc_id="BG")
+    fs = [f for x in trich_chan_ung_vien(tl)
+          for f in fact_tu_chan(x, doc=tl, chip="ATmega328P")]
+    chan = chan_tu_fact(fs, "ATmega328P")
+    assert set(chan) == {"D4", "A4", "D13"}
+    # Tầng mặc định của `fact_tu_chan` là BẠC: nguồn đã duyệt, DÒNG chưa ai xác nhận.
+    assert chan["D4"].ten == "PD4" and chan["D4"].tier == "BAC"
+
+
+def test_mo_lai_du_an_thi_tai_lieu_van_DOC_DUOC(make_agent, tep_ban_giao):
+    """Đóng app rồi mở lại: hiện vật `doc` còn trong kho, nhưng tài liệu đã phân tích thì
+    không — nó nằm trong bộ nhớ tiến trình. Không có đường đọc lại thì mọi công cụ đọc tài
+    liệu trả "chưa được nạp" cho đúng tài liệu mà tab Tài liệu đang hiện."""
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    shutil.copy(tep_ban_giao, agent.config.paths.project_root / "bg.docx")
+    agent.registry.run("doc.load", {"path": "bg.docx", "doc_id": "BG-1",
+                                    "nguon": "noi_bo", "explain": _EX}, ctx)
+    assert agent.registry.run(
+        "fact.extract_pinout", {"doc_id": "BG-1", "chip": "ATmega328P"}, ctx).ok
+
+    ctx.tai_lieu.clear()                       # đúng thứ xảy ra khi mở lại dự án
+    r = agent.registry.run("fact.extract_pinout",
+                           {"doc_id": "BG-1", "chip": "ATmega328P"}, ctx)
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["so_chan"] == 3
+
+
+def test_tep_DOI_tu_lan_nap_thi_NOI_RA_chu_khong_dung_am_tham(make_agent, tep_ban_giao):
+    """Trích dẫn đã ghi trỏ vào bản CŨ. Đọc bản mới dưới tên cũ là làm mọi trích dẫn sai đi
+    mà không ai phát hiện được."""
+    import docx
+
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    p = agent.config.paths.project_root / "bg.docx"
+    shutil.copy(tep_ban_giao, p)
+    agent.registry.run("doc.load", {"path": "bg.docx", "doc_id": "BG-2",
+                                    "nguon": "noi_bo", "explain": _EX}, ctx)
+    ctx.tai_lieu.clear()
+
+    d = docx.Document(str(p))
+    d.add_paragraph("Sửa tay sau khi bàn giao.")
+    d.save(str(p))
+
+    r = agent.registry.run("fact.extract_pinout",
+                           {"doc_id": "BG-2", "chip": "ATmega328P"}, ctx)
+    assert not r.ok and r.error.code == "E2005", getattr(r, "data", None)
+    assert "đã ĐỔI kể từ lần nạp" in r.error.message_vi

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Kênh kiểm thử giao diện — gõ vào app và đọc ra app đang hiện gì.
@@ -142,6 +143,51 @@ final class UITestChannel {
     /// markdown đã tách ra một bảng và hai tiêu đề", "thẻ cổng hiện 3 dòng hậu quả",
     /// "tab Mã nguồn có một khối quy trình 5 bước" — những thứ chỉ đúng khi mã Swift
     /// chạy thật.
+    /// Khung cửa sổ app trên màn hình, gốc TRÊN–TRÁI (đúng hệ trục `screencapture -R`).
+    ///
+    /// Có nó để bộ đo chụp được **đúng cửa sổ EIDE** thay vì cả màn hình. Lần đầu chụp toàn
+    /// màn hình đã lọt vào ảnh: cửa sổ trò chuyện riêng của người dùng và tệp `.env` đang mở
+    /// kèm khoá API. Một ảnh làm sở cứ không được mang theo thứ nó không cần.
+    private func khungCuaSo() -> [String: Any] {
+        guard let w = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+              let man = w.screen ?? NSScreen.main else { return [:] }
+        let f = w.frame
+        // AppKit đếm y từ ĐÁY màn hình; `screencapture -R` đếm từ ĐỈNH.
+        let y = man.frame.maxY - f.maxY
+        return ["x": Int(f.origin.x.rounded()), "y": Int(y.rounded()),
+                "rong": Int(f.width.rounded()), "cao": Int(f.height.rounded())]
+    }
+
+    /// Chiều cao thật của từng khối sau khi vẽ, theo mã khối.
+    private func caoKhoi() -> [String: Int] {
+        guard let s = state else { return [:] }
+        return s.khungKhoi.mapValues { Int($0.height.rounded()) }
+    }
+
+    /// Cặp khối có khung giao nhau. Chỉ tính phần chồng ĐÁNG KỂ (> 4 pt mỗi chiều) để một
+    /// pixel làm tròn không bị báo thành lỗi.
+    ///
+    /// **Giới hạn đã đo được, đừng tin quá vào con số này.** Nó so KHUNG KHAI BÁO của các
+    /// khối. Lỗi tràn nội dung thật (bảng 256 dòng trong một `ScrollView` ngang vẽ ra ngoài
+    /// khung của chính nó và phủ lên khối dưới) KHÔNG làm khung giao nhau — kiểm lại bằng
+    /// cách cố tình bỏ giới hạn dòng: danh sách này vẫn rỗng. Thứ bắt được lỗi đó là
+    /// `caoKhoi()` cộng với một ngưỡng, hoặc mắt người nhìn ảnh chụp.
+    private func khoiDeNhau() -> [String] {
+        guard let s = state else { return [] }
+        let ds = s.khungKhoi.sorted { $0.key < $1.key }
+        var ra: [String] = []
+        for i in 0..<ds.count {
+            for j in (i + 1)..<ds.count {
+                let a = ds[i].value, b = ds[j].value
+                let giao = a.intersection(b)
+                if giao.width > 4 && giao.height > 4 {
+                    ra.append("\(ds[i].key)↔\(ds[j].key)")
+                }
+            }
+        }
+        return ra
+    }
+
     private func anhChup(nhan: String) -> [String: Any] {
         guard let s = state else { return [:] }
 
@@ -216,8 +262,19 @@ final class UITestChannel {
         }
 
         return [
-            "su_kien": "anh_chup", "nhan": nhan,
+            "su_kien": "anh_chup",
+            "khung_cua_so": khungCuaSo(),
+            // Cặp khối có KHUNG giao nhau. Giữ lại vì rẻ, nhưng đọc kỹ giới hạn của nó ở
+            // `khoiDeNhau()`: nó KHÔNG bắt được lỗi tràn nội dung.
+            "khoi_de_nhau": khoiDeNhau(),
+            // Chiều cao thật của từng khối. Đây mới là con số bắt được lỗi bảng dài: một
+            // khối cao gấp nhiều lần cửa sổ là một khối không ai đọc hết được.
+            "cao_khoi": caoKhoi(), "nhan": nhan,
             "so_dong_hoi_thoai": s.transcript.count,
+            // Đếm riêng dòng của TÁC TỬ: bộ đo cần biết lượt vừa rồi nó có nói gì không.
+            // Thiếu con số này, một lượt mà tác tử chỉ gọi công cụ rồi im lặng sẽ bị chép
+            // lại bằng lời của lượt TRƯỚC — nhật ký thành sai mà trông vẫn hợp lý.
+            "so_loi_tac_tu": loiTacTu.count,
             "loi_tac_tu_cuoi": String(cuoi.prefix(3000)),
             // Chữ SAU KHI DỰNG — để hỏi được "trên màn hình còn dấu sao không".
             "loi_tac_tu_render": String(Markdown.chuThuan(cuoi).prefix(3000)),
