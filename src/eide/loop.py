@@ -136,6 +136,20 @@ class DanhSachGhiDia(list):
 
 
 # =========================================================================== tác tử
+def _tach_kieu_chan(o: str) -> dict[str, str]:
+    """`"7=power_in, 27=bidirectional"` → `{"7": "power_in", "27": "bidirectional"}`.
+
+    Đây là dạng mà ô bảng A5.8c hiện ra, nên nó cũng là dạng người sửa. Cặp nào không có dấu
+    `=` thì bỏ qua — người gõ thiếu không được làm mất phần họ gõ đúng.
+    """
+    ra: dict[str, str] = {}
+    for phan in o.replace(";", ",").split(","):
+        so, sep, kieu = phan.partition("=")
+        if sep and so.strip() and kieu.strip():
+            ra[so.strip()] = kieu.strip()
+    return ra
+
+
 class Agent:
     """Một phiên làm việc: giữ transcript, thẻ chờ và cổng chờ qua nhiều lượt."""
 
@@ -606,6 +620,12 @@ class Agent:
         """
         t = act.target
         assert t is not None                       # đã kiểm ở HumanAct.validate()
+        if t.type == "symbol":
+            # SCH-14/15 — người xác nhận hoặc sửa kiểu chân một ký hiệu. Đi nhánh RIÊNG, không
+            # qua `_sua_hien_vat`: kiểu chân nằm sâu trong `anh_xa[ref].chan[i].kieu`, mà đường
+            # sửa hiện vật chung chỉ thay được trường ở cấp một. Nới nó ra để chạm tới đây là
+            # nới một đường mà mọi tab khác đang dùng.
+            return self._nguoi_xac_nhan_ky_hieu(act, ctx)
         la_tep = t.type in ("file", "code")
         pha_khoa = la_tep and t.id in self.locks
 
@@ -650,6 +670,55 @@ class Agent:
         ctx.emit(uic.console_post("\n\n".join(loi), role="agent"))
         ctx.emit(uic.history_update(changesets=[self.history.tom_tat(cs)],
                                     stale=[{"id": i} for i in cs.stale_marked]))
+        ctx.said_anything = True
+
+    def _nguoi_xac_nhan_ky_hieu(self, act: HumanAct, ctx: TurnContext) -> None:
+        """Người bấm xác nhận / sửa kiểu chân trên tab Thiết kế (§9 widget edit).
+
+        Dùng ĐÚNG công cụ mà tác tử dùng (`sch.symbol_confirm`), nên luật "phải có lời của
+        người" và "kiểu chân sửa thành Fact tầng NGƯỜI" chỉ tồn tại ở một chỗ. Lời của người ở
+        đây là ô "vì sao anh đổi?" ngay cạnh ô sửa — nên nó luôn có thật.
+        """
+        t = act.target
+        ref = t.id
+        truong = dict(act.data.get("fields") or {})
+        # Hai dạng, vì có hai người gọi: giao diện gửi cả Ô ("7=power_in, 27=bidirectional" —
+        # đúng thứ người đọc thấy trong bảng và sửa tại chỗ), còn một lời gọi trong mã gửi
+        # từng chân (`chan.7`). Nhận cả hai ở một chỗ, chứ không để mỗi bên có một đường ghi.
+        kieu = {k.split(".", 1)[1]: v for k, v in truong.items() if k.startswith("chan.")}
+        kieu.update(_tach_kieu_chan(str(truong.get("chan") or "")))
+        loi = (act.note or "").strip() or str(truong.get("xac_nhan") or "").strip()
+        if not loi:
+            ctx.emit(uic.notice(
+                f"Chưa ghi xác nhận cho {ref}: cần một câu của anh về ký hiệu này (ô “vì sao” "
+                "ngay cạnh ô sửa). Một xác nhận không có lời của người là một xác nhận của "
+                "máy đội tên người.", level="warn", code="E8009"))
+            ctx.said_anything = True
+            return
+
+        cong_cu = self.registry.get("sch.symbol_confirm") if self.registry else None
+        if cong_cu is None:
+            ctx.emit(uic.notice(
+                "Tính năng sơ đồ đang tắt, nên không ghi được xác nhận ký hiệu. Bật "
+                "features.schematic trong Thiết lập rồi thử lại.", level="warn"))
+            ctx.said_anything = True
+            return
+
+        kq = self.registry.run("sch.symbol_confirm", {
+            "ref": ref, "trich_loi": loi, "kieu_chan": kieu,
+            "explain": {"summary": f"anh xác nhận ký hiệu {ref}",
+                        "why": loi, "sources": [{"kind": "human", "ref": act.id or "gui"}],
+                        "diff_prev": ("sửa kiểu chân " + ", ".join(sorted(kieu))
+                                      if kieu else "xác nhận, không sửa gì"),
+                        "next": "Sinh lại ký hiệu và ghi tệp để KiCad thấy kiểu chân này.",
+                        "confidence": "NGUOI"}}, ctx)
+        if not kq.ok:
+            ctx.emit(uic.notice(getattr(kq.error, "message_vi", "Không ghi được xác nhận."),
+                                level="error",
+                                code=getattr(kq.error, "code", None)))
+            ctx.said_anything = True
+            return
+        ctx.emit(uic.console_post(f"[Tác tử] {kq.data['note_vi']}", role="agent"))
         ctx.said_anything = True
 
     def _sua_tep(self, act: HumanAct, ctx: TurnContext, pha_khoa: bool):

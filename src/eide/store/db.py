@@ -210,6 +210,34 @@ DROP INDEX IF EXISTS ix_ckm_node_cha;
 """
 
 
+# EIDE-SCH-44 §2.1 lop bao ve so 4: "Store: bang moi sch_sheets (id, version, path,
+# lib_versions, layout_hash, explain)". Bang nay la **so dang ky sheet**: moi lan `sch.write`
+# ghi mot sheet, mot dong duoc ghi vao day.
+#
+# Vi sao can mot bang rieng thay vi mot hien vat JSON: bang uy ban ung y (§E6) phai goi duoc
+# so do vao snapshot, va no can biet DUNG danh sach tep + hash bo cuc + phien ban thu vien ky
+# hieu cua lan ghi do. Nhet cai do vao mot hien vat thi moi lan ghi lai mot sheet la mot lan
+# ghi lai ca danh sach — va hai sheet ghi o hai luot se de len nhau.
+SCHEMA_SCH = """
+CREATE TABLE IF NOT EXISTS sch_sheets (
+    id            TEXT PRIMARY KEY,        -- "sheet:/board/mcu"
+    version       INTEGER NOT NULL,        -- tang moi lan ghi lai sheet do
+    path          TEXT NOT NULL,           -- duong dan khoi trong cay ("" = trang phang)
+    tep           TEXT NOT NULL,           -- ten tep .kicad_sch tuong doi du an
+    lib_versions  TEXT NOT NULL DEFAULT '{}',
+    layout_hash   TEXT NOT NULL DEFAULT '',
+    explain       TEXT NOT NULL DEFAULT '{}',
+    updated_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_sch_sheet_path ON sch_sheets(path);
+"""
+
+SCHEMA_SCH_DOWN = """
+DROP INDEX IF EXISTS ix_sch_sheet_path;
+DROP TABLE IF EXISTS sch_sheets;
+"""
+
+
 # --------------------------------------------------------------------------- migration
 # EIDE-SCH-44 §2.1 lop bao ve so 4 va SCH-18: "luoc do chi cong them; migration co
 # kiem tra nguoc (down)".
@@ -272,6 +300,12 @@ MIGRATIONS: list[Migration] = [
         mo_ta="Cây khối phân cấp — HIER-45 §2.3: parent/kind/path/lib_ref + Port + Connection",
         up=_them_cot_cay,
         down=_go_cot_cay,
+    ),
+    Migration(
+        phien_ban=4,
+        mo_ta="Sổ đăng ký sheet sơ đồ — SCH-44 §2.1(4): sch_sheets + layout_hash + lib_versions",
+        up=SCHEMA_SCH,
+        down=SCHEMA_SCH_DOWN,
     ),
 ]
 
@@ -658,6 +692,64 @@ class Store:
             self._db.execute("DELETE FROM ckm_edges")
             self._db.execute("DELETE FROM ckm_nodes")
             self._db.commit()
+
+    # ------------------------------------------------------- sổ đăng ký sheet sơ đồ (SCH-44)
+    def sch_dat_sheet(self, *, path: str, tep: str, lib_versions: dict[str, Any],
+                      layout_hash: str, explain: dict[str, Any]) -> int:
+        """Ghi/cập nhật một sheet, trả về `version` mới.
+
+        `version` tăng mỗi lần sheet đó được ghi lại — đó là thứ cho phép một bản ưng ý nói
+        "sơ đồ lúc ấy là bản 3 của sheet này", chứ không chỉ "có một tệp tên thế".
+
+        Bốn trường sau đều **bắt buộc** và mỗi lần ghi là ghi cả dòng: chúng mô tả LẦN GHI vừa
+        xảy ra, nên một mặc định rỗng sẽ xoá thông tin của lần trước, còn "giữ giá trị cũ" thì
+        để lại một `layout_hash` nói về một bố cục không còn tồn tại. Cả hai đều tệ hơn việc
+        buộc bên gọi nói ra.
+        """
+        # Khoá theo TỆP, không theo path khối: một tệp là một thứ mà bản ưng ý gói và khôi
+        # phục. Bản đầu khoá theo path, nên ghi `flat` rồi ghi `hierarchical` để lại HAI dòng
+        # trỏ vào cùng `sch/mach.kicad_sch` (path "" và path "/board") — và bản ưng ý gói tệp
+        # đó hai lần trong khi nói rằng nó có 8 sheet.
+        sid = f"sheet:{tep}"
+        with self._lock:
+            cu = self._db.execute("SELECT version FROM sch_sheets WHERE id = ?",
+                                  (sid,)).fetchone()
+            v = int(cu["version"]) + 1 if cu else 1
+            self._db.execute(
+                "INSERT INTO sch_sheets (id, version, path, tep, lib_versions, layout_hash,"
+                " explain, updated_at) VALUES (?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(id) DO UPDATE SET version=excluded.version,"
+                " tep=excluded.tep, lib_versions=excluded.lib_versions,"
+                " layout_hash=excluded.layout_hash, explain=excluded.explain,"
+                " updated_at=excluded.updated_at",
+                (sid, v, path or "", tep,
+                 json.dumps(lib_versions or {}, ensure_ascii=False), layout_hash,
+                 json.dumps(explain or {}, ensure_ascii=False), _now()))
+            self._db.commit()
+        return v
+
+    def sch_cac_sheet(self) -> list[dict[str, Any]]:
+        return [{"id": r["id"], "version": r["version"], "path": r["path"],
+                 "tep": r["tep"], "lib_versions": json.loads(r["lib_versions"]),
+                 "layout_hash": r["layout_hash"], "explain": json.loads(r["explain"]),
+                 "updated_at": r["updated_at"]}
+                for r in self._db.execute(
+                    "SELECT * FROM sch_sheets ORDER BY path, id")]
+
+    def sch_xoa_sheet_ngoai(self, tep_con_lai: list[str]) -> int:
+        """Xoá dòng của sheet KHÔNG còn trong gói vừa ghi.
+
+        Đổi từ 5 khối xuống 3 thì hai tệp sheet biến mất; để dòng cũ lại thì bản ưng ý sau đó
+        gói theo hai tệp không tồn tại, và "khôi phục được" thành một lời hứa suông.
+        """
+        giu = set(tep_con_lai)
+        with self._lock:
+            xoa = [r["id"] for r in self._db.execute("SELECT id, tep FROM sch_sheets")
+                   if r["tep"] not in giu]
+            for i in xoa:
+                self._db.execute("DELETE FROM sch_sheets WHERE id = ?", (i,))
+            self._db.commit()
+        return len(xoa)
 
     def ckm_dem(self) -> dict[str, int]:
         d = {r["loai"]: r["n"] for r in self._db.execute(

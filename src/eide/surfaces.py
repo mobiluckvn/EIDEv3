@@ -328,7 +328,107 @@ def design(store: Any, inv: Any) -> dict[str, Any]:
             can_gi="Chốt phương án, rồi bảo tác tử ghi danh sách linh kiện."))
 
     khoi.extend(_khoi_ban_do_mach(store))
+    khoi.extend(_khoi_so_do(store))
     return _don_gian("design", "A5", "Thiết kế", khoi)
+
+
+# ============================================================ A5.8 — sơ đồ nguyên lý (SCH-44 §9)
+def _khoi_so_do(store: Any) -> list[dict[str, Any]]:
+    """Khối A5.8: ảnh sơ đồ · băng chất lượng bố cục · ký hiệu chờ xác nhận · mức render.
+
+    Chỉ hiện khi CÓ hiện vật sơ đồ. Không có thì tab Thiết kế giữ nguyên hình dạng cũ — đó là
+    điều kiện của cờ tính năng (§2.1 mục 2): cờ bật mà chưa ai sinh sơ đồ thì giao diện phải
+    **không đổi một pixel nào**, nên ở đây không có cả ô trống trung thực.
+    """
+    bc = store.get("layout:mach")
+    sym = store.get("symbol_map:mach")
+    rp = store.get("report:sch-render")
+    if not (bc or sym or rp):
+        return []
+
+    khoi: list[dict[str, Any]] = []
+
+    if rp:
+        c = rp["canonical"]
+        tep = list(c.get("tep") or [])
+        khoi.append(khoi_hien_vat(
+            "A5.8", "Sơ đồ nguyên lý", "svg", rp,
+            summary=(f"{len(tep)} trang · {c.get('so_ky_hieu', 0)} ký hiệu · "
+                     f"{c.get('so_sheet', 0)} hộp sheet con"
+                     + (" · " + "; ".join(c.get("canh_bao") or [])[:120]
+                        if c.get("canh_bao") else "")),
+            tep=tep, tep_chinh=(tep[0] if tep else None),
+            ref=list(c.get("ref_trong_svg") or []),
+            # Bấm ký hiệu → Fact/nguồn; bấm net → tô sáng (SCH-06/07). Giao diện gửi HumanAct,
+            # lõi trả lời — không có logic thiết kế nào nằm trong Swift.
+            bam_ky_hieu="Cho tôi xem Fact và nguồn của {ref}",
+            bam_net="Tô sáng net {net} và cho tôi xem ERC liên quan"))
+
+    if bc:
+        c = bc["canonical"]
+        tc = c.get("tieu_chi") or {}
+        sheet = c.get("sheet") or {}
+        hang = [["Cả trang (một tờ)", tc.get("kho", "?"), tc.get("so_ky_hieu", 0),
+                 tc.get("cap_chong_nhau", 0), tc.get("day_cat_than", 0),
+                 f"{(tc.get('ty_le_net_dung_nhan') or 0):.0%}",
+                 "ĐẠT" if tc.get("dat") else "CHƯA: " + "; ".join(tc.get("vi_pham") or [])]]
+        for pth, sb in sorted(sheet.items()):
+            t = sb.get("tieu_chi") or {}
+            hang.append([pth, t.get("kho", "?"), t.get("so_ky_hieu", 0),
+                         t.get("cap_chong_nhau", 0), t.get("day_cat_than", 0),
+                         f"{(t.get('ty_le_net_dung_nhan') or 0):.0%}",
+                         "ĐẠT" if t.get("dat") else
+                         "CHƯA: " + "; ".join(t.get("vi_pham") or [])])
+        dn = c.get("de_nghi_phan_cap") or {}
+        khoi.append(khoi_hien_vat(
+            "A5.8b", "Chất lượng bố cục — đo bằng số", "table", bc,
+            summary=("Mỗi dòng là một trang. " + (dn.get("vi") or "")),
+            columns=["Trang", "Khổ", "Ký hiệu", "Cặp chồng nhau", "Dây cắt thân",
+                     "Net dùng nhãn", "Tiêu chí"],
+            rows=hang))
+
+    if sym:
+        c = sym["canonical"]
+        cho = set(c.get("cho_xac_nhan") or [])
+        xn = c.get("xac_nhan") or {}
+        hang = []
+        for k in (c.get("chi_tiet") or []):
+            ai = xn.get(k["ref"]) or {}
+            hang.append([
+                k["ref"], k.get("ten", ""), k.get("lib") or "sinh từ Fact",
+                k.get("so_chan", 0),
+                ("—" if k.get("ty_khop") is None else f"{k['ty_khop']:.0%}"),
+                k.get("nguon", ""),
+                ("CHỜ ANH XEM" if k["ref"] in cho else
+                 f"anh đã xác nhận: “{ai.get('trich_loi', '')[:60]}”" if ai else "không cần"),
+                ", ".join(f"{c2['so']}={c2['kieu']}" for c2 in (k.get("chan") or [])[:6])])
+        khoi.append(khoi_hien_vat(
+            "A5.8c", "Ký hiệu linh kiện — xem và xác nhận", "table", sym,
+            summary=(f"{len(hang)} ký hiệu"
+                     + (f" · {len(cho)} CHỜ anh xem: kiểu chân ở đây là phép suy từ hướng "
+                        "Port, và ERC trong KiCad dựa vào kiểu chân. Bấm vào ô kiểu chân để "
+                        "sửa — lời anh viết ở ô “vì sao” thành Fact tầng NGƯỜI."
+                        if cho else " · không còn cái nào chờ anh")),
+            columns=["Ref", "Linh kiện", "Thư viện", "Số chân", "Khớp Fact", "Chân lấy từ đâu",
+                     "Xác nhận", "Kiểu chân"],
+            cot_sua={"Kiểu chân": "chan", "Xác nhận": "xac_nhan"},
+            loai_sua="symbol",
+            rows=hang))
+
+    khoi.append(block(
+        "A5.8d", "Mức render đang dùng", "kv",
+        summary="Máy này KHÔNG cài KiCad — quyết định 25/09/2026.",
+        items=[
+            {"k": "Đang dùng", "v": ("R1 — renderer nội bộ của EIDE (SVG tự vẽ)" if rp
+                                     else "R3 — sơ đồ khối và đồ thị net của bản đồ mạch")},
+            {"k": "Muốn xem trong KiCad",
+             "v": "Xuất gói (sch.export) rồi mở ở máy có KiCad; sửa xong chép về và Nạp lại "
+                  "(sch.import)."},
+            {"k": "Vì sao không cài",
+             "v": "Cả đường ống chạy bằng Python thuần trong sandbox dự án, nên không có bước "
+                  "nào cần KiCad trên máy này."},
+        ]))
+    return khoi
 
 
 def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:

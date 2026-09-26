@@ -67,6 +67,15 @@ class GiaoDien:
                             "summary": f"sửa {ma}"},
                    "note": vi_sao, "origin": {"surface": "requirements"}})
 
+    def ve_lai(self) -> dict:
+        """Xin app vẽ lại mọi tab (0 token). Cần khi bộ đo ghi thẳng vào kho.
+
+        Chuyển tab không vẽ lại — đó là thiết kế (`attend` là sự chú ý, không phải yêu cầu),
+        nên không có lệnh này thì mọi phép đo về khối mới phải tiêu một lượt mô hình để thấy.
+        """
+        self._gui({"ui": "sync"})
+        return self._doi("da_sync", 25)
+
     def chup(self, nhan: str = "") -> dict:
         """Xin app chụp lại trạng thái giao diện và đợi kết quả."""
         self._gui({"ui": "dump", "nhan": nhan})

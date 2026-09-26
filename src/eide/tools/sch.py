@@ -32,6 +32,10 @@ MA_BO_CUC = "layout:mach"
 MA_NETLIST_KICAD = "netlist_kicad:mach"
 MA_SYMBOL = "symbol_map:mach"
 
+# §4 "trang ≤ A3" + SCH07 "mạch 120 linh kiện → đề nghị hierarchical". Con số này là ngưỡng
+# ĐỀ NGHỊ, không phải ngưỡng chặn: một trang 60 ký hiệu vẫn ghi được, chỉ là khó đọc.
+NGUONG_KY_HIEU_MOT_TRANG = 50
+
 TEP_SKIDL = "sch/mach_skidl.py"
 TEP_NET = "sch/mach.net"
 TEP_SYM = "sch/eide-sinh.kicad_sym"
@@ -243,6 +247,9 @@ def register(r: Registry) -> Registry:
 
         tv = _thu_vien_da_tai(ctx) if uu_tien == "official" else {}
         ds, thieu = KH.anh_xa(cay, thu_vien=tv, nguon_fact=_nguon_fact(ctx, cay))
+        # Xác nhận và sửa kiểu chân của NGƯỜI sống sót qua mọi lần sinh lại — xem
+        # `kyhieu.ap_xac_nhan`.
+        KH.ap_xac_nhan(ds, _xac_nhan_cu(ctx))
         if thieu:
             return ToolResult(False, error=EideError(
                 "E8002",
@@ -254,6 +261,7 @@ def register(r: Registry) -> Registry:
                 details={"thieu_pinout": sorted(thieu)}, blame="agent"))
 
         sinh = [k for k in ds.values() if k.sinh_tu_fact]
+        cho_xn = sorted(k.ref for k in ds.values() if k.can_xac_nhan)
         noi_dung = KH.viet_kicad_sym(ds)
         cs = ctx.history.ghi_tep(
             author=f"agent:{ctx.run_id}", paths=[TEP_SYM],
@@ -266,16 +274,121 @@ def register(r: Registry) -> Registry:
                         canonical={"tep": TEP_SYM,
                                    "anh_xa": {k: {"lib": v.lib or "eide-sinh",
                                                   "ten": v.ten} for k, v in ds.items()},
-                                   "chi_tiet": [v.to_dict() for v in ds.values()]},
-                        explain=explain)
+                                   "chi_tiet": [v.to_dict() for v in ds.values()],
+                                   "cho_xac_nhan": cho_xn,
+                                   "xac_nhan": _xac_nhan_cu(ctx)},
+                        explain=explain,
+                        view_hint={"kind": "table", "path": TEP_SYM})
         cb = [f"{k.ref}: {k.canh_bao}" for k in ds.values() if k.canh_bao]
         return {"tep": TEP_SYM, "so_ky_hieu": len(ds), "so_sinh_tu_fact": len(sinh),
-                "changeset": cs.id, "canh_bao": cb,
+                "changeset": cs.id, "canh_bao": cb, "cho_xac_nhan": cho_xn,
+                "chi_tiet": [v.to_dict() for v in ds.values()],
                 "note_vi": (f"{len(ds)} ký hiệu, {len(sinh)} sinh từ Fact pinout."
                             + (" Chưa có thư viện KiCad chính thức nào tải về, nên ký hiệu "
                                "sinh từ Fact — mỗi ký hiệu ghi rõ nó lấy chân từ đâu."
                                if not tv else "")
+                            + (f" {len(cho_xn)} ký hiệu CHỜ người xác nhận ("
+                               + ", ".join(cho_xn[:5]) + "): kiểu chân ở đây là phép SUY từ "
+                               "hướng Port, và một kiểu chân sai làm ERC của KiCad báo sai. "
+                               "Hỏi người dùng xem rồi xác nhận bằng sch.symbol_confirm."
+                               if cho_xn else "")
                             + (" " + "; ".join(cb[:3]) if cb else ""))}
+
+    @r.tool("sch.symbol_confirm", "Thiết kế",
+            "Ghi lại việc NGƯỜI đã xem một ký hiệu sinh từ Fact và xác nhận nó, hoặc sửa kiểu "
+            "chân. Đòi lời của chính người dùng — bạn không xác nhận hộ họ được.",
+            {"type": "object",
+             "properties": {
+                 "ref": {"type": "string", "description": "linh kiện, ví dụ U1"},
+                 "trich_loi": {"type": "string",
+                               "description": "LỜI của người dùng về ký hiệu này, nguyên văn"},
+                 "kieu_chan": {"type": "object",
+                               "description": "{số chân: kiểu} nếu họ sửa, ví dụ "
+                                              "{\"7\": \"power_in\"}"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["ref", "trich_loi", "explain"]},
+            risk="R2", feature="schematic", core=False, writes_artefact=True,
+            needs_explain=True, produces=["symbol_map"],
+            keywords=["xác nhận", "ký hiệu", "kiểu chân", "symbol", "confirm"])
+    def symbol_confirm(ctx: Any, explain: dict[str, Any], ref: str, trich_loi: str,
+                       kieu_chan: dict[str, Any] | None = None):
+        from ..sch import kyhieu as KH
+
+        a = ctx.store.get(MA_SYMBOL)
+        if a is None:
+            return _r3(ctx, "Chưa có ánh xạ ký hiệu nào để xác nhận.", goi=["sch.symbols"])
+        chi_tiet = {x["ref"]: x for x in (a["canonical"].get("chi_tiet") or [])}
+        if ref not in chi_tiet:
+            return ToolResult(False, error=EideError(
+                "E8007", f"Không có ký hiệu nào cho {ref} trong ánh xạ hiện tại.",
+                hint_for_agent="Xem lại danh sách ref trong hiện vật symbol_map:mach.",
+                details={"co": sorted(chi_tiet)}, blame="agent"))
+
+        loi = (trich_loi or "").strip()
+        if len(loi) < 3:
+            # N2/§E4: một xác nhận không có lời của người là một xác nhận của MÁY đội tên
+            # người. Fact tầng NGƯỜI phải có trích lời, và đây là cùng một luật.
+            return ToolResult(False, error=EideError(
+                "E8009", "Chưa có lời nào của người dùng về ký hiệu này, nên không ghi được "
+                         "xác nhận.",
+                hint_for_agent="Hỏi người dùng: kiểu chân của các chân này đúng chưa, có chân "
+                               "nào phải sửa không. Rồi truyền nguyên văn câu trả lời vào "
+                               "trich_loi. Đừng tự xác nhận hộ.",
+                alternatives=["sch.symbols"], blame="agent"))
+
+        sai = {k: v for k, v in (kieu_chan or {}).items()
+               if v not in KH.KIEU_CHAN_CHON_DUOC}
+        if sai:
+            return ToolResult(False, error=EideError(
+                "E8010", "Kiểu chân không có trong KiCad: "
+                         + ", ".join(f"chân {k} = {v}" for k, v in sorted(sai.items())),
+                hint_for_agent="Kiểu hợp lệ: " + ", ".join(KH.KIEU_CHAN_CHON_DUOC),
+                details={"hop_le": list(KH.KIEU_CHAN_CHON_DUOC)}, blame="agent"))
+
+        co_chan = {str(c.get("so")) for c in (chi_tiet[ref].get("chan") or [])}
+        thieu = sorted(set(kieu_chan or {}) - co_chan)
+        if thieu:
+            return ToolResult(False, error=EideError(
+                "E8011", f"{ref} không có chân {', '.join(thieu)} — không sửa kiểu cho một "
+                         "chân không tồn tại.",
+                hint_for_agent=f"Chân của {ref}: " + ", ".join(sorted(co_chan)),
+                details={"chan_co": sorted(co_chan)}, blame="agent"))
+
+        xn = dict(a["canonical"].get("xac_nhan") or {})
+        cu = dict(xn.get(ref) or {})
+        kc = {**(cu.get("kieu_chan") or {}), **{str(k): v for k, v in (kieu_chan or {}).items()}}
+        xn[ref] = {"boi": "human", "luc": _bay_gio(), "trich_loi": loi, "kieu_chan": kc}
+
+        # Kiểu chân người sửa là một Fact tầng NGƯỜI có trích lời — không phải một ghi chú.
+        ten_chip = chi_tiet[ref].get("ten") or ref
+        for so, kieu in sorted((kieu_chan or {}).items()):
+            ctx.store.put_fact({
+                "fact_id": f"f-kieuchan-{ref}-{so}",
+                "subject": f"pin:{ten_chip}.{so}", "key": "kieu_chan", "value": str(kieu),
+                "tier": "NGUOI", "origin": "human",
+                "source": {"kind": "human", "quote": loi},
+                "explain": {**explain, "summary": f"người xác nhận kiểu chân {ref}.{so}"}})
+
+        cs = ctx.history.ghi_kho(
+            author="human", artefact_id=MA_SYMBOL, type="symbol_map", op="update",
+            canonical={**a["canonical"], "xac_nhan": xn,
+                       "cho_xac_nhan": [x for x in (a["canonical"].get("cho_xac_nhan") or [])
+                                        if x != ref]},
+            explain={**explain,
+                     "summary": explain.get("summary") or f"người xác nhận ký hiệu {ref}"},
+            run_id=ctx.run_id)
+        return {"ref": ref, "da_sua_kieu_chan": sorted(kieu_chan or {}),
+                "con_cho_xac_nhan": [x for x in (a["canonical"].get("cho_xac_nhan") or [])
+                                     if x != ref],
+                "changeset": cs.id,
+                "note_vi": (f"Đã ghi: người dùng xem ký hiệu {ref} và xác nhận — “{loi}”."
+                            + (f" Kiểu chân họ sửa: "
+                               + ", ".join(f"chân {k} → {v}"
+                                           for k, v in sorted((kieu_chan or {}).items()))
+                               + ". Mỗi cái thành một Fact tầng NGƯỜI có trích lời, và ký hiệu "
+                                 "sinh lại sẽ theo họ chứ không theo phép suy của máy."
+                               if kieu_chan else "")
+                            + " Gọi sch.symbols rồi sch.write để tệp mang kiểu chân này.")}
 
     # ====================================================================== 4. bố cục
     @r.tool("sch.place", "Thiết kế",
@@ -304,20 +417,38 @@ def register(r: Registry) -> Registry:
         cay = KC.Cay.doc(ctx.store)
         phang = KC.flatten(cay)
         bc = BC.tinh_bo_cuc(cay, phang, kho=kho)
+
+        # SCH07 — "mỗi sheet đạt tiêu chí". Đo TỪNG trang, vì một mạch lớn có thể đạt trên
+        # tổng thể mà vẫn có một sheet tràn: một phép đo trên tổng thể rồi kết luận cho từng
+        # sheet là phép đo nói nhiều hơn nó biết.
+        sheet = BC.tinh_bo_cuc_theo_sheet(cay, phang, kho=kho)
+        sheet_hong = sorted(p for p, b in sheet.items() if not b.tieu_chi["dat"])
+        de_nghi = _de_nghi_phan_cap(bc, sheet, cay)
+
+        canon = {**bc.to_dict(),
+                 "sheet": {p: b.to_dict() for p, b in sorted(sheet.items())},
+                 "de_nghi_phan_cap": de_nghi}
         cs = ctx.history.ghi_kho(
             author=f"agent:{ctx.run_id}", artefact_id=MA_BO_CUC, type="layout",
             op="update" if ctx.store.get(MA_BO_CUC) else "create",
-            canonical=bc.to_dict(), explain=explain, run_id=ctx.run_id)
+            canonical=canon, explain=explain, run_id=ctx.run_id)
         tc = bc.tieu_chi
         return {"kho": bc.kho, "so_ky_hieu": tc["so_ky_hieu"], "so_vung": tc["so_vung"],
                 "so_nhan": tc["so_nhan"], "so_day": tc["so_day"],
                 "tieu_chi": tc, "so_lan_noi": bc.so_lan_noi, "canh_bao": bc.canh_bao,
-                "changeset": cs.id,
+                "so_sheet": len(sheet), "sheet_chua_dat": sheet_hong,
+                "tieu_chi_sheet": {p: b.tieu_chi for p, b in sorted(sheet.items())},
+                "de_nghi_phan_cap": de_nghi, "changeset": cs.id,
                 "note_vi": (f"Bố cục {tc['so_ky_hieu']} ký hiệu trong {tc['so_vung']} vùng "
                             f"trên khổ {bc.kho}"
                             + (f", nới vùng {bc.so_lan_noi} lần" if bc.so_lan_noi else "")
                             + (". Tiêu chí ĐẠT." if tc["dat"] else
                                ". Tiêu chí CHƯA đạt: " + "; ".join(tc["vi_pham"][:3]) + ".")
+                            + (f" {len(sheet)} sheet đo riêng: "
+                               + ("tất cả đạt." if not sheet_hong else
+                                  f"{len(sheet_hong)} sheet chưa đạt ("
+                                  + ", ".join(sheet_hong[:3]) + ")."))
+                            + (" " + de_nghi["vi"] if de_nghi["nen_phan_cap"] else "")
                             + (f" {tc['ty_le_net_dung_nhan']:.0%} net dùng nhãn"
                                " — bản này chưa đi dây giữa các khối, nên tỉ lệ nhãn cao là"
                                " điều chờ đợi." if tc["so_nhan"] else ""))}
@@ -394,14 +525,19 @@ def register(r: Registry) -> Registry:
             run_id=ctx.run_id)
         _ghi(ctx, TEP_SCH, noi_dung)
         _ghi(ctx, TEP_PRO, G.kicad_pro(ten_sheet))
+        so = _ghi_so_sheet(ctx, explain, dong=[("", TEP_SCH, a["canonical"])])
         mat_cay = ("" if not co_khoi else
                    f" Mạch này có {len(cay.khoi_con(cay.goc))} khối nhưng ghi ở dạng MỘT "
                    "trang, nên cây khối KHÔNG còn trong tệp: mở trong KiCad sẽ thấy một "
                    "trang phẳng. Muốn giữ cây thì ghi lại với style=hierarchical.")
         return {"tep": [TEP_SCH, TEP_PRO], "so_ky_hieu": len(bc.o), "style": "flat",
-                "round_trip": True, "changeset": cs.id, "mat_cay": bool(co_khoi),
+                "round_trip": True, "changeset": cs.id, "mat_cay": bool(co_khoi), **so,
+                "cho_xac_nhan_ky_hieu": list(
+                    (ctx.store.get(MA_SYMBOL)["canonical"].get("cho_xac_nhan") or [])
+                    if ctx.store.get(MA_SYMBOL) else []),
                 "uuid_mau": {z.ref: G.uuid_theo(f"sym:{z.ref}") for z in bc.o[:3]},
-                "note_vi": (mat_cay + f" Đã ghi {TEP_SCH} ({len(bc.o)} ký hiệu) và đọc lại được khớp "
+                "note_vi": (_cau_cho_xac_nhan(ctx) + mat_cay
+                            + f" Đã ghi {TEP_SCH} ({len(bc.o)} ký hiệu) và đọc lại được khớp "
                             "từng ký tự. uuid sinh theo ref, nên sinh lại KHÔNG làm mất bố "
                             "cục người dùng đã sửa trong KiCad. Máy này không cài KiCad — "
                             "muốn mở bằng KiCad thì xuất gói rồi mở ở máy khác.")}
@@ -432,6 +568,7 @@ def register(r: Registry) -> Registry:
         tep_svg: list[str] = []
         tong = {"so_ky_hieu": 0, "so_nhan": 0, "so_day": 0, "so_sheet": 0}
         ref: list[str] = []
+        net: list[str] = []
         de_nhau: list[str] = []
         canh_bao: list[str] = []
         for p in ds:
@@ -442,6 +579,7 @@ def register(r: Registry) -> Registry:
             for k in tong:
                 tong[k] += getattr(kq, k)
             ref += kq.ref_trong_svg
+            net += kq.net_trong_svg
             de_nhau += [f"{p.name}: {x}" for x in kq.chu_de_nhau]
             canh_bao += [f"{p.name}: {x}" for x in kq.canh_bao]
 
@@ -450,6 +588,7 @@ def register(r: Registry) -> Registry:
             summary=f"render {len(tep_svg)} sheet ra SVG",
             explain=explain, run_id=ctx.run_id)
         canon = {**tong, "tep": tep_svg, "ref_trong_svg": sorted(ref),
+                 "net_trong_svg": sorted(set(net)),
                  "chu_de_nhau": de_nhau, "canh_bao": canh_bao}
         ctx.store.apply(artefact_id="report:sch-render", type="report", op="update"
                         if ctx.store.get("report:sch-render") else "create",
@@ -594,7 +733,12 @@ def _ghi_phan_cap(ctx: Any, cay: Any, explain: dict[str, Any], *, ten_sheet: str
     a = ctx.store.get(MA_BO_CUC)
     kho = (a["canonical"].get("kho") if a else "A4") or "A4"
 
-    goi = PC.viet_phan_cap(cay, symbol=sym, kho=kho)
+    # Toạ độ trong từng sheet lấy từ hiện vật bố cục (đã qua tiêu chí §4 theo từng trang).
+    # Bên ghi tự xếp lại là hai lần tính, tức hai cơ hội ra hai kết quả — và bản trước nó tự
+    # xếp một cột, nên sheet 40 điện trở tràn trang mà không phép đo nào thấy.
+    bcs = {pth: _bo_cuc_tu(d)
+           for pth, d in ((a["canonical"].get("sheet") or {}) if a else {}).items()}
+    goi = PC.viet_phan_cap(cay, symbol=sym, kho=kho, bo_cuc_sheet=bcs)
     if not goi.tep:
         return _r3(ctx, "Không ghi được sheet phân cấp: " + "; ".join(goi.canh_bao),
                    goi=["ckm.module_set", "ckm.build"])
@@ -618,11 +762,24 @@ def _ghi_phan_cap(ctx: Any, cay: Any, explain: dict[str, Any], *, ten_sheet: str
         _ghi(ctx, f"sch/{t}", nd)
     _ghi(ctx, TEP_PRO, G.kicad_pro(ten_sheet))
 
+    # Sổ đăng ký sheet: một dòng mỗi tệp, kèm băm bố cục và phiên bản thư viện (§2.1 mục 4).
+    dong = []
+    for ten in sorted(goi.tep):
+        pth = next((x for x in bcs if PC.ten_tep_sheet(x) == ten), "")
+        dong.append((pth, f"sch/{ten}",
+                     bcs[pth].to_dict() if pth in bcs else {"tep": ten}))
+    so_sheet_kho = _ghi_so_sheet(ctx, explain, dong=dong)
+
     # Kiểm ngay: đọc lại gói vừa ghi và so cây. HIER13 đòi "nạp lại dựng lại đúng cây".
     doc = PC.doc_phan_cap(goi.tep)
     so = PC.so_cay(doc, cay)
+    hong = sorted(pth for pth, b in bcs.items() if not (b.tieu_chi or {}).get("dat", True))
     return {"tep": paths, "style": "hierarchical", "so_sheet": goi.so_sheet,
             "round_trip": True, "doc_lai_dung_cay": so["khop"], "so_cay": so,
+            "sheet_chua_dat_tieu_chi": hong, **so_sheet_kho,
+            "cho_xac_nhan_ky_hieu": list(
+                (ctx.store.get(MA_SYMBOL)["canonical"].get("cho_xac_nhan") or [])
+                if ctx.store.get(MA_SYMBOL) else []),
             "changeset": cs.id, "canh_bao": goi.canh_bao,
             "note_vi": (f"Đã ghi {goi.so_sheet} sheet phân cấp — mỗi khối một tệp, Port của "
                         "khối thành sheet pin. "
@@ -631,7 +788,99 @@ def _ghi_phan_cap(ctx: Any, cay: Any, explain: dict[str, Any], *, ten_sheet: str
                            if tu_chuyen else "")
                         + ("Đọc lại gói dựng đúng cây." if so["khop"] else
                            "CẢNH BÁO: đọc lại gói KHÔNG dựng đúng cây — "
-                           + str(so)[:200]))}
+                           + str(so)[:200])
+                        + ("" if not hong else
+                           f" {len(hong)} sheet chưa đạt tiêu chí bố cục ("
+                           + ", ".join(hong[:3]) + ") — tệp vẫn ghi được, nhưng trang đó khó "
+                           "đọc và nên chia khối nhỏ hơn.")
+                        + _cau_cho_xac_nhan(ctx))}
+
+
+def _cau_cho_xac_nhan(ctx: Any) -> str:
+    """Câu nói ra rằng tệp vừa ghi mang kiểu chân do MÁY suy, chưa ai xem.
+
+    Không chặn: tệp vẫn đúng hơn là không có tệp. Nhưng im lặng thì người dùng mở KiCad, thấy
+    ERC báo lỗi nguồn và tin rằng mạch của họ sai — trong khi thứ sai là một phép suy mà EIDE
+    chưa nói ra là phép suy (N6).
+    """
+    a = ctx.store.get(MA_SYMBOL)
+    cho = list((a["canonical"].get("cho_xac_nhan") or []) if a else [])
+    if not cho:
+        return ""
+    return (f" {len(cho)} ký hiệu ({', '.join(cho[:5])}) có kiểu chân do MÁY suy từ hướng Port "
+            "và chưa ai xác nhận — ERC trong KiCad dựa vào kiểu chân, nên nhờ người dùng xem "
+            "rồi gọi sch.symbol_confirm.")
+
+
+def _lib_versions(ctx: Any) -> dict[str, str]:
+    """Phiên bản thư viện ký hiệu dùng cho lần ghi này — §2.1(4) `sch_sheets.lib_versions`.
+
+    Ghi cả hai nguồn: thư viện KiCad chính thức (nếu đã tải về như dữ liệu) và bản ánh xạ ký
+    hiệu sinh từ Fact. Thiếu một trong hai thì một bản ưng ý khôi phục ra sơ đồ mà không ai
+    biết chân của nó lúc ấy lấy từ đâu.
+    """
+    ra: dict[str, str] = {}
+    a = ctx.store.get("symbol_lib:kicad")
+    if a:
+        ra["kicad-symbols"] = str(a["canonical"].get("phien_ban") or f"v{a['version']}")
+    sm = ctx.store.get(MA_SYMBOL)
+    if sm:
+        ra["eide-sinh"] = f"symbol_map v{sm['version']}"
+    return ra
+
+
+def _bam_bo_cuc(canon: dict[str, Any]) -> str:
+    """`layout_hash` — băm bố cục để một bản ưng ý nói được "sơ đồ này dựng trên bố cục nào"."""
+    import hashlib
+    import json as _j
+
+    return hashlib.sha256(
+        _j.dumps(canon, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+
+
+def _ghi_so_sheet(ctx: Any, explain: dict[str, Any], *,
+                  dong: list[tuple[str, str, dict[str, Any]]]) -> dict[str, Any]:
+    """Ghi sổ đăng ký sheet, và xoá dòng của sheet không còn tồn tại. `dong` = (path, tệp, bố cục)."""
+    lib = _lib_versions(ctx)
+    ra: dict[str, int] = {}
+    for path, tep, bc_canon in dong:
+        ra[tep] = ctx.store.sch_dat_sheet(
+            path=path, tep=tep, lib_versions=lib,
+            layout_hash=_bam_bo_cuc(bc_canon), explain=explain)
+    da_xoa = ctx.store.sch_xoa_sheet_ngoai([t for _, t, _ in dong])
+    return {"so_sheet_ghi_so": len(ra), "phien_ban_sheet": ra, "sheet_go_khoi_so": da_xoa,
+            "lib_versions": lib}
+
+
+def _de_nghi_phan_cap(bc: Any, sheet: dict[str, Any], cay: Any) -> dict[str, Any]:
+    """§4/SCH07 — khi nào NÊN chuyển sang sheet phân cấp, và nói ra bằng lý do đo được.
+
+    Ba lý do, cả ba đều là số chứ không phải khẩu vị: một trang không chứa nổi (tiêu chí phẳng
+    không đạt) · quá nhiều ký hiệu trên một trang · quá nhiều net phải dùng nhãn (§4 ngưỡng
+    70 % kèm sẵn câu "mạch khó đọc → đề nghị hierarchical").
+    """
+    ly_do: list[str] = []
+    tc = bc.tieu_chi or {}
+    if not tc.get("dat"):
+        ly_do.append(f"bố cục một trang chưa đạt tiêu chí trên khổ {bc.kho}")
+    if tc.get("so_ky_hieu", 0) > NGUONG_KY_HIEU_MOT_TRANG:
+        ly_do.append(f"{tc['so_ky_hieu']} ký hiệu trên một trang "
+                     f"(> {NGUONG_KY_HIEU_MOT_TRANG})")
+    if tc.get("ty_le_net_dung_nhan", 0) > 0.70:
+        ly_do.append(f"{tc['ty_le_net_dung_nhan']:.0%} net phải dùng nhãn (> 70 %)")
+    so_khoi = len(cay.khoi_con(cay.goc)) if cay.goc else 0
+    if not ly_do:
+        return {"nen_phan_cap": False, "ly_do": [], "so_khoi": so_khoi,
+                "vi": "Mạch này vừa một trang, không cần chia sheet."}
+    if so_khoi < 2:
+        return {"nen_phan_cap": False, "ly_do": ly_do, "so_khoi": so_khoi,
+                "vi": ("Trang này chật (" + "; ".join(ly_do) + f") nhưng cây chỉ có {so_khoi} "
+                       "khối, nên chia sheet KHÔNG giúp gì — chia khối trước đã "
+                       "(ckm.module_set), rồi bố cục lại.")}
+    return {"nen_phan_cap": True, "ly_do": ly_do, "so_khoi": so_khoi,
+            "vi": ("Nên ghi ở dạng sheet phân cấp: " + "; ".join(ly_do)
+                   + f". Cây có {so_khoi} khối ở cấp trên, nên mỗi khối một trang là chia "
+                     "được — gọi sch.write với style=hierarchical.")}
 
 
 def _bo_cuc_tu(canon: dict[str, Any]):
@@ -647,6 +896,8 @@ def _bo_cuc_tu(canon: dict[str, Any]):
                   so_lan_noi=int(canon.get("so_lan_noi") or 0))
     bc.vung = [BC.Vung(**v) for v in (canon.get("vung") or [])]
     bc.o = [BC.O(**z) for z in (canon.get("o") or [])]
+    bc.hop_sheet = [BC.HopSheet(**h) for h in (canon.get("hop_sheet") or [])]
+    bc.path = canon.get("path", "") or ""
     return bc
 
 
@@ -688,6 +939,17 @@ def _noi_dung_cu(ctx: Any, rel: str) -> dict[str, str]:
     """Nội dung trước khi ghi — để changeset hoàn tác được (N9) khi không có git."""
     p = _duong(ctx, rel)
     return {rel: p.read_text("utf-8", errors="replace")} if p.exists() else {}
+
+
+def _xac_nhan_cu(ctx: Any) -> dict[str, dict[str, Any]]:
+    a = ctx.store.get(MA_SYMBOL)
+    return dict((a["canonical"].get("xac_nhan") or {}) if a else {})
+
+
+def _bay_gio() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _thu_vien_da_tai(ctx: Any) -> dict[str, dict[str, Any]]:

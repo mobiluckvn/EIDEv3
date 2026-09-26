@@ -99,21 +99,51 @@ class Vung:
 
 
 @dataclass(slots=True)
+class HopSheet:
+    """Hộp của một sheet con trên trang cha — chiếm chỗ đúng như một ký hiệu.
+
+    Vì sao nó phải vào bố cục chứ không để bên ghi tự đặt: hộp sheet là vật thể LỚN NHẤT trên
+    trang (một khối 10 Port cao hơn mọi điện trở), nên nếu tiêu chí bố cục không nhìn thấy nó
+    thì "0 ký hiệu chồng nhau" là một câu nói về nửa trang.
+    """
+
+    path: str
+    ten: str
+    x: float
+    y: float
+    rong: float
+    cao: float
+    port: list[str] = field(default_factory=list)
+
+    @property
+    def hop(self) -> tuple[float, float, float, float]:
+        return (self.x, self.y, self.x + self.rong, self.y + self.cao)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"path": self.path, "ten": self.ten, "x": round(self.x, 2),
+                "y": round(self.y, 2), "rong": round(self.rong, 2),
+                "cao": round(self.cao, 2), "port": list(self.port)}
+
+
+@dataclass(slots=True)
 class BoCuc:
     kho: str = "A4"
     vung: list[Vung] = field(default_factory=list)
     o: list[O] = field(default_factory=list)
     day: list[dict[str, Any]] = field(default_factory=list)
     nhan: list[dict[str, Any]] = field(default_factory=list)
+    hop_sheet: list[HopSheet] = field(default_factory=list)
     tieu_chi: dict[str, Any] = field(default_factory=dict)
     canh_bao: list[str] = field(default_factory=list)
     so_lan_noi: int = 0
+    path: str = ""                 # sheet nào (rỗng = bố cục một trang của cả mạch)
 
     def to_dict(self) -> dict[str, Any]:
         return {"kho": self.kho, "vung": [v.to_dict() for v in self.vung],
                 "o": [x.to_dict() for x in self.o], "day": self.day, "nhan": self.nhan,
+                "hop_sheet": [h.to_dict() for h in self.hop_sheet],
                 "tieu_chi": self.tieu_chi, "canh_bao": list(self.canh_bao),
-                "so_lan_noi": self.so_lan_noi}
+                "so_lan_noi": self.so_lan_noi, "path": self.path}
 
 
 # =========================================================================== xếp vùng
@@ -227,6 +257,17 @@ def _mot_lan(cay: Any, phang: dict[str, list[str]], *, kho: str, no: float) -> B
         x = vung.x + vung.rong + CACH_NHAU
         cot_truoc += 1
 
+    _net_thanh_day_hoac_nhan(bc, phang)
+    return bc
+
+
+def _net_thanh_day_hoac_nhan(bc: BoCuc, phang: dict[str, list[str]]) -> None:
+    """Net nào thành DÂY, net nào thành NHÃN — một hàm, hai chỗ gọi (trang phẳng và sheet).
+
+    Bản đầu chỉ trang phẳng có bước này; bố cục theo sheet bỏ qua nó, nên **mọi** net trên mọi
+    sheet thành nhãn và tỉ lệ nhãn của sheet nào cũng là 100 %. Một con số luôn bằng nhau ở mọi
+    đầu vào là một con số không đo gì.
+    """
     # Nhãn net: mọi net chạm ≥ 2 vùng khác nhau, hoặc net nguồn/đất. Dây chỉ dùng cho net
     # nằm TRỌN trong một vùng và hai chân thẳng hàng — xem ghi chú đầu tệp.
     theo_ref = {z.ref: z for z in bc.o}
@@ -256,6 +297,123 @@ def _mot_lan(cay: Any, phang: dict[str, list[str]], *, kho: str, no: float) -> B
     return bc
 
 
+# =================================================================== bố cục TỪNG SHEET §7
+RONG_HOP_SHEET = 38.1           # bằng `phan_cap.RONG_SHEET` — bố cục quyết, bên ghi ghi theo
+CAO_MOI_PIN_SHEET = 2.54
+CAO_HOP_SHEET_TOI_THIEU = 20.32
+MANG_NHAN = 25.4                # dải bên trái chừa cho nhãn phân cấp của Port
+CACH_SHEET_NGANG = 12.7         # khoảng trống giữa hai hộp sheet
+
+
+def tinh_bo_cuc_theo_sheet(cay: Any, phang: dict[str, list[str]], *,
+                           kho: str = "A4") -> dict[str, BoCuc]:
+    """Một bố cục cho MỖI sheet: `{path: BoCuc}`. Tiêu chí đo trên **từng trang**.
+
+    SCH07 đòi "mỗi sheet đạt tiêu chí", và đó là một đòi hỏi khác hẳn "cả mạch đạt tiêu chí":
+    một mạch 120 linh kiện chia 8 khối có thể đạt trên tổng thể mà vẫn có một sheet tràn trang.
+    Đo trên tổng thể rồi kết luận cho từng sheet là đúng loại phép đo nói nhiều hơn nó biết.
+    """
+    ra: dict[str, BoCuc] = {}
+    for nid, n in sorted(cay.nut.items()):
+        la_goc = nid == cay.goc
+        if not la_goc and (n.get("kind") or "") not in ("block", "subblock"):
+            continue
+        path = n.get("path") or nid
+        bc = _sheet_dat_tieu_chi(cay, phang, nid, kho=kho)
+        bc.path = path
+        ra[path] = bc
+    return ra
+
+
+def _sheet_dat_tieu_chi(cay: Any, phang: dict[str, list[str]], nid: str, *,
+                        kho: str) -> BoCuc:
+    """Thử khổ giấy, chật thì lên A3 — cùng bậc thang với `tinh_bo_cuc`, riêng cho một sheet."""
+    for k in ([kho] if kho != "A4" else ["A4", "A3"]):
+        bc = _bo_cuc_mot_sheet(cay, phang, nid, kho=k)
+        bc.tieu_chi = kiem_tieu_chi(bc, _phang_cua_sheet(cay, phang, nid), la_sheet=True)
+        if bc.tieu_chi["dat"]:
+            return bc
+    bc.canh_bao.append(
+        f"Sheet {cay.nut[nid].get('path') or nid} chưa đạt tiêu chí ngay trên khổ {bc.kho}: "
+        + "; ".join(bc.tieu_chi["vi_pham"][:3])
+        + ". Khối này nên được chia nhỏ thành khối con.")
+    return bc
+
+
+def _phang_cua_sheet(cay: Any, phang: dict[str, list[str]],
+                     nid: str) -> dict[str, list[str]]:
+    """Net *của sheet này*: net chạm ít nhất một lá của riêng khối này, chỉ giữ chân trong sheet.
+
+    Lấy cả netlist phẳng để tính tỉ lệ nhãn của một sheet sẽ ra một con số vô nghĩa — mẫu số là
+    net của cả mạch, tử số là nhãn của một trang.
+    """
+    ref_o_day = {(cay.nut[x]["canonical"].get("ref") or cay.nut[x]["ten"])
+                 for x in cay.con_truc_tiep(nid) if cay.nut[x].get("kind") == "leaf"}
+    ra: dict[str, list[str]] = {}
+    for ten, chan in phang.items():
+        trong = [c for c in chan if c.split(".", 1)[0] in ref_o_day]
+        if trong:
+            ra[ten] = trong
+    return ra
+
+
+def _bo_cuc_mot_sheet(cay: Any, phang: dict[str, list[str]], nid: str, *,
+                      kho: str) -> BoCuc:
+    """Một trang: nhãn Port bên trái · lá của riêng khối này · hộp sheet cho khối con."""
+    bc = BoCuc(kho=kho, path=cay.nut[nid].get("path") or nid)
+    rong_giay, cao_giay = KHO_GIAY.get(kho, KHO_GIAY["A4"])
+    cao_dung = cao_giay - 2 * LE
+
+    # 1) Nhãn phân cấp cho Port của chính khối này (sheet gốc không có Port).
+    y = LE
+    for pid in sorted(cay.port_cua.get(nid, [])):
+        p = cay.port[pid]
+        bc.nhan.append({"net": p["ten"], "ref": "", "chan": "", "port": p["ten"],
+                        "huong": p["huong"], "x": tron(LE), "y": tron(y)})
+        y += CACH_NHAN
+
+    # 2) Lá của riêng khối này, xếp cột và cuộn theo chiều cao trang.
+    o = _o_trong_vung(cay, nid)
+    x = tron(LE + MANG_NHAN)
+    if o:
+        cao_tb = max(z.cao for z in o) + CACH_NHAU
+        moi_cot = max(1, int(cao_dung // cao_tb))
+        rong_cot = max(z.rong for z in o) + CACH_NHAU
+        so_cot = (len(o) + moi_cot - 1) // moi_cot
+        for i, z in enumerate(o):
+            cot, hang = divmod(i, moi_cot)
+            z.x = tron(x + cot * rong_cot)
+            z.y = tron(LE + hang * cao_tb)
+            bc.o.append(z)
+        bc.vung.append(Vung(khoi=nid, ten=cay.nut[nid]["ten"], x=x, y=tron(LE),
+                            rong=tron(so_cot * rong_cot),
+                            cao=tron(min(cao_dung, min(len(o), moi_cot) * cao_tb))))
+        x = tron(x + so_cot * rong_cot + CACH_NHAU)
+
+    # 3) Hộp sheet cho khối con — cũng cuộn cột, vì một bo 12 khối không xếp hết một hàng.
+    con = sorted(cay.khoi_con(nid))
+    if con:
+        hop = []
+        for c in con:
+            ports = [cay.port[p]["ten"] for p in sorted(cay.port_cua.get(c, []))]
+            hop.append((c, ports, max(CAO_HOP_SHEET_TOI_THIEU,
+                                      CAO_MOI_PIN_SHEET * (len(ports) + 2))))
+        cao_tb = max(h[2] for h in hop) + CACH_NHAU
+        moi_cot = max(1, int(cao_dung // cao_tb))
+        rong_cot = RONG_HOP_SHEET + CACH_SHEET_NGANG
+        for i, (c, ports, cao) in enumerate(hop):
+            cot, hang = divmod(i, moi_cot)
+            bc.hop_sheet.append(HopSheet(
+                path=cay.nut[c].get("path") or c, ten=cay.nut[c]["ten"],
+                x=tron(x + cot * rong_cot), y=tron(LE + hang * cao_tb),
+                rong=RONG_HOP_SHEET, cao=tron(cao), port=ports))
+
+    # Net của riêng trang này: nối được thì thành dây, còn lại thành nhãn — cùng hàm với
+    # bố cục phẳng dùng.
+    _net_thanh_day_hoac_nhan(bc, _phang_cua_sheet(cay, phang, nid))
+    return bc
+
+
 def _thang_hang(chan: list[str], theo_ref: dict[str, O]) -> bool:
     a, b = chan
     za, zb = theo_ref.get(a.split(".", 1)[0]), theo_ref.get(b.split(".", 1)[0])
@@ -265,7 +423,8 @@ def _thang_hang(chan: list[str], theo_ref: dict[str, O]) -> bool:
 
 
 # =========================================================================== tiêu chí §4
-def kiem_tieu_chi(bc: BoCuc, phang: dict[str, list[str]]) -> dict[str, Any]:
+def kiem_tieu_chi(bc: BoCuc, phang: dict[str, list[str]], *,
+                  la_sheet: bool = False) -> dict[str, Any]:
     """Sáu tiêu chí của §4, đo bằng SỐ. Trả `{dat, vi_pham, so_liệu}`.
 
     Không có tiêu chí nào ở đây là "đẹp". Mỗi cái đo một thứ làm người đọc sai: hai ký hiệu
@@ -274,7 +433,9 @@ def kiem_tieu_chi(bc: BoCuc, phang: dict[str, list[str]]) -> dict[str, Any]:
     """
     vi_pham: list[str] = []
 
-    chong = _dem_chong(bc.o)
+    # Hộp sheet con tham gia phép đếm chồng như một ký hiệu — xem docstring `HopSheet`.
+    chong = _dem_chong(list(bc.o) + [O(ref=f"sheet:{h.path}", x=h.x, y=h.y, rong=h.rong,
+                                       cao=h.cao) for h in bc.hop_sheet])
     if chong:
         vi_pham.append(f"{len(chong)} cặp ký hiệu chồng nhau: "
                        + "; ".join(f"{a}–{b}" for a, b in chong[:4]))
@@ -288,19 +449,33 @@ def kiem_tieu_chi(bc: BoCuc, phang: dict[str, list[str]]) -> dict[str, Any]:
         vi_pham.append(f"{len(cheo)} dây gấp quá 3 đoạn")
 
     tong_net = len(phang) or 1
-    net_dung_nhan = len({n["net"] for n in bc.nhan})
+    net_dung_nhan = len({n["net"] for n in bc.nhan if n.get("ref")})
     ty = net_dung_nhan / tong_net
+    canh_bao_nhan = ""
     if ty > NGUONG_NHAN:
-        vi_pham.append(f"{ty:.0%} net dùng nhãn (> {NGUONG_NHAN:.0%}) — mạch khó đọc, nên "
-                       "chuyển sang sheet phân cấp")
+        cau = (f"{ty:.0%} net dùng nhãn (> {NGUONG_NHAN:.0%}) — mạch khó đọc, nên "
+               "chuyển sang sheet phân cấp")
+        if la_sheet:
+            # §4 viết hậu quả của ngưỡng này là *"cảnh báo 'mạch khó đọc', đề nghị
+            # style=hierarchical"*. Trên một sheet ĐÃ phân cấp, lời đề nghị đó đã được nhận —
+            # và net rời khỏi sheet thì dùng nhãn phân cấp là ĐÚNG THIẾT KẾ, không phải một
+            # khuyết điểm. Để nó trong `vi_pham` thì mọi sheet đều "chưa đạt" vĩnh viễn, tức
+            # tiêu chí không còn phân biệt được sheet tốt với sheet tràn trang.
+            canh_bao_nhan = (f"{ty:.0%} net trên trang này dùng nhãn — trong sheet phân cấp, "
+                             "net đi ra ngoài khối dùng nhãn phân cấp là đúng cách, nên con "
+                             "số này không phải một khuyết điểm của trang.")
+        else:
+            vi_pham.append(cau)
 
     rong_giay, cao_giay = KHO_GIAY.get(bc.kho, KHO_GIAY["A4"])
-    trong_giay = all(z.x + z.rong <= rong_giay - LE and z.y + z.cao <= cao_giay - LE
-                     for z in bc.o)
-    if not trong_giay:
-        ra = [z.ref for z in bc.o
-              if z.x + z.rong > rong_giay - LE or z.y + z.cao > cao_giay - LE]
-        vi_pham.append(f"{len(ra)} ký hiệu tràn khỏi khổ {bc.kho}: " + ", ".join(ra[:4]))
+    vat = ([(z.ref, z.x, z.y, z.rong, z.cao) for z in bc.o]
+           + [(f"sheet:{h.path}", h.x, h.y, h.rong, h.cao) for h in bc.hop_sheet])
+    ra = [t for t, zx, zy, zr, zc in vat
+          if zx + zr > rong_giay - LE or zy + zc > cao_giay - LE]
+    trong_giay = not ra
+    if ra:
+        vi_pham.append(f"{len(ra)} ký hiệu/hộp sheet tràn khỏi khổ {bc.kho}: "
+                       + ", ".join(ra[:4]))
 
     lech_luoi = [z.ref for z in bc.o
                  if abs(z.x / LUOI - round(z.x / LUOI)) > 1e-6
@@ -310,7 +485,10 @@ def kiem_tieu_chi(bc: BoCuc, phang: dict[str, list[str]]) -> dict[str, Any]:
                        + ", ".join(lech_luoi[:4]))
 
     return {"dat": not vi_pham, "vi_pham": vi_pham,
+            "canh_bao": ([canh_bao_nhan] if canh_bao_nhan else []),
+            "la_sheet": la_sheet,
             "so_ky_hieu": len(bc.o), "so_vung": len(bc.vung),
+            "so_hop_sheet": len(bc.hop_sheet),
             "so_day": len(bc.day), "so_nhan": len(bc.nhan),
             "ty_le_net_dung_nhan": round(ty, 3),
             "cap_chong_nhau": len(chong), "day_cat_than": len(cat),

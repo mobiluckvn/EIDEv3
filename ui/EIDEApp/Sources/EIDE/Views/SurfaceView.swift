@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 /// Bề mặt (tab). Bộ render CHUNG: nó vẽ theo `type` của khối, không theo tên tab.
 ///
@@ -139,6 +140,7 @@ struct BlockView: View {
         case "empty":    KhoiRong(block: block)
         case "kv":       KhoiKV(block: block)
         case "table":    KhoiBang(block: block)
+        case "svg":      KhoiSoDo(block: block)
         case "cay":      KhoiCay(block: block)
         case "timeline": KhoiDongThoiGian(block: block)
         case "changesets": KhoiChangeset(block: block)
@@ -158,6 +160,9 @@ struct BlockView: View {
             Label("Giao diện chưa biết vẽ khối loại “\(block.type)”.",
                   systemImage: "questionmark.square.dashed")
                 .font(.system(size: 11)).foregroundStyle(Color.staleAmber)
+                // Tự khai ra, để bộ đo hỏi được ĐÚNG chỗ hỏng thay vì hỏi một danh sách
+                // loại khối viết ở phía Python.
+                .onAppear { state.khoiChuaBietVe.insert(block.type) }
         }
     }
 }
@@ -280,7 +285,8 @@ struct KhoiBang: View {
                 if let truong = cotSua[cot] {
                     OSuaDuoc(ma: ma, truong: truong, gia: cell.display,
                              phienBan: m?["phien_ban"]?.intValue ?? 1,
-                             khoi: block.code)
+                             khoi: block.code,
+                             loai: block.str("loai_sua") ?? "req")
                         .frame(width: 170, alignment: .leading)
                         .padding(.vertical, 4).padding(.horizontal, 6)
                 } else {
@@ -344,6 +350,11 @@ struct OSuaDuoc: View {
     let gia: String
     let phienBan: Int
     let khoi: String
+    /// Loại đối tượng đang sửa (`req` mặc định, `symbol` cho bảng ký hiệu A5.8c).
+    ///
+    /// Bản đầu đóng cứng `"req"`, nên bảng nào dùng ô sửa cũng gửi một thao tác sửa YÊU CẦU —
+    /// lõi nhận `req:U1` và không tìm thấy hiện vật nào tên thế.
+    var loai: String = "req"
 
     @State private var dangSua = false
     @State private var moi = ""
@@ -386,7 +397,7 @@ struct OSuaDuoc: View {
     private func luu() {
         state.gui(HumanAct(
             kind: .edit,
-            target: .init(type: "req", id: ma),
+            target: .init(type: loai, id: ma),
             data: [
                 "base_version": .string("v\(phienBan)"),
                 "fields": .object([truong: .string(moi)]),
@@ -1087,5 +1098,140 @@ struct KhoiCay: View {
         .padding(7)
         .background(Color(nsColor: .underPageBackgroundColor),
                     in: RoundedRectangle(cornerRadius: 5))
+    }
+}
+
+// MARK: - A5.8 · Sơ đồ nguyên lý (SCH-44 §6, §9)
+
+/// Ảnh sơ đồ do renderer nội bộ của EIDE vẽ, **bấm được**.
+///
+/// Ba điều khối này cố ý làm theo đúng tài liệu:
+///
+///   1. *Ảnh do lõi vẽ, không phải do Swift vẽ.* §6 mức R1 nói renderer nội bộ là đường
+///      chính; Swift chỉ hiển thị tệp SVG đó. Nên hình trên máy người dùng giống hệt hình
+///      trong ảnh chụp của bộ đo — không có nhánh vẽ thứ hai để lệch.
+///   2. *Bấm ký hiệu → panel Fact; bấm net → tô sáng + ERC* (SCH-06/07). Cả hai đi qua
+///      HumanAct tới lõi, vì câu trả lời nằm ở kho chứ không ở đây.
+///   3. *Nhiều trang thì có thanh chọn trang.* Sheet gốc của một mạch phân cấp chỉ có hộp
+///      sheet, nên một khối chỉ hiện được trang gốc sẽ trông như render hỏng.
+struct KhoiSoDo: View {
+    @EnvironmentObject var state: AppState
+    let block: SurfaceBlock
+    @State private var trang = 0
+
+    private var tep: [String] { block.arr("tep").compactMap(\.stringValue) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if tep.count > 1 {
+                Picker("", selection: $trang) {
+                    ForEach(Array(tep.enumerated()), id: \.offset) { i, t in
+                        Text(tenNgan(t)).tag(i)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .font(.system(size: 10))
+            }
+            if let url = duongDan {
+                AnhSVG(url: url, onBam: bam)
+                    .frame(minHeight: 280, maxHeight: 620)
+                    .background(Color(nsColor: .textBackgroundColor),
+                                in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.secondary.opacity(0.25)))
+                Text("Bấm một ký hiệu để xem Fact và nguồn của nó; bấm một net để tô sáng "
+                     + "cả net kèm kết quả ERC.")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+            } else {
+                Label("Không mở được tệp ảnh \(tep.first ?? "—") trong thư mục dự án.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 11)).foregroundStyle(Color.staleAmber)
+            }
+        }
+    }
+
+    private var duongDan: URL? {
+        guard let goc = state.duAnDir, trang < tep.count else { return nil }
+        let u = goc.appendingPathComponent(tep[trang])
+        return FileManager.default.fileExists(atPath: u.path) ? u : nil
+    }
+
+    private func tenNgan(_ t: String) -> String {
+        (t as NSString).lastPathComponent.replacingOccurrences(of: ".svg", with: "")
+    }
+
+    /// Bấm vào một ký hiệu hay một net → hỏi lõi. Câu hỏi do LÕI soạn (`bam_ky_hieu`,
+    /// `bam_net` trong khối), nên nội dung câu hỏi không nằm rải trong mã Swift.
+    private func bam(_ loai: String, _ gia: String) {
+        let mau = block.str(loai == "net" ? "bam_net" : "bam_ky_hieu")
+            ?? (loai == "net" ? "Tô sáng net {net}" : "Cho tôi xem Fact của {ref}")
+        let text = mau
+            .replacingOccurrences(of: "{ref}", with: gia)
+            .replacingOccurrences(of: "{net}", with: gia)
+        state.gui(HumanAct(kind: .say, text: text,
+                           origin: .init(surface: "design", block: block.code, row: gia)))
+    }
+}
+
+/// `WKWebView` hiển thị một tệp SVG và báo về khi người bấm vào phần tử có `data-ref`/`data-net`.
+///
+/// Vì sao WebKit chứ không phải `NSImage`: `NSImage` vẽ được SVG nhưng không cho biết người
+/// bấm vào ĐÂU, và "bấm ký hiệu → Fact" là chính nội dung của SCH-07. Trang chạy từ tệp cục
+/// bộ, không có mạng, không có script nào ngoài đoạn gắn sự kiện dưới đây.
+struct AnhSVG: NSViewRepresentable {
+    let url: URL
+    let onBam: (String, String) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onBam: onBam) }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let cfg = WKWebViewConfiguration()
+        let js = WKUserScript(source: Self.gan, injectionTime: .atDocumentEnd,
+                              forMainFrameOnly: true)
+        cfg.userContentController.addUserScript(js)
+        cfg.userContentController.add(context.coordinator, name: "eide")
+        let w = WKWebView(frame: .zero, configuration: cfg)
+        w.setValue(false, forKey: "drawsBackground")
+        nap(w)
+        return w
+    }
+
+    func updateNSView(_ w: WKWebView, context: Context) {
+        if context.coordinator.dangHien != url { nap(w) }
+        context.coordinator.dangHien = url
+    }
+
+    private func nap(_ w: WKWebView) {
+        w.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+    }
+
+    /// Gắn một trình xử lý bấm duy nhất ở gốc và đi lên tìm `data-ref`/`data-net`.
+    private static let gan = """
+    document.addEventListener('click', function (e) {
+      var n = e.target;
+      while (n && n !== document) {
+        var r = n.getAttribute && n.getAttribute('data-ref');
+        var t = n.getAttribute && n.getAttribute('data-net');
+        if (r) { window.webkit.messageHandlers.eide.postMessage({loai: 'ref', gia: r}); return; }
+        if (t) { window.webkit.messageHandlers.eide.postMessage({loai: 'net', gia: t}); return; }
+        n = n.parentNode;
+      }
+    }, true);
+    document.documentElement.style.cursor = 'pointer';
+    """
+
+    final class Coordinator: NSObject, WKScriptMessageHandler {
+        let onBam: (String, String) -> Void
+        var dangHien: URL?
+        init(onBam: @escaping (String, String) -> Void) { self.onBam = onBam }
+
+        func userContentController(_ c: WKUserContentController,
+                                   didReceive m: WKScriptMessage) {
+            guard let d = m.body as? [String: Any],
+                  let loai = d["loai"] as? String, let gia = d["gia"] as? String,
+                  !gia.isEmpty else { return }
+            onBam(loai, gia)
+        }
     }
 }

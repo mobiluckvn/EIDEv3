@@ -186,11 +186,12 @@ def test_ghi_lai_cung_canh_khong_nhan_doi(kho):
 def test_luoc_do_v2_go_duoc_va_khong_cham_bang_cu(kho):
     """SCH-18: migration cộng thêm phải có đường lui, và lui không được xoá dữ liệu cũ."""
     kho.ckm_dat_nut(node_id="pin:X.1", loai="pin", ten="1", canonical={})
-    assert kho.ha_cap(1) == [3, 2], "hạ tới v1 phải gỡ cả cây (v3) rồi tới CKM (v2)"
+    assert kho.ha_cap(1) == [4, 3, 2], ("hạ tới v1 phải gỡ từ bậc cao xuống: sổ sheet (v4), "
+                                       "cây (v3), rồi CKM (v2)")
     assert kho.query_facts(limit=5), "hạ CKM không được chạm bảng facts"
     with pytest.raises(sqlite3.OperationalError):
         kho.ckm_cac_nut()
-    assert kho.nang_cap() == [2, 3]
+    assert kho.nang_cap() == [2, 3, 4]
     assert kho.ckm_cac_nut() == [], "lên lại thì bảng rỗng, không phải dữ liệu cũ"
 
 

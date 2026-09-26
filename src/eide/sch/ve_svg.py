@@ -44,6 +44,7 @@ class KetQuaVe:
     so_day: int = 0
     so_sheet: int = 0
     ref_trong_svg: list[str] = field(default_factory=list)
+    net_trong_svg: list[str] = field(default_factory=list)
     sheet_con: list[str] = field(default_factory=list)
     chu_de_nhau: list[str] = field(default_factory=list)
     canh_bao: list[str] = field(default_factory=list)
@@ -53,6 +54,7 @@ class KetQuaVe:
                 "so_day": self.so_day, "so_sheet": self.so_sheet,
                 "sheet_con": list(self.sheet_con),
                 "ref_trong_svg": list(self.ref_trong_svg),
+                "net_trong_svg": sorted(set(self.net_trong_svg)),
                 "chu_de_nhau": list(self.chu_de_nhau), "canh_bao": list(self.canh_bao),
                 "byte_svg": len(self.svg.encode("utf-8"))}
 
@@ -152,6 +154,9 @@ def ve(noi_dung_sch: str, *, hop: dict[str, tuple[float, float]] | None = None) 
 
     chu: list[tuple[float, float, float, float, str]] = []      # bbox chữ để kiểm đè
 
+    # Dây trong `.kicad_sch` KHÔNG mang tên net — tên net là kết quả của liên thông, KiCad tự
+    # tính khi mở. Nên dây không có `data-net`, và chỗ bấm được để chọn một net là NHÃN của nó.
+    # Nói ra ở đây để lần sau không ai đi tìm một thuộc tính mà tệp không có.
     for s in sorted(d["day"], key=lambda z: (z["tu"], z["den"])):
         x1, y1 = [v * PX_MOI_MM for v in s["tu"]]
         x2, y2 = [v * PX_MOI_MM for v in s["den"]]
@@ -202,12 +207,18 @@ def ve(noi_dung_sch: str, *, hop: dict[str, tuple[float, float]] | None = None) 
         kq.so_sheet += 1
         kq.sheet_con.append(sh["ten"])
 
+    # `data-net` trên nhãn: SCH-07 đòi "bấm net → tô sáng toàn net + kết quả ERC liên quan",
+    # và nhãn là chỗ tên net xuất hiện trên hình. Không có thuộc tính này thì cả nửa sau của
+    # câu tương tác đó không thực hiện được — giao diện không biết người vừa bấm vào net nào.
     for n in sorted(d["nhan"], key=lambda z: (z["text"], z["x"], z["y"])):
         x, y = n["x"] * PX_MOI_MM, n["y"] * PX_MOI_MM
+        L.append(f'<g data-net="{html.escape(n["text"])}">')
         L.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="1.6" fill="#1f6f3f" stroke="none"/>')
         L.append(_chu(x + 4, y + 3, n["text"], mau="#1f6f3f"))
+        L.append("</g>")
         chu.append((*_bbox(n["text"], x + 4, y + 3), n["text"]))
         kq.so_nhan += 1
+        kq.net_trong_svg.append(n["text"])
 
     L += ["</g>", "</svg>", ""]
     kq.svg = "\n".join(L)

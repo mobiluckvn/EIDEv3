@@ -19,6 +19,11 @@ render SVG kiểm chữ không đè · tác tử thật sinh sơ đồ qua hội
 Unhappy (bảy đường): mô hình bịa net trong tệp · tệp lỗi cú pháp · thiếu pinout · cây vi phạm
 bất biến · chưa đủ tiền đề · gọi sch.netlist trước sch.compose · đề nghị cài KiCad.
 
+SCH-D thêm: bố cục đo trên TỪNG sheet và đề nghị phân cấp khi mạch lớn (SCH07) · sổ đăng ký
+sheet + gói sơ đồ vào bản ưng ý, khôi phục đưa tệp về (SCH-16) · ký hiệu sinh từ Fact CHỜ người
+xác nhận, người sửa kiểu chân thành Fact tầng NGƯỜI (SCH-14/15) · khối A5.8 trên tab Thiết kế
+với ảnh bấm được, băng chất lượng từng trang, bảng ký hiệu sửa được (SCH-06/07).
+
 HIER-D/SCH-C thêm: sheet phân cấp — mỗi khối một tệp, sheet pin = Port, đọc lại dựng ĐÚNG cây
 (HIER13) · cây sâu > 4 cấp TỰ chuyển sang phân cấp (HIER11) · xuất gói mở được ở máy có KiCad
 (SCH11) · nạp lại sơ đồ người sửa, phân loại ba loại thay đổi, cấu trúc thì HỎI (SCH10, 12, 13).
@@ -100,8 +105,16 @@ def _ctx(du_an):
 def chay(du_an: pathlib.Path) -> int:
     b = Bo()
     g = GiaoDien(du_an)
-    print("Mở app…")
-    subprocess.run(["open", str(REPO / "ui/EIDEApp/EIDE.app")], check=True)
+    # Chạy THẲNG tệp thực thi trong bundle, không qua `open`, để truyền được biến môi trường.
+    #
+    # `open` không mang biến môi trường của shell sang app, nên lõi mà app sinh ra sẽ đọc
+    # `Features.load()` với cờ TẮT và `sch.*` không được đăng ký — phần đo giao diện của bộ này
+    # sẽ đỏ vì một lý do không phải lỗi sản phẩm. Cách khác là ghi vào
+    # `~/.eide/settings.json`, tức sửa tệp thiết lập của người dùng để chạy một bộ đo: không.
+    print("Mở app (cờ schematic BẬT qua biến môi trường)…")
+    subprocess.Popen([str(REPO / "ui/EIDEApp/EIDE.app/Contents/MacOS/EIDE")],
+                     env={**os.environ, "EIDE_FEATURE_SCHEMATIC": "1"},
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     g.san_sang(60)
     print(f"{XANH}Kênh kiểm thử giao diện đã mở{HET}\n")
 
@@ -338,7 +351,104 @@ def chay(du_an: pathlib.Path) -> int:
            "bản đồ giữ nguyên")
     p_mcu.write_text(txt, "utf-8")
 
-    b.phan("H · TÁC TỬ THẬT SINH SƠ ĐỒ QUA HỘI THOẠI")
+    b.phan("H · BỐ CỤC TỪNG SHEET, SỔ SHEET, BẢN ƯNG Ý (SCH07, SCH-16)")
+    r = goi("sch.place")
+    b.kiem("Bố cục đo tiêu chí trên TỪNG trang, không chỉ trên tổng thể (SCH07)",
+           r.ok and r.data["so_sheet"] >= 3
+           and sum(t["so_ky_hieu"] for t in r.data["tieu_chi_sheet"].values())
+               == r.data["so_ky_hieu"],
+           f"{r.data['so_sheet']} trang · chưa đạt: {r.data['sheet_chua_dat']}"
+           if r.ok else str(r.error.message_vi)[:150])
+    b.kiem("Lý do đề nghị/không đề nghị phân cấp đều là SỐ đo được",
+           r.ok and isinstance(r.data["de_nghi_phan_cap"]["nen_phan_cap"], bool)
+           and r.data["de_nghi_phan_cap"]["vi"],
+           r.data["de_nghi_phan_cap"]["vi"][:160] if r.ok else "")
+
+    r = goi("sch.write", style="hierarchical")
+    ds_sheet = ctx.store.sch_cac_sheet()
+    b.kiem("Mỗi sheet một dòng trong sổ đăng ký, kèm băm bố cục và phiên bản thư viện",
+           r.ok and len(ds_sheet) == r.data["so_sheet_ghi_so"]
+           and all(x["layout_hash"] and x["lib_versions"] for x in ds_sheet),
+           f"{len(ds_sheet)} dòng · {ds_sheet[0]['layout_hash'][:12]}…" if ds_sheet else "")
+
+    goi("sch.render")
+    snap = ctx.history.tao_snapshot(ten="co-so-do", ghi_chu="thử SCH-16", boi="human")
+    sd = snap.contents["so_do"]
+    b.kiem("Bản ưng ý gói cả NỘI DUNG tệp sơ đồ, không chỉ tên tệp (SCH-16)",
+           sd["so_sheet"] >= 3 and all(x["co_tep"] and x["blob"] for x in sd["sheet"])
+           and any(k["tep"].endswith(".kicad_sym") for k in sd["kem"]),
+           f"{sd['so_sheet']} sheet + {len(sd['kem'])} tệp kèm · lib {sd['lib_versions']}")
+
+    p_mot = du_an / sd["sheet"][0]["tep"]
+    that = p_mot.read_text("utf-8")
+    p_mot.write_text("(kicad_sch HỎNG)\n", "utf-8")
+    kq = ctx.history.khoi_phuc_snapshot(snap.id, by="human")
+    b.kiem("Khôi phục bản ưng ý đưa tệp sơ đồ về đúng nội dung lúc đó",
+           kq.ok and p_mot.read_text("utf-8") == that
+           and "tệp sơ đồ về đúng nội dung" in kq.message_vi,
+           kq.message_vi[:170])
+
+    b.phan("I · KÝ HIỆU CHỜ NGƯỜI XÁC NHẬN (SCH-14, SCH-15)")
+    r = goi("sch.symbols")
+    b.kiem("Ký hiệu sinh từ Fact thì CHỜ người xem, và công cụ nói ra",
+           r.ok and r.data["cho_xac_nhan"] and "CHỜ người xác nhận" in r.data["note_vi"],
+           str(r.data.get("cho_xac_nhan"))[:120] if r.ok else "")
+    r = goi("sch.write", style="hierarchical")
+    b.kiem("Ghi tệp vẫn nói rõ còn ký hiệu chưa ai xác nhận (N6 áp vào kiểu chân)",
+           r.ok and r.data["cho_xac_nhan_ky_hieu"] and "chưa ai xác nhận" in r.data["note_vi"],
+           r.data["note_vi"][:150] if r.ok else "")
+    r = goi("sch.symbol_confirm", ref="U1", trich_loi="")
+    b.kiem("Tác tử KHÔNG xác nhận hộ người dùng được",
+           not r.ok and r.error.code == "E8009"
+           and "Đừng tự xác nhận hộ" in r.error.hint_for_agent,
+           (r.error.message_vi if not r.ok else "lại ghi!")[:150])
+
+    # Người bấm sửa kiểu chân TRÊN GIAO DIỆN — đi qua cùng công cụ đó.
+    g.mo_tab("design")
+    g.sua("symbol", "U1", {"chan": "7=power_in"}, "v1",
+          "tôi tra datasheet rồi, chân 7 là VCC nên phải là power_in")
+    g.doi_xong(240)
+    f = [x for x in ctx.store.query_facts(subject="pin:ATmega328P.7", limit=10)
+         if x["key"] == "kieu_chan"]
+    b.kiem("Người sửa kiểu chân trên giao diện → Fact tầng NGƯỜI có trích lời",
+           bool(f) and f[0]["tier"] == "NGUOI" and f[0]["value"] == "power_in",
+           str(f[0])[:170] if f else "không có Fact nào")
+
+    b.phan("Đ2 · KHỐI A5.8 TRÊN TAB THIẾT KẾ (SCH-06, SCH-07)")
+    goi("sch.render")
+    g.ve_lai()                      # bộ đo ghi thẳng vào kho ⇒ phải xin app vẽ lại (0 token)
+    g.mo_tab("design")
+    a5 = {k["code"]: k for k in g.chup("a58")["khoi_tren_tab"]}
+    b.kiem("Có khối ảnh sơ đồ, nhiều trang, ký hiệu bấm được",
+           a5.get("A5.8", {}).get("type") == "svg"
+           and a5["A5.8"]["so_trang_svg"] >= 3 and a5["A5.8"]["so_ref_bam_duoc"] >= 1,
+           str({k: v for k, v in a5.get("A5.8", {}).items()
+                if k in ("type", "so_trang_svg", "so_ref_bam_duoc")}))
+    b.kiem("Khối ảnh mang đủ sáu trường giải thích (N8)",
+           a5.get("A5.8", {}).get("explain_du_6_truong") is True,
+           f"co_explain={a5.get('A5.8', {}).get('co_explain')}")
+    b.kiem("Băng chất lượng bố cục có một dòng mỗi trang",
+           a5.get("A5.8b", {}).get("so_hang", 0) >= 4,
+           f"{a5.get('A5.8b', {}).get('so_hang')} dòng")
+    b.kiem("Bảng ký hiệu sửa được, và ô sửa nhắm vào KÝ HIỆU chứ không phải yêu cầu",
+           a5.get("A5.8c", {}).get("cot_sua_loai") == "symbol"
+           and a5["A5.8c"]["so_hang"] >= 1,
+           str(a5.get("A5.8c", {}).get("cot_sua_loai")))
+    b.kiem("Khối mức render nói rõ máy này không cài KiCad, và không đề nghị cài",
+           "KHÔNG cài KiCad" in a5.get("A5.8d", {}).get("summary", "")
+           and "hãy cài" not in a5.get("A5.8d", {}).get("summary", ""),
+           a5.get("A5.8d", {}).get("summary", "")[:130])
+    # Hỏi CHÍNH giao diện, không hỏi một danh sách loại khối viết ở đây: `ve_duoc` do nhánh
+    # "chưa biết vẽ" của bộ vẽ Swift tự ghi vào khi nó chạy. Bản trước so với một danh sách
+    # trong bộ đo, tức chỉ kiểm rằng BỘ ĐO biết loại khối đó.
+    kh_all = g.chup("loai-khoi")["khoi_tren_tab"]
+    b.kiem("Giao diện vẽ được MỌI khối — chính bộ vẽ Swift khai, không phải bộ đo đoán",
+           all(k.get("ve_duoc") is True for k in kh_all),
+           "; ".join(f"{k['code']}:{k['type']}" for k in kh_all if not k.get("ve_duoc"))
+           or f"{len(kh_all)} khối, loại: "
+              + ", ".join(sorted({k["type"] for k in kh_all})))
+
+    b.phan("K · TÁC TỬ THẬT SINH SƠ ĐỒ QUA HỘI THOẠI")
     g.go("Mình muốn có sơ đồ nguyên lý của mạch này. Sinh giúp mình, rồi nói rõ đã kiểm "
          "được những gì và chưa kiểm được gì.")
     a = g.doi_xong(420)
@@ -352,7 +462,7 @@ def chay(du_an: pathlib.Path) -> int:
            loi[:200])
 
     # ================================================================== UNHAPPY
-    b.phan("I · MƯỜI ĐƯỜNG HỎNG")
+    b.phan("L · MƯỜI ĐƯỜNG HỎNG")
 
     b.buoc("1. Mô hình BỊA một net trong tệp SKiDL (SCH14)")
     goc = p_py.read_text("utf-8")

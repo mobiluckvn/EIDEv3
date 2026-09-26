@@ -110,6 +110,11 @@ final class UITestChannel {
                                   note: v["note"]?.stringValue))
                     ghi(["su_kien": "quyet_cong", "gate_id": gid, "duyet": duyet ? "có" : "không"])
                 }
+            case "sync":
+                Task { @MainActor in
+                    await s.veLai()
+                    self.ghi(["su_kien": "da_sync"])
+                }
             case "cho":
                 ghi(["su_kien": "cho", "dang_chay": s.busy ? "có" : "không"])
             default:
@@ -184,6 +189,12 @@ final class UITestChannel {
                     .compactMap { $0["duong"]?.stringValue },
                 "sau_nhat": b.arr("cay_nut").map { $0["muc"]?.intValue ?? 0 }.max() ?? 0,
                 "so_muc": b.arr("items").count,
+                // A5.8 — khối sơ đồ: phơi ra thứ người NHÌN THẤY (mấy trang, mấy ký hiệu bấm
+                // được), để ca đo hỏi được "ảnh có rỗng không" thay vì chỉ đếm khối.
+                "so_trang_svg": b.arr("tep").count,
+                "so_ref_bam_duoc": b.arr("ref").count,
+                "cot_sua_loai": b.str("loai_sua") ?? "",
+                "ve_duoc": !(s.khoiChuaBietVe.contains(b.type)),
                 // Ô trống trung thực: ba trường này là thứ người ĐỌC khi chưa có gì.
                 // Không phơi ra thì mọi phép kiểm về ô trống đều đậu giả vì chuỗi rỗng.
                 "chua_co": b.str("chua_co") ?? "",

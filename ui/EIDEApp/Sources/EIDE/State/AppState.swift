@@ -25,6 +25,18 @@ final class AppState: ObservableObject {
     @Published var connection: Connection = .chuaKetNoi
     @Published var coreLog: [String] = []
     @Published var busy = false
+    /// Loại khối mà giao diện KHÔNG biết vẽ, do chính nhánh `default` của bộ vẽ ghi vào.
+    ///
+    /// Có nó vì một ca đo trước đây xanh nhờ một danh sách loại khối viết trong Python: nó
+    /// kiểm rằng *bộ đo* biết loại khối đó, chứ không kiểm rằng *giao diện* vẽ được. Bây giờ
+    /// chỗ báo là chỗ hỏng.
+    @Published var khoiChuaBietVe: Set<String> = []
+
+    /// Thư mục dự án đang mở — khối A5.8 cần nó để đọc tệp SVG mà lõi vừa ghi.
+    ///
+    /// Lõi gửi ĐƯỜNG DẪN chứ không gửi nội dung ảnh: một SVG mạch 120 linh kiện là hàng trăm
+    /// KB, và nhét nó vào mọi lần `surface.set` là trả giá đó ở mỗi lượt vẽ lại.
+    @Published var duAnDir: URL?
 
     private let client = CoreClient()
     private var streaming: [String: Int] = [:]   // stream_id → chỉ số dòng transcript
@@ -74,6 +86,7 @@ final class AppState: ObservableObject {
         }
 
         do {
+            duAnDir = duAn
             try client.start(.init(python: python, repoRoot: repo, projectDir: duAn))
             let hello = try await client.call("hello", ["client": .object([
                 "name": .string("EIDE.app"), "uap": .string("1.1")
@@ -85,6 +98,17 @@ final class AppState: ObservableObject {
             kenhKiemThu.batNeuCo(duAn: duAn, state: self)
         } catch {
             connection = .hong(error.localizedDescription)
+        }
+    }
+
+    /// Vẽ lại mọi tab: lời gọi MÁY–MÁY, 0 token, không để lại dòng nào trong transcript.
+    ///
+    /// Chuyển tab KHÔNG vẽ lại (đó là "sự chú ý", không phải "yêu cầu" — xem `_dieu_huong`),
+    /// nên bộ đo cần một cách xin vẽ lại sau khi kho đổi mà không phải tiêu một lượt mô hình.
+    func veLai() async {
+        do { _ = try await client.call("ui.sync") } catch {
+            notices.append(.init(level: "warn", text: "Không vẽ lại được: \(error)",
+                                 code: nil))
         }
     }
 

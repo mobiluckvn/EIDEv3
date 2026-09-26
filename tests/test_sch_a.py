@@ -1039,3 +1039,446 @@ def test_import_khong_co_tep_thi_suy_giam_R3(make_agent):
     a, goi, _ = _agent_sch(make_agent)
     r = goi("sch.import")
     assert not r.ok and "mức R3" in r.error.message_vi
+
+
+# ================================================== 17. SCH-D1 — bố cục THEO SHEET (SCH07)
+def _mach_lon(a, goi, *, so_khoi: int = 4, moi_khoi: int = 30):
+    """Mạch `so_khoi × moi_khoi` linh kiện thụ động — SCH07 nói 120."""
+    _dung_mach(a, goi)
+    for k in range(so_khoi):
+        ma = f"K{k}"
+        goi("ckm.module_set", ma=ma, ten=f"Khối {k}", muc_dich="thử mạch lớn",
+            linh_kien=[f"R{k}{i:02d}" for i in range(moi_khoi)])
+        goi("ckm.port_set", khoi=ma, ten="IN", huong="in")
+        # Port khai rồi phải NỐI: Port treo sinh net `IN_chua_noi`, và `sch.netlist` bắt đúng
+        # nó — mạch hở là mạch hở, kể cả trong một bộ đo về bố cục.
+        # Mọi điện trở phải có CHÂN trong một net, vì lá của cây sinh ra từ chân — một ref chỉ
+        # nằm trong `linh_kien` mà không có chân nào thì chưa phải một linh kiện trên mạch.
+        goi("ckm.net_set", ten=f"N{k}", loai="signal",
+            chan=[[f"R{k}{i:02d}", "1"] for i in range(moi_khoi)],
+            noi_port=[[ma, "IN"]])
+    goi("ckm.build")
+
+
+def test_SCH07_mach_120_linh_kien_de_nghi_phan_cap_va_moi_sheet_do_rieng(make_agent):
+    """SCH07 — "Mạch 120 linh kiện → đề nghị hierarchical; mỗi sheet đạt tiêu chí".
+
+    "Mỗi sheet đạt" là một đòi hỏi KHÁC "cả mạch đạt": một mạch chia khối có thể đạt trên
+    tổng thể mà vẫn có một trang tràn. Nên phép đo phải chạy trên từng trang.
+    """
+    a, goi, _ = _agent_sch(make_agent)
+    _mach_lon(a, goi)
+    goi("sch.compose")
+    goi("sch.symbols")
+    rn = goi("sch.netlist")
+    assert rn.ok, getattr(rn.error, "message_vi", "")
+    r = goi("sch.place")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["so_ky_hieu"] >= 120, r.data["so_ky_hieu"]
+    assert r.data["de_nghi_phan_cap"]["nen_phan_cap"] is True, r.data["de_nghi_phan_cap"]
+    assert "style=hierarchical" in r.data["de_nghi_phan_cap"]["vi"]
+    # Mỗi sheet có tiêu chí RIÊNG, và số của nó là số của trang đó chứ không phải của cả mạch.
+    assert r.data["so_sheet"] >= 5
+    tcs = r.data["tieu_chi_sheet"]
+    assert sum(t["so_ky_hieu"] for t in tcs.values()) == r.data["so_ky_hieu"]
+    assert r.data["sheet_chua_dat"] == [], {k: v["vi_pham"] for k, v in tcs.items()
+                                            if not v["dat"]}
+
+
+def test_ly_do_de_nghi_phan_cap_la_SO_do_duoc_khong_phai_khau_vi(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    _mach_lon(a, goi)
+    goi("sch.compose"); goi("sch.symbols"); goi("sch.netlist")
+    r = goi("sch.place")
+    ld = r.data["de_nghi_phan_cap"]["ly_do"]
+    assert ld and all(any(c.isdigit() for c in x) for x in ld), ld
+
+
+def test_mach_chat_nhung_CHUA_CHIA_KHOI_thi_noi_chia_khoi_truoc(make_agent):
+    """Đề nghị "chia sheet" cho một cây chỉ có một khối là một lời khuyên vô dụng: chia sheet
+    lấy khối làm đơn vị, nên không có khối thì không có gì để chia."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("ckm.module_set", ma="MCU", ten="Vi điều khiển", muc_dich="chạy firmware",
+        linh_kien=["U1"] + [f"R{i:02d}" for i in range(60)])
+    goi("ckm.build")
+    goi("sch.compose"); goi("sch.symbols"); goi("sch.netlist")
+    r = goi("sch.place")
+    dn = r.data["de_nghi_phan_cap"]
+    assert dn["nen_phan_cap"] is False and "chia khối trước" in dn["vi"], dn
+
+
+def test_ty_le_nhan_cua_MOT_SHEET_dem_net_cua_sheet_do(bo):
+    """Mẫu số phải là net của trang đó. Lấy net của cả mạch thì một sheet 2 net trên tổng 20
+    net luôn "rất ít nhãn" — một con số luôn đẹp là một con số không đo gì."""
+    from eide.sch import bo_cuc as BC
+
+    cay = C.Cay.doc(bo)
+    phang = C.flatten(cay)
+    sheet = BC.tinh_bo_cuc_theo_sheet(cay, phang, kho="A4")
+    rieng = BC._phang_cua_sheet(cay, phang, "module:/board/mcu")
+    # Cùng tên net, nhưng CHÂN bị giới hạn trong sheet — U3 và Y1 ở sheet khác.
+    assert sum(len(v) for v in rieng.values()) < sum(len(v) for v in phang.values())
+    assert all(c.split(".")[0] == "U1" for ds in rieng.values() for c in ds), rieng
+    assert "/board/mcu" in sheet and sheet["/board/mcu"].tieu_chi["so_ky_hieu"] == 1
+
+
+def test_hop_sheet_con_VAO_phep_dem_chong_va_phep_kiem_tran_trang(bo):
+    """Hộp sheet là vật thể lớn nhất trên trang cha. Tiêu chí không nhìn thấy nó thì câu
+    "0 ký hiệu chồng nhau" chỉ nói về nửa trang."""
+    from eide.sch import bo_cuc as BC
+
+    cay = C.Cay.doc(bo)
+    bc = BC._bo_cuc_mot_sheet(cay, {}, "module:/board", kho="A4")
+    assert bc.hop_sheet and bc.tieu_chi is not None
+    # Đẩy một hộp sheet lên đúng chỗ một ký hiệu → phải bị bắt.
+    bc.o.append(BC.O(ref="X9", x=bc.hop_sheet[0].x, y=bc.hop_sheet[0].y, rong=5.08, cao=5.08))
+    tc = BC.kiem_tieu_chi(bc, {})
+    assert not tc["dat"] and any("chồng nhau" in v for v in tc["vi_pham"]), tc
+    # Và tràn trang cũng phải thấy hộp sheet.
+    bc.o.pop()
+    bc.hop_sheet[0].x = 900.0
+    tc = BC.kiem_tieu_chi(bc, {})
+    assert not tc["dat"] and any("tràn khỏi khổ" in v for v in tc["vi_pham"]), tc
+
+
+def test_ghi_phan_cap_dung_DUNG_toa_do_cua_bo_cuc(bo):
+    """Bên ghi ghi theo bố cục, không tự xếp: hai lần tính là hai cơ hội ra hai kết quả."""
+    from eide.sch import bo_cuc as BC
+    from eide.sch import phan_cap as PC
+
+    cay = C.Cay.doc(bo)
+    phang = C.flatten(cay)
+    sheet = BC.tinh_bo_cuc_theo_sheet(cay, phang, kho="A4")
+    goi = PC.viet_phan_cap(cay, symbol=SYM, bo_cuc_sheet=sheet)
+    bc = sheet["/board/mcu"]
+    z = next(x for x in bc.o if x.ref == "U1")
+    txt = goi.tep[PC.ten_tep_sheet("/board/mcu")]
+    assert f"(at {z.x:g} {z.y:g} 0)" in txt, (z.x, z.y, txt[:400])
+
+
+# ============================== 18. SCH-D2 — sổ đăng ký sheet và gói vào bản ưng ý (SCH-16)
+def test_so_dang_ky_sheet_mot_dong_moi_sheet_kem_bam_bo_cuc(make_agent):
+    """§2.1(4) — `sch_sheets(id, version, path, lib_versions, layout_hash, explain)`."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.compose"); goi("sch.symbols"); goi("sch.netlist"); goi("sch.place")
+    r = goi("sch.write", style="hierarchical")
+    assert r.ok, getattr(r.error, "message_vi", "")
+    ds = a.store.sch_cac_sheet()
+    assert len(ds) == r.data["so_sheet_ghi_so"] == len(r.data["tep"]) - 1
+    assert all(x["layout_hash"] for x in ds), ds
+    assert all("eide-sinh" in x["lib_versions"] for x in ds), ds
+    # Ghi lại lần hai thì `version` tăng — đó là thứ cho phép nói "bản 2 của sheet này".
+    goi("sch.write", style="hierarchical")
+    assert {x["version"] for x in a.store.sch_cac_sheet()} == {2}
+
+
+def test_sheet_bien_mat_thi_BI_GO_khoi_so_dang_ky(make_agent):
+    """Đổi từ 3 khối xuống 2 thì một tệp sheet không còn. Để dòng cũ lại thì bản ưng ý sau đó
+    gói theo một tệp không tồn tại — và "khôi phục được" thành lời hứa suông."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("ckm.module_set", ma="PWR", ten="Nguồn", muc_dich="hạ áp", linh_kien=["U3"])
+    goi("ckm.net_set", ten="5V", loai="power", chan=[["U3", "1"]])
+    goi("ckm.build")
+    goi("sch.compose"); goi("sch.symbols"); goi("sch.netlist"); goi("sch.place")
+    goi("sch.write", style="hierarchical")
+    truoc = {x["tep"] for x in a.store.sch_cac_sheet()}
+    assert any("PWR" in t for t in truoc), truoc
+
+    # Gỡ khối bằng đường có thật: bỏ nó khỏi bản đồ rồi chiếu lại (hiện vật là sự thật,
+    # đồ thị là hình chiếu).
+    mg = a.store.get("MG-1")
+    a.store.apply(artefact_id="MG-1", type="block_diagram", op="update", author="human",
+                  explain={"summary": "bỏ khối PWR"},
+                  canonical={**mg["canonical"],
+                             "khoi": [k for k in mg["canonical"]["khoi"]
+                                      if k.get("ma") != "PWR"]})
+    from eide.knowledge import ckm as K
+    K.chieu(a.store)
+    goi("sch.place")
+    r = goi("sch.write", style="hierarchical")
+    sau = {x["tep"] for x in a.store.sch_cac_sheet()}
+    assert not any("PWR" in t for t in sau), sau
+    assert r.data["sheet_go_khoi_so"] >= 1, r.data
+
+
+def test_SCH16_ban_ung_y_goi_so_do_va_khoi_phuc_dua_TEP_ve(make_agent):
+    """SCH-16 — "Gói sch vào snapshot/release", và gói ở đây là gói cả NỘI DUNG.
+
+    Một bản ưng ý chỉ nhớ tên tệp thì việc quay về được phụ thuộc vào tệp còn nguyên — tức
+    phụ thuộc vào đúng thứ mà người ta ghi bản ưng ý để KHÔNG phải phụ thuộc vào.
+    """
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.compose"); goi("sch.symbols"); goi("sch.netlist"); goi("sch.place")
+    goi("sch.write", style="hierarchical")
+
+    snap = a.history.tao_snapshot(ten="co-so-do", ghi_chu="thử SCH-16", boi="human")
+    sd = snap.contents["so_do"]
+    assert sd["so_sheet"] >= 2 and all(x["co_tep"] for x in sd["sheet"]), sd
+    assert sd["lib_versions"], sd
+    assert any(k["tep"].endswith(".kicad_sym") for k in sd["kem"]), sd
+
+    goc = a.config.paths.project_root
+    p = goc / sd["sheet"][0]["tep"]
+    that = p.read_text("utf-8")
+    p.write_text("(kicad_sch BỊ SỬA TAY)\n", "utf-8")
+    (goc / "sch/eide-sinh.kicad_sym").unlink()
+
+    kq = a.history.khoi_phuc_snapshot(snap.id, by="human")
+    assert kq.ok, kq.message_vi
+    assert p.read_text("utf-8") == that
+    assert (goc / "sch/eide-sinh.kicad_sym").exists()
+    assert "tệp sơ đồ về đúng nội dung" in kq.message_vi
+
+
+def test_ban_ung_y_NOI_RA_khi_mot_sheet_da_dang_ky_khong_con_tep(make_agent):
+    """Im lặng bỏ qua thì bản ưng ý nói "gói 5 sheet" trong khi chỉ khôi phục được 3 — và điều
+    đó chỉ vỡ ra vào lúc người ta cần nó nhất."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.compose"); goi("sch.symbols"); goi("sch.netlist"); goi("sch.place")
+    goi("sch.write", style="hierarchical")
+    ds = a.store.sch_cac_sheet()
+    (a.config.paths.project_root / ds[0]["tep"]).unlink()
+
+    snap = a.history.tao_snapshot(ten="thieu-tep", boi="human")
+    sd = snap.contents["so_do"]
+    assert sd["canh_bao"] and "không còn trên đĩa" in sd["canh_bao"][0], sd
+    assert any(x["co_tep"] is False for x in sd["sheet"])
+
+
+# ================= 19. SCH-D3 — ký hiệu sinh từ Fact phải được NGƯỜI xác nhận (SCH-14/15)
+def test_ky_hieu_sinh_tu_Fact_thi_CHO_xac_nhan_lib_khop_100_thi_khong(make_agent):
+    """§9 — widget "Symbol sinh từ Fact: xem, xác nhận, sửa kiểu chân" là loại **edit**.
+
+    Kiểu chân sinh ra là phép SUY (hướng Port → kiểu chân KiCad), và ERC của KiCad dựa vào nó.
+    Ký hiệu lấy từ thư viện chính thức khớp 100 % thì không cần xác nhận: ở đó tác giả thư viện
+    đã là con người đó.
+    """
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    r = goi("sch.symbols")
+    assert r.ok and r.data["cho_xac_nhan"] == ["U1"], r.data.get("cho_xac_nhan")
+    assert "CHỜ người xác nhận" in r.data["note_vi"]
+
+    # Có thư viện chính thức khớp 100 % ⇒ không phải hỏi ai.
+    chan = [{"so": c["so"], "ten": c["ten"]}
+            for c in next(x for x in r.data["chi_tiet"] if x["ref"] == "U1")["chan"]]
+    a.store.apply(artefact_id="symbol_lib:kicad", type="report", op="create", author="human",
+                  explain={"summary": "thư viện tải về"},
+                  canonical={"phien_ban": "8.0.1",
+                             "ky_hieu": {"ATmega328P": {"lib": "MCU_Microchip_ATmega",
+                                                        "ten": "ATmega328P-PU",
+                                                        "version": "8.0.1", "chan": chan}}})
+    r2 = goi("sch.symbols")
+    assert r2.data["cho_xac_nhan"] == [], r2.data["cho_xac_nhan"]
+
+
+def test_tac_tu_KHONG_tu_xac_nhan_ho_nguoi_dung(make_agent):
+    """Một xác nhận không có lời của người là một xác nhận của MÁY đội tên người."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.symbols")
+    r = goi("sch.symbol_confirm", ref="U1", trich_loi="")
+    assert not r.ok and r.error.code == "E8009"
+    assert "Đừng tự xác nhận hộ" in r.error.hint_for_agent
+
+
+def test_nguoi_sua_kieu_chan_thanh_Fact_tang_NGUOI_co_trich_loi(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.symbols")
+    r = goi("sch.symbol_confirm", ref="U1",
+            trich_loi="chân 7 là chân nguồn vào, tôi xem datasheet rồi",
+            kieu_chan={"7": "power_in"})
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["con_cho_xac_nhan"] == []
+    f = [x for x in a.store.query_facts(subject="pin:ATmega328P.7", limit=10)
+         if x["key"] == "kieu_chan"]
+    assert f and f[0]["tier"] == "NGUOI", f
+    src = f[0]["source"]
+    if isinstance(src, str):
+        import json as _j
+        src = _j.loads(src)
+    assert "datasheet rồi" in src["quote"]
+
+
+def test_xac_nhan_va_kieu_chan_nguoi_sua_SONG_SOT_qua_lan_sinh_lai(make_agent):
+    """Nếu `sch.symbols` quên phần này thì người dùng xác nhận lần thứ ba rồi thôi."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.symbols")
+    goi("sch.symbol_confirm", ref="U1", trich_loi="đúng rồi, chân 27 là chân số",
+        kieu_chan={"27": "bidirectional"})
+    r = goi("sch.symbols")
+    u1 = next(x for x in r.data["chi_tiet"] if x["ref"] == "U1")
+    assert u1["xac_nhan_boi"] == "human" and u1["can_xac_nhan"] is False
+    c27 = next(c for c in u1["chan"] if c["so"] == "27")
+    assert c27["kieu"] == "bidirectional" and c27.get("kieu_boi_nguoi") == "có"
+    # Và tệp .kicad_sym mang kiểu chân của NGƯỜI, không mang phép suy của máy.
+    txt = (a.config.paths.project_root / "sch/eide-sinh.kicad_sym").read_text("utf-8")
+    assert "(pin bidirectional line" in txt, txt[:300]
+
+
+def test_sua_kieu_chan_cho_mot_chan_KHONG_TON_TAI_thi_tu_choi(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.symbols")
+    r = goi("sch.symbol_confirm", ref="U1", trich_loi="chân 99 là nguồn",
+            kieu_chan={"99": "power_in"})
+    assert not r.ok and r.error.code == "E8011"
+    r2 = goi("sch.symbol_confirm", ref="U1", trich_loi="đặt kiểu lạ",
+             kieu_chan={"7": "chan_nguon"})
+    assert not r2.ok and r2.error.code == "E8010"
+
+
+def test_sch_write_NOI_RA_con_ky_hieu_chua_ai_xac_nhan(make_agent):
+    """Im lặng thì người mở KiCad thấy ERC báo lỗi nguồn và tin rằng MẠCH của họ sai."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.compose"); goi("sch.symbols"); goi("sch.netlist"); goi("sch.place")
+    r = goi("sch.write", style="flat")
+    assert r.ok and r.data["cho_xac_nhan_ky_hieu"] == ["U1"]
+    assert "chưa ai xác nhận" in r.data["note_vi"], r.data["note_vi"]
+
+
+def test_nguoi_bam_sua_kieu_chan_TREN_GIAO_DIEN_di_cung_mot_duong(make_agent):
+    """§9 — widget edit trên tab Thiết kế phải đi qua ĐÚNG công cụ mà tác tử dùng.
+
+    Nếu giao diện có đường ghi riêng thì luật "phải có lời của người" và "kiểu chân thành Fact
+    tầng NGƯỜI" tồn tại ở hai chỗ, và một ngày nào đó chỉ còn ở một chỗ.
+    """
+    from eide.protocol.humanact import HumanAct
+
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.symbols")
+
+    seen: list = []
+    act = HumanAct.from_dict({
+        "kind": "edit", "target": "symbol:U1",
+        "data": {"base_version": "v1", "fields": {"chan.7": "power_in"}},
+        "origin": {"surface": "design", "block": "A5.8c", "row": "U1"},
+        "note": "tôi tra datasheet, chân 7 là VCC nên là power_in"})
+    a.turn(act, seen.append)
+
+    f = [x for x in a.store.query_facts(subject="pin:ATmega328P.7", limit=10)
+         if x["key"] == "kieu_chan"]
+    assert f and f[0]["tier"] == "NGUOI" and f[0]["value"] == "power_in", f
+    assert any("xác nhận" in getattr(c, "params", {}).get("text", "") for c in seen), seen
+
+
+def test_nguoi_bam_xac_nhan_MA_KHONG_viet_gi_thi_khong_ghi(make_agent):
+    from eide.protocol.humanact import HumanAct
+
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.symbols")
+    seen: list = []
+    a.turn(HumanAct.from_dict({
+        "kind": "edit", "target": "symbol:U1",
+        "data": {"base_version": "v1", "fields": {"chan.7": "power_in"}},
+        "origin": {"surface": "design"}}), seen.append)
+    assert not [x for x in a.store.query_facts(subject="pin:ATmega328P.7", limit=10)
+                if x["key"] == "kieu_chan"]
+    assert any(getattr(c, "params", {}).get("code") == "E8009" for c in seen), seen
+
+
+# ============================ 20. SCH-D4 — khối A5.8 trên tab Thiết kế (SCH-06, SCH-07, §9)
+def _design(store):
+    from eide import surfaces as S
+
+    class Inv:
+        def __getattr__(self, k): return 0
+    return {b["code"]: b for b in S.design(store, Inv())["blocks"]}
+
+
+def test_chua_sinh_so_do_thi_tab_Thiet_ke_KHONG_doi_mot_khoi_nao(make_agent):
+    """Điều kiện của cờ tính năng (§2.1 mục 2): bật cờ mà chưa gọi sch thì giao diện y như cũ.
+
+    Nên ở đây KHÔNG có cả ô trống trung thực — một ô trống cũng là một khối mới."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    assert not [k for k in _design(a.store) if k.startswith("A5.8")]
+
+
+def test_A5_8_hien_anh_so_do_moi_trang_mot_muc_va_bam_duoc(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.compose"); goi("sch.symbols"); goi("sch.netlist"); goi("sch.place")
+    goi("sch.write", style="hierarchical")
+    goi("sch.render")
+
+    kh = _design(a.store)
+    sd = kh["A5.8"]
+    assert sd["type"] == "svg" and len(sd["tep"]) >= 2, sd
+    assert "U1" in sd["ref"], sd["ref"]
+    # Câu hỏi khi bấm do LÕI soạn, nên nội dung nó không nằm rải trong mã Swift.
+    assert "{ref}" in sd["bam_ky_hieu"] and "{net}" in sd["bam_net"]
+    # Lớp giải thích đủ sáu trường — hợp đồng E2 áp cho khối này như mọi khối khác.
+    assert set(sd["explain"]) >= {"summary", "why", "sources", "diff_prev", "next",
+                                 "confidence"}
+
+
+def test_A5_8b_bang_chat_luong_co_MOT_DONG_moi_trang_va_ket_luan_bang_chu(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    _mach_lon(a, goi, so_khoi=3, moi_khoi=20)
+    goi("sch.compose"); goi("sch.symbols"); goi("sch.netlist"); goi("sch.place")
+    b = _design(a.store)["A5.8b"]
+    assert b["columns"][0] == "Trang" and len(b["rows"]) >= 4, b["rows"]
+    assert all(r[-1].startswith(("ĐẠT", "CHƯA")) for r in b["rows"]), b["rows"]
+    assert "sheet phân cấp" in b["summary"], b["summary"]
+
+
+def test_A5_8c_bang_ky_hieu_SUA_DUOC_va_di_dung_loai_doi_tuong(make_agent):
+    """`loai_sua` là thứ nói cho giao diện biết ô này sửa KÝ HIỆU, không phải sửa yêu cầu."""
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.symbols")
+    b = _design(a.store)["A5.8c"]
+    assert b["loai_sua"] == "symbol" and "Kiểu chân" in b["cot_sua"]
+    assert any("CHỜ ANH XEM" in str(c) for r in b["rows"] for c in r), b["rows"]
+    assert "ERC trong KiCad dựa vào kiểu chân" in b["summary"]
+
+    goi("sch.symbol_confirm", ref="U1", trich_loi="đúng cả, tôi xem rồi")
+    b2 = _design(a.store)["A5.8c"]
+    assert any("anh đã xác nhận" in str(c) for r in b2["rows"] for c in r), b2["rows"]
+
+
+def test_A5_8d_noi_ro_muc_render_va_KHONG_de_nghi_cai_KiCad(make_agent):
+    a, goi, _ = _agent_sch(make_agent)
+    _dung_mach(a, goi)
+    goi("sch.symbols")
+    b = _design(a.store)["A5.8d"]
+    chu = " ".join(f"{x['k']} {x['v']}" for x in b["items"]) + b["summary"]
+    assert "KHÔNG cài KiCad" in chu
+    for xau in ("hãy cài", "nên cài", "cài KiCad để", "brew install"):
+        assert xau not in chu, xau
+
+
+def test_o_bang_dang_7_power_in_duoc_tach_dung(make_agent):
+    from eide.loop import _tach_kieu_chan
+
+    assert _tach_kieu_chan("7=power_in, 27=bidirectional") == {"7": "power_in",
+                                                              "27": "bidirectional"}
+    # Gõ thiếu một cặp không được làm mất phần gõ đúng.
+    assert _tach_kieu_chan("7=power_in, 28") == {"7": "power_in"}
+    assert _tach_kieu_chan("") == {}
+
+
+def test_nhan_net_trong_SVG_mang_data_net_de_bam_duoc(bo):
+    """SCH-07 — "bấm net → tô sáng toàn net + ERC". Không có `data-net` thì nửa sau của câu
+    tương tác đó không thực hiện được."""
+    from eide.sch import bo_cuc as BC
+    from eide.sch import ghi as G
+    from eide.sch import ve_svg
+
+    cay = C.Cay.doc(bo)
+    phang = C.flatten(cay)
+    bc = BC.tinh_bo_cuc(cay, phang)
+    kq = ve_svg.ve(G.viet_kicad_sch(bc, symbol=SYM), hop={})
+    assert 'data-net="3V3"' in kq.svg, kq.svg[:400]
+    assert "3V3" in kq.to_dict()["net_trong_svg"]

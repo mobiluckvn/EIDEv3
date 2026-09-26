@@ -1783,3 +1783,105 @@ Hồi quy: mười ba bộ E2E đều giữ nguyên hoặc tăng — G3 31 · G4
 
 Bằng chứng SCH-19 (`so_ket_qua.py --hai-che-do tools/thu_cuoi.py`): **36/36 giống hệt** giữa
 cờ tắt và cờ bật — so bằng mã, vì thứ nguy hiểm là một ô lặng lẽ đổi từ đạt sang không đạt.
+
+---
+
+### [DEV-274] 26/09/2026 · SCH-D — bố cục từng trang, ký hiệu người xác nhận, và tab Thiết kế thấy được sơ đồ
+
+**Tài liệu:** EIDE-SCH-44 §2.1(4) (bảng `sch_sheets`), §4 (tiêu chí bố cục), §5 (ký hiệu từ
+thư viện và từ Fact), §6 (render ba mức), §9 (khối giao diện A5.8), yêu cầu SCH-14, SCH-15,
+SCH-16, ca SCH07. Bước cuối của lộ trình SCH.
+
+Bốn việc, và việc thứ tư là việc mà **ba bước SCH trước bỏ trống mà không ai nói ra**: tab
+Thiết kế chưa có một khối sơ đồ nào. Cả đường ống sinh được `.kicad_sch`, kiểm được, render
+được SVG — nhưng người dùng không có chỗ nào để *xem* nó. §9 liệt kê mười widget của khối
+A5.8; trước hôm nay có **không** widget nào.
+
+### 1. Tiêu chí bố cục đo trên TỪNG trang (SCH07)
+
+`tinh_bo_cuc_theo_sheet()` tính một bố cục cho mỗi khối: lá của riêng khối đó (cuộn cột theo
+chiều cao trang), hộp sheet cho khối con, nhãn phân cấp cho Port. "Mỗi sheet đạt tiêu chí" là
+một đòi hỏi **khác** "cả mạch đạt tiêu chí": một mạch 120 linh kiện chia 4 khối có thể đạt
+trên tổng thể mà vẫn có một trang tràn, và một phép đo trên tổng thể rồi kết luận cho từng
+trang là phép đo nói nhiều hơn nó biết.
+
+`sch.place` cũng nói ra **khi nào nên chia sheet**, bằng ba lý do đều là số: trang phẳng không
+đạt tiêu chí · hơn 50 ký hiệu trên một trang · hơn 70 % net phải dùng nhãn. Và khi cây chỉ có
+một khối thì nó nói ngược lại: chia sheet lấy khối làm đơn vị, nên **chia khối trước đã**.
+
+### 2. Sổ đăng ký sheet và bản ưng ý gói được sơ đồ (§2.1(4), SCH-16)
+
+Lược đồ v4: `sch_sheets(id, version, path, tep, lib_versions, layout_hash, explain)`, có
+`down()`. Mỗi lần `sch.write` ghi một sheet là một dòng, kèm băm bố cục và phiên bản thư viện
+ký hiệu. Bản ưng ý gói **cả nội dung** từng tệp vào blob, không chỉ tên: một bản ưng ý nhớ tên
+tệp thì việc quay về được phụ thuộc vào tệp còn nguyên — tức phụ thuộc vào đúng thứ mà người ta
+ghi bản ưng ý để **không** phải phụ thuộc vào. Khôi phục đưa tệp về kể cả khi dự án không có git.
+
+### 3. Ký hiệu sinh từ Fact phải có người xác nhận (SCH-14, SCH-15, §9)
+
+Kiểu chân của ký hiệu sinh ra là một phép **suy**: hướng Port → `power_in`/`input`/`passive`,
+mà hướng Port lại suy từ tên chân. ERC của KiCad dựa vào kiểu chân, nên một kiểu chân sai làm
+người dùng mở tệp ra, thấy ERC báo lỗi nguồn, và tin rằng **mạch** của họ sai. Nay mỗi ký hiệu
+sinh từ Fact (hoặc khớp thư viện < 100 %) ở trạng thái "chờ anh xem", `sch.symbols` và
+`sch.write` đều nói ra còn bao nhiêu cái chờ, và `sch.symbol_confirm` **đòi lời của chính người
+dùng** — trích lời rỗng thì từ chối với `E8009` kèm câu "đừng tự xác nhận hộ". Kiểu chân họ sửa
+thành Fact tầng NGƯỜI có trích lời, và nó sống sót qua mọi lần sinh lại ký hiệu.
+
+### 4. Khối A5.8 trên tab Thiết kế (SCH-06, SCH-07, §9)
+
+Bốn khối: **ảnh sơ đồ bấm được** (loại khối `svg` mới, `WKWebView` vẽ đúng tệp SVG mà lõi đã
+ghi — không có nhánh vẽ thứ hai để lệch; bấm ký hiệu → hỏi Fact/nguồn, bấm nhãn net → tô sáng
++ ERC, và **câu hỏi do lõi soạn** nên nội dung nó không rải trong mã Swift) · **băng chất lượng
+bố cục** một dòng mỗi trang · **bảng ký hiệu sửa được** (`loai_sua: "symbol"`) · **mức render
+đang dùng**, nói rõ máy này không cài KiCad.
+
+Khối A5.8 chỉ hiện khi CÓ hiện vật sơ đồ. Cờ bật mà chưa ai sinh sơ đồ thì tab Thiết kế không
+đổi một khối nào — nên ở đây không có cả ô trống trung thực, vì một ô trống cũng là một khối mới.
+
+### Bốn lỗi thật, và một phép đo tự lừa mình
+
+**1. Tỉ lệ nhãn chặn MỌI sheet.** Bố cục theo sheet ban đầu bỏ hẳn bước "net nào thành dây, net
+nào thành nhãn", nên mọi sheet có tỉ lệ nhãn 100 % và không sheet nào đạt tiêu chí. Hai sửa:
+bước đó thành **một hàm, hai chỗ gọi** (trang phẳng và sheet); và trên một sheet, tỉ lệ nhãn là
+**cảnh báo** chứ không phải vi phạm — §4 viết hậu quả của ngưỡng đó là *"cảnh báo 'mạch khó
+đọc', đề nghị style=hierarchical"*, mà trên một sheet đã phân cấp thì lời đề nghị ấy đã được
+nhận, và net rời khỏi khối dùng nhãn phân cấp là **đúng thiết kế**.
+
+**2. `KIEU_CHAN` trùng tên đè lên bảng suy hướng-Port → kiểu-chân.** Hằng mới (danh sách kiểu
+người chọn được) trùng tên với bảng cũ (phép suy của máy), nên `_chan_tu_port` gọi `.get()` trên
+một tuple — mọi ký hiệu sinh ra đều nổ. Đổi tên thành `KIEU_CHAN_CHON_DUOC`: hai thứ khác nhau
+thì không được mang một tên.
+
+**3. Một tệp sheet có HAI dòng trong sổ đăng ký.** Khoá theo `path` khối, nên ghi `flat` rồi ghi
+`hierarchical` để lại hai dòng cùng trỏ `sch/mach.kicad_sch` (path `""` và `/board`) — và bản
+ưng ý gói tệp đó hai lần trong khi khai rằng nó có 8 sheet. Nay khoá theo **tệp**: một tệp là
+một thứ mà bản ưng ý gói và khôi phục.
+
+**4. `sch_dat_sheet` có mặc định rỗng, ghi lần hai xoá dữ liệu lần đầu.** Cùng cái bẫy của
+DEV-273 mục 4, cách nhau vài giờ: bốn trường mô tả **lần ghi vừa xảy ra**, nên mặc định rỗng thì
+xoá thông tin lần trước, còn "giữ giá trị cũ" thì để lại một `layout_hash` nói về một bố cục
+không còn tồn tại. Cả hai tệ hơn việc buộc bên gọi nói ra.
+
+**5. Và một ca đo xanh vì bộ đo tự hỏi chính nó.** Ca "giao diện vẽ được mọi khối" so loại khối
+với **một danh sách viết trong Python** — tức nó kiểm rằng *bộ đo* biết loại khối đó, không kiểm
+rằng *giao diện* vẽ được. Nay nhánh `default` của bộ vẽ Swift tự ghi tên loại khối nó không vẽ
+được, và bộ đo hỏi đúng chỗ đó. Kiểm lại bằng cách **cố tình** gửi một khối loại lạ: ca đo đỏ
+đúng chỗ (`A5.ZZ:loai_khong_ton_tai`), rồi gỡ khối giả đi. Một ô xanh chưa nói gì nếu nó chưa
+bao giờ đỏ được.
+
+Kèm theo: `ui.sync` giờ gọi được từ kênh kiểm thử (`{"ui": "sync"}`, 0 token). Chuyển tab **không**
+vẽ lại — đó là thiết kế (`attend` là sự chú ý, không phải yêu cầu) — nên không có lệnh này thì mọi
+phép đo về một khối mới phải tiêu một lượt mô hình để thấy nó.
+
+### Số đo
+
+`755 ca đơn vị` (+25) · `tools/thu_sch.py` **63/63** (từ 48) qua giao diện thật, thêm ba mục:
+bố cục từng sheet + bản ưng ý · ký hiệu chờ xác nhận · khối A5.8 · `87 công cụ` khi cờ bật
+(+1: `sch.symbol_confirm`), `78` khi tắt.
+
+Hồi quy: mười ba bộ E2E đều giữ nguyên — G3 31 · G4 23 · G5 35 · ING-A 29 · ING-B 25 · MEM-A 21
+· MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35 · HIER 46 · GIAO DIỆN 24 · SCH 63.
+
+Bằng chứng SCH-19, **hai bộ**: `--hai-che-do tools/thu_cuoi.py` 36/36 giống hệt và
+`--hai-che-do tools/thu_giao_dien.py` 24/24 giống hệt — bộ thứ hai quan trọng vì SCH-D thêm khối
+vào tab Thiết kế, tức chạm đúng thứ mà bộ đo giao diện đang đo.

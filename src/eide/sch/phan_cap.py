@@ -27,11 +27,13 @@ from typing import Any
 from . import bo_cuc as BC
 from . import ghi as G
 
-# Vị trí hộp sheet trên trang cha. Xếp thành hàng, cách nhau đủ để nhãn không đè.
-RONG_SHEET = 38.1               # mm
-CAO_MOI_PIN = 2.54
-CAO_SHEET_TOI_THIEU = 20.32
-CACH_SHEET = 12.7
+# Kích thước hộp sheet thuộc lớp BỐ CỤC, không thuộc lớp ghi tệp: tiêu chí "0 vật thể chồng
+# nhau" chỉ đúng nếu bên đo và bên ghi dùng cùng một con số. Giữ hai bản riêng là cách chắc
+# chắn nhất để một ngày nào đó chúng lệch nhau mà không ai biết.
+RONG_SHEET = BC.RONG_HOP_SHEET
+CAO_MOI_PIN = BC.CAO_MOI_PIN_SHEET
+CAO_SHEET_TOI_THIEU = BC.CAO_HOP_SHEET_TOI_THIEU
+CACH_SHEET = BC.CACH_SHEET_NGANG
 
 
 def gia_tri_mong_doi(cay: Any, symbol: dict[str, dict[str, str]]) -> dict[str, str]:
@@ -73,12 +75,18 @@ class GoiPhanCap:
 
 
 def viet_phan_cap(cay: Any, *, symbol: dict[str, dict[str, str]],
-                  kho: str = "A4") -> GoiPhanCap:
+                  kho: str = "A4",
+                  bo_cuc_sheet: dict[str, Any] | None = None) -> GoiPhanCap:
     """Ghi cây thành nhiều `.kicad_sch`: một cho gốc, một cho mỗi khối.
 
     Lá nằm trong sheet của **khối chứa nó** (§7), nên bố cục tính riêng cho từng sheet — đây là
     chỗ phân cấp trả lãi: mỗi trang chỉ có linh kiện của một khối, nên không còn chuyện 40 điện
     trở tràn khổ A3 như bản phẳng.
+
+    `bo_cuc_sheet` là `{path: BoCuc}` của `bo_cuc.tinh_bo_cuc_theo_sheet` — toạ độ đã qua tiêu
+    chí. Không truyền thì tự tính. Bản đầu tệp này **tự xếp một cột** cho mỗi sheet và không đo
+    gì: docstring nói "bố cục tính riêng cho từng sheet" trong khi mã chỉ cộng dồn `y`, nên một
+    khối 40 điện trở tràn trang y như bản phẳng — chỉ là lần này không ai đo để biết.
     """
     g = GoiPhanCap()
     if not cay.goc:
@@ -102,20 +110,26 @@ def viet_phan_cap(cay: Any, *, symbol: dict[str, dict[str, str]],
     # Sâu ra ngoài: sheet con phải có tệp trước khi sheet cha trỏ tới nó.
     from ..knowledge.cay import do_sau
 
+    bcs = dict(bo_cuc_sheet or {})
     for nid in sorted(khoi, key=lambda x: (-do_sau(cay.nut[x].get("path") or ""),
                                           cay.nut[x].get("path") or x)):
-        g.tep[ten_tep_sheet(cay.nut[nid].get("path") or nid)] = _mot_sheet(
-            cay, nid, symbol=symbol, kho=kho)
+        path = cay.nut[nid].get("path") or nid
+        g.tep[ten_tep_sheet(path)] = _mot_sheet(
+            cay, nid, symbol=symbol, kho=kho, bc=bcs.get(path))
         g.so_sheet += 1
+        for c in (bcs.get(path).canh_bao if bcs.get(path) else []):
+            g.canh_bao.append(c)
 
-    g.tep["mach.kicad_sch"] = _mot_sheet(cay, cay.goc, symbol=symbol, kho=kho, la_goc=True)
+    g.tep["mach.kicad_sch"] = _mot_sheet(
+        cay, cay.goc, symbol=symbol, kho=kho, la_goc=True,
+        bc=bcs.get(cay.nut[cay.goc].get("path") or cay.goc))
     g.goc = "mach.kicad_sch"
     g.so_sheet += 1
     return g
 
 
 def _mot_sheet(cay: Any, nid: str, *, symbol: dict[str, dict[str, str]], kho: str,
-               la_goc: bool = False) -> str:
+               la_goc: bool = False, bc: Any = None) -> str:
     """Một sheet: lá của khối này + hộp sheet cho khối con + nhãn phân cấp cho Port."""
     from kiutils.items.common import (Effects, Font, PageSettings, Position, Property,
                                       Stroke)
@@ -137,28 +151,37 @@ def _mot_sheet(cay: Any, nid: str, *, symbol: dict[str, dict[str, str]], kho: st
 
     # 1) Nhãn phân cấp cho Port của CHÍNH khối này — đó là cách net trong sheet "lên cha".
     #    Sheet gốc không có Port (nó là biên ngoài cùng của mạch).
+    # Toạ độ do BỐ CỤC quyết (đã qua tiêu chí §4), bên ghi chỉ ghi theo. Thiếu bố cục thì tính
+    # ngay tại đây cho đúng một sheet — không tự xếp một cột nữa.
+    if bc is None:
+        bc = BC._bo_cuc_mot_sheet(cay, {}, nid, kho=kho)
+    vi_nhan = {n.get("port"): (n["x"], n["y"]) for n in bc.nhan if n.get("port")}
+    vi_o = {z.ref: z for z in bc.o}
+    vi_hop = {h.path: h for h in bc.hop_sheet}
+
     if not la_goc:
         y = BC.LE
         for pid in sorted(cay.port_cua.get(nid, [])):
             p = cay.port[pid]
+            px, py = vi_nhan.get(p["ten"], (BC.LE, y))
             sch.hierarchicalLabels.append(HierarchicalLabel(
                 text=p["ten"], shape=_hinh_nhan(p["huong"]),
-                position=Position(X=BC.LE, Y=round(y, 2), angle=0),
+                position=Position(X=round(px, 2), Y=round(py, 2), angle=0),
                 effects=Effects(font=Font(width=1.27, height=1.27)),
                 uuid=G.uuid_theo(f"hlbl:{path}.{p['ten']}")))
             y += BC.CACH_NHAN
 
     # 2) Lá của khối này, xếp bằng cùng thuật toán bố cục (một cột, cuộn theo trang).
     la = [x for x in sorted(cay.con_truc_tiep(nid)) if cay.nut[x].get("kind") == "leaf"]
-    x0 = BC.LE + 50.8
-    y0 = BC.LE
-    for i, x in enumerate(la):
+    for x in la:
         n = cay.nut[x]
         ref = n["canonical"].get("ref") or n["ten"]
         s = symbol.get(ref) or {}
-        cao = max(BC.CAO_TOI_THIEU,
-                  BC.CAO_MOI_CHAN * ((len(cay.port_cua.get(x, [])) + 1) // 2 + 1))
-        px, py = BC.tron(x0), BC.tron(y0)
+        z = vi_o.get(ref)
+        cao = z.cao if z else max(BC.CAO_TOI_THIEU,
+                                  BC.CAO_MOI_CHAN * ((len(cay.port_cua.get(x, [])) + 1) // 2 + 1))
+        px, py = (BC.tron(z.x), BC.tron(z.y)) if z else (BC.tron(BC.LE + BC.MANG_NHAN),
+                                                         BC.tron(BC.LE))
         sym = SchematicSymbol(
             libraryNickname=s.get("lib") or "eide-sinh",
             entryName=s.get("ten") or ref,
@@ -173,16 +196,16 @@ def _mot_sheet(cay: Any, nid: str, *, symbol: dict[str, dict[str, str]], kho: st
                      effects=Effects(font=Font(width=1.27, height=1.27))),
         ]
         sch.schematicSymbols.append(sym)
-        y0 += cao + BC.CACH_NHAU
 
     # 3) Hộp sheet cho từng khối con, kèm sheet pin = Port của con.
-    sx = BC.LE + 50.8 + BC.RONG_IC + CACH_SHEET
     for con in sorted(cay.khoi_con(nid)):
         cpath = cay.nut[con].get("path") or con
         ports = [cay.port[p] for p in sorted(cay.port_cua.get(con, []))]
-        cao = max(CAO_SHEET_TOI_THIEU, CAO_MOI_PIN * (len(ports) + 2))
+        h = vi_hop.get(cpath)
+        cao = h.cao if h else max(CAO_SHEET_TOI_THIEU, CAO_MOI_PIN * (len(ports) + 2))
+        sx, sy = (h.x, h.y) if h else (BC.LE + BC.MANG_NHAN + BC.RONG_IC + CACH_SHEET, BC.LE)
         hs = HierarchicalSheet(
-            position=Position(X=BC.tron(sx), Y=BC.tron(BC.LE), angle=0),
+            position=Position(X=BC.tron(sx), Y=BC.tron(sy), angle=0),
             width=RONG_SHEET, height=BC.tron(cao),
             stroke=Stroke(width=0.1524), uuid=G.uuid_theo(f"hsheet:{cpath}"))
         # `Sheetname` mang ĐOẠN PATH (mã khối), không mang tên hiển thị.
@@ -197,19 +220,19 @@ def _mot_sheet(cay: Any, nid: str, *, symbol: dict[str, dict[str, str]], kho: st
         # CẤU TRÚC, `sch.import` phải hỏi, chứ không được lặng lẽ khớp lại.
         doan = (cpath.rstrip("/").split("/") or [""])[-1]
         hs.sheetName = Property(key="Sheetname", value=doan or cpath,
-                                position=Position(X=BC.tron(sx), Y=BC.tron(BC.LE - 1.27),
+                                position=Position(X=BC.tron(sx), Y=BC.tron(sy - 1.27),
                                                   angle=0),
                                 effects=Effects(font=Font(width=1.27, height=1.27)))
         hs.fileName = Property(key="Sheetfile", value=ten_tep_sheet(cpath),
                                position=Position(X=BC.tron(sx),
-                                                 Y=BC.tron(BC.LE + cao + 1.27), angle=0),
+                                                 Y=BC.tron(sy + cao + 1.27), angle=0),
                                effects=Effects(font=Font(width=1.27, height=1.27)))
         hs.properties = [Property(
             key="EIDE_ten", value=cay.nut[con]["ten"] or doan,
-            position=Position(X=BC.tron(sx), Y=BC.tron(BC.LE - 3.81), angle=0),
+            position=Position(X=BC.tron(sx), Y=BC.tron(sy - 3.81), angle=0),
             effects=Effects(font=Font(width=1.27, height=1.27)))]
         hs.pins = []
-        py = BC.LE + CAO_MOI_PIN
+        py = sy + CAO_MOI_PIN
         for p in ports:
             hs.pins.append(HierarchicalPin(
                 name=p["ten"], connectionType=_hinh_nhan(p["huong"]),
@@ -218,7 +241,6 @@ def _mot_sheet(cay: Any, nid: str, *, symbol: dict[str, dict[str, str]], kho: st
                 uuid=G.uuid_theo(f"hpin:{cpath}.{p['ten']}")))
             py += CAO_MOI_PIN
         sch.sheets.append(hs)
-        sx += RONG_SHEET + CACH_SHEET
 
     return G._chuan_hoa(sch.to_sexpr())
 

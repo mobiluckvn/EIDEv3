@@ -434,6 +434,13 @@ class History:
                 "so_req": dem.get("req", 0),
                 "so_tep": dem.get("code", 0) + dem.get("config", 0),
                 "so_changeset": len(self.log.all()),
+                # SCH-16 — "Gói sch vào snapshot/release".
+                #
+                # Không chỉ ghi TÊN tệp mà gói cả NỘI DUNG vào blob: một bản ưng ý chỉ nhớ tên
+                # tệp thì "quay về được" phụ thuộc vào việc tệp đó còn nguyên, tức phụ thuộc
+                # vào đúng thứ mà người ta ghi bản ưng ý để không phải phụ thuộc vào. Dự án
+                # không có git cũng phải khôi phục được sơ đồ.
+                "so_do": self._gom_so_do(),
                 # HIER-16 — "Snapshot/hộ chiếu ghi block@semver đã dùng".
                 #
                 # Cùng lý do với việc ghi hộ chiếu chip: quay về một bản ưng ý mà không biết
@@ -460,6 +467,69 @@ class History:
         sau = self.log.sau(s.at_changeset) if s.at_changeset else self.log.all()
         return {"ok": True, "snapshot": s.to_dict(),
                 **sn.se_mat_gi(sn.xuat_kho(self.store), _unjson(cu), changeset_sau=sau)}
+
+    def _gom_so_do(self) -> dict[str, Any]:
+        """Gói sơ đồ vào bản ưng ý: sổ đăng ký sheet + nội dung từng tệp (SCH-16).
+
+        Tệp đã đăng ký mà KHÔNG còn trên đĩa thì ghi `co_tep=False` chứ không im lặng bỏ qua:
+        một bản ưng ý nói "gói 5 sheet" trong khi chỉ có 3 tệp là một lời hứa khôi phục sai, và
+        nó chỉ vỡ ra vào lúc người ta cần nó nhất.
+        """
+        try:
+            ds = self.store.sch_cac_sheet()
+        except Exception:                       # kho cũ chưa có bảng sch_sheets
+            return {"sheet": [], "so_sheet": 0, "canh_bao": []}
+        if not ds:
+            return {"sheet": [], "so_sheet": 0, "canh_bao": []}
+
+        goc = self.paths.project_root
+        sheet: list[dict[str, Any]] = []
+        canh: list[str] = []
+        lib: dict[str, Any] = {}
+        for r in ds:
+            p = goc / r["tep"]
+            co = p.exists()
+            if not co:
+                canh.append(f"{r['tep']} đã đăng ký nhưng không còn trên đĩa — bản ưng ý này "
+                            "không khôi phục lại được tệp đó.")
+            sheet.append({
+                "path": r["path"], "tep": r["tep"], "version": r["version"],
+                "layout_hash": r["layout_hash"], "co_tep": co,
+                "blob": self.blobs.put(p.read_text("utf-8", errors="replace")) if co else None})
+            lib.update(r["lib_versions"] or {})
+
+        # Tệp đi kèm sơ đồ: ký hiệu, netlist, ảnh. Chúng không phải sheet nên không có dòng
+        # riêng trong sổ, nhưng thiếu chúng thì gói mở ra không đủ.
+        kem: list[dict[str, Any]] = []
+        for rel in ("sch/eide-sinh.kicad_sym", "sch/mach.net", "sch/mach.kicad_pro"):
+            p = goc / rel
+            if p.exists():
+                kem.append({"tep": rel, "blob": self.blobs.put(
+                    p.read_text("utf-8", errors="replace"))})
+        return {"sheet": sheet, "so_sheet": len(sheet), "kem": kem,
+                "lib_versions": lib, "canh_bao": canh}
+
+    def khoi_phuc_so_do(self, s: Any) -> tuple[int, list[str]]:
+        """Đưa tệp sơ đồ về đúng nội dung lúc ghi bản ưng ý. Trả `(số tệp, cảnh báo)`."""
+        sd = s.contents.get("so_do") or {}
+        goc = self.paths.project_root
+        n = 0
+        canh: list[str] = []
+        for r in (sd.get("sheet") or []) + (sd.get("kem") or []):
+            if not r.get("blob"):
+                continue
+            nd = self.blobs.get(r["blob"])
+            if nd is None:
+                canh.append(f"{r['tep']}: mất bản sao nội dung trong bản ưng ý.")
+                continue
+            p = goc / r["tep"]
+            p.parent.mkdir(parents=True, exist_ok=True)
+            # `BlobStore.get` trả BYTES (nó giữ cả PDF, VCD), nên phải ghi bytes — không
+            # decode rồi ghi text, vì tệp KiCad có thể mang ký tự không phải utf-8 do người
+            # dùng dán vào, và một lần khôi phục làm đổi nội dung là một lần khôi phục sai.
+            p.write_bytes(nd)
+            n += 1
+        return n, canh
 
     def khoi_phuc_snapshot(self, snap_id: str, *, by: str = "human",
                            giu_ban_hien_tai: str | None = None) -> KetQuaHoanTac:
@@ -503,6 +573,10 @@ class History:
             except GitKhongSan as e:
                 canh.append(f"Phần tệp không khôi phục được bằng git: {e}")
 
+        # SCH-16 — sơ đồ về theo bản ưng ý, kể cả khi dự án không có git.
+        so_do_n, so_do_canh = self.khoi_phuc_so_do(s)
+        canh += so_do_canh
+
         moi = Changeset(
             id=cs_id, ts=cs_mod._now(), author=by,
             touches=[cs_mod.Touch(i, "artefact", "restore") for i in cham],
@@ -520,8 +594,11 @@ class History:
         return KetQuaHoanTac(
             True, changeset_moi=moi.id, da_lui=[snap_id], canh_bao=canh,
             message_vi=(f"Đã khôi phục về “{s.name or snap_id}” bằng changeset {moi.id}. "
-                        f"{len(cham)} hiện vật đổi. Lịch sử không mất gì — bản trước khi "
-                        f"khôi phục vẫn nằm trong dòng thời gian."))
+                        f"{len(cham)} hiện vật đổi."
+                        + (f" {so_do_n} tệp sơ đồ về đúng nội dung lúc ghi bản đó."
+                           if so_do_n else "")
+                        + " Lịch sử không mất gì — bản trước khi "
+                        "khôi phục vẫn nằm trong dòng thời gian."))
 
     def _ap_ban_xuat(self, xuat: dict[str, Any], cs_id: str) -> list[str]:
         """Đặt kho về đúng trạng thái trong bản xuất. Trả danh sách hiện vật đã chạm."""

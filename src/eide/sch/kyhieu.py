@@ -39,11 +39,31 @@ class KyHieu:
     chan: list[dict[str, str]] = field(default_factory=list)
     nguon: str = ""                # "DS rev X p.Y" — N1 áp vào ký hiệu
     canh_bao: str = ""
+    ty_khop: float | None = None   # khớp bao nhiêu với Fact, None = không có lib để so
+    xac_nhan_boi: str = ""         # ai đã xem và xác nhận ký hiệu này
+    xac_nhan_luc: str = ""
+
+    @property
+    def can_xac_nhan(self) -> bool:
+        """§9 — "Symbol sinh từ Fact: xem, xác nhận, sửa kiểu chân" là một widget **edit**.
+
+        Ký hiệu sinh từ Fact là một phép SUY của máy: kiểu chân (`power_in`/`in`/`passive`…)
+        suy từ hướng Port, mà hướng Port lại suy từ tên chân. Suy đúng phần lớn thời gian
+        không phải là suy đúng, và một kiểu chân sai làm ERC của KiCad báo sai — nên nó cần
+        một con người nói "đúng rồi". Ký hiệu lấy từ thư viện chính thức khớp 100 % thì không
+        cần: ở đó tác giả thư viện đã là con người đó.
+        """
+        if self.xac_nhan_boi:
+            return False
+        return bool(self.sinh_tu_fact) or (self.ty_khop is not None and self.ty_khop < 1.0)
 
     def to_dict(self) -> dict[str, Any]:
         return {"ref": self.ref, "lib": self.lib, "ten": self.ten,
                 "sinh_tu_fact": self.sinh_tu_fact, "so_chan": len(self.chan),
-                "nguon": self.nguon, "canh_bao": self.canh_bao}
+                "nguon": self.nguon, "canh_bao": self.canh_bao,
+                "ty_khop": self.ty_khop, "can_xac_nhan": self.can_xac_nhan,
+                "xac_nhan_boi": self.xac_nhan_boi, "xac_nhan_luc": self.xac_nhan_luc,
+                "chan": [dict(c) for c in self.chan]}
 
 
 def anh_xa(cay: Any, *, thu_vien: dict[str, dict[str, Any]] | None = None,
@@ -74,14 +94,14 @@ def anh_xa(cay: Any, *, thu_vien: dict[str, dict[str, Any]] | None = None,
             ty, lech = _doi_chieu(chan, chinh_thuc.get("chan") or [])
             if ty >= NGUONG_KHOP:
                 ra[ref] = KyHieu(ref=ref, lib=chinh_thuc.get("lib", ""),
-                                 ten=chinh_thuc.get("ten", ""), chan=chan,
+                                 ten=chinh_thuc.get("ten", ""), chan=chan, ty_khop=ty,
                                  nguon=f"thư viện {chinh_thuc.get('lib')}@"
                                        f"{chinh_thuc.get('version', '?')}",
                                  canh_bao=("" if ty == 1.0 else
                                            f"khớp {ty:.0%} với Fact; lệch: {lech}"))
                 continue
             # §5: "lệch → không dùng im lặng". Rơi về ký hiệu sinh, và NÓI RA vì sao.
-            ra[ref] = _sinh(ref, n, chan, ngf.get(ref, ""),
+            ra[ref] = _sinh(ref, n, chan, ngf.get(ref, ""), ty_khop=ty,
                             canh_bao=(f"Ký hiệu thư viện {chinh_thuc.get('lib')} chỉ khớp "
                                       f"{ty:.0%} với Fact pinout ({lech}) — dùng ký hiệu "
                                       "sinh từ Fact thay vì tin thư viện."))
@@ -91,11 +111,40 @@ def anh_xa(cay: Any, *, thu_vien: dict[str, dict[str, Any]] | None = None,
 
 
 def _sinh(ref: str, n: dict[str, Any], chan: list[dict[str, str]], nguon: str,
-          canh_bao: str = "") -> KyHieu:
+          canh_bao: str = "", ty_khop: float | None = None) -> KyHieu:
     return KyHieu(ref=ref, lib="", ten=n["canonical"].get("ten") or ref,
-                  sinh_tu_fact=True, chan=chan,
+                  sinh_tu_fact=True, chan=chan, ty_khop=ty_khop,
                   nguon=nguon or "Fact pinout trong kho (chưa ghi rõ trang tài liệu)",
                   canh_bao=canh_bao)
+
+
+# =================================================== xác nhận của người §9, SCH-14/SCH-15
+# Tập kiểu chân KiCad mà người được phép chọn khi sửa. Đặt tên khác `KIEU_CHAN` (bảng
+# hướng-Port → kiểu chân ở đầu tệp) vì hai thứ khác nhau: một cái là phép SUY của máy, một cái
+# là danh sách người CHỌN. Bản đầu trùng tên và đè lên bảng suy — `_chan_tu_port` gọi `.get()`
+# trên một tuple, tức mọi ký hiệu sinh ra đều nổ.
+KIEU_CHAN_CHON_DUOC = ("power_in", "power_out", "input", "output", "bidirectional", "passive",
+                       "open_collector", "tri_state", "unspecified", "no_connect")
+
+
+def ap_xac_nhan(ds: dict[str, KyHieu], da_xac_nhan: dict[str, dict[str, Any]]) -> None:
+    """Đắp phần người đã xác nhận lên ánh xạ vừa sinh lại.
+
+    `sch.symbols` chạy lại mỗi khi Fact đổi, và nếu nó quên phần này thì mọi xác nhận của người
+    biến mất mỗi lần sinh lại — người dùng sẽ xác nhận lần thứ ba rồi thôi không xác nhận nữa.
+    Sửa kiểu chân của người **đè lên** phép suy của máy: đó là cả điểm của việc cho họ sửa.
+    """
+    for ref, xn in (da_xac_nhan or {}).items():
+        k = ds.get(ref)
+        if k is None:
+            continue
+        k.xac_nhan_boi = str(xn.get("boi") or "")
+        k.xac_nhan_luc = str(xn.get("luc") or "")
+        sua = dict(xn.get("kieu_chan") or {})
+        for c in k.chan:
+            if c.get("so") in sua:
+                c["kieu"] = sua[c["so"]]
+                c["kieu_boi_nguoi"] = "có"
 
 
 def _chan_tu_port(p: dict[str, Any]) -> dict[str, str]:
