@@ -32,7 +32,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **CKM** | Bản đồ tri thức mạch §C2: KG nodes/edges · khối + luồng tín hiệu suy từ tên · pinout không bịa chân, ĐƯỢC_GÁN duy nhất do chỉ mục kho · net/netlist · gộp `ckm.build` | xong |
 | **HIER-A** | Cây khối phân cấp §2–3: lược đồ v3 có `down()` · Port ở biên khối · net theo phạm vi · `flatten(cây)` = netlist cũ 100 % · sáu bất biến E9001–E9006 | xong |
 | **HIER-B** | Fact theo cấp · ERC bốn ràng buộc §4.2 báo theo path (`board.check`) · STALE theo NÚT, nội bộ không lan sang anh em · cây gập/mở A5.9 · giải thích khối 7 câu | xong |
-| HIER-C…D | Thư viện khối `block@semver` · SKiDL/KiCad phân cấp + round-trip | chưa |
+| **HIER-C** | Thư viện khối `block@semver` ba tầng · `instantiate` mọi số có công thức và NGUỒN, thiếu nguồn thì không đặt · trích khối có kiểm khép kín · snapshot ghi `block@semver` | xong |
+| HIER-D | SKiDL/KiCad phân cấp + round-trip → cây (đi cùng SCH-C) | chưa |
 | **SCH-A** | Cờ + `eide/sch/` + `sch.compose` (khối → hàm SKiDL) · `sch.netlist` kiểm đẳng cấu bằng cách ĐỌC LẠI tệp · `sch.symbols` sinh từ Fact có ghi nguồn · R3 · chốt chặn không đề nghị cài KiCad | xong |
 | **SCH-B** | `sch.place` bố cục xác định, tiêu chí đo bằng số · `sch.write` `.kicad_sch` qua kiutils, uuid theo ref · `sch.render` SVG tự vẽ, kiểm chữ không đè | xong |
 | SCH-C…D | Round-trip `sch.import`/`export` · sheet phân cấp · đi dây thật | chưa |
@@ -105,7 +106,7 @@ ui/EIDEApp/Sources/EIDE/
 .venv/bin/python tools/thu_mem_c.py                  # 26 ca nén có kiểm chứng + 7 đường hỏng
 .venv/bin/python tools/thu_cuoi.py                    # 36 ca ING-C/D/E + MEM-D + 9 đường hỏng
 .venv/bin/python tools/thu_ckm.py                     # 35 ca bản đồ tri thức mạch + 8 đường hỏng
-.venv/bin/python tools/thu_hier.py                    # 38 ca cây khối + ERC + STALE theo cây
+.venv/bin/python tools/thu_hier.py                    # 46 ca cây khối + ERC + STALE + thư viện khối
 EIDE_FEATURE_SCHEMATIC=1 .venv/bin/python tools/thu_sch.py    # 35 ca sinh sơ đồ + 10 đường hỏng
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_g5.py   # bằng chứng SCH-19
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_ing_a.py   # hồi quy hai chế độ cờ

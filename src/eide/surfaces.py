@@ -394,6 +394,33 @@ def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:
                 rows=[[v.get("ma", ""), v.get("o_dau", ""), v.get("vi", ""),
                        v.get("goi_y", "")] for v in vp]))
 
+    # A5.9d — khối lấy từ thư viện (HIER-45 §5). Hiện cả SỐ DẪN XUẤT và nguồn của nó: một
+    # điện trở 609,76 Ω trên bảng mà không nói ra nó tính từ đâu thì người đọc chỉ có cách tin.
+    if mg0 and (mg0["canonical"].get("khoi_thu_vien") or {}):
+        dung = mg0["canonical"]["khoi_thu_vien"]
+        hang: list[list[Any]] = []
+        for khoi_ma, d in sorted(dung.items()):
+            dx = d.get("dan_xuat") or {}
+            hang.append([
+                khoi_ma, d.get("ma", ""),
+                {"du_an": "dự án", "nguoi_dung": "người dùng"}.get(d.get("tang", ""),
+                                                                  d.get("tang", "")),
+                "; ".join(f"{k}={v}" for k, v in sorted((d.get("tham_so") or {}).items()))
+                or "—",
+                "; ".join(f"{t} = {_so_dx(g)}" for t, g in sorted(dx.items())) or "—",
+                "; ".join(f"{k}: {v}" for k, v in sorted((d.get("nguon") or {}).items()))
+                or "CHƯA ghi nguồn",
+                "; ".join(f"{a}→{b}" for a, b in
+                          sorted((d.get("anh_xa_ref") or {}).items())) or "—",
+            ])
+        ra.append(khoi_hien_vat(
+            "A5.9d", "Khối lấy từ thư viện", "table", mg0,
+            summary=(f"{len(dung)} khối đặt từ thư viện — snapshot ghi lại "
+                     "block@semver để bản ưng ý khôi phục được đúng phiên bản"),
+            columns=["Khối trong mạch", "block@semver", "Tầng", "Tham số",
+                     "Số dẫn xuất", "Nguồn tham số", "Ref đổi"],
+            rows=hang))
+
     mg = store.get(K.MA_DO_THI)
     if mg:
         c = mg["canonical"]
@@ -548,6 +575,13 @@ def _uu_tien_erc(x: dict[str, Any]) -> tuple[int, str, str]:
     """Xếp theo HẬU QUẢ, không theo thứ tự luật chạy: lỗi chặn lên trước."""
     thu = {"khong_dat": 0, "canh_bao": 1, "chua_du_du_kien": 2, "dat": 3}
     return (thu.get(x.get("ket_luan", ""), 9), x.get("path", ""), x.get("luat", ""))
+
+
+def _so_dx(g: dict[str, Any]) -> str:
+    """Số dẫn xuất kèm công thức — §5 "mọi số từ công thức có nguồn"."""
+    v = g.get("gia_tri")
+    s = f"{v:.6g}".replace(".", ",") if isinstance(v, (int, float)) else str(v)
+    return f"{s} {g.get('don_vi', '')} ({g.get('cong_thuc', '')})".strip()
 
 
 def _hang_cay(dong: str, stale_nut: dict[str, str] | None = None,

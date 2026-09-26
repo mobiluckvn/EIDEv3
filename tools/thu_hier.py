@@ -17,6 +17,10 @@ bus không kể thành viên · cây sâu 6 cấp (cảnh báo, KHÔNG cấm) ·
 HIER-B thêm: ERC bốn ràng buộc báo theo path (HIER06–08) · STALE theo cây, nội bộ KHÔNG lan
 sang anh em (HIER05) · lớp giải thích khối bảy câu (HIER14) · cây trên tab Thiết kế có tô
 nút (HIER15).
+
+HIER-C thêm: thư viện khối `block@semver` (HIER09) — đặt khối với tham số, mọi số dẫn xuất có
+công thức và nguồn, thiếu nguồn thì KHÔNG đặt; trích khối từ mạch có kiểm khép kín (HIER10);
+snapshot ghi block@semver (HIER16).
 """
 
 from __future__ import annotations
@@ -319,8 +323,73 @@ def chay(du_an: pathlib.Path) -> int:
            or "chưa đủ dữ kiện" in kh2.get("A5.9c", {}).get("summary", "").lower(),
            kh2.get("A5.9c", {}).get("summary", "")[:150])
 
+    b.phan("H · THƯ VIỆN KHỐI (HIER09, HIER10, HIER16)")
+    from eide.knowledge import khoi_thu_vien as KTV
+
+    LDO = {
+        "ten": "LDO-3V3", "phien_ban": "1.2.0",
+        "mo_ta": "Hạ 5 V xuống 3,3 V bằng AMS1117-ADJ, chia áp hồi tiếp",
+        "port": [{"ten": "VIN", "huong": "power_in"},
+                 {"ten": "VOUT", "huong": "power_out"},
+                 {"ten": "GND", "huong": "power_in"}],
+        "params": [{"ten": "vout", "don_vi": "V"},
+                   {"ten": "vref", "don_vi": "V", "mac_dinh": 1.25},
+                   {"ten": "r1", "don_vi": "Ω", "mac_dinh": 1000.0},
+                   {"ten": "r2", "don_vi": "Ω", "cong_thuc": "chia_ap_r2"}],
+        "la": [{"ref": "U7", "ten": "AMS1117-ADJ", "gia_tri": "AMS1117-ADJ"},
+               {"ref": "R6", "ten": "R", "gia_tri": "{r1}"},
+               {"ref": "R7", "ten": "R", "gia_tri": "{r2}"}],
+    }
+    KTV.luu_khoi(KTV.Khoi.from_dict(LDO), goc=ctx.config.paths.blocks)
+
+    r = goi("khoi.list")
+    b.kiem("Thư viện khối tra được, nói rõ lấy từ tầng nào",
+           r.ok and r.data["so_khoi"] == 1 and r.data["khoi"][0]["tang"] == "du_an",
+           r.data["note_vi"][:130] if r.ok else str(r.error.message_vi)[:120])
+
+    r = goi("khoi.place", ma="LDO-3V3", khoi="MOD-LDO", tham_so={"vout": 3.3})
+    b.kiem("THIẾU NGUỒN thì KHÔNG đặt, và nói rõ tham số nào",
+           not r.ok and r.error.code == "E8002" and "vout" in r.error.hint_for_agent
+           and "hàn lên bo thật" in r.error.hint_for_agent,
+           (r.error.message_vi if not r.ok else "lại đặt!")[:150])
+
+    r = goi("khoi.place", ma="LDO-3V3@1.2.0", khoi="MOD-LDO", tham_so={"vout": 3.3},
+            nguon={"vout": "anh nói: dùng 3,3 V"})
+    b.kiem("Đủ nguồn thì đặt được, điện trở chia áp TÍNH RA (HIER09)",
+           r.ok and abs(r.data["dan_xuat"]["r2"]["gia_tri"] - 609.756) < 0.01,
+           r.data["note_vi"][:190] if r.ok else str(r.error.message_vi)[:150])
+    b.kiem("Số dẫn xuất mang theo công thức và nguồn của từng tham số",
+           r.ok and r.data["dan_xuat"]["r2"]["cong_thuc"].startswith("R2 = R1")
+           and "anh nói" in r.data["dan_xuat"]["r2"]["nguon"]["vout"],
+           str(r.data["dan_xuat"]["r2"]["nguon"]) if r.ok else "")
+
+    r2 = goi("khoi.place", ma="LDO-3V3", khoi="MOD-LDO-2", tham_so={"vout": 3.3},
+             nguon={"vout": "anh nói: dùng 3,3 V"})
+    b.kiem("Đặt lần hai thì ref được cấp mới, không trùng (§2.2 mục 4)",
+           r2.ok and set(r2.data["anh_xa_ref"]) == {"U7", "R6", "R7"},
+           str(r2.data.get("anh_xa_ref")) if r2.ok else str(r2.error.message_vi)[:130])
+
+    r = goi("khoi.extract", khoi="MOD-MCU", ten="CUM-MCU")
+    kin = r.ok
+    b.kiem("Trích khối: khép kín thì đóng gói, không kín thì TỪ CHỐI kèm chỗ hở (HIER10)",
+           (r.ok and r.data["so_port"] >= 1) or (not r.ok and r.error.code == "E9002"),
+           (r.data["note_vi"][:150] if r.ok else str(r.error.message_vi)[:170]))
+    if not kin:
+        b.kiem("Lời từ chối nói cách sửa: khai Port ở biên khối",
+               "ckm.port_set" in (r.error.alternatives or []),
+               (r.error.hint_for_agent or "")[:150])
+    else:
+        b.kiem("Gói mang theo Fact của lá kèm nguồn (§5)", r.data["so_fact"] >= 1,
+               f"{r.data['so_fact']} Fact")
+
+    snap = ctx.history.tao_snapshot(ten="sau-khi-dat-ldo", ghi_chu="thử HIER16",
+                                    boi="human")
+    b.kiem("Snapshot ghi block@semver đã dùng (HIER16)",
+           snap.contents.get("khoi_thu_vien", {}).get("MOD-LDO") == "LDO-3V3@1.2.0",
+           str(snap.contents.get("khoi_thu_vien")))
+
     # ================================================================== UNHAPPY
-    b.phan("H · BẢY ĐƯỜNG HỎNG")
+    b.phan("I · BẢY ĐƯỜNG HỎNG")
 
     b.buoc("1. Nối xuyên cấp (HIER03)")
     ctx.store.ckm_dat_nut(node_id="net:XUYEN", loai="net", ten="XUYEN",

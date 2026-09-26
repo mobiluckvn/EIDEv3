@@ -1631,3 +1631,88 @@ mô hình không xác định; ghi lại đúng như thế chứ không gọi l�
 
 Mười một bộ E2E cũ chạy với cờ tắt đều giữ nguyên: G3 31 · G4 23 · G5 35 · ING-A 29 ·
 ING-B 25 · MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35 · HIER 38.
+
+---
+
+### [DEV-272] 26/09/2026 · HIER-C — thư viện khối `block@semver`
+
+§1 lỗ hổng 6 của HIER-45: *"Mỗi dự án vẽ lại LDO, pull-up, reset…"*. Bốn công cụ mới —
+`khoi.list` · `khoi.place` · `khoi.extract` · `khoi.upgrade` — cộng ba tầng lưu (dự án →
+người dùng → M4).
+
+Việc đóng gói không khó. Hai chỗ **dễ nói dối** mới là nội dung của bước này.
+
+### 1. Số dẫn xuất: con số tính ra trông luôn có vẻ đúng
+
+§5 nói *"đặt vào cây là `instantiate(block, params)` → sinh lá cụ thể (R theo Vout…), mọi số
+từ công thức có nguồn — không bịa"*. Một khối LDO đặt với `Vout=3,3 V` sinh hai điện trở chia
+áp tính được: `R2 = R1 / (Vout/Vref − 1) = 609,76 Ω`.
+
+Con số đó **có đơn vị, có mấy chữ số thập phân, và không ai hỏi nó ở đâu ra**. Đó là chỗ N1
+dễ lách nhất trong cả sản phẩm — dễ hơn cả một hằng số trong mã, vì hằng số thì
+`constant-guard` soi, còn một giá trị BOM thì không ai soi.
+
+Nên luật là: **thiếu nguồn cho một tham số thì không sinh lá nào.** Không phải "sinh lá kèm
+cảnh báo" — một điện trở tính từ con số không ai biết ở đâu ra là một điện trở **sẽ được hàn
+lên bo thật**. Và mọi giá trị dẫn xuất mang theo `GiaTriDanXuat`: công thức, tham số vào, và
+nguồn của **từng** tham số. Không có dạng `float` trần nào ra khỏi module này.
+
+**Công thức là danh sách ĐÓNG, không `eval`.** Manifest đến từ một tệp trên đĩa, và §5 nói
+khối được chia sẻ giữa các dự án — `eval` trên nội dung tệp là thực thi mã của người lạ. Danh
+sách đóng thì công thức lạ bị từ chối **kèm tên các công thức có sẵn**, tức là thông tin cho
+người viết khối. Có một ca đo đọc chính mã nguồn để chắc không có `eval`/`exec`.
+
+### 2. Khép kín: hở im lặng thì chỉ sai khi hàn
+
+§5 cuối đòi kiểm tính khép kín trước khi trích khối. Một khối có net chạm ra ngoài mà không
+qua Port thì đem sang dự án khác **vẫn đặt được, vẫn vẽ được, và chỉ sai khi hàn**. Nên
+`kiem_khep_kin` là cửa duy nhất của `khoi.extract`, và nó nêu đúng chỗ hở kèm cách sửa
+(`ckm.port_set`).
+
+### Ba quyết định khác
+
+**Thứ tự ba tầng: dự án thắng người dùng.** Khối trong dự án là khối người dùng đã sửa cho
+mạch **này**. Ngược lại thì một lần sửa cục bộ sẽ bị một bản thư viện mới lặng lẽ ghi đè.
+
+**Không có phiên bản thì lấy bản mới nhất và NÓI RA đã chọn bản nào** — im lặng chọn hộ một
+phiên bản là chỗ dễ sai nhất của mọi hệ quản gói. Semver so bằng số: `1.10.0 > 1.2.0`.
+
+**Tầng thứ ba (M4) chưa có, và câu trả lời phải nói ra điều đó.** Nó đòi một kênh phát hành
+và một chuỗi hash, cả hai chưa tồn tại. `tra_khoi` nói *"chưa có ở hai tầng tra được"* thay vì
+"không tồn tại" — một tầng rỗng không được im lặng thành một kết luận.
+
+**`khoi.place`/`khoi.upgrade` đi qua cổng G-DESIGN** (§5). Đặt một khối mang theo linh kiện,
+giá trị và cả một cụm Fact vào mạch của người dùng; một công cụ đặt được mà không hỏi sẽ dựng
+xong nửa mạch trước khi ai kịp đọc.
+
+**`khoi.upgrade` nói rõ Port có đổi không**, vì §6 dòng cuối làm điều đó quyết định STALE lan
+tới đâu: Port đổi thì lan ra cha và anh em nối vào; chỉ đổi bên trong thì không lan.
+
+### Hai lỗi thật do việc đo phơi ra
+
+**1. Fact của lá KHÔNG đi theo khối — và đây là lần thứ ba lẫn ref với tên chip.** `_fact_cua_la`
+tra `pin:U3.`, nhưng `fact.extract` ghi Fact chân dưới **tên chip** (`pin:AMS1117.1` — Fact của
+một *loại* chip). Khối đóng gói xong có **0 Fact** mà vẫn báo thành công. Cùng chỗ lẫn này đã
+gây DEV-267 (#5, hộ chiếu tra sai khoá) và DEV-269 (#1). Nay dùng lại `erc.chu_the_la` — một
+nguồn sự thật cho "những chủ thể Fact có thể nói về một lá".
+
+**2. Đặt cùng một khối lần thứ hai làm `UNIQUE(path)` của kho NỔ.** Hai con LDO trên một bo là
+chuyện thường, và ref trong gói (`U7`, `R6`…) đã có người dùng. Công cụ chết bằng `E5999` thay
+vì làm việc. Nay cấp ref còn trống, **giữ tiền tố chữ** (`R6` → `R10`, không phải `R6_2`, vì
+tiền tố là thứ KiCad dùng để tự đánh số và người đọc BOM dùng để biết linh kiện loại gì), và
+nói ra ánh xạ `U7→U10` trong kết quả, trên tab, và trong hiện vật.
+
+### Một ghi chú về cách đo
+
+31 ca đơn vị đầu **xanh ngay lần chạy đầu**. Đọc lại thì thấy chưa ca nào đi qua thân
+`khoi.extract` với một khối khép kín thật — chỉ có ca *từ chối* khối không kín. **Một bộ đo
+toàn màu xanh mà chưa chạm đường thành công là một bộ đo chưa nói gì về đường đó.** Ca thêm vào
+(`test_khoi_extract_di_HET_duong_va_dat_lai_duoc_o_du_an_khac`) tìm ra ngay cả hai lỗi ở trên.
+
+### Số đo
+
+`712 ca đơn vị` (+33) · `tools/thu_hier.py` **46/46** (từ 38) qua giao diện thật ·
+`78 công cụ` khi cờ sơ đồ tắt, 84 khi bật.
+
+Hồi quy: mười hai bộ E2E đều giữ nguyên — G3 31 · G4 23 · G5 35 · ING-A 29 · ING-B 25 ·
+MEM-A 21 · MEM-B 20 · MEM-C 26 · CUỐI 36 · CKM 35 · HIER 46 · SCH 35.

@@ -440,12 +440,13 @@ def build_registry(features: Any = None) -> Registry:
                 "Không có công cụ nào cho việc này. Nói thẳng với người dùng rằng EIDE chưa "
                 "làm được việc đó — đừng thay bằng một việc gần giống."}
 
-    from . import ckm, design, knowledge, sch, snapshots, writing
+    from . import ckm, design, khoi, knowledge, sch, snapshots, writing
     writing.register(r)
     design.register(r)
     knowledge.register(r)
     snapshots.register(r)
     ckm.register(r)
+    khoi.register(r)
     # Cờ tắt (mặc định) thì `register` không đăng ký gì — xem Registry.add và SCH-44 §2.1.
     sch.register(r)
     return r

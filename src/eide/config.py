@@ -207,6 +207,11 @@ class Paths:
     def eide_md(self) -> Path:
         return self.project_root / "EIDE.md"        # §B2/§B6 goc du an
 
+    @property
+    def blocks(self) -> Path:
+        """`.eide/blocks/` — thu vien khoi cua DU AN (HIER-45 §5, tang 1)."""
+        return self.state_dir / "blocks"
+
     def ensure(self) -> "Paths":
         for d in (self.state_dir, self.blobs, self.transcripts):
             d.mkdir(parents=True, exist_ok=True)
@@ -216,6 +221,16 @@ class Paths:
 def user_memory_path() -> Path:
     """`~/.eide/memory.md` — bo nho NGUOI DUNG, dung chung moi du an (§B6)."""
     return Path.home() / ".eide" / "memory.md"
+
+
+def user_blocks_path() -> Path:
+    """`~/.eide/blocks/` — thu vien khoi cua NGUOI DUNG (HIER-45 §5, tang 2).
+
+    Tang 3 (goi toan cau M4, da phat hanh) chua co: no doi mot kenh phat hanh va mot chuoi
+    hash, ma ca hai deu chua ton tai. Cho nen `tra_khoi` chi doc hai tang va NOI RO dieu do
+    — mot tang rong khong duoc im lang thanh "khong co khoi nao".
+    """
+    return Path.home() / ".eide" / "blocks"
 
 
 @dataclass(slots=True)

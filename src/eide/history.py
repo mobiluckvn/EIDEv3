@@ -434,6 +434,12 @@ class History:
                 "so_req": dem.get("req", 0),
                 "so_tep": dem.get("code", 0) + dem.get("config", 0),
                 "so_changeset": len(self.log.all()),
+                # HIER-16 — "Snapshot/hộ chiếu ghi block@semver đã dùng".
+                #
+                # Cùng lý do với việc ghi hộ chiếu chip: quay về một bản ưng ý mà không biết
+                # nó dựng trên khối thư viện phiên bản nào thì "khôi phục được" là một lời
+                # hứa suông — bản LDO-3V3@1.2.0 và @2.0.0 có thể khác cả tập Port.
+                "khoi_thu_vien": _khoi_dang_dung(self.store),
             })
         self.snapshots.ghi(s)
         self.ledger.append("note", {"snapshot": s.id, "kind": kind, "name": ten})
@@ -710,3 +716,16 @@ def _ten_tag(ten: str) -> str:
 def _chip_dang_ghim(store) -> str | None:
     ds = store.list("passport", limit=1)
     return ds[0]["id"] if ds else None
+
+
+def _khoi_dang_dung(store) -> dict[str, str]:
+    """`{mã khối trong cây: block@semver}` — HIER-45 §5/HIER-16.
+
+    Đọc từ hiện vật sơ đồ khối chứ không từ thư viện trên đĩa: câu cần trả lời là "bản ưng ý
+    này dựng trên phiên bản nào", và thư viện trên đĩa có thể đã được nâng từ lúc đó.
+    """
+    a = store.get("MG-1")
+    if a is None:
+        return {}
+    dung = (a["canonical"].get("khoi_thu_vien") or {})
+    return {k: str(v.get("ma", "")) for k, v in sorted(dung.items()) if v.get("ma")}
