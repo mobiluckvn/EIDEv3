@@ -9,6 +9,13 @@ tóm tắt giữ đủ quyết định → hỏi lại quyết định đó vẫ
 
 Unhappy (bảy đường): kiểm sai thì huỷ · mô hình hỏng giữa lúc tóm tắt · tóm tắt không
 theo lược đồ · hồi sinh điều đã quên · ghim bị nén · huỷ nén khi chưa nén · M3 nhớ bí mật.
+
+Một ca của bộ này PHỤ THUỘC MÔ HÌNH: "C2 thật sự chạy và qua kiểm". Nén C2 chỉ được
+nhận khi ba câu hỏi ngược được trả lời đúng trên bản đã nén, và câu về tiêu chí đo của
+NFR-01 có lần mô hình trả "không biết" — khi đó hệ thống BỎ CUỘC và giữ nguyên ngữ cảnh,
+đúng như thiết kế. Thấy bốn ô của phần B đỏ cùng lúc kèm "0 đạt · 3 trượt" thì hãy đọc
+`bo_cuoc` trong sổ cái trước khi gọi đó là hồi quy: đó là đường an toàn đang chạy, không
+phải một thứ vừa hỏng.
 """
 
 from __future__ import annotations

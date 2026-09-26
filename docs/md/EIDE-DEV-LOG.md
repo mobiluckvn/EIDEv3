@@ -1214,3 +1214,84 @@ lọt vào chính bài kiểm của mình. Sửa: dùng tên luật thật, **v�
 rằng lý do từ chối không được chứa chữ "luật".
 
 Bài học giữ lại: một ô xanh chưa nói gì cho tới khi biết nó xanh **vì cơ chế nào**.
+
+---
+
+### [DEV-267] 26/09/2026 · Bản đồ tri thức mạch (CKM) — MDD-40 §C2
+
+Bước này lấp khoảng trống mà chính gap report EIDE-GAP-44 §2b.1 nêu: `sch.compose` mở đầu
+bằng *"từ CKM đã có"*, nhưng bốn loại hiện vật `ckm`/`pinout`/`netlist`/`block_diagram`
+trước đó **chỉ có tên** trong `ARTEFACT_TYPES` — không công cụ nào ghi chúng. Sinh sơ đồ
+từ một bản đồ rỗng nghĩa là mô hình phải bịa linh kiện và chân, đúng thứ N1 cấm.
+
+Tám công cụ mới: `ckm.chip_add`, `ckm.module_set`, `ckm.pinout_set`, `ckm.net_set`,
+`ckm.import_netlist`, `ckm.graph`, `ckm.build`, `diagram.render`. Lược đồ kho lên v2
+(`ckm_nodes`/`ckm_edges`), cộng thêm và có `down()` theo SCH-18.
+
+**ĐƯỢC_GÁN duy nhất nằm trong CHỈ MỤC SQLite, không trong lời nhắc.** §C2 viết quan hệ
+ĐƯỢC_GÁN kèm chữ "(duy nhất)" — đó là một bất biến vật lý: một chân làm được đúng một
+chức năng. Nếu để phần mềm nhớ luật đó thì mỗi đường ghi mới là một cơ hội quên. Nên luật
+là `CREATE UNIQUE INDEX … WHERE loai='DUOC_GAN'`: kho từ chối bản ghi thứ hai kể cả khi
+lời nhắc, mô hình và người viết tool đều sai.
+
+**Ba câu trả lời khác nhau cho "không gán được", không gộp.** Chưa nạp bảng chân (E8002)
+≠ chip không có chân đó (E8003) ≠ chân chỉ có ở tầng ĐỒNG (E8006). Gộp lại thành "không
+gán được" thì người đọc không biết phải làm gì tiếp. Lời từ chối E8003 **liệt kê chân có
+thật**, nên nó dạy thay vì chỉ chặn.
+
+**Mermaid do MÃ sinh, và cạnh suy ra từ TÊN tín hiệu.** Hệ quả tốt ngoài tính xác định
+(N3, SCH17): nếu hai khối nghĩ khác nhau về tên một tín hiệu thì mũi tên **biến mất** và
+người thấy ngay. Một hình do mô hình nối thì luôn đẹp và không bao giờ phát hiện lỗi đó.
+
+### Ba lỗi thiết kế mà việc đo phơi ra
+
+**1. Ghi thẳng vào KG làm hoàn tác nói dối (N9).** Changeset lùi lại bằng cách đặt
+`canonical` của hiện vật về bản trước. Nếu KG được ghi trực tiếp thì sau một lần hoàn tác,
+hiện vật lùi mà đồ thị vẫn còn chân đã gán — và người dùng nhìn hai chỗ thấy hai câu trả
+lời khác nhau về cùng một mạch. Đó là cách tệ nhất để sai: không ai biết bên nào đúng.
+Sửa: **hiện vật là sự thật, KG là hình chiếu** (`knowledge/ckm.chieu()`), đúng cách kho
+làm với `events` → `artefacts`. `History._ap_nghich_dao` gọi `chieu()` sau khi lùi. Giá:
+~12 ms mỗi lần ghi trên bản đồ 200 chân — rẻ hơn nhiều một bản đồ nói dối.
+
+**2. Chân khoá theo tên chip làm một chân vào bản đồ HAI lần.** `pin:ATmega328P.27` do
+bảng chân, `pin:U1.27` do netlist, và bản đồ đếm 5 chân trên một chip có 3. Tệ hơn: hai
+con ATmega328P trên cùng một bo đè lên nhau, nên `ĐƯỢC_GÁN duy nhất` sẽ **chặn** việc gán
+chân 27 của con thứ hai — một lời từ chối hoàn toàn vô nghĩa với người đang vẽ mạch. Sửa:
+khoá theo **ref** (bo có thể có hai con cùng loại, nhưng không thể có hai U1); tên chip
+thành thuộc tính, và gọi bằng tên chip khi có nhiều con thì **HỎI** (E8008) chứ không đoán.
+
+**3. "6 chân chưa gán chức năng" là một con số thúc người làm sai việc.** Bốn trong sáu
+chân đó thuộc một cảm biến **chưa có datasheet**, chúng tồn tại trong bản đồ chỉ vì một
+net nhắc tới. Đếm chung là thúc người đi gán chân cho linh kiện họ chưa có tài liệu —
+đúng chỗ N1 cấm. Tách thành `chan_chua_gan` (việc làm được) và `chan_khong_co_bang_chan`
+(còn thiếu tài liệu).
+
+### Hai chỗ suýt thành lời nói dối trên màn hình
+
+Khối `A5.1` ban đầu khai loại `diagram`, và khối netlist gắn cảnh báo vào trường
+`canh_bao`. Giao diện **không biết vẽ** loại `diagram` (nó hiện dòng "giao diện chưa biết
+vẽ khối loại…") và **không dựng** `canh_bao` ở cấp khối. Cả hai chỉ lộ ra khi đọc ảnh chụp
+màn hình thật. Sửa: bảng là dạng người đọc được ngay, mermaid đi vào khối `code` dán được
+ra ngoài, và cảnh báo vào `summary` — chỗ chắc chắn có người đọc. Một cảnh báo ghi vào
+trường không ai dựng thì tệ hơn không có cảnh báo.
+
+### Trần token hiến pháp nổ lần thứ tư
+
+Ba dòng mới (khối, gán chân, net) cộng luật "không bịa số chân" đẩy hiến pháp lên 3 746 >
+3 600. Trả bằng cách nén chín chỗ diễn giải dài mà **không bỏ một luật nào** → 3 598.
+Trần này đã buộc ra một quyết định thật ở cả bốn lần nó nổ.
+
+### Một bộ kiểm làm đứt sổ cái của app
+
+Lần chạy đầu của `tools/thu_ckm.py`: tác tử dành cả lượt báo *"sổ cái bị đứt thứ tự ở
+dòng 26"* thay vì làm việc được nhờ. Nó phát hiện **đúng** — `Ledger` ghi nhớ `seq` lúc
+khởi tạo và docstring của nó nói rõ chỉ an toàn trong MỘT tiến trình, còn bộ kiểm là người
+ghi thứ hai. Sửa ở bộ kiểm (sổ cái riêng `.eide-thu`, kho dùng chung), không ở sản phẩm:
+một dự án một tiến trình là ranh giới thiết kế, và phát hiện vi phạm ranh giới đó là hành
+vi đúng.
+
+**Số đo:** 46 ca đơn vị mới (tổng 544), `tools/thu_ckm.py` 35/35 qua giao diện thật, hồi
+quy chín bộ cũ giữ nguyên. MEM-C có một lần 22/26 rồi xanh lại 26/26: câu hỏi ngược về
+tiêu chí đo của NFR-01 bị mô hình trả "không biết", hệ thống **bỏ cuộc và giữ nguyên ngữ
+cảnh** — đường an toàn đang chạy, không phải hồi quy. Đã ghi cảnh báo đó vào docstring
+của bộ để lần sau không ai đọc nhầm.

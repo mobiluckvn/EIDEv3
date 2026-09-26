@@ -84,6 +84,46 @@ CREATE INDEX IF NOT EXISTS ix_fact_subject ON facts(subject, key);
 CREATE INDEX IF NOT EXISTS ix_fact_tier    ON facts(tier);
 """
 
+# --------------------------------------------------------------------------- CKM (§C2)
+# "Lưu: KG (SQLite nodes/edges) + bảng Fact truy vấn xác định + chỉ mục RAG theo trang."
+#
+# Hai bảng thay vì một bảng cho mỗi thực thể, vì §C2 liệt kê chín loại thực thể và chín
+# loại quan hệ, và danh sách đó sẽ còn dài ra (bus mới, ràng buộc mới). Một lược đồ đồ
+# thị chịu được việc thêm loại mà không cần migration; chín bảng thì không.
+#
+# Điều đáng nói nhất ở đây là `ux_ckm_duoc_gan`. §C2 viết quan hệ ĐƯỢC_GÁN kèm chữ
+# "(duy nhất)". Đó là một bất biến vật lý: một chân chip làm được đúng MỘT chức năng tại
+# một thời điểm. Nếu để phần mềm nhớ luật đó, thì mỗi đường ghi mới là một cơ hội quên.
+# Nên luật nằm trong CHỈ MỤC: SQLite từ chối bản ghi thứ hai, kể cả khi lời nhắc, mô
+# hình, và người viết tool đều sai. Đây đúng chỗ N1/N3 muốn luật nằm.
+SCHEMA_CKM = """
+CREATE TABLE IF NOT EXISTS ckm_nodes (
+    node_id    TEXT PRIMARY KEY,          -- "chip:ATmega328P@1.0.0" | "pin:U1.28" | "net:SDA"
+    loai       TEXT NOT NULL,             -- chip | pin | net | module | bus | rail | …
+    ten        TEXT NOT NULL,
+    canonical  TEXT NOT NULL,             -- JSON: thuộc tính của thực thể
+    tier       TEXT,                      -- tầng tin cậy của thực thể này, nếu có
+    nguon      TEXT,                      -- JSON: fact_id / doc / lời người
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ckm_node_loai ON ckm_nodes(loai);
+
+CREATE TABLE IF NOT EXISTS ckm_edges (
+    edge_id    TEXT PRIMARY KEY,          -- "<loai>:<tu>→<den>"
+    loai       TEXT NOT NULL,             -- CO_CHAN | NOI | DUOC_GAN | GOM | …
+    tu         TEXT NOT NULL,
+    den        TEXT NOT NULL,
+    canonical  TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ckm_edge_tu  ON ckm_edges(loai, tu);
+CREATE INDEX IF NOT EXISTS ix_ckm_edge_den ON ckm_edges(loai, den);
+
+-- ĐƯỢC_GÁN (duy nhất) — §C2. Luật nằm trong kho, không nằm trong lời nhắc.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ckm_duoc_gan
+    ON ckm_edges(tu) WHERE loai = 'DUOC_GAN';
+"""
+
 
 # --------------------------------------------------------------------------- migration
 # EIDE-SCH-44 §2.1 lop bao ve so 4 va SCH-18: "luoc do chi cong them; migration co
@@ -121,6 +161,18 @@ MIGRATIONS: list[Migration] = [
             "DROP TABLE IF EXISTS artefacts;"
             "DROP INDEX IF EXISTS ix_events_cs; DROP INDEX IF EXISTS ix_events_artefact;"
             "DROP TABLE IF EXISTS events;"
+        ),
+    ),
+    Migration(
+        phien_ban=2,
+        mo_ta="Bản đồ tri thức mạch (CKM) — MDD-40 §C2: KG nodes/edges",
+        up=SCHEMA_CKM,
+        down=(
+            "DROP INDEX IF EXISTS ux_ckm_duoc_gan;"
+            "DROP INDEX IF EXISTS ix_ckm_edge_den; DROP INDEX IF EXISTS ix_ckm_edge_tu;"
+            "DROP TABLE IF EXISTS ckm_edges;"
+            "DROP INDEX IF EXISTS ix_ckm_node_loai;"
+            "DROP TABLE IF EXISTS ckm_nodes;"
         ),
     ),
 ]
@@ -322,9 +374,100 @@ class Store:
         return {r["tier"]: r["n"] for r in self._db.execute(
             "SELECT tier, COUNT(*) n FROM facts WHERE superseded_by IS NULL GROUP BY tier")}
 
+    # ------------------------------------------------------------------ CKM (§C2)
+    def ckm_dat_nut(self, *, node_id: str, loai: str, ten: str,
+                    canonical: dict[str, Any], tier: str | None = None,
+                    nguon: dict[str, Any] | None = None) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO ckm_nodes(node_id,loai,ten,canonical,tier,nguon,updated_at)"
+                " VALUES(?,?,?,?,?,?,?)"
+                " ON CONFLICT(node_id) DO UPDATE SET loai=excluded.loai, ten=excluded.ten,"
+                " canonical=excluded.canonical, tier=excluded.tier, nguon=excluded.nguon,"
+                " updated_at=excluded.updated_at",
+                (node_id, loai, ten, json.dumps(canonical, ensure_ascii=False), tier,
+                 json.dumps(nguon or {}, ensure_ascii=False), _now()))
+            self._db.commit()
+
+    def ckm_dat_canh(self, *, loai: str, tu: str, den: str,
+                     canonical: dict[str, Any] | None = None) -> str:
+        """Ghi một quan hệ. `sqlite3.IntegrityError` ở đây là ĐƯỢC_GÁN bị gán hai lần —
+        người gọi phải bắt và biến thành lỗi có hướng dẫn, không được để nó chết trần."""
+        eid = f"{loai}:{tu}→{den}"
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO ckm_edges(edge_id,loai,tu,den,canonical,updated_at)"
+                " VALUES(?,?,?,?,?,?)"
+                " ON CONFLICT(edge_id) DO UPDATE SET canonical=excluded.canonical,"
+                " updated_at=excluded.updated_at",
+                (eid, loai, tu, den, json.dumps(canonical or {}, ensure_ascii=False), _now()))
+            self._db.commit()
+        return eid
+
+    def ckm_xoa_canh(self, *, loai: str, tu: str, den: str | None = None) -> int:
+        with self._lock:
+            if den is None:
+                cur = self._db.execute("DELETE FROM ckm_edges WHERE loai=? AND tu=?",
+                                       (loai, tu))
+            else:
+                cur = self._db.execute(
+                    "DELETE FROM ckm_edges WHERE loai=? AND tu=? AND den=?", (loai, tu, den))
+            self._db.commit()
+            return cur.rowcount
+
+    def ckm_nut(self, node_id: str) -> dict[str, Any] | None:
+        r = self._db.execute("SELECT * FROM ckm_nodes WHERE node_id=?", (node_id,)).fetchone()
+        return _row_to_nut(r) if r else None
+
+    def ckm_cac_nut(self, *, loai: str | None = None, tien_to: str | None = None,
+                    limit: int = 2000) -> list[dict[str, Any]]:
+        q, args = "SELECT * FROM ckm_nodes WHERE 1=1", []
+        if loai:
+            q += " AND loai=?"
+            args.append(loai)
+        if tien_to:
+            q += " AND node_id LIKE ?"
+            args.append(f"{tien_to}%")
+        q += " ORDER BY node_id LIMIT ?"
+        args.append(limit)
+        return [_row_to_nut(r) for r in self._db.execute(q, args)]
+
+    def ckm_cac_canh(self, *, loai: str | None = None, tu: str | None = None,
+                     den: str | None = None, limit: int = 5000) -> list[dict[str, Any]]:
+        q, args = "SELECT * FROM ckm_edges WHERE 1=1", []
+        for cot, gt in (("loai", loai), ("tu", tu), ("den", den)):
+            if gt:
+                q += f" AND {cot}=?"
+                args.append(gt)
+        q += " ORDER BY edge_id LIMIT ?"
+        args.append(limit)
+        return [{"edge_id": r["edge_id"], "loai": r["loai"], "tu": r["tu"], "den": r["den"],
+                 "canonical": json.loads(r["canonical"] or "{}")}
+                for r in self._db.execute(q, args)]
+
+    def ckm_xoa_het(self) -> None:
+        """Xoá sạch đồ thị để dựng lại từ hiện vật. An toàn vì đồ thị là hình chiếu —
+        xem `knowledge/ckm.chieu()`. Không được gọi từ chỗ nào khác."""
+        with self._lock:
+            self._db.execute("DELETE FROM ckm_edges")
+            self._db.execute("DELETE FROM ckm_nodes")
+            self._db.commit()
+
+    def ckm_dem(self) -> dict[str, int]:
+        d = {r["loai"]: r["n"] for r in self._db.execute(
+            "SELECT loai, COUNT(*) n FROM ckm_nodes GROUP BY loai")}
+        for r in self._db.execute("SELECT loai, COUNT(*) n FROM ckm_edges GROUP BY loai"):
+            d[r["loai"]] = r["n"]
+        return d
+
     # ------------------------------------------------------------------ dựng lại
     def rebuild(self) -> int:
-        """Dựng lại hình chiếu từ `events`. CX16 đòi phát lại tái tạo trạng thái 100 %."""
+        """Dựng lại hình chiếu từ `events`. CX16 đòi phát lại tái tạo trạng thái 100 %.
+
+        Dựng lại bảng `artefacts` thôi. Bản đồ mạch (`ckm_nodes/ckm_edges`) là hình chiếu
+        của *hiện vật*, một lớp nữa ở trên — người gọi phải gọi `knowledge.ckm.chieu()`
+        sau. Kho không tự gọi vì kho không được biết gì về tri thức mạch.
+        """
         with self._lock:
             self._db.execute("DELETE FROM artefacts")
             n = 0
@@ -352,6 +495,12 @@ class Store:
 
 def _s(v: Any) -> str | None:
     return None if v is None else str(v)
+
+
+def _row_to_nut(r: sqlite3.Row) -> dict[str, Any]:
+    return {"node_id": r["node_id"], "loai": r["loai"], "ten": r["ten"],
+            "canonical": json.loads(r["canonical"] or "{}"), "tier": r["tier"],
+            "nguon": json.loads(r["nguon"] or "{}")}
 
 
 def _row_to_artefact(r: sqlite3.Row) -> dict[str, Any]:

@@ -33,8 +33,15 @@ from typing import Any
 # E5xxx  du lieu / store / lugc do
 # E6xxx  mo hinh (LLM)                 (UC19 — qua tai, timeout, tra sai lugc do)
 # E7xxx  lich su / changeset / snapshot   (E7001–E7007 da dung het)
-# E8xxx  so do / EDA                      (SCH-44; E8001 netlist lech CKM, E8002 thieu
-#                                          pinout da duyet — xem DEV-252)
+# E8xxx  so do / EDA / ban do tri thuc mach
+#        E8001 netlist lech CKM · E8002 thieu Fact chan (chua nap bang chan)
+#        E8003 chan khong co trong bang chan (khong bia chan)
+#        E8004 chan da duoc gan roi (DUOC_GAN duy nhat)
+#        E8005 CKM chua du tien de de sinh so do
+#        E8006 tang phong doan (DONG/CAUHINH) khong duoc vao ban do
+#        E8007 chuc nang khong nam trong AF cua chan
+#        E8008 nhieu con cung loai tren bo — phai noi ro ref nao
+#        (E8001–E8002 tu SCH-44 — xem DEV-252; E8003–E8008 them o buoc CKM)
 # E_PROTO_*  giao thuc UAP             (MDD-40 §D2)
 
 

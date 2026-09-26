@@ -119,7 +119,9 @@ def test_settings_json_bat_duoc_co(tmp_path, monkeypatch):
 # =========================================================================== SCH-18 lược đồ
 def test_kho_moi_duoc_danh_so_luoc_do(tmp_path):
     s = Store(tmp_path / "k.sqlite")
-    assert s.phien_ban_luoc_do == SCHEMA_VERSION == 1
+    # KHÔNG kẹp vào một con số: mỗi migration thêm sau sẽ làm ca này đỏ mà chẳng nói lên
+    # điều gì. Cái cần giữ là "kho mới thì ở phiên bản MỚI NHẤT".
+    assert s.phien_ban_luoc_do == SCHEMA_VERSION >= 1
 
 
 def test_mo_lai_khong_ap_lai_migration(tmp_path):
@@ -141,7 +143,7 @@ def test_kho_cu_chua_danh_so_van_nang_cap_duoc(tmp_path):
     db.close()
 
     s = Store(p)
-    assert s.phien_ban_luoc_do == 1, "phải nhận ra và đánh số, không nổ"
+    assert s.phien_ban_luoc_do == SCHEMA_VERSION, "phải nhận ra, đánh số, và nâng tiếp"
     s.put_fact({"fact_id": "f1", "subject": "chip:X", "key": "k", "value": 1,
                 "unit": "V", "tier": "BAC", "origin": "extract", "source": {},
                 "explain": {}})
@@ -153,15 +155,16 @@ def test_ha_cap_xuong_0_bi_tu_choi_neu_khong_noi_ro(tmp_path):
     s = Store(tmp_path / "k.sqlite")
     with pytest.raises(ValueError, match="xoá toàn bộ kho"):
         s.ha_cap(0)
-    assert s.phien_ban_luoc_do == 1
+    assert s.phien_ban_luoc_do == SCHEMA_VERSION
 
 
 def test_ha_cap_noi_ro_thi_go_duoc_va_len_lai_duoc(tmp_path):
     s = Store(tmp_path / "k.sqlite")
-    assert s.ha_cap(0, cho_phep_xoa_goc=True) == [1]
+    xuong = list(range(SCHEMA_VERSION, 0, -1))
+    assert s.ha_cap(0, cho_phep_xoa_goc=True) == xuong
     assert s.phien_ban_luoc_do == 0
-    assert s.nang_cap() == [1]
-    assert s.phien_ban_luoc_do == 1
+    assert s.nang_cap() == sorted(xuong)
+    assert s.phien_ban_luoc_do == SCHEMA_VERSION
     s.put_fact({"fact_id": "f1", "subject": "chip:X", "key": "k", "value": 1,
                 "unit": "V", "tier": "BAC", "origin": "extract", "source": {},
                 "explain": {}})

@@ -327,20 +327,120 @@ def design(store: Any, inv: Any) -> dict[str, Any]:
                    "không mua nhầm theo một hướng sau đó bị bỏ.",
             can_gi="Chốt phương án, rồi bảo tác tử ghi danh sách linh kiện."))
 
-    pinouts = store.list("pinout", limit=200)
-    if pinouts:
-        khoi.append(block(
-            "A5.2", "Pinout", "table", columns=["Chân", "Chức năng", "Net"],
-            rows=[[p["id"], p["canonical"].get("func", ""), p["canonical"].get("net", "")]
-                  for p in pinouts]))
-    else:
-        khoi.append(empty(
+    khoi.extend(_khoi_ban_do_mach(store))
+    return _don_gian("design", "A5", "Thiết kế", khoi)
+
+
+def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:
+    """Sơ đồ khối · Pinout · Netlist · CKM — dạng NGƯỜI của bản đồ tri thức mạch (§C2, E1).
+
+    Mỗi bảng ở đây trả lời một câu §E2 ghi trong cột "Người đọc thấy gì", và cột tầng đi
+    kèm từng dòng là chỗ quan trọng nhất: một chân gán theo lời người dùng và một chân gán
+    theo datasheet KHÔNG được trông giống nhau trên màn hình.
+    """
+    from .knowledge import ckm as K
+
+    ra: list[dict[str, Any]] = []
+
+    mg = store.get(K.MA_DO_THI)
+    if mg:
+        c = mg["canonical"]
+        treo = c.get("tin_hieu_treo") or {}
+        chua = treo.get("vao_khong_ai_cap") or []
+        ra.append(khoi_hien_vat(
+            # Loại `table`, KHÔNG phải `diagram`: giao diện chỉ vẽ những loại khối nó biết,
+            # và một loại lạ hiện ra thành dòng "chưa biết vẽ khối loại…". Bảng là dạng
+            # người đọc được NGAY; hình vẽ thuộc tính năng sinh sơ đồ (SCH-44, cờ riêng).
+            "A5.1", "Sơ đồ khối", "table", mg,
+            summary=(f"{c.get('so_khoi', 0)} khối · {len(c.get('canh') or [])} liên kết"
+                     + (f" · {len(chua)} tín hiệu CHƯA ai cấp: " + ", ".join(chua[:6])
+                        + " — hoặc còn thiếu khối, hoặc tên tín hiệu lệch nhau"
+                        if chua else "")),
+            columns=["Khối", "Việc", "Linh kiện", "Vào", "Ra", "Nguồn", "REQ"],
+            rows=[[f"{m.get('ma')} {m.get('ten')}", m.get("muc_dich", ""),
+                   ", ".join(m.get("linh_kien") or []) or "—",
+                   ", ".join(m.get("tin_hieu_vao") or []) or "—",
+                   ", ".join(m.get("tin_hieu_ra") or []) or "—",
+                   m.get("rail") or "—", ", ".join(m.get("dap_ung_req") or []) or "—"]
+                  for m in c.get("khoi") or []],
+            stale=[mg["id"]] if mg["stale"] else []))
+        mm = (mg.get("view_hint") or {}).get("text", "")
+        if mm:
+            ra.append(block(
+                "A5.1b", "Sơ đồ khối — mã mermaid", "code", text=mm,
+                summary="Dán được sang tài liệu hay trình xem mermaid. Do mã sinh từ bản "
+                        "đồ, nên nó luôn khớp bảng trên."))
+
+    pinouts = [p for p in store.list("pinout", limit=200) if p["canonical"].get("gan")]
+    for p in pinouts:
+        gan = p["canonical"].get("gan") or []
+        nguoi = [g for g in gan if str(g.get("tier", "")).upper() == "NGUOI"]
+        chua_kiem = [g for g in gan if not g.get("af_kiem_duoc")]
+        ra.append(khoi_hien_vat(
+            "A5.2", f"Pinout — {p['canonical'].get('chip', p['id'])}", "table", p,
+            summary=(f"{len(gan)} chân đã gán"
+                     + (f" · {len(nguoi)} theo lời anh, chưa có tài liệu" if nguoi else "")
+                     + (f" · {len(chua_kiem)} chân KHÔNG kiểm được AF" if chua_kiem else "")),
+            columns=["Chân", "Chức năng", "Net", "Tầng", "AF kiểm được", "Fact"],
+            rows=[[g.get("chan", ""), g.get("chuc_nang", ""), g.get("net") or "—",
+                   _tang_vi(g.get("tier", "")),
+                   "có" if g.get("af_kiem_duoc") else "KHÔNG",
+                   g.get("fact_id") or "—"] for g in gan],
+            stale=[p["id"]] if p["stale"] else []))
+
+    nl = store.get(K.MA_NETLIST)
+    if nl:
+        nets = nl["canonical"].get("net") or []
+        mot = [n.get("ten") for n in nets if len(n.get("chan") or []) == 1]
+        doan = [n.get("ten") for n in nets if n.get("loai_do_doan")]
+        ra.append(khoi_hien_vat(
+            "A5.3", "Netlist (bản đồ mạch)", "table", nl,
+            summary=(f"{len(nets)} net"
+                     + (f" · {len(mot)} net chỉ nối MỘT chân ({', '.join(mot[:6])}) — gần "
+                        "như luôn là lỗi vẽ" if mot else "")
+                     + (f" · {len(doan)} net loại do đoán theo tên" if doan else "")),
+            columns=["Net", "Loại", "Áp", "Bus", "Số chân", "Chân"],
+            rows=[[n.get("ten", ""),
+                   n.get("loai", "") + (" (đoán)" if n.get("loai_do_doan") else ""),
+                   n.get("ap_danh_dinh") or "—", n.get("bus") or "—",
+                   len(n.get("chan") or []), ", ".join(n.get("chan") or [])[:120]]
+                  for n in nets],
+            stale=[nl["id"]] if nl["stale"] else []))
+
+    ckm = store.get(K.MA_CKM)
+    if ckm:
+        c = ckm["canonical"]
+        thieu = c.get("thieu") or []
+        dut = c.get("cho_dut") or {}
+        ra.append(khoi_hien_vat(
+            "A5.5", "Bản đồ tri thức mạch — đủ chưa?", "table", ckm,
+            summary=("Đủ tiền đề để sinh sơ đồ nguyên lý" if not thieu else
+                     "CHƯA đủ để sinh sơ đồ: " + "; ".join(t["can"] for t in thieu)),
+            columns=["Hạng mục", "Tình trạng"],
+            rows=([["Thiếu: " + t["can"], "gọi " + t["goi"]] for t in thieu]
+                  + [["Chân chưa gán chức năng", dut.get("so_chan_chua_gan", 0)],
+                     ["Chân của linh kiện chưa có bảng chân",
+                      dut.get("so_chan_khong_co_bang_chan", 0)],
+                     ["Net nối một chân", ", ".join(dut.get("net_mot_chan") or []) or "—"],
+                     ["Net chưa nối gì", ", ".join(dut.get("net_khong_chan") or []) or "—"],
+                     ["Chip trong bản đồ",
+                      ", ".join(x.get("ten", "") for x in c.get("chip") or []) or "—"]]),
+            stale=[ckm["id"]] if ckm["stale"] else []))
+
+    if not ra:
+        ra.append(empty(
             "A5.2", "Sơ đồ khối · Pinout · Netlist",
             chua_co="Chưa có sơ đồ hay bảng phân chân nào.",
             vi_sao="Tác tử từ chối vẽ sơ đồ từ phỏng đoán — sơ đồ phải dựng từ danh sách "
-                   "module có thật, và pinout chỉ nhận chức năng chân có trong Fact.",
-            can_gi="Nạp datasheet chip trước.", buoc="G4"))
-    return _don_gian("design", "A5", "Thiết kế", khoi)
+                   "khối có thật, và pinout chỉ nhận chức năng chân có trong Fact.",
+            can_gi="Nạp datasheet chip, rồi bảo tác tử chia khối và gán chân.", buoc="G4"))
+    return ra
+
+
+def _tang_vi(ma: str) -> str:
+    """Một nguồn sự thật cho tên tầng — xem DEV-261. Tầng lạ hiện nguyên mã, không nổ."""
+    from .knowledge.compare import ten_tang
+    return ten_tang(ma) if ma else "—"
 
 
 def tools_surface(store: Any, inv: Any) -> dict[str, Any]:

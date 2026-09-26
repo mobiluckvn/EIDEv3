@@ -294,6 +294,19 @@ class History:
             return KetQuaHoanTac(False, canh_bao=canh,
                                  message_vi="Không hoàn tác được gì. " + " ".join(canh))
 
+        # Bản đồ tri thức mạch là HÌNH CHIẾU của hiện vật (§C2, `knowledge/ckm.chieu`).
+        # Lùi hiện vật mà không dựng lại đồ thị thì hai nơi nói hai chuyện khác nhau về
+        # cùng một mạch, và người dùng không có cách nào biết bên nào đúng.
+        if any(t.type in ("ckm", "pinout", "netlist", "block_diagram")
+               for cs in ds if cs.id in da_lui for t in cs.touches):
+            try:
+                from .knowledge import ckm as _ckm
+                _ckm.chieu(self.store)
+            except Exception as e:                           # noqa: BLE001
+                canh.append(f"Đã lùi hiện vật nhưng KHÔNG dựng lại được bản đồ mạch ({e}). "
+                            "Bản đồ có thể đang lệch với hiện vật — gọi ckm.build để "
+                            "dựng lại trước khi tin nó.")
+
         moi = Changeset(
             id=self.ids.next("cs"), ts=cs_mod._now(), author=by,
             touches=[t for cs in ds if cs.id in da_lui for t in cs.touches],

@@ -108,6 +108,15 @@ nào chưa có, *(b)* bảy lớp bảo vệ của §2.1 dựa vào cơ chế n�
 
 ### 2b.1 Hai tiền đề chưa có — phải xử lý trước khi bắt đầu SCH-A
 
+> **Cập nhật 26/09/2026 — cả hai tiền đề đã xong.** Tiền đề (2) làm ở bước **SCH-0**
+> (cờ `features.schematic`, tắt = không đăng ký; migration Store có `down()`;
+> `tools/so_ket_qua.py` so hai lần chạy). Tiền đề (1) làm ở bước **CKM**: tám công cụ
+> `ckm.*` + `diagram.render`, lược đồ kho v2 (`ckm_nodes`/`ckm_edges`), bản đồ là hình
+> chiếu của hiện vật nên hoàn tác lùi được cả đồ thị. Đo: 46 ca đơn vị +
+> `tools/thu_ckm.py` 35/35 qua giao diện thật. Xem DEV-267.
+>
+> Phần phân tích bên dưới giữ nguyên làm hồ sơ — nó ghi lý do vì sao SCH-A từng bị chặn.
+
 **(1) CKM chưa tồn tại.** SCH-44 mở đầu bằng *"từ Bản đồ tri thức mạch (CKM) đã có"*, và
 lộ trình ghi điều kiện của SCH-A là *"sau G4 (CKM/Fact) của MDD-40"*. Mã có `"ckm"`,
 `"pinout"`, `"netlist"`, `"block_diagram"` trong `ARTEFACT_TYPES` (`store/db.py:88`) —
