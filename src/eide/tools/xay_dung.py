@@ -362,13 +362,23 @@ def dang_ky(r: Registry) -> None:
             moi.xac_nhan_boi, moi.xac_nhan_luc, moi.trich_loi = "human", _bay_gio(), loi
 
         cu = ctx.store.get(_ma_tc(moi.ma))
+        # Danh sách "không mô phỏng được" biến mất giữa hai lần ghi tiêu chí là đúng cách mà
+        # chữ "đạt" bắt đầu trùm lên những thứ chưa ai đo. Ghi đè thì được, im lặng thì không.
+        mat_kmp = [x for x in ((cu or {}).get("canonical") or {}).get("khong_mo_phong_duoc")
+                   or [] if x not in moi.khong_mo_phong_duoc]
         cs = ctx.history.ghi_kho(
             author=f"agent:{ctx.run_id}", artefact_id=_ma_tc(moi.ma), type="criteria",
             op="update" if cu else "create", canonical=moi.to_dict(), explain=explain,
             run_id=ctx.run_id)
         return {
             **moi.to_dict(), "changeset": cs.id, "thieu_nguon_nguong": khong_nguon,
-            "note_vi": (
+            "mat_khong_mo_phong_duoc": mat_kmp,
+            "note_vi": ((
+                f"CẢNH BÁO: lần ghi này BỎ MẤT {len(mat_kmp)} phần từng khai là không mô "
+                "phỏng được ("
+                + "; ".join(str(x.get("gi", "")) for x in mat_kmp[:3])
+                + "). Nếu chúng vẫn chưa mô phỏng được thì khai lại — bỏ chúng đi là để chữ "
+                  "“đạt” trùm lên phần chưa ai đo. " if mat_kmp else "") + (
                 f"Đã ghi {len(ds)} tiêu chí cho mô phỏng {moi.ma}: "
                 + "; ".join(a.vi for a in moi.asserts[:4])
                 + (f" (còn {len(ds) - 4} tiêu chí nữa)" if len(ds) > 4 else "") + ". "
@@ -383,7 +393,7 @@ def dang_ky(r: Registry) -> None:
                 + ("Người dùng đã xác nhận, nên sim.run chạy được."
                    if moi.da_xac_nhan else
                    "CHƯA có xác nhận của người dùng: trình bảng này cho họ, và gọi lại với "
-                   "trich_loi là câu họ nói. sim.run sẽ từ chối tới khi đó."))}
+                   "trich_loi là câu họ nói. sim.run sẽ từ chối tới khi đó.")))}
 
     # ====================================================================== mô phỏng
     @r.tool("sim.run", "Mô phỏng",
@@ -516,11 +526,16 @@ def dang_ky(r: Registry) -> None:
         from ..build import mo_phong as MP
 
         goc = ctx.config.paths.project_root
-        ds = ([(goc / x) for x in nguon] if nguon else
-              sorted((goc / "test").glob("*.c")) + sorted((goc / "tests").glob("*.c"))
-              + sorted((goc / "firmware").glob("control*.c")))
-        ds = [x for x in ds if x.exists()]
-        if not ds:
+        # Tệp TEST phải có ít nhất một cái. Mã logic đi kèm để liên kết, nhưng một mình nó
+        # không phải một bộ test — bản trước gom cả `control.c` vào rồi báo "không biên dịch
+        # được" (đúng: nó không có main()), trong khi câu đúng là "chưa có test nào".
+        tep_test = ([(goc / x) for x in nguon] if nguon else
+                    sorted((goc / "test").glob("*.c")) + sorted((goc / "tests").glob("*.c")))
+        tep_test = [x for x in tep_test if x.exists()]
+        ds = tep_test + ([] if nguon else
+                         [x for x in sorted((goc / "firmware").glob("control*.c"))
+                          if x.exists()])
+        if not tep_test:
             return ToolResult(False, error=EideError(
                 "E4011", "Chưa có tệp test nào (test/*.c hoặc tests/*.c).",
                 hint_for_agent=(

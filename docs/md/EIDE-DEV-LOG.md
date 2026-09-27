@@ -2058,3 +2058,103 @@ Dự án robot (sở cứ ở `du-lieu/ket-qua/robot/`): 14/14 chân · 14/14 ne
 19/19 net đủ hai đầu · 18/19 thanh ghi khớp bảng 91 · biên dịch thật ra `.hex`
 (Flash 2.500 B / 30.720 B, SRAM 72 B / 2.048 B) · mô phỏng vòng kín **ĐẠT**
 (góc lớn nhất 3,0°, góc cuối 0,155°, chạy 5 s).
+
+---
+
+### [DEV-277] 27/09/2026 · G6 đầy đủ — nền biên dịch–mô phỏng, và ai được quyền nói “đạt”
+
+**Tài liệu:** MDD-40 §G bước G6 (*"build/sim tool; criteria-first; subagent firmware/sim/
+verifier; skill"*), §B1 bảng công cụ Build/Sim, §B2 luật `sim.criteria … G-QUAL`, §B5
+subagent/skill, §C5 mô phỏng, §E2 dòng 337–338 (bề mặt build và criteria), N6.
+Ca đo gốc: TC015–028, TC052–060.
+
+Bước trước (DEV-275) làm **G6 tối thiểu**: một `build.compile` và một `sim.run` đủ để dự án
+robot đi hết vòng. Bước này làm phần còn lại, và phần còn lại hoá ra không phải "thêm công
+cụ" — nó là **đổi chiều một câu hỏi**: *ai được quyền tuyên bố đạt?*
+
+### 1. Năm công cụ còn thiếu
+
+| Công cụ | Việc | Ca đo |
+|---|---|---|
+| `env.check` | Máy này có gì, thiếu gì, thiếu thì hỏng việc nào | TC018 |
+| `tool.install` | Cài công cụ, R3, cổng G-TOOL | TC018 |
+| `build.map` | Section + symbol lớn nhất + đề xuất khi tràn | TC021 |
+| `sim.criteria` | Tiêu chí nêu TRƯỚC, có nguồn ngưỡng, có phần không mô phỏng được | TC016, TC019, TC022 |
+| `test.run` | Unit test trên máy chủ, đếm ca đạt/hỏng, độ phủ | TC052 |
+
+Hai chỗ đáng nhớ trong số đó:
+
+**`env.check` không bao giờ tự nói "sẵn sàng biên dịch".** TC018 đòi *"không báo biên dịch
+thành công giả"*, và cách chắc chắn nhất để không báo giả là không bao giờ tự tuyên bố sẵn
+sàng — chỉ liệt kê cái có và cái thiếu. Kiến trúc chưa biết thì nói thẳng, **không chọn một
+kiến trúc gần giống**: chọn `armv7e-m` cho một Cortex-M3 sinh ra mã mang lệnh chip không
+chạy được, và lỗi đó không lộ ra cho tới khi nạp vào bo.
+
+**Lệnh cài không do mô hình soạn.** Nó lấy từ bảng trong mã — cùng chỗ `env.check` đọc ra cho
+người dùng xem trước khi duyệt. Nếu mô hình tự soạn lệnh shell thì thẻ cổng đang hỏi người
+dùng duyệt một thứ chưa ai đọc, và *"duyệt cài đặt"* thành *"duyệt chạy một lệnh bất kỳ"*.
+
+### 2. Đổi chiều: tiêu chí phán xử, không phải chương trình mô phỏng
+
+Bản G6 tối thiểu để chương trình mô phỏng tự in `dat: true`. Nghĩa là **thứ được kiểm cũng
+là thứ tuyên bố kết quả** — một dòng sửa trong `sim/plant.c` đủ để mọi phép thử "đạt". Nay:
+
+- chương trình chỉ in **số đo** (`do: {A1: 3.0}`); EIDE so với ngưỡng trong tiêu chí;
+- **thiếu số đo = chưa đủ dữ kiện**, và cả lần chạy không được gọi là đạt (log rỗng ≠ đạt);
+- số đo **thừa** cũng được nói ra: nó nghĩa là một trong hai bên gõ sai mã assert;
+- `sim.run` **từ chối chạy** khi chưa có tiêu chí đã xác nhận — chạy trước rồi đặt tiêu chí
+  sau là cách đặt tiêu chí vừa khít với kết quả;
+- chỉ `trich_loi` của người dùng mới làm tiêu chí thành "đã xác nhận";
+- đổi ngưỡng khi **đã có** kết quả → cổng **G-QUAL**, `never_auto`, kèm `A1.nguong: 15.0 →
+  45.0`. Một thẻ hỏi "đổi tiêu chí?" mà không nói đổi từ đâu sang đâu thì người dùng bấm
+  duyệt theo phản xạ;
+- người dùng tự sửa ngưỡng trên bảng thì **không phải hỏi** (cổng là để chặn tác tử), nhưng
+  kết quả cũ thành **STALE ngay** — nó được đo bằng một thước đã khác;
+- bỏ mất danh sách "không mô phỏng được" giữa hai lần ghi tiêu chí thì **cảnh báo**: đó đúng
+  là cách chữ "đạt" bắt đầu trùm lên những thứ chưa ai đo.
+
+### 3. Sáu subagent, và một verifier thật sự độc lập
+
+Ba ràng buộc, cả ba đều dễ bỏ theo hướng có vẻ tiện hơn:
+
+- **Ngữ cảnh sạch** không phải để tiết kiệm token, mà để tác tử con không đọc được đoạn hội
+  thoại trong đó người dùng đã nói *"chắc là đạt rồi"*.
+- **Verifier chỉ có công cụ đọc.** Ghi được thì nó sửa được cho đạt đúng thứ nó đang đi
+  kiểm, và một lớp kiểm tra độc lập biến thành một lớp đóng dấu. Có ca đo chứng minh nó
+  không ghi nổi một tệp.
+- **Verifier không thấy đề bài**, chỉ thấy báo cáo và bằng chứng (Hình B2: *"verifier chưa
+  thấy việc"*). Cho nó đọc đề bài là mời nó suy ra kết luận mong đợi rồi đi tìm cách biện minh.
+
+Hook **SubagentStop** kiểm lược đồ báo cáo (sáu trường; *"đạt" mà không bằng chứng nào* là
+không hợp lệ) rồi **tự động** gọi verifier khi firmware/sim tuyên đạt. Tự động chứ không để
+mô hình quyết: nếu tuỳ chọn thì nó sẽ gọi đúng những lúc không cần — lúc nó tự tin nhất cũng
+là lúc nó ít gọi nhất, mà đó chính là lúc cần nhất. Verifier bác thì kết luận bị **hạ** chứ
+không bị nuốt.
+
+### 4. Ba lỗi bộ đo E2E tìm ra ngay lần chạy đầu
+
+- **`build.map` đọc sai cột.** `avr-nm --print-size` in `value size type name` cho symbol có
+  kích thước và `value type name` cho symbol không có; không phân biệt thì cột `type` bị đọc
+  thành kích thước, và bảng hiện `_etext = 8.388.720 B` đứng đầu danh sách "chiếm chỗ nhiều
+  nhất".
+- **`test.run` gom cả `control.c` vào rồi báo "không biên dịch được"** (đúng — nó không có
+  `main()`), trong khi câu đúng là *"chưa có test nào"*. Một câu trả lời đúng về mặt kỹ
+  thuật nhưng trả lời sai câu hỏi.
+- **Bỏ mất "phần không mô phỏng được" trong im lặng** — nay cảnh báo (mục 2 ở trên).
+
+Và một lỗi của chính bộ đo: `const char bang_tra[256]` **không dùng tới** bị `-Os` bỏ hẳn,
+nên ca đo "bản đồ bộ nhớ thấy bảng tra" đang đo một firmware khác với firmware nó nghĩ.
+
+### Số đo
+
+`836 ca đơn vị` (+24) · `tools/thu_g6.py` **34/34** qua giao diện thật ·
+`91 công cụ` khi cờ sơ đồ tắt (+7 so với DEV-276), `100` khi bật.
+
+Hồi quy: GIAO DIỆN 28 · CUỐI 36 · G5 35 · CKM 35 · SCH 63 · HIER 46 — giữ nguyên.
+Bằng chứng SCH-19: `--hai-che-do tools/thu_g6.py` **34/34 giống hệt** giữa hai chế độ cờ.
+
+### Còn lại của G6/G7
+
+`plan.enter`/`plan.exit` (§B5 plan mode) chưa làm — nó nằm ở bảng công cụ §B1 chứ không nằm
+trong dòng nghiệm thu của G6. `target.*` (nạp chip, đọc log) thuộc **G7** và cần bo thật;
+subagent `hardware` đã có khung nhưng sẽ trả `chua_du_du_kien` cho tới khi có những công cụ đó.

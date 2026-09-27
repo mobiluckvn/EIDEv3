@@ -360,12 +360,12 @@ def doc_map(*, elf: Path, size_bin: str = "", nm_bin: str = "",
                            capture_output=True, text=True)
         for d in r.stdout.splitlines():
             p = d.split()
-            if len(p) >= 4:
-                try:
-                    ra["symbol"].append({"ten": p[3], "byte": int(p[1]),
-                                         "loai": p[2]})
-                except ValueError:
-                    continue
+            # `avr-nm --print-size` in "value size type name" cho symbol CÓ kích thước, và
+            # "value type name" cho symbol không có. Không phân biệt hai dạng thì cột `type`
+            # bị đọc thành kích thước — bảng hiện `_etext = 8.388.720 B`, một con số vô lý
+            # đứng đầu danh sách "chiếm chỗ nhiều nhất".
+            if len(p) == 4 and p[0].isdigit() and p[1].isdigit():
+                ra["symbol"].append({"ten": p[3], "byte": int(p[1]), "loai": p[2]})
         ra["symbol"] = sorted(ra["symbol"], key=lambda x: -x["byte"])[:15]
     else:
         ra["canh_bao"].append("Không có avr-nm/nm trên máy — chưa đọc được symbol.")

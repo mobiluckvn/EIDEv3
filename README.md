@@ -38,8 +38,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **SCH-B** | `sch.place` bố cục xác định, tiêu chí đo bằng số · `sch.write` `.kicad_sch` qua kiutils, uuid theo ref · `sch.render` SVG tự vẽ, kiểm chữ không đè | xong |
 | **SCH-C** | `sch.export` gói mở được ở máy có KiCad · `sch.import` phân loại ba loại thay đổi (bố cục / giá trị / cấu trúc), cấu trúc thì HỎI và KHÔNG ghi đè bản đồ | xong |
 | **SCH-D** | Tiêu chí bố cục đo trên TỪNG sheet + đề nghị phân cấp bằng số (SCH07) · sổ `sch_sheets` + bản ưng ý gói cả nội dung tệp sơ đồ (SCH-16) · ký hiệu sinh từ Fact CHỜ người xác nhận, kiểu chân người sửa thành Fact NGƯỜI (SCH-14/15) · khối A5.8: ảnh bấm được, băng chất lượng từng trang, bảng ký hiệu sửa được | xong |
-| **G6-tối thiểu** | `build.compile` (arduino-cli/avr-gcc thật, lỗi có toạ độ, kích thước từ avr-size) · `sim.run` (chạy CHÍNH mã logic firmware trong mô hình vật lý, kết luận bằng JSON) | xong |
-| G6 | Build/Sim đầy đủ (nạp chip, nhiều target) + subagent | chưa |
+| **G6** | `env.check`/`tool.install` (G-TOOL) · `build.compile`/`build.map` (lỗi có toạ độ, symbol nào chiếm chỗ) · **criteria-first**: `sim.criteria` nêu tiêu chí TRƯỚC, tiêu chí PHÁN XỬ kết quả chứ không phải chương trình mô phỏng, đổi ngưỡng khi đã có kết quả → G-QUAL · `test.run` + độ phủ · **6 subagent** ngữ cảnh sạch, tool giới hạn, hook SubagentStop tự gọi **verifier** chỉ-đọc · **6 skill** nạp theo ngữ cảnh | xong |
+| G7 | Mạch thật: `target.*`, G-FLASH/G-OPS, subagent hardware (cần bo thật) | chưa |
 | G7 | Mạch thật | chưa |
 
 ## Cài và chạy
@@ -94,7 +94,7 @@ ui/EIDEApp/Sources/EIDE/
 ## Kiểm thử
 
 ```bash
-.venv/bin/python -m pytest -q                        # 755 test: hook, policy, công cụ, sổ cái, cây khối, sơ đồ
+.venv/bin/python -m pytest -q                        # 836 test: hook, policy, công cụ, sổ cái, cây khối, sơ đồ
 .venv/bin/python tools/kiem_tra_day_du.py --nhanh    # an toàn qua cầu giao thức, 0 token
 .venv/bin/python tools/kiem_tra_day_du.py            # một mạch công việc thật, lõi + Gemini
 .venv/bin/python tools/thu_giao_dien.py              # 24 ca qua GIAO DIỆN THẬT
@@ -109,6 +109,7 @@ ui/EIDEApp/Sources/EIDE/
 .venv/bin/python tools/thu_cuoi.py                    # 36 ca ING-C/D/E + MEM-D + 9 đường hỏng
 .venv/bin/python tools/thu_ckm.py                     # 35 ca bản đồ tri thức mạch + 8 đường hỏng
 .venv/bin/python tools/thu_hier.py                    # 46 ca cây khối + ERC + STALE + thư viện khối
+.venv/bin/python tools/thu_g6.py                      # 34 ca biên dịch, tiêu chí, subagent, verifier
 EIDE_FEATURE_SCHEMATIC=1 .venv/bin/python tools/thu_sch.py    # 63 ca: sinh sơ đồ, sheet phân cấp, nạp lại, A5.8 + 10 đường hỏng
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_cuoi.py  # bằng chứng SCH-19: 36/36 giống hệt
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_giao_dien.py  # 24/24 — tab Thiết kế không đổi khi chưa sinh sơ đồ

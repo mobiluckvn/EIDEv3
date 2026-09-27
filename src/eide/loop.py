@@ -721,6 +721,12 @@ class Agent:
         """
         t = act.target
         assert t is not None                       # đã kiểm ở HumanAct.validate()
+        if t.type == "criteria":
+            # §E2: "Sửa ngưỡng (→ G-QUAL nếu đã có kết quả)… Kết quả sim → STALE".
+            # Người sửa tiêu chí của chính họ thì KHÔNG phải hỏi — cổng G-QUAL là để chặn
+            # TÁC TỬ tự nới ngưỡng. Nhưng kết quả cũ phải thành lỗi thời ngay, vì nó được đo
+            # bằng một thước đã khác.
+            return self._nguoi_sua_tieu_chi(act, ctx)
         if t.type == "symbol":
             # SCH-14/15 — người xác nhận hoặc sửa kiểu chân một ký hiệu. Đi nhánh RIÊNG, không
             # qua `_sua_hien_vat`: kiểu chân nằm sâu trong `anh_xa[ref].chan[i].kieu`, mà đường
@@ -771,6 +777,78 @@ class Agent:
         ctx.emit(uic.console_post("\n\n".join(loi), role="agent"))
         ctx.emit(uic.history_update(changesets=[self.history.tom_tat(cs)],
                                     stale=[{"id": i} for i in cs.stale_marked]))
+        ctx.said_anything = True
+
+    def _nguoi_sua_tieu_chi(self, act: HumanAct, ctx: TurnContext) -> None:
+        """Người sửa ngưỡng của một assert ngay trên bảng tiêu chí."""
+        ma_assert = act.target.id
+        ma_tc = (act.origin.block or "criteria:sim-01").split(":", 1)[-1]
+        a = self.store.get(f"criteria:{ma_tc}")
+        if a is None:
+            ctx.emit(uic.notice(f"Không có tiêu chí {ma_tc} trong kho.", level="error"))
+            ctx.said_anything = True
+            return
+
+        truong = dict(act.data.get("fields") or {})
+        moi = str(truong.get("nguong", "")).strip()
+        try:
+            gt = float(moi.replace(",", "."))
+        except ValueError:
+            ctx.emit(uic.notice(f"“{moi}” không phải một con số — chưa đổi ngưỡng nào.",
+                                level="warn"))
+            ctx.said_anything = True
+            return
+
+        canon = dict(a["canonical"])
+        ds = [dict(x) for x in (canon.get("assert") or [])]
+        cu = None
+        for x in ds:
+            if str(x.get("ma")) == ma_assert:
+                cu = x.get("nguong")
+                x["nguong"] = gt
+                # Ngưỡng do người sửa thì nguồn của nó là chính họ — ghi đè "§13.4 tài liệu"
+                # bằng một câu nói thật, thay vì để một nguồn cũ đứng tên một con số mới.
+                x["nguon_nguong"] = ("anh sửa trực tiếp trên bảng"
+                                     + (f": {act.note}" if act.note else ""))
+        if cu is None:
+            ctx.emit(uic.notice(f"Tiêu chí {ma_tc} không có assert {ma_assert}.",
+                                level="error"))
+            ctx.said_anything = True
+            return
+        canon["assert"] = ds
+
+        cs = self.history.ghi_kho(
+            author="human", artefact_id=f"criteria:{ma_tc}", type="criteria", op="update",
+            canonical=canon,
+            explain={"summary": f"anh đổi ngưỡng {ma_assert}: {cu} → {gt}",
+                     "why": act.note or "anh sửa trực tiếp trên bảng tiêu chí",
+                     "sources": [{"kind": "human", "ref": act.id or "gui"}],
+                     "diff_prev": f"{ma_assert}.nguong: {cu} → {gt}",
+                     "next": "Chạy lại sim.run — kết quả cũ đo bằng thước đã khác.",
+                     "confidence": "NGUOI"},
+            run_id=ctx.run_id)
+
+        # Kết quả cũ thành lỗi thời NGAY. Để nó xanh cạnh một tiêu chí đã đổi là mời người
+        # đọc kết luận về mạch bằng một phép đo không còn hiệu lực.
+        het_han = []
+        for r in self.store.list("sim_result", limit=10):
+            if (r.get("canonical") or {}).get("ma_tieu_chi") in (ma_tc, None, ""):
+                self.store.mark_stale([r["id"]], f"tiêu chí {ma_assert} đổi {cu} → {gt}")
+                het_han.append(r["id"])
+
+        self.eide_md.note_human_edit(artefact=f"criteria:{ma_tc}",
+                                     summary=f"đổi ngưỡng {ma_assert} thành {gt}",
+                                     why=act.note)
+        self.eide_md.save()
+        ctx.emit(uic.console_post(
+            f"[Tác tử] Đã ghi: ngưỡng {ma_assert} đổi từ {cu} sang {gt} ({cs.id}). "
+            + (f"Kết quả mô phỏng cũ ({', '.join(het_han)}) nay là LỖI THỜI — nó được đo "
+               "bằng một thước đã khác, nên tôi không dùng nó để kết luận nữa. Chạy lại "
+               "sim.run khi anh muốn."
+               if het_han else "Chưa có kết quả mô phỏng nào để đánh dấu lỗi thời."),
+            role="agent"))
+        ctx.emit(uic.history_update(changesets=[self.history.tom_tat(cs)],
+                                    stale=[{"id": i} for i in het_han]))
         ctx.said_anything = True
 
     def _nguoi_xac_nhan_ky_hieu(self, act: HumanAct, ctx: TurnContext) -> None:

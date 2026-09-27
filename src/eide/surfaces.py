@@ -724,6 +724,19 @@ def tools_surface(store: Any, inv: Any) -> dict[str, Any]:
         can_gi="—", buoc="G6")])
 
 
+def _thanh(ty: float | None, rong: int = 12) -> str:
+    """Thanh đặc/rỗng cho một tỉ lệ. §E2 đòi "thanh Flash/RAM so với Fact budget".
+
+    Một con số phần trăm đọc được, nhưng "84 %" và "8 %" trông giống nhau khi lướt qua; một
+    thanh thì không. Không biết ngân sách thì KHÔNG vẽ thanh — vẽ một thanh rỗng cho thứ
+    chưa đo được là nói dối bằng hình.
+    """
+    if not ty or ty <= 0:
+        return ""
+    n = max(1, min(rong, int(round(ty * rong))))
+    return "▰" * n + "▱" * (rong - n)
+
+
 def code_surface(store: Any, inv: Any) -> dict[str, Any]:
     """Tab Mã nguồn: tệp mã, script, và QUY TRÌNH gọi chúng.
 
@@ -768,10 +781,10 @@ def code_surface(store: Any, inv: Any) -> dict[str, Any]:
                                   f"KHÔNG xong — {c.get('vi_sao_khong_dat', '')}")],
                    ["Chuỗi công cụ", str(c.get("cong_cu") or "—")],
                    ["Tệp ra", str(c.get("tep_ra") or "—")],
-                   ["Flash", (f"{c.get('flash', 0)} B"
+                   ["Flash", (f"{_thanh(ty_f)} {c.get('flash', 0)} B"
                               + (f" / {c.get('flash_toi_da')} B ({ty_f:.0%})" if ty_f
                                  else " (chưa biết hạn mức — chưa có Fact flash.size)"))],
-                   ["SRAM", (f"{c.get('sram', 0)} B"
+                   ["SRAM", (f"{_thanh(ty_s)} {c.get('sram', 0)} B"
                              + (f" / {c.get('sram_toi_da')} B ({ty_s:.0%})" if ty_s
                                 else " (chưa biết hạn mức — chưa có Fact ram.size)"))],
                    *([["Lỗi đầu tiên",
@@ -779,6 +792,20 @@ def code_surface(store: Any, inv: Any) -> dict[str, Any]:
                       for x in (c.get("loi") or [])[:3]]),
                    *([["Cảnh báo", f"{x['tep']}:{x['dong']} {x['thong_diep']}"]
                       for x in (c.get("canh_bao") or [])[:3]])]))
+
+    # Bản đồ bộ nhớ: symbol nào chiếm chỗ. Chỉ có ích khi firmware chật, nhưng lúc đó nó là
+    # thứ duy nhất trả lời được "bỏ cái gì".
+    for a in store.list("analysis", limit=3):
+        c = a.get("canonical") or {}
+        if not c.get("symbol"):
+            continue
+        khoi.append(khoi_hien_vat(
+            a["id"], "Bản đồ bộ nhớ — cái gì chiếm chỗ", "table", a,
+            summary=(f"Flash {c.get('flash', 0)} B · SRAM {c.get('sram', 0)} B · "
+                     + ("; ".join(c.get("de_xuat") or []) or "còn trong ngân sách")),
+            columns=["Symbol", "Byte", "Loại"],
+            rows=[[x.get("ten", ""), x.get("byte", 0), x.get("loai", "")]
+                  for x in (c.get("symbol") or [])[:12]]))
 
     qt = store.list("procedure", limit=50)
     if qt:
@@ -815,21 +842,69 @@ def simulation(store: Any, inv: Any) -> dict[str, Any]:
     đọc là một nửa tính năng: người dùng chạy xong rồi nhìn vào chỗ đáng lẽ thấy kết quả và
     thấy chữ "chưa chạy lần nào".
     """
+    khoi: list[dict[str, Any]] = []
+
+    # Tiêu chí trước, kết quả sau — đúng thứ tự mà §C5 đòi ("tiêu chí nêu trước"). Đặt kết
+    # quả lên trên thì người đọc thấy con số trước khi thấy thước đo nó.
+    for a in store.list("criteria", limit=5):
+        c = a.get("canonical") or {}
+        ds_as = c.get("assert") or []
+        xn = bool(c.get("xac_nhan_boi"))
+        khoi.append(khoi_hien_vat(
+            a["id"], f"Tiêu chí mô phỏng — {c.get('ma', '')}", "table", a,
+            summary=(f"{len(ds_as)} tiêu chí · "
+                     + ("anh đã xác nhận: “" + str(c.get("trich_loi", ""))[:70] + "”"
+                        if xn else
+                        "CHƯA xác nhận — mô phỏng sẽ không chạy tới khi anh duyệt bảng này")
+                     + (f" · {len(c.get('khong_mo_phong_duoc') or [])} phần KHÔNG mô phỏng "
+                        "được" if c.get("khong_mo_phong_duoc") else "")),
+            columns=["Mã", "Đo gì", "Phép so", "Ngưỡng", "Đơn vị", "Đo yêu cầu nào",
+                     "Ngưỡng lấy từ đâu"],
+            cot_sua={"Ngưỡng": "nguong"},
+            loai_sua="criteria",
+            rows=[[x.get("ma", ""), x.get("mo_ta", ""), x.get("phep_so", ""),
+                   (f"{x.get('nguong')}–{x.get('nguong_tren')}"
+                    if x.get("phep_so") == "trong_khoang" else str(x.get("nguong", ""))),
+                   x.get("don_vi", ""), x.get("do_req", "") or "— chưa gắn REQ —",
+                   x.get("nguon_nguong", "") or "— CHƯA NÓI NGUỒN —"]
+                  for x in ds_as]))
+        if c.get("khong_mo_phong_duoc"):
+            khoi.append(block(
+                a["id"] + ":khong-mo-phong", "Phần KHÔNG mô phỏng được", "table",
+                summary=("Những phần dưới đây nằm NGOÀI mọi kết luận “đạt” của mô phỏng — "
+                         "chúng phải được đo trên bo thật."),
+                columns=["Cái gì", "Vì sao không mô phỏng được", "Bù bằng cách nào"],
+                rows=[[x.get("gi", ""), x.get("vi_sao", ""), x.get("cach_bu", "")]
+                      for x in c["khong_mo_phong_duoc"]]))
+
     ds = store.list("sim_result", limit=10)
     if not ds:
-        return _don_gian("simulation", "A8", "Mô phỏng", [empty(
-            "A8.1", "Tiêu chí & kết quả mô phỏng",
+        khoi.append(empty(
+            "A8.1", "Kết quả mô phỏng",
             chua_co="Chưa chạy mô phỏng lần nào.",
             vi_sao="Tác tử nêu tiêu chí TRƯỚC khi chạy, và không bao giờ tuyên bố 'đạt' từ "
                    "một log rỗng (N6).",
             can_gi="Bảo tác tử mô phỏng vòng điều khiển (sim.run) sau khi đã có mã.",
-            buoc="G6")])
+            buoc="G6"))
+        return _don_gian("simulation", "A8", "Mô phỏng", khoi)
 
-    khoi: list[dict[str, Any]] = []
     for a in ds:
         c = a.get("canonical") or {}
         kq = c.get("ket_qua") or {}
         dat = bool(c.get("dat"))
+        # Từng tiêu chí một, kèm kết luận của nó — không gộp thành một con số.
+        if (c.get("xet") or {}).get("dong"):
+            khoi.append(block(
+                a["id"] + ":xet", f"Từng tiêu chí — {a['id'].split(':')[-1]}", "table",
+                summary=("Kết luận của mỗi dòng do SO SỐ ĐO với ngưỡng, không do chương "
+                         "trình mô phỏng tự tuyên bố."),
+                columns=["Mã", "Đo gì", "Kết luận", "Số đo so với ngưỡng", "Đo REQ nào"],
+                rows=[[d.get("ma", ""), d.get("mo_ta", ""),
+                       {"dat": "ĐẠT", "khong_dat": "KHÔNG ĐẠT",
+                        "chua_do_duoc": "CHƯA ĐO ĐƯỢC"}.get(d.get("ket_luan"),
+                                                            str(d.get("ket_luan"))),
+                       d.get("vi", ""), d.get("do_req", "")]
+                      for d in c["xet"]["dong"]]))
         khoi.append(khoi_hien_vat(
             a["id"], f"Kết quả mô phỏng — {a['id'].split(':')[-1]}", "kv", a,
             summary=(("ĐẠT" if dat else "CHƯA ĐẠT") + " · "

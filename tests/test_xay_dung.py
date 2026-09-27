@@ -523,3 +523,110 @@ def test_do_phu_khong_do_duoc_thi_NOI_RA_chu_khong_bo_cot(make_agent):
     assert r.data["do_phu"].get("do_duoc") in (True, False)
     if not r.data["do_phu"]["do_duoc"]:
         assert r.data["do_phu"]["vi_sao"] and "CHƯA đo được độ phủ" in r.data["note_vi"]
+
+
+# ===================================================================== G6-E · bề mặt
+def test_tab_Mo_phong_hien_TIEU_CHI_truoc_KET_QUA_sau(make_agent):
+    """§C5 "tiêu chí nêu trước". Đặt kết quả lên trên thì người đọc thấy con số trước khi
+    thấy thước đo nó."""
+    from eide import surfaces as S
+
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    _ghi_tieu_chi(agent, ctx)
+    agent.store.apply(artefact_id="sim_result:can-bang", type="sim_result", op="create",
+                      author="agent:run-1", explain=_EX,
+                      canonical={"dat": True, "chay_duoc": True, "ma_tieu_chi": "sim-01",
+                                 "xet": {"dong": [{"ma": "A1", "mo_ta": "Góc lớn nhất",
+                                                   "ket_luan": "dat",
+                                                   "vi": "đo được 3.0 ° · yêu cầu không quá 15.0",
+                                                   "do_req": "REQ-BAL-01"}],
+                                         "dem": {"dat": 1, "khong_dat": 0,
+                                                 "chua_do_duoc": 0}},
+                                 "ket_qua": {"do": {"A1": 3.0}}})
+    m = S.simulation(agent.store, _inv_gia())
+    ma = [b["id"] for b in m["blocks"]]
+    assert ma.index("criteria:sim-01") < ma.index("sim_result:can-bang")
+
+    tc = next(b for b in m["blocks"] if b["id"] == "criteria:sim-01")
+    assert "Đo yêu cầu nào" in tc["columns"] and "Ngưỡng lấy từ đâu" in tc["columns"]
+    assert tc["cot_sua"] == {"Ngưỡng": "nguong"} and tc["loai_sua"] == "criteria"
+
+
+def test_phan_KHONG_mo_phong_duoc_co_khoi_RIENG(make_agent):
+    """TC019 — nếu nó chỉ nằm trong tiêu chí thì người đọc hiểu "5/5 đạt" là "mọi thứ đạt"."""
+    from eide import surfaces as S
+
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    _ghi_tieu_chi(agent, ctx)
+    m = S.simulation(agent.store, _inv_gia())
+    b = next(b for b in m["blocks"] if b["id"].endswith(":khong-mo-phong"))
+    assert "NGOÀI mọi kết luận" in b["summary"]
+    assert b["rows"][0][0] == "WS2812"
+
+
+def test_tieu_chi_CHUA_xac_nhan_thi_be_mat_noi_thang(make_agent):
+    from eide import surfaces as S
+
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    _ghi_tieu_chi(agent, ctx, xac_nhan=False)
+    b = S.simulation(agent.store, _inv_gia())["blocks"][0]
+    assert "CHƯA xác nhận" in b["summary"] and "sẽ không chạy" in b["summary"]
+
+
+def test_thanh_Flash_RAM_chi_ve_khi_BIET_ngan_sach(make_agent):
+    """Vẽ một thanh rỗng cho thứ chưa đo được là nói dối bằng hình."""
+    from eide.surfaces import _thanh
+
+    assert _thanh(0.08).startswith("▰") and "▱" in _thanh(0.08)
+    assert _thanh(None) == "" and _thanh(0) == ""
+    assert _thanh(0.99).count("▰") >= 11
+
+
+def test_nguoi_sua_NGUONG_tren_bang_thi_ket_qua_cu_thanh_LOI_THOI(make_agent):
+    """Để một kết quả xanh đứng cạnh một tiêu chí đã đổi là mời người đọc kết luận về mạch
+    bằng một phép đo không còn hiệu lực."""
+    from eide.protocol.humanact import HumanAct
+
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    _ghi_tieu_chi(agent, ctx, nguong=15.0)
+    agent.store.apply(artefact_id="sim_result:can-bang", type="sim_result", op="create",
+                      author="agent:run-1", explain=_EX,
+                      canonical={"dat": True, "ma_tieu_chi": "sim-01"})
+
+    seen: list = []
+    agent.turn(HumanAct.from_dict({
+        "kind": "edit", "target": "criteria:A1",
+        "data": {"base_version": "v1", "fields": {"nguong": "8"}},
+        "origin": {"surface": "simulation", "block": "criteria:sim-01", "row": "A1"},
+        "note": "15 độ là quá rộng, robot đổ trước khi tới đó"}), seen.append)
+
+    tc = agent.store.get("criteria:sim-01")["canonical"]
+    a1 = next(x for x in tc["assert"] if x["ma"] == "A1")
+    assert a1["nguong"] == 8.0
+    # Nguồn ngưỡng đổi theo: để "§13.4 tài liệu" đứng tên một con số người vừa tự đặt là sai.
+    assert "anh sửa trực tiếp" in a1["nguon_nguong"] and "robot đổ" in a1["nguon_nguong"]
+
+    kq = agent.store.get("sim_result:can-bang")
+    assert kq["stale"], "kết quả cũ phải thành lỗi thời"
+    assert "15.0 → 8.0" in kq["stale_reason"]
+    loi = [c for c in seen if c.method == "console.post"]
+    assert loi and "LỖI THỜI" in loi[-1].params["text"]
+
+
+def test_sua_nguong_bang_mot_thu_khong_phai_so_thi_KHONG_doi_gi(make_agent):
+    from eide.protocol.humanact import HumanAct
+
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    _ghi_tieu_chi(agent, ctx, nguong=15.0)
+    seen: list = []
+    agent.turn(HumanAct.from_dict({
+        "kind": "edit", "target": "criteria:A1",
+        "data": {"base_version": "v1", "fields": {"nguong": "thấp thôi"}},
+        "origin": {"surface": "simulation", "block": "criteria:sim-01"}}), seen.append)
+    tc = agent.store.get("criteria:sim-01")["canonical"]
+    assert next(x for x in tc["assert"] if x["ma"] == "A1")["nguong"] == 15.0
