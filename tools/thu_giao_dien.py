@@ -82,22 +82,20 @@ class GiaoDien:
         return self._doi("anh_chup", 20)
 
     def chup_man_hinh(self, ra: pathlib.Path, nhan: str = "") -> pathlib.Path | None:
-        """Chụp ảnh thật của **cửa sổ EIDE** ra tệp PNG. Trả đường dẫn, hoặc None nếu không chụp được.
+        """Ảnh PNG của CỬA SỔ EIDE, do chính app vẽ ra. Trả đường dẫn, hoặc None.
 
-        Chỉ chụp đúng khung cửa sổ mà app tự khai (`khung_cua_so`), KHÔNG chụp cả màn hình:
-        lần chụp toàn màn hình đầu tiên đã lọt vào ảnh cửa sổ trò chuyện riêng và tệp `.env`
-        kèm khoá API. Một ảnh làm sở cứ không được mang theo thứ nó không cần.
+        Không dùng `screencapture`. Chụp theo vùng màn hình đã hai lần lọt cửa sổ của ứng
+        dụng khác vào ảnh — một lần có cả tệp `.env` kèm khoá API của người dùng. App tự vẽ
+        nội dung của nó thì không có cách nào lấy nhầm thứ khác, và cũng không cần quyền ghi
+        màn hình.
         """
-        import subprocess as _sp
-
-        k = (self.chup(nhan or "anh") or {}).get("khung_cua_so") or {}
-        if not all(k.get(x) for x in ("rong", "cao")):
-            return None
         ra.parent.mkdir(parents=True, exist_ok=True)
-        vung = f"{k['x']},{k['y']},{k['rong']},{k['cao']}"
-        r = _sp.run(["screencapture", "-x", "-o", "-R", vung, str(ra)],
-                    capture_output=True, text=True)
-        return ra if (r.returncode == 0 and ra.exists()) else None
+        self._gui({"ui": "anh", "tep": str(ra)})
+        try:
+            o = self._doi("da_chup", 20)
+        except TimeoutError:
+            return None
+        return ra if (o.get("tep") == str(ra) and ra.exists()) else None
 
     # ------------------------------------------------------------------ nhận
     def _dong_moi(self) -> list[dict]:
@@ -383,6 +381,26 @@ def chay(du_an: pathlib.Path) -> int:
                                               "vẫn trong ngưỡng")
     b.kiem("Giao diện vẽ được MỌI loại khối lõi gửi trên cả 11 tab",
            not chua_ve, "; ".join(chua_ve) or f"{len(TABS)} tab, không khối nào lạ")
+
+    # Khổ cửa sổ NHỎ NHẤT cho phép. Người dùng báo: "màn hình thiết kế khi dữ liệu nhiều
+    # đang bị mất các control phía bên phải" — nút "Vì sao?" và mép phải bảng trôi ra ngoài
+    # khi một khối rộng hơn khung. Đo ở khổ nhỏ nhất vì đó là chỗ nó vỡ trước.
+    g._gui({"ui": "co_cua_so", "rong": 1100, "cao": 720})
+    time.sleep(1.5)
+    hep_xau: list[str] = []
+    for t in ("design", "knowledge", "history"):
+        g.mo_tab(t)
+        time.sleep(0.8)
+        a = g.chup(f"hep-{t}")
+        k = a.get("khung_cua_so") or {}
+        tran = int(k.get("rong") or 1100) - 32
+        for ma, w in (a.get("rong_khoi") or {}).items():
+            if w > tran + 200:          # nới 200 pt: khối cuộn ngang trong chính nó thì được
+                hep_xau.append(f"{t}:{ma}={w}pt > {tran}")
+    b.kiem("Khổ cửa sổ nhỏ nhất (1100×720) vẫn không đẩy khối nào ra ngoài khung",
+           not hep_xau, "; ".join(hep_xau) or "mọi khối nằm trong khung")
+    g._gui({"ui": "co_cua_so", "rong": 1440, "cao": 900})
+    time.sleep(1.0)
 
     return b.tong()
 

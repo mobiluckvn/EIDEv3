@@ -402,6 +402,37 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                f"chạy {kq.get('thoi_gian_s')} s")
         nk.anh(g, "mo-phong-dat")
 
+    # ------------------------------------- 13. bù phần firmware còn thiếu so với tài liệu
+    if lam(13):
+        nk.buoc("Đối chiếu firmware với bảng 91 và bù phần còn thiếu")
+        src = nguon_firmware(du_an / "firmware")
+        tg = thanh_ghi_trong_ma(src)
+        thieu = {k: v for k, v in THANH_GHI.items() if tg.get(k) != v}
+        nk.ghi("Thanh ghi còn lệch hoặc thiếu",
+               "\n".join(f"{k}: tài liệu 0x{v:02X}, mã "
+                          + (f"0x{tg[k]:02X}" if k in tg else "KHÔNG CÓ")
+                          for k, v in sorted(thieu.items())) or "không thiếu gì", ma=True)
+        if thieu:
+            loi, cc = hoi(g, nk, du_an,
+                          "Mình đối chiếu firmware với bảng giá trị thanh ghi ở phụ lục A.2 "
+                          "của tài liệu thì thấy còn thiếu: "
+                          + "; ".join(f"{k} phải là 0x{v:02X}" for k, v in sorted(thieu.items()))
+                          + ". Bạn bổ sung đúng những chỗ đó vào firmware (nhớ Timer0 là nhịp "
+                            "1 ms của bộ lập lịch, mục 12.5), rồi biên dịch lại và cho mình "
+                            "biết kết quả.",
+                          giay=2400)
+            src = nguon_firmware(du_an / "firmware")
+            tg = thanh_ghi_trong_ma(src)
+        khop = {k: v for k, v in THANH_GHI.items() if tg.get(k) == v}
+        nk.ket(len(khop) >= 18,
+               f"Giá trị thanh ghi khớp bảng 91: {len(khop)}/{len(THANH_GHI)}",
+               "; ".join(f"{k}=0x{v:02X}" for k, v in sorted(khop.items())))
+        a = ctx.store.get("build:firmware")
+        canon = (a or {}).get("canonical") or {}
+        nk.ket(bool(canon.get("dat")), "Firmware vẫn biên dịch được sau khi bổ sung",
+               f"Flash {canon.get('flash', 0)} B · SRAM {canon.get('sram', 0)} B")
+        nk.anh(g, "firmware-du")
+
     nk.buoc("Kết thúc phần đã chạy", loai="ket")
     nk.ghi("Nhật ký", str(RA / "NHAT-KY.md"))
     return 0

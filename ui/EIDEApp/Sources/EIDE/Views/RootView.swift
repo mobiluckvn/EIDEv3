@@ -79,9 +79,15 @@ struct RootView: View {
                 .background(Color.staleAmber.opacity(0.18))
                 .foregroundStyle(Color.staleAmber)
             }
+            // Bề rộng panel hội thoại co theo CỬA SỔ, không cố định.
+            //
+            // 460 pt là hợp lý trên màn hình 1728 pt, nhưng trên một cửa sổ 1100 pt (khổ tối
+            // thiểu) nó chiếm 42 % và phần tab còn lại chật tới mức bảng nào cũng phải co.
+            // Trần 38 % giữ cho hai bên đều dùng được ở mọi khổ màn hình.
+            GeometryReader { cs in
             HStack(spacing: 0) {
                 ConsoleView()
-                    .frame(width: state.consoleWidth.rawValue)
+                    .frame(width: min(state.consoleWidth.rawValue, cs.size.width * 0.38))
                 Divider()
                 VStack(spacing: 0) {
                     TabBar()
@@ -89,6 +95,7 @@ struct RootView: View {
                     SurfaceView(surface: state.surfaces[state.selectedSurface],
                                 key: state.selectedSurface)
                 }
+            }
             }
             Divider()
             StatusBarView()
@@ -98,38 +105,62 @@ struct RootView: View {
 
 // MARK: - Thanh tab
 
+/// Thanh 11 tab.
+///
+/// Trên cửa sổ hẹp, thanh này là chỗ đầu tiên "mất control bên phải": 11 tên đầy đủ cần hơn
+/// 1.100 pt, còn khổ cửa sổ tối thiểu chỉ có ngần ấy cho CẢ cửa sổ. Nó vẫn cuộn ngang được,
+/// nhưng một tab phải cuộn mới thấy là một tab người dùng sẽ không bấm.
+///
+/// Nên: chật thì rút gọn tên (`Yêu cầu & Giải pháp` → `Yêu cầu`) và thu nhỏ đệm, để cả 11
+/// tab cùng nằm trong khung. Vẫn giữ cuộn ngang làm lưới an toàn cho khổ còn hẹp hơn nữa.
 struct TabBar: View {
     @EnvironmentObject var state: AppState
 
+    /// Tên ngắn khi chật — vẫn là tên người đọc hiểu, không phải viết tắt bí hiểm.
+    private static let TEN_NGAN: [String: String] = [
+        "requirements": "Yêu cầu", "documents": "Tài liệu", "knowledge": "Tri thức",
+        "design": "Thiết kế", "tools": "Công cụ", "code": "Mã nguồn",
+        "simulation": "Mô phỏng", "hardware": "Mạch thật", "journal": "Nhật ký",
+        "history": "Lịch sử", "project": "Dự án",
+    ]
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                ForEach(state.surfaceOrder, id: \.key) { t in
-                    let chon = state.selectedSurface == t.key
-                    Button {
-                        state.selectedSurface = t.key
-                        // I1 — kể cả việc chuyển tab cũng là một HumanAct có xuất xứ,
-                        // để sổ cái phát lại được đúng thứ người đã nhìn (§D2 `attend`).
-                        state.gui(.attend(surface: t.key))
-                    } label: {
-                        HStack(spacing: 5) {
-                            Text(t.title).font(.system(size: 12, weight: chon ? .semibold : .regular))
-                            if let n = soKhoiRong(t.key), n > 0 {
-                                Text("\(n)").font(.system(size: 9, design: .monospaced))
-                                    .foregroundStyle(.tertiary)
-                                    .help("\(n) khối chưa có dữ liệu")
+        GeometryReader { g in
+            let chat = g.size.width < 1180
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 2) {
+                    ForEach(state.surfaceOrder, id: \.key) { t in
+                        let chon = state.selectedSurface == t.key
+                        Button {
+                            state.selectedSurface = t.key
+                            // I1 — kể cả việc chuyển tab cũng là một HumanAct có xuất xứ,
+                            // để sổ cái phát lại được đúng thứ người đã nhìn (§D2 `attend`).
+                            state.gui(.attend(surface: t.key))
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(chat ? (Self.TEN_NGAN[t.key] ?? t.title) : t.title)
+                                    .font(.system(size: chat ? 11 : 12,
+                                                  weight: chon ? .semibold : .regular))
+                                    .fixedSize()
+                                if !chat, let n = soKhoiRong(t.key), n > 0 {
+                                    Text("\(n)").font(.system(size: 9, design: .monospaced))
+                                        .foregroundStyle(.tertiary)
+                                        .help("\(n) khối chưa có dữ liệu")
+                                }
                             }
+                            .padding(.horizontal, chat ? 6 : 10).padding(.vertical, 6)
+                            .background(chon ? Color.accentColor.opacity(0.14) : .clear,
+                                        in: RoundedRectangle(cornerRadius: 5))
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(chon ? Color.accentColor.opacity(0.14) : .clear,
-                                    in: RoundedRectangle(cornerRadius: 5))
+                        .buttonStyle(.plain)
+                        .help(t.title)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal, 8).padding(.vertical, 4)
             }
-            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(.background)
         }
-        .background(.background)
+        .frame(height: 34)
     }
 
     private func soKhoiRong(_ key: String) -> Int? {

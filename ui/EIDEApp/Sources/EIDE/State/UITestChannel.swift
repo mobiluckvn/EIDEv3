@@ -111,6 +111,62 @@ final class UITestChannel {
                                   note: v["note"]?.stringValue))
                     ghi(["su_kien": "quyet_cong", "gate_id": gid, "duyet": duyet ? "có" : "không"])
                 }
+            case "anh":
+                // App TỰ VẼ cửa sổ của mình ra PNG. Không dùng `screencapture`.
+                //
+                // Chụp theo vùng màn hình đã hai lần lọt cửa sổ của ứng dụng khác vào ảnh —
+                // một lần có cả tệp `.env` kèm khoá API của người dùng. Ảnh đã chụp thì
+                // không rút lại được, nên cách chụp phải KHÔNG THỂ lấy nhầm, chứ không phải
+                // cẩn thận để đừng lấy nhầm.
+                Task { @MainActor in
+                    let tep = v["tep"]?.stringValue ?? ""
+                    guard let w = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+                          let view = w.contentView, !tep.isEmpty else {
+                        self.ghi(["su_kien": "anh_loi", "ghi_chu": "không có cửa sổ"])
+                        return
+                    }
+                    guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+                        self.ghi(["su_kien": "anh_loi", "ghi_chu": "không tạo được bitmap"])
+                        return
+                    }
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    guard let png = rep.representation(using: .png, properties: [:]) else {
+                        self.ghi(["su_kien": "anh_loi", "ghi_chu": "không mã hoá được PNG"])
+                        return
+                    }
+                    do {
+                        let u = URL(fileURLWithPath: tep)
+                        try FileManager.default.createDirectory(
+                            at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try png.write(to: u)
+                        self.ghi(["su_kien": "da_chup", "tep": tep,
+                                  "rong": Int(rep.pixelsWide), "cao": Int(rep.pixelsHigh)])
+                    } catch {
+                        self.ghi(["su_kien": "anh_loi", "ghi_chu": "\(error)"])
+                    }
+                }
+            case "co_cua_so":
+                // Đổi khổ cửa sổ để đo giao diện ở nhiều kích thước màn hình.
+                Task { @MainActor in
+                    if let w = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+                       let r = v["rong"]?.intValue, let c = v["cao"]?.intValue {
+                        var f = w.frame
+                        f.size = NSSize(width: CGFloat(r), height: CGFloat(c))
+                        w.setFrame(f, display: true)
+                    }
+                    self.ghi(["su_kien": "da_doi_co"])
+                }
+            case "len_truoc":
+                // App tự đưa cửa sổ của MÌNH lên trước, để ảnh chụp vùng màn hình không lọt
+                // cửa sổ của ứng dụng khác. Đây là app tự làm với chính nó — không phải ai
+                // đó bơm cú bấm vào hệ thống.
+                Task { @MainActor in
+                    NSApp.activate(ignoringOtherApps: true)
+                    NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain })?
+                        .makeKeyAndOrderFront(nil)
+                    try? await Task.sleep(nanoseconds: 400_000_000)
+                    self.ghi(["su_kien": "da_len_truoc"])
+                }
             case "sync":
                 Task { @MainActor in
                     await s.veLai()
@@ -154,8 +210,18 @@ final class UITestChannel {
         let f = w.frame
         // AppKit đếm y từ ĐÁY màn hình; `screencapture -R` đếm từ ĐỈNH.
         let y = man.frame.maxY - f.maxY
+        // `so` là CGWindowID: cho phép chụp ĐÚNG cửa sổ này (`screencapture -l`) kể cả khi
+        // nó đang nằm dưới cửa sổ khác. Chụp theo VÙNG màn hình thì thứ nằm trên lọt vào
+        // ảnh — đã xảy ra hai lần, và một lần trong đó là tệp `.env` của người dùng.
         return ["x": Int(f.origin.x.rounded()), "y": Int(y.rounded()),
-                "rong": Int(f.width.rounded()), "cao": Int(f.height.rounded())]
+                "rong": Int(f.width.rounded()), "cao": Int(f.height.rounded()),
+                "so": Int(w.windowNumber)]
+    }
+
+    /// Bề rộng thật của từng khối sau khi vẽ, theo mã khối.
+    private func rongKhoi() -> [String: Int] {
+        guard let s = state else { return [:] }
+        return s.khungKhoi.mapValues { Int($0.width.rounded()) }
     }
 
     /// Chiều cao thật của từng khối sau khi vẽ, theo mã khối.
@@ -269,7 +335,10 @@ final class UITestChannel {
             "khoi_de_nhau": khoiDeNhau(),
             // Chiều cao thật của từng khối. Đây mới là con số bắt được lỗi bảng dài: một
             // khối cao gấp nhiều lần cửa sổ là một khối không ai đọc hết được.
-            "cao_khoi": caoKhoi(), "nhan": nhan,
+            "cao_khoi": caoKhoi(),
+            // Bề RỘNG từng khối. Khối rộng hơn khung là khối đẩy các thứ bên phải ra ngoài
+            // màn hình — người dùng mất luôn nút "Vì sao?" và không có cách nào cuộn tới.
+            "rong_khoi": rongKhoi(), "nhan": nhan,
             "so_dong_hoi_thoai": s.transcript.count,
             // Đếm riêng dòng của TÁC TỬ: bộ đo cần biết lượt vừa rồi nó có nói gì không.
             // Thiếu con số này, một lượt mà tác tử chỉ gọi công cụ rồi im lặng sẽ bị chép

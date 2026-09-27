@@ -37,7 +37,17 @@ struct SurfaceView: View {
                         MaKhoi(ma: s.code)
                         Spacer()
                     }
-                    ForEach(s.blocks) { b in BlockView(block: b) }
+                    // Mỗi khối bị KHOÁ vào bề rộng có thật của tab.
+                    //
+                    // Không khoá thì một khối rộng hơn khung (bảng nhiều cột, cây khối tên
+                    // dài) kéo cả `VStack` phình ra, và mọi thứ nằm bên phải — nút "Vì sao?",
+                    // mép phải của bảng — trôi ra ngoài màn hình, không cuộn tới được. Người
+                    // dùng gọi đúng tên hiện tượng: "mất các control phía bên phải".
+                    ForEach(s.blocks) { b in
+                        BlockView(block: b)
+                            .frame(width: max(be.size.width - 32, 280), alignment: .leading)
+                            .clipped()
+                    }
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -123,6 +133,7 @@ struct BlockView: View {
             }
 
             noiDung
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1228,6 +1239,7 @@ struct KhoiCay: View {
 ///      sheet, nên một khối chỉ hiện được trang gốc sẽ trông như render hỏng.
 struct KhoiSoDo: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.beRongKhaDung) private var beRongKhaDung
     let block: SurfaceBlock
     @State private var trang = 0
 
@@ -1246,7 +1258,14 @@ struct KhoiSoDo: View {
                 .font(.system(size: 10))
             }
             if let url = duongDan {
+                // Khung ảnh phải vừa chỗ có thật: `WKWebView` đòi bề rộng nội tại của trang,
+                // và trên cửa sổ hẹp nó kéo cả khối rộng hơn tab — đúng lúc người dùng cần
+                // nhìn thấy nút bên phải nhất.
+                // `maxWidth: .infinity` để WebView NHẬN bề rộng được mời, thay vì đòi bề
+                // rộng nội tại của trang SVG. Bản trước lấy bề rộng từ môi trường và vẫn
+                // sai, vì `WKWebView` không nhường: nó phải được ép bằng khung.
                 AnhSVG(url: url, onBam: bam)
+                    .frame(maxWidth: .infinity)
                     .frame(minHeight: 280, maxHeight: 620)
                     .background(Color(nsColor: .textBackgroundColor),
                                 in: RoundedRectangle(cornerRadius: 6))
