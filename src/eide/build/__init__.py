@@ -17,7 +17,11 @@ nó cần được thử riêng mà không cần dựng cả một tác tử.
 """
 
 from .mo_phong import KetQuaMoPhong, chay_mo_phong
-from .toolchain import KetQuaBienDich, LoiBienDich, bien_dich, tim_chuoi_cong_cu
+from .tieu_chi import Assert, TieuChi, xet_ket_qua
+from .toolchain import (KetQuaBienDich, LoiBienDich, bien_dich, doc_map, kiem_moi_truong,
+                        tim_chuoi_cong_cu)
 
 __all__ = ["KetQuaBienDich", "LoiBienDich", "bien_dich", "tim_chuoi_cong_cu",
-           "KetQuaMoPhong", "chay_mo_phong"]
+           "kiem_moi_truong", "doc_map",
+           "KetQuaMoPhong", "chay_mo_phong",
+           "Assert", "TieuChi", "xet_ket_qua"]

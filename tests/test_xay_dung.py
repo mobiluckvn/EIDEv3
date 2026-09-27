@@ -102,14 +102,17 @@ def test_mo_phong_KHONG_in_JSON_thi_khong_ket_luan_gi(tmp_path):
 
 
 @pytest.mark.skipif(not co_cc, reason="không có trình biên dịch C trên máy")
-def test_mo_phong_bao_KHONG_DAT_thi_cong_cu_khong_doi_thanh_dat(tmp_path):
+def test_mo_phong_thoat_khac_0_thi_khong_coi_la_chay_tron_ven(tmp_path):
+    """`dat` ở tầng này CHỈ nói "chạy trọn vẹn và in được kết quả" — đạt hay không là việc
+    của TIÊU CHÍ, không phải của chương trình mô phỏng tự tuyên bố."""
     (tmp_path / "sim").mkdir()
     (tmp_path / "sim/main.c").write_text(
         '#include <stdio.h>\n'
-        'int main(void){ printf("{\\"dat\\": false, \\"vi_sao\\": \\"ngã ở giây 2\\"}\\n");'
-        ' return 1; }\n', "utf-8")
+        'int main(void){ printf("{\\"do\\": {\\"A1\\": 12.0}}\\n"); return 1; }\n',
+        "utf-8")
     kq = MP.chay_mo_phong(goc=tmp_path, nguon=[tmp_path / "sim/main.c"])
-    assert kq.chay_duoc and not kq.dat and "ngã ở giây 2" in kq.vi_sao_khong_dat
+    assert kq.chay_duoc and not kq.dat and "mã 1" in kq.vi_sao_khong_dat
+    assert kq.ket_qua["do"]["A1"] == 12.0
 
 
 # ===================================================================== qua công cụ
@@ -120,11 +123,35 @@ def test_build_compile_khong_co_ma_nguon_thi_tu_choi(make_agent):
     assert not r.ok and r.error.code == "E4001"
 
 
-def test_sim_run_chua_tach_logic_thi_CHI_DUONG_chu_khong_bia(make_agent):
+def test_sim_run_DOI_TIEU_CHI_truoc_tien(make_agent):
+    """Chạy trước rồi đặt tiêu chí sau là cách đặt tiêu chí vừa khít với kết quả — nên tiêu
+    chí là thứ `sim.run` hỏi ĐẦU TIÊN, trước cả việc có mã mô phỏng hay chưa."""
     agent = make_agent([])
     r = agent.registry.run("sim.run", {"explain": _EX}, _ctx(agent))
+    assert not r.ok and r.error.code == "E4008"
+    assert "vừa khít với kết quả" in r.error.hint_for_agent
+
+
+def test_sim_run_chua_tach_logic_thi_CHI_DUONG_chu_khong_bia(make_agent):
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    _ghi_tieu_chi(agent, ctx)
+    r = agent.registry.run("sim.run", {"explain": _EX}, ctx)
     assert not r.ok and r.error.code == "E4003"
     assert "ĐÚNG mã sẽ nạp vào chip" in r.error.hint_for_agent
+
+
+def _ghi_tieu_chi(agent, ctx, *, xac_nhan=True, nguong=15.0):
+    return agent.registry.run("sim.criteria", {
+        "ma": "sim-01", "ten": "Cân bằng",
+        "assert": [{"ma": "A1", "mo_ta": "Góc lớn nhất", "phep_so": "<=",
+                    "nguong": nguong, "don_vi": "°", "do_req": "REQ-BAL-01",
+                    "nguon_nguong": "§13.4 tài liệu"}],
+        "khong_mo_phong_duoc": [{"gi": "WS2812", "vi_sao": "không có mô hình 800 kHz",
+                                 "cach_bu": "đo bằng oscilloscope"}],
+        "timeout_s": 20,
+        **({"trich_loi": "đúng rồi, 15 độ"} if xac_nhan else {}),
+        "explain": _EX}, ctx)
 
 
 @can_avr
@@ -222,3 +249,277 @@ def test_khong_co_han_muc_thi_NOI_RA_chua_biet(make_agent):
     b = next(x for x in m["blocks"] if x["id"] == "build:firmware")
     chu = " ".join(f"{a} {b2}" for a, b2 in b["pairs"])
     assert "chưa biết hạn mức" in chu
+
+
+# ===================================================================== G6-A · môi trường
+def test_env_check_liet_ke_CO_va_THIEU_khong_tu_tuyen_bo_san_sang(make_agent):
+    """TC018 — cách chắc chắn nhất để không báo biên dịch thành công giả là không bao giờ tự
+    tuyên bố sẵn sàng: chỉ liệt kê cái có, cái thiếu, và thiếu thì hỏng việc gì."""
+    agent = make_agent([])
+    r = agent.registry.run("env.check", {"isa": "avr8"}, _ctx(agent))
+    assert r.ok
+    ten = {c["ten"] for c in r.data["cong_cu"]}
+    assert {"cc", "arduino-cli", "avr-gcc"} <= ten
+    assert all("de_lam_gi" in c for c in r.data["cong_cu"])
+    # Không có câu nào tuyên bố "sẵn sàng biên dịch".
+    assert "sẵn sàng" not in r.data["note_vi"].lower()
+
+
+def test_env_check_kien_truc_LA_thi_noi_thang_chu_khong_chon_gan_giong(make_agent):
+    """TC018 ghi nhận: chọn `armv7e-m` cho một chip Cortex-M3 sẽ sinh mã mang lệnh chip
+    không chạy được."""
+    agent = make_agent([])
+    r = agent.registry.run("env.check", {"isa": "armv7-m"}, _ctx(agent))
+    assert r.ok and r.data["isa_chua_biet"] is True
+    assert "chưa biên dịch được cho chip này" in r.data["note_vi"]
+    assert "gần giống" in r.data["note_vi"]
+
+
+def test_tool_install_KHONG_nhan_lenh_do_mo_hinh_soan(make_agent):
+    """Nếu mô hình tự soạn lệnh shell thì "duyệt cài đặt" thành "duyệt chạy một lệnh bất kỳ"."""
+    agent = make_agent([])
+    r = agent.registry.run("tool.install",
+                           {"cong_cu": "rm -rf /", "isa": "avr8", "explain": _EX},
+                           _ctx(agent))
+    assert not r.ok and r.error.code == "E4005"
+    assert "đừng soạn lệnh shell" in r.error.hint_for_agent
+
+
+def test_tool_install_da_co_thi_khong_cai_lai(make_agent):
+    agent = make_agent([])
+    r = agent.registry.run("tool.install", {"cong_cu": "cc", "explain": _EX}, _ctx(agent))
+    assert r.ok and r.data["da_co"] is True
+
+
+def test_tool_install_di_qua_cong_G_TOOL(make_agent):
+    """Cài phần mềm vào máy người dùng là R3 và phải hỏi — không có đường tắt."""
+    agent = make_agent([])
+    spec = agent.registry.get("tool.install")
+    assert spec.risk == "R3" and spec.gate == "G-TOOL"
+
+
+# ===================================================================== G6-A · bản đồ bộ nhớ
+@can_avr
+def test_build_map_doc_SECTION_va_SYMBOL_va_de_xuat_khi_tran(make_agent):
+    """TC021 — một con số tổng nói firmware có vừa chip không; nó không nói phải bỏ gì."""
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    goc = agent.config.paths.project_root
+    (goc / "firmware").mkdir(parents=True, exist_ok=True)
+    (goc / "firmware/firmware.ino").write_text(
+        "#include <avr/io.h>\n"
+        "const char bang[600] = {0};\n"
+        "int main(void){ DDRB = bang[0]; for(;;){} }\n", "utf-8")
+    for fid, k, v in (("f1", "flash.size", 32768), ("f2", "ram.size", 2048)):
+        agent.store.put_fact({"fact_id": fid, "subject": "chip:ATmega328P", "key": k,
+                              "value": v, "unit": "B", "tier": "BAC", "origin": "extract",
+                              "source": {}, "explain": {}})
+    assert agent.registry.run("build.compile", {"explain": _EX}, ctx).ok
+
+    r = agent.registry.run("build.map", {"explain": _EX}, ctx)
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert any(s["ten"] == ".text" for s in r.data["section"])
+    assert r.data["symbol"] and r.data["symbol"][0]["byte"] > 0
+    assert r.data["vua_flash"] is True
+    a = agent.store.get("analysis:build-map")
+    assert a and a["canonical"]["flash"] > 0
+
+
+def test_build_map_chua_bien_dich_thi_tu_choi(make_agent):
+    agent = make_agent([])
+    r = agent.registry.run("build.map", {"explain": _EX}, _ctx(agent))
+    assert not r.ok and "Chưa biên dịch lần nào" in r.error.message_vi
+
+
+def test_map_canh_bao_SRAM_gan_day_vi_ngan_xep_khong_nam_trong_so_do(tmp_path):
+    """Trên AVR, tràn ngăn xếp không sinh ngoại lệ mà lặng lẽ hỏng — nên 75 % đã là lúc phải
+    nói, không đợi tới 100 %."""
+    from eide.build.toolchain import doc_map
+
+    m = doc_map(elf=tmp_path / "khong-co.elf", flash_toi_da=32768, sram_toi_da=2048)
+    assert "Không có" in m["canh_bao"][0]
+
+
+# ================================================== G6-B · tiêu chí PHÁN XỬ, không phải sim
+def _tc_mau():
+    from eide.build.tieu_chi import Assert, TieuChi
+
+    return TieuChi(
+        ma="sim-01", ten="Cân bằng 5 giây",
+        asserts=[Assert(ma="A1", mo_ta="Góc nghiêng lớn nhất", phep_so="<=", nguong=15.0,
+                        don_vi="°", do_req="REQ-BAL-01", nguon_nguong="§13.4 tài liệu"),
+                 Assert(ma="A2", mo_ta="Góc ở giây thứ 5", phep_so="<=", nguong=2.0,
+                        don_vi="°", do_req="REQ-BAL-01", nguon_nguong="anh Công nói")],
+        khong_mo_phong_duoc=[{"gi": "WS2812", "vi_sao": "không có mô hình định thời 800 kHz",
+                              "cach_bu": "đo trên bo bằng oscilloscope"}],
+        xac_nhan_boi="human", trich_loi="đúng rồi, 15 độ và 2 độ")
+
+
+def test_tieu_chi_PHAN_XU_ket_qua_chu_khong_phai_chuong_trinh_mo_phong():
+    """Bản trước để chương trình mô phỏng tự in `dat: true` — thứ được kiểm cũng là thứ
+    tuyên bố kết quả, và một dòng sửa trong sim/plant.c đủ để mọi phép thử "đạt"."""
+    from eide.build.tieu_chi import xet_ket_qua
+
+    tc = _tc_mau()
+    assert xet_ket_qua(tc, {"A1": 3.0, "A2": 1.1})["dat"] is True
+    xau = xet_ket_qua(tc, {"A1": 20.0, "A2": 1.1})
+    assert xau["dat"] is False and "đo được 20.0" in xau["vi_sao_khong_dat"]
+
+
+def test_thieu_so_do_la_CHUA_DU_DU_KIEN_khong_phai_dat():
+    """Log rỗng ≠ đạt (N6). Một assert không có số đo thì cả lần chạy không được gọi là đạt."""
+    from eide.build.tieu_chi import xet_ket_qua
+
+    kq = xet_ket_qua(_tc_mau(), {"A1": 3.0})
+    assert kq["dat"] is False and kq["dem"]["chua_do_duoc"] == 1
+    assert "KHÔNG in ra số đo" in kq["dong"][1]["vi"]
+
+
+def test_so_do_THUA_cung_duoc_noi_ra():
+    """Số đo không có assert nào nhận nghĩa là một trong hai bên gõ sai mã assert."""
+    from eide.build.tieu_chi import xet_ket_qua
+
+    kq = xet_ket_qua(_tc_mau(), {"A1": 3.0, "A2": 1.0, "A9": 7})
+    assert kq["so_do_thua"] == ["A9"]
+
+
+def test_moi_assert_noi_duoc_no_do_REQ_nao_va_nguong_tu_dau():
+    """§E2: "Mỗi assert đo REQ nào; ngưỡng lấy từ đâu" — không có hai thứ này thì người rà
+    soát không có cách nào cãi lại một con số."""
+    from eide.build.tieu_chi import xet_ket_qua
+
+    kq = xet_ket_qua(_tc_mau(), {"A1": 3.0, "A2": 1.0})
+    assert all(d["do_req"] and d["nguon_nguong"] for d in kq["dong"])
+
+
+def test_tieu_chi_CHUA_xac_nhan_thi_sim_run_tu_choi(make_agent):
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    r = _ghi_tieu_chi(agent, ctx, xac_nhan=False)
+    assert r.ok and r.data["da_xac_nhan"] is False
+    assert "CHƯA có xác nhận" in r.data["note_vi"]
+    kq = agent.registry.run("sim.run", {"explain": _EX}, ctx)
+    assert not kq.ok and kq.error.code == "E4009"
+    assert "Đừng tự xác nhận hộ" in kq.error.hint_for_agent
+
+
+def test_tieu_chi_KHONG_khai_phan_chua_mo_phong_thi_NHAC(make_agent):
+    """TC019 — tuyên bố đạt cho phần chưa mô phỏng là đậu giả."""
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    r = agent.registry.run("sim.criteria", {
+        "assert": [{"ma": "A1", "mo_ta": "Góc", "phep_so": "<=", "nguong": 5,
+                    "nguon_nguong": "tài liệu"}],
+        "explain": _EX}, ctx)
+    assert r.ok and "CHƯA khai phần nào không mô phỏng được" in r.data["note_vi"]
+
+
+def test_tieu_chi_thieu_NGUON_NGUONG_thi_noi_ra(make_agent):
+    agent = make_agent([])
+    r = agent.registry.run("sim.criteria", {
+        "assert": [{"ma": "A1", "mo_ta": "Góc", "phep_so": "<=", "nguong": 5}],
+        "explain": _EX}, _ctx(agent))
+    assert r.ok and r.data["thieu_nguon_nguong"] == ["A1"]
+    assert "con số đó ở đâu ra" in r.data["note_vi"]
+
+
+def test_doi_NGUONG_khi_da_co_ket_qua_thi_hook_bao_cho_cong_G_QUAL(make_agent):
+    """TC022 — ca tệ nhất của cả bộ: tác tử từng ghi hẳn "khi mô phỏng thất bại thì điều
+    chỉnh tiêu chí" thành LUẬT CỦA DỰ ÁN."""
+    from eide.hooks.base import HookBus
+    from eide.hooks.standard import register_standard_hooks
+
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    _ghi_tieu_chi(agent, ctx, nguong=15.0)
+    agent.store.apply(artefact_id="sim_result:can-bang", type="sim_result", op="create",
+                      author="agent:run-1", explain=_EX, canonical={"dat": False})
+
+    bus = register_standard_hooks(HookBus())
+    # `explain` phải có: hook kiểm explain chạy TRƯỚC và dừng cả chuỗi nếu thiếu — nên một
+    # ca đo quên nó sẽ đo nhầm hook khác.
+    r = bus.pre_tool_use({"tool": "sim.criteria", "args": {
+        "ma": "sim-01", "explain": _EX,
+        "assert": [{"ma": "A1", "mo_ta": "Góc lớn nhất", "phep_so": "<=", "nguong": 45.0}]}},
+        ctx)
+    assert r.facts["criteria.exists"] and r.facts["criteria.changed"]
+    assert r.facts["criteria.has_result"] is True
+    assert "A1.nguong: 15.0 → 45.0" in r.facts["criteria.doi_gi"]
+
+
+def test_them_assert_MOI_cung_tinh_la_doi(make_agent):
+    from eide.hooks.base import HookBus
+    from eide.hooks.standard import register_standard_hooks
+
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    _ghi_tieu_chi(agent, ctx)
+    bus = register_standard_hooks(HookBus())
+    r = bus.pre_tool_use({"tool": "sim.criteria", "args": {
+        "ma": "sim-01", "explain": _EX,
+        "assert": [{"ma": "A1", "mo_ta": "Góc lớn nhất", "phep_so": "<=", "nguong": 15.0},
+                   {"ma": "A2", "mo_ta": "Thêm", "phep_so": "<=", "nguong": 1}]}}, ctx)
+    assert r.facts["criteria.changed"] and "A2: thêm mới" in r.facts["criteria.doi_gi"]
+    # Chưa có kết quả mô phỏng thì KHÔNG phải hỏi — thêm tiêu chí lúc chưa chạy là việc bình
+    # thường, và hỏi ở đó chỉ dạy người dùng bấm duyệt theo phản xạ.
+    assert r.facts["criteria.has_result"] is False
+
+
+# ===================================================================== G6-C · test.run
+@pytest.mark.skipif(not co_cc, reason="không có trình biên dịch C trên máy")
+def test_test_run_dem_duoc_CA_DAT_va_CA_HONG(make_agent):
+    """TC052 — một bản báo cáo bằng lời thì không đếm được, nên test phải in JSON."""
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    goc = agent.config.paths.project_root
+    (goc / "test").mkdir(parents=True, exist_ok=True)
+    (goc / "test/test_pid.c").write_text(
+        '#include <stdio.h>\n'
+        'int main(void){ printf("{\\"ca\\": ['
+        '{\\"ten\\": \\"pid_zero\\", \\"dat\\": true},'
+        '{\\"ten\\": \\"pid_bao_hoa\\", \\"dat\\": false, \\"vi\\": \\"ra 300 > 255\\"}'
+        ']}\\n"); return 0; }\n', "utf-8")
+    r = agent.registry.run("test.run", {"explain": _EX}, ctx)
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["so_ca"] == 2 and r.data["so_dat"] == 1 and r.data["so_hong"] == 1
+    assert r.data["dat"] is False and "ra 300 > 255" in r.data["vi_sao_khong_dat"]
+    assert "1/2 ca đạt" in r.data["note_vi"]
+
+
+@pytest.mark.skipif(not co_cc, reason="không có trình biên dịch C trên máy")
+def test_test_run_KHONG_in_JSON_thi_khong_ket_luan(make_agent):
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    goc = agent.config.paths.project_root
+    (goc / "test").mkdir(parents=True, exist_ok=True)
+    (goc / "test/t.c").write_text(
+        '#include <stdio.h>\nint main(void){ printf("Tất cả test đã chạy OK\\n"); return 0; }\n',
+        "utf-8")
+    r = agent.registry.run("test.run", {"explain": _EX}, ctx)
+    assert r.ok and r.data["dat"] is False
+    assert "không đếm được" in r.data["vi_sao_khong_dat"]
+
+
+def test_chua_co_test_thi_NOI_THANG_chu_khong_coi_la_dat(make_agent):
+    agent = make_agent([])
+    r = agent.registry.run("test.run", {"explain": _EX}, _ctx(agent))
+    assert not r.ok and r.error.code == "E4011"
+    assert "đừng coi im lặng là đạt" in r.error.hint_for_agent
+
+
+@pytest.mark.skipif(not co_cc, reason="không có trình biên dịch C trên máy")
+def test_do_phu_khong_do_duoc_thi_NOI_RA_chu_khong_bo_cot(make_agent):
+    """Im lặng bỏ cột độ phủ thì người đọc hiểu là không có gì để nói."""
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    goc = agent.config.paths.project_root
+    (goc / "test").mkdir(parents=True, exist_ok=True)
+    (goc / "test/t.c").write_text(
+        '#include <stdio.h>\n'
+        'int main(void){ printf("{\\"ca\\": [{\\"ten\\": \\"a\\", \\"dat\\": true}]}\\n");'
+        ' return 0; }\n', "utf-8")
+    r = agent.registry.run("test.run", {"explain": _EX}, ctx)
+    assert r.ok and "do_phu" in r.data
+    assert r.data["do_phu"].get("do_duoc") in (True, False)
+    if not r.data["do_phu"]["do_duoc"]:
+        assert r.data["do_phu"]["vi_sao"] and "CHƯA đo được độ phủ" in r.data["note_vi"]

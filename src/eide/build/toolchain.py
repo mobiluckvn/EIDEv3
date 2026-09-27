@@ -217,3 +217,180 @@ def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
         kq.flash, kq.sram = _doc_kich_thuoc(cc.get("avr-size", ""), elf)
     kq.dat = True
     return kq
+
+
+# ============================================================ kiểm môi trường (env.check)
+@dataclass(slots=True)
+class CongCu:
+    """Một chương trình cần có trên máy."""
+
+    ten: str
+    de_lam_gi: str
+    co: bool = False
+    duong_dan: str = ""
+    phien_ban: str = ""
+    bat_buoc: bool = True
+    cach_cai: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"ten": self.ten, "de_lam_gi": self.de_lam_gi, "co": self.co,
+                "duong_dan": self.duong_dan, "phien_ban": self.phien_ban,
+                "bat_buoc": self.bat_buoc, "cach_cai": self.cach_cai}
+
+
+# Cần gì cho kiến trúc nào. `cach_cai` là LỆNH THẬT sẽ chạy nếu người dùng đồng ý — viết sẵn
+# ở đây để `tool.install` không phải bịa ra lệnh, và để người dùng đọc được trước khi duyệt.
+CAN_GI: dict[str, list[dict[str, Any]]] = {
+    "avr8": [
+        {"ten": "arduino-cli", "de_lam_gi": "biên dịch sketch Arduino cho AVR",
+         "bat_buoc": False, "cach_cai": "brew install arduino-cli"},
+        {"ten": "avr-gcc", "de_lam_gi": "biên dịch C thuần cho AVR",
+         "bat_buoc": False, "cach_cai": "arduino-cli core install arduino:avr"},
+        {"ten": "avr-size", "de_lam_gi": "đọc kích thước Flash/SRAM của tệp ảnh",
+         "bat_buoc": False, "cach_cai": "brew install avr-binutils"},
+        {"ten": "avrdude", "de_lam_gi": "nạp firmware vào bo (bước G7)",
+         "bat_buoc": False, "cach_cai": "brew install avrdude"},
+    ],
+    "armv7e-m": [
+        {"ten": "arm-none-eabi-gcc", "de_lam_gi": "biên dịch cho Cortex-M4/M7",
+         "bat_buoc": True, "cach_cai": "brew install --cask gcc-arm-embedded"},
+        {"ten": "arm-none-eabi-size", "de_lam_gi": "đọc kích thước Flash/RAM",
+         "bat_buoc": True, "cach_cai": "brew install --cask gcc-arm-embedded"},
+    ],
+    "rv32imac": [
+        {"ten": "riscv64-unknown-elf-gcc", "de_lam_gi": "biên dịch cho RISC-V",
+         "bat_buoc": True, "cach_cai": "brew tap riscv-software-src/riscv && "
+                                       "brew install riscv-tools"},
+    ],
+}
+
+# Công cụ dùng chung, không phụ thuộc kiến trúc.
+CAN_GI_CHUNG = [
+    {"ten": "cc", "de_lam_gi": "biên dịch phần logic để MÔ PHỎNG trên máy chủ",
+     "bat_buoc": True, "cach_cai": "xcode-select --install"},
+    {"ten": "git", "de_lam_gi": "lưu lịch sử tệp của dự án",
+     "bat_buoc": False, "cach_cai": "xcode-select --install"},
+]
+
+
+def _phien_ban(duong_dan: str) -> str:
+    """Dòng đầu của `--version`. Không đọc được thì trả rỗng, KHÔNG đoán.
+
+    Bỏ qua dòng lỗi: `arduino-cli --version` trả *"Error: unknown flag: --version"* (nó dùng
+    `version` làm lệnh con), và nếu nhận dòng đó làm phiên bản thì bảng môi trường hiện một
+    câu lỗi ở chỗ đáng lẽ là số phiên bản — trông như công cụ hỏng trong khi nó chạy tốt.
+    """
+    for co in ("--version", "-version", "version", "-V"):
+        try:
+            r = subprocess.run([duong_dan, co], capture_output=True, text=True, timeout=8)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        dong = [d for d in ((r.stdout or "") + "\n" + (r.stderr or "")).splitlines()
+                if d.strip()]
+        if not dong:
+            continue
+        d0 = dong[0].strip()
+        if d0.lower().startswith(("error", "unknown", "usage", "invalid")):
+            continue
+        return d0[:120]
+    return ""
+
+
+def kiem_moi_truong(isa: str = "") -> dict[str, Any]:
+    """Máy này có gì, thiếu gì, và thiếu thì hỏng việc nào.
+
+    Trả về sự thật đo được, không kèm kết luận "sẵn sàng biên dịch". Kết luận đó là việc của
+    công cụ gọi: TC018 nói rõ hệ thống **không được báo biên dịch thành công giả** khi thiếu
+    chuỗi công cụ, mà cách chắc chắn nhất để không báo giả là không bao giờ tự tuyên bố sẵn
+    sàng — chỉ liệt kê cái có và cái thiếu.
+    """
+    ds: list[CongCu] = []
+    for c in CAN_GI_CHUNG + CAN_GI.get(isa or "", []):
+        duong = _tim_lenh(str(c["ten"]))
+        ds.append(CongCu(
+            ten=str(c["ten"]), de_lam_gi=str(c["de_lam_gi"]), co=bool(duong),
+            duong_dan=duong, phien_ban=_phien_ban(duong) if duong else "",
+            bat_buoc=bool(c.get("bat_buoc", True)), cach_cai=str(c.get("cach_cai", ""))))
+
+    thieu = [c for c in ds if not c.co]
+    thieu_bb = [c for c in thieu if c.bat_buoc]
+    bien_dich_duoc = bool(isa) and bool(tim_chuoi_cong_cu(isa).get("arduino-cli")
+                                        or tim_chuoi_cong_cu(isa).get(
+                                            CHUOI_CONG_CU.get(isa, {}).get("gcc", "")))
+    return {
+        "isa": isa, "cong_cu": [c.to_dict() for c in ds],
+        "so_co": sum(1 for c in ds if c.co), "so_thieu": len(thieu),
+        "thieu": [c.ten for c in thieu], "thieu_bat_buoc": [c.ten for c in thieu_bb],
+        "bien_dich_duoc": bien_dich_duoc,
+        "isa_biet": sorted(CHUOI_CONG_CU),
+        "isa_chua_biet": bool(isa) and isa not in CHUOI_CONG_CU,
+    }
+
+
+# ============================================================ đọc map/ELF (build.map)
+def doc_map(*, elf: Path, size_bin: str = "", nm_bin: str = "",
+            flash_toi_da: int = 0, sram_toi_da: int = 0) -> dict[str, Any]:
+    """Kích thước theo section và các symbol lớn nhất — để biết *cái gì* chiếm chỗ.
+
+    Một con số tổng ("3.520 B Flash") nói firmware có vừa chip không; nó không nói phải bỏ
+    gì khi không vừa. TC021 đòi đúng phần sau: *"phân tích map file, đề xuất tối ưu hoặc đổi
+    MCU"* — và không đề xuất được nếu không biết bảng nào to nhất.
+    """
+    ra: dict[str, Any] = {"tep": str(elf), "section": [], "symbol": [], "canh_bao": []}
+    if not elf.exists():
+        ra["canh_bao"].append(f"Không có {elf} — biên dịch trước đã.")
+        return ra
+
+    size_bin = size_bin or _tim_lenh("avr-size") or _tim_lenh("size")
+    if size_bin:
+        r = subprocess.run([size_bin, "-A", str(elf)], capture_output=True, text=True)
+        for d in r.stdout.splitlines():
+            p = d.split()
+            if len(p) >= 2 and p[0].startswith("."):
+                try:
+                    ra["section"].append({"ten": p[0], "byte": int(p[1])})
+                except ValueError:
+                    continue
+    else:
+        ra["canh_bao"].append("Không có avr-size/size trên máy — chưa đọc được section.")
+
+    nm_bin = nm_bin or _tim_lenh("avr-nm") or _tim_lenh("nm")
+    if nm_bin:
+        r = subprocess.run([nm_bin, "--print-size", "--size-sort", "--radix=d", str(elf)],
+                           capture_output=True, text=True)
+        for d in r.stdout.splitlines():
+            p = d.split()
+            if len(p) >= 4:
+                try:
+                    ra["symbol"].append({"ten": p[3], "byte": int(p[1]),
+                                         "loai": p[2]})
+                except ValueError:
+                    continue
+        ra["symbol"] = sorted(ra["symbol"], key=lambda x: -x["byte"])[:15]
+    else:
+        ra["canh_bao"].append("Không có avr-nm/nm trên máy — chưa đọc được symbol.")
+
+    # Flash = text + data (data được chép từ Flash sang RAM lúc khởi động); RAM = data + bss.
+    theo_ten = {s["ten"]: s["byte"] for s in ra["section"]}
+    flash = theo_ten.get(".text", 0) + theo_ten.get(".data", 0)
+    sram = theo_ten.get(".data", 0) + theo_ten.get(".bss", 0)
+    ra["flash"], ra["sram"] = flash, sram
+    ra["flash_toi_da"], ra["sram_toi_da"] = flash_toi_da, sram_toi_da
+    ra["vua_flash"] = (flash <= flash_toi_da) if flash_toi_da else None
+    ra["vua_sram"] = (sram <= sram_toi_da) if sram_toi_da else None
+
+    de_xuat: list[str] = []
+    if flash_toi_da and flash > flash_toi_da:
+        to = ", ".join(f"{s['ten']} ({s['byte']} B)" for s in ra["symbol"][:3])
+        de_xuat.append(f"Flash vượt {flash - flash_toi_da} B. Chỗ chiếm nhiều nhất: {to}. "
+                       "Xem có bảng tra hằng nào đưa được vào PROGMEM, hoặc bỏ printf dấu "
+                       "phẩy động, trước khi tính đổi chip.")
+    if sram_toi_da and sram > sram_toi_da:
+        de_xuat.append(f"SRAM vượt {sram - sram_toi_da} B. Trên AVR, chuỗi hằng nằm trong "
+                       "RAM trừ khi đánh dấu PROGMEM — kiểm chỗ đó trước.")
+    if sram_toi_da and sram > sram_toi_da * 0.75:
+        de_xuat.append(f"SRAM đã dùng {sram}/{sram_toi_da} B. Ngăn xếp và biến cục bộ nằm ở "
+                       "phần còn lại và KHÔNG có trong con số này — tràn ngăn xếp trên AVR "
+                       "không sinh ngoại lệ mà lặng lẽ hỏng.")
+    ra["de_xuat"] = de_xuat
+    return ra

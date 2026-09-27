@@ -22,7 +22,19 @@ from .registry import Registry, ToolResult
 from .writing import EXPLAIN_SCHEMA
 
 MA_BUILD = "build:firmware"
+MA_MAP = "analysis:build-map"
+MA_TEST = "sim_result:unit-test"
 MA_SIM = "sim_result:can-bang"
+
+
+def _ma_tc(ma: str) -> str:
+    return f"criteria:{ma or 'sim-01'}"
+
+
+def _bay_gio() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def register(r: Registry) -> Registry:
@@ -31,6 +43,120 @@ def register(r: Registry) -> Registry:
 
 
 def dang_ky(r: Registry) -> None:
+    # =============================================================== môi trường (G6)
+    @r.tool("env.check", "Mã nguồn",
+            "Kiểm MÁY NÀY có đủ chuỗi công cụ cho chip của dự án không: cái nào có (kèm "
+            "phiên bản đọc được), cái nào thiếu, thiếu thì hỏng việc gì. Không bao giờ tự "
+            "kết luận “sẵn sàng biên dịch”.",
+            {"type": "object",
+             "properties": {
+                 "isa": {"type": "string",
+                         "description": "avr8 | armv7e-m | rv32imac — bỏ trống thì lấy từ "
+                                        "hộ chiếu chip"}}},
+            risk="R1", core=False,
+            keywords=["môi trường", "toolchain", "chuỗi công cụ", "thiếu", "cài",
+                      "biên dịch được chưa", "env"])
+    def env_check(ctx: Any, isa: str = ""):
+        """TC018 — *"Agent phát hiện, hướng dẫn/đề nghị cài đặt (hỏi trước khi cài), không
+        báo biên dịch thành công giả"*.
+
+        Cách chắc chắn nhất để không báo thành công giả là **không bao giờ tự tuyên bố sẵn
+        sàng**: công cụ này chỉ liệt kê cái có và cái thiếu, kèm lệnh cài THẬT sẽ chạy nếu
+        người dùng đồng ý. Kết luận "chạy được hay không" thuộc về `build.compile`, và nó chỉ
+        nói "đạt" khi có tệp ảnh trên đĩa.
+        """
+        from ..build import toolchain as TC
+
+        hc = _ho_chieu(ctx)
+        isa = isa or str((hc or {}).get("isa") or "")
+        kq = TC.kiem_moi_truong(isa)
+        thieu = [c for c in kq["cong_cu"] if not c["co"]]
+        return {
+            **kq, "chip": (hc or {}).get("chip", ""),
+            "cach_cai": {c["ten"]: c["cach_cai"] for c in thieu if c["cach_cai"]},
+            "note_vi": (
+                (f"Kiến trúc “{isa}” chưa có trong bảng chuỗi công cụ của EIDE "
+                 f"(đang biết: {', '.join(kq['isa_biet'])}). Nói thẳng với người dùng rằng "
+                 "EIDE chưa biên dịch được cho chip này — đừng chọn một kiến trúc gần giống, "
+                 "mã sinh ra sẽ mang lệnh chip không chạy được. "
+                 if kq["isa_chua_biet"] else
+                 f"Máy này có {kq['so_co']} công cụ, thiếu {kq['so_thieu']}. "
+                 if isa else
+                 "Chưa biết chip của dự án nên chỉ kiểm được công cụ dùng chung. Ghim hộ "
+                 "chiếu chip trước (passport.pin). ")
+                + (("THIẾU: " + ", ".join(f"{c['ten']} ({c['de_lam_gi']})" for c in thieu)
+                    + ". Muốn cài thì HỎI người dùng trước bằng tool.install — đừng tự cài, "
+                      "và đừng báo biên dịch được khi chưa có trình biên dịch.")
+                   if thieu else "Đủ công cụ cho việc biên dịch và mô phỏng."))}
+
+    @r.tool("tool.install", "Mã nguồn",
+            "Cài một công cụ còn thiếu vào máy. Chạy đúng lệnh mà env.check đã nêu, và chỉ "
+            "chạy sau khi người dùng duyệt — EIDE không tự cài gì.",
+            {"type": "object",
+             "properties": {
+                 "cong_cu": {"type": "string", "description": "tên công cụ, ví dụ avr-gcc"},
+                 "isa": {"type": "string"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["cong_cu", "explain"]},
+            risk="R3", core=False, needs_explain=True, gate="G-TOOL",
+            keywords=["cài", "install", "toolchain", "thiếu công cụ"])
+    def tool_install(ctx: Any, explain: dict[str, Any], cong_cu: str, isa: str = ""):
+        """Lệnh cài KHÔNG do mô hình soạn.
+
+        Nó lấy từ bảng `CAN_GI` trong mã — cùng chỗ `env.check` đọc ra để hiện cho người dùng.
+        Nếu mô hình được tự soạn lệnh shell thì thẻ cổng đang hỏi người dùng duyệt một thứ mà
+        lúc soạn câu hỏi chưa ai đọc kỹ, và "duyệt cài đặt" thành "duyệt chạy một lệnh bất kỳ".
+        """
+        import subprocess as _sp
+
+        from ..build import toolchain as TC
+
+        hc = _ho_chieu(ctx)
+        isa = isa or str((hc or {}).get("isa") or "")
+        bang = {c["ten"]: c for c in (TC.CAN_GI_CHUNG + TC.CAN_GI.get(isa, []))}
+        c = bang.get(cong_cu)
+        if c is None:
+            return ToolResult(False, error=EideError(
+                "E4005", f"EIDE không có lệnh cài sẵn cho “{cong_cu}”.",
+                hint_for_agent=("Chỉ cài được những công cụ có trong bảng: "
+                                + ", ".join(sorted(bang))
+                                + ". Với thứ khác, nói cho người dùng biết cần cài gì và để "
+                                  "họ tự cài — đừng soạn lệnh shell."),
+                details={"cai_duoc": sorted(bang)}, blame="agent"))
+        lenh = str(c.get("cach_cai") or "")
+        if not lenh:
+            return ToolResult(False, error=EideError(
+                "E4005", f"Chưa biết cách cài “{cong_cu}” trên máy này.",
+                hint_for_agent="Nói cho người dùng biết cần công cụ đó để làm gì, và để họ "
+                               "cài theo cách của họ.",
+                blame="agent"))
+
+        if TC._tim_lenh(cong_cu):
+            return {"cong_cu": cong_cu, "da_co": True, "lenh": lenh,
+                    "note_vi": f"{cong_cu} đã có sẵn trên máy — không cài lại."}
+
+        r = _sp.run(lenh, shell=True, capture_output=True, text=True, timeout=900)
+        duong = TC._tim_lenh(cong_cu)
+        dat = bool(duong)
+        ctx.store.apply(
+            artefact_id=f"build:install:{cong_cu}", type="build",
+            op="update" if ctx.store.get(f"build:install:{cong_cu}") else "create",
+            author=f"agent:{ctx.run_id}", explain=explain,
+            canonical={"cong_cu": cong_cu, "lenh": lenh, "dat": dat,
+                       "duong_dan": duong, "ma_thoat": r.returncode,
+                       "nguyen_van": ((r.stdout or "") + (r.stderr or ""))[-3000:]})
+        if not dat:
+            return ToolResult(False, error=EideError(
+                "E4006",
+                f"Chạy xong lệnh cài nhưng vẫn không thấy {cong_cu} trong PATH "
+                f"(mã thoát {r.returncode}).",
+                hint_for_agent=("Đọc đầu ra dưới đây, nói lại cho người dùng bằng lời của "
+                                "họ, và ĐỪNG coi là đã cài được:\n"
+                                + ((r.stdout or "") + (r.stderr or ""))[-1200:]),
+                details={"lenh": lenh, "ma_thoat": r.returncode}, blame="system"))
+        return {"cong_cu": cong_cu, "da_co": False, "lenh": lenh, "duong_dan": duong,
+                "note_vi": f"Đã cài {cong_cu} bằng `{lenh}` — nay có ở {duong}."}
+
     # ====================================================================== biên dịch
     @r.tool("build.compile", "Mã nguồn",
             "Biên dịch firmware bằng chuỗi công cụ THẬT trên máy (arduino-cli hoặc avr-gcc). "
@@ -110,6 +236,155 @@ def dang_ky(r: Registry) -> None:
                    if kq.canh_bao else "Không có cảnh báo nào.")
                 + (" VƯỢT hạn mức bộ nhớ của chip." if (qua_flash or qua_sram) else ""))}
 
+    @r.tool("build.map", "Mã nguồn",
+            "Đọc bản đồ bộ nhớ của tệp ảnh vừa biên dịch: từng section chiếm bao nhiêu, "
+            "symbol nào to nhất, có vừa ngân sách Flash/RAM không, và nếu tràn thì bỏ gì "
+            "trước khi nghĩ tới đổi chip.",
+            {"type": "object",
+             "properties": {"explain": EXPLAIN_SCHEMA},
+             "required": ["explain"]},
+            risk="R1", core=False, needs_explain=True, produces=["analysis"],
+            writes_artefact=True,
+            keywords=["map", "bộ nhớ", "flash", "ram", "tràn", "tối ưu", "kích thước"])
+    def build_map(ctx: Any, explain: dict[str, Any]):
+        """TC021 — *"phân tích map file, đề xuất tối ưu hoặc đổi MCU"*.
+
+        Một con số tổng nói firmware có vừa chip không; nó không nói **phải bỏ gì** khi không
+        vừa. Đó là toàn bộ lý do công cụ này tồn tại tách khỏi `build.compile`.
+        """
+        from ..build import toolchain as TC
+
+        goc = ctx.config.paths.project_root
+        a = ctx.store.get(MA_BUILD)
+        if a is None:
+            return ToolResult(False, error=EideError(
+                "E4001", "Chưa biên dịch lần nào nên chưa có bản đồ bộ nhớ để đọc.",
+                hint_for_agent="Gọi build.compile trước.",
+                alternatives=["build.compile"], blame="agent"))
+        elf = next(iter(sorted((goc / ".eide" / "build").glob("*.elf"))), None)
+        if elf is None:
+            return ToolResult(False, error=EideError(
+                "E4001", "Không có tệp .elf trong .eide/build — chưa đọc được section.",
+                hint_for_agent="Biên dịch lại; một số chuỗi công cụ chỉ sinh .hex, khi đó "
+                               "nói thẳng là không đọc được bản đồ bộ nhớ.",
+                alternatives=["build.compile"], blame="system"))
+
+        flash_max, sram_max = _han_muc(ctx, _ho_chieu(ctx))
+        m = TC.doc_map(elf=elf, flash_toi_da=flash_max, sram_toi_da=sram_max)
+        ctx.store.apply(
+            artefact_id=MA_MAP, type="analysis",
+            op="update" if ctx.store.get(MA_MAP) else "create",
+            author=f"agent:{ctx.run_id}", canonical=m, explain=explain,
+            view_hint={"kind": "table", "path": m.get("tep", "")})
+        to_nhat = ", ".join(f"{s['ten']} {s['byte']} B" for s in m["symbol"][:3])
+        return {**m,
+                "note_vi": (
+                    f"Flash {m['flash']} B"
+                    + (f"/{flash_max} B" if flash_max else " (chưa biết ngân sách)")
+                    + f", SRAM {m['sram']} B"
+                    + (f"/{sram_max} B" if sram_max else " (chưa biết ngân sách)")
+                    + (f". Chiếm nhiều nhất: {to_nhat}." if to_nhat else ".")
+                    + (" " + " ".join(m["de_xuat"]) if m["de_xuat"] else "")
+                    + (" " + " ".join(m["canh_bao"]) if m["canh_bao"] else ""))}
+
+    # ====================================================================== tiêu chí
+    @r.tool("sim.criteria", "Mô phỏng",
+            "Nêu TIÊU CHÍ trước khi chạy mô phỏng: từng assert đo gì, ngưỡng bao nhiêu, "
+            "ngưỡng lấy từ đâu, đo YÊU CẦU nào — và phần nào KHÔNG mô phỏng được. Người dùng "
+            "xác nhận rồi mới chạy được sim.run.",
+            {"type": "object",
+             "properties": {
+                 "ma": {"type": "string", "description": "sim-01"},
+                 "ten": {"type": "string"},
+                 "assert": {
+                     "type": "array",
+                     "description": "từng điều kiện đo được",
+                     "items": {"type": "object", "properties": {
+                         "ma": {"type": "string", "description": "A1 — số đo trỏ tới mã này"},
+                         "mo_ta": {"type": "string"},
+                         "phep_so": {"type": "string",
+                                     "enum": ["<=", ">=", "<", ">", "==", "trong_khoang"]},
+                         "nguong": {"type": "number"},
+                         "nguong_tren": {"type": "number"},
+                         "don_vi": {"type": "string"},
+                         "do_req": {"type": "string", "description": "assert này đo REQ nào"},
+                         "nguon_nguong": {"type": "string",
+                                          "description": "ngưỡng lấy từ Fact/tài liệu/lời ai"},
+                     }}},
+                 "khong_mo_phong_duoc": {
+                     "type": "array",
+                     "description": "phần không mô phỏng được: {gi, vi_sao, cach_bu}",
+                     "items": {"type": "object"}},
+                 "timeout_s": {"type": "number"},
+                 "trich_loi": {"type": "string",
+                               "description": "LỜI người dùng xác nhận tiêu chí này"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["assert", "explain"]},
+            risk="R2", writes_artefact=True, needs_explain=True, produces=["criteria"],
+            keywords=["tiêu chí", "criteria", "assert", "ngưỡng", "nghiệm thu", "mô phỏng"])
+    def sim_criteria(ctx: Any, explain: dict[str, Any], **kw: Any):
+        """Tiêu chí NÊU TRƯỚC — và không tự xác nhận hộ người dùng.
+
+        TC016 đòi *"Agent nêu trước tiêu chí đạt, chạy mô phỏng, xuất bằng chứng, kết luận"*.
+        TC022 đòi chiều ngược lại: *"không được sửa tiêu chí/test để ép đạt; mọi thay đổi
+        tiêu chí phải hỏi người dùng"*. Hai câu đó cùng nói một điều: tiêu chí là **của người
+        dùng**, nên ở đây `trich_loi` là đường duy nhất để một tiêu chí được coi là đã xác
+        nhận, và đổi ngưỡng khi đã có kết quả thì đi qua cổng G-QUAL (xem policy.yaml).
+        """
+        from ..build import tieu_chi as TC
+
+        ds = kw.get("assert") or []
+        thieu = [f"assert #{i + 1}" for i, a in enumerate(ds)
+                 if not a.get("ma") or not a.get("mo_ta")]
+        if not ds or thieu:
+            return ToolResult(False, error=EideError(
+                "E4007",
+                "Tiêu chí phải có ít nhất một assert, và mỗi assert phải có `ma` và `mo_ta`."
+                + (" Thiếu: " + ", ".join(thieu) if thieu else ""),
+                hint_for_agent=("`ma` là thứ số đo của chương trình mô phỏng trỏ tới (ví dụ "
+                                "A1); `mo_ta` là câu người đọc hiểu. Thiếu một trong hai thì "
+                                "kết quả sau này không ai đọc được."),
+                blame="agent"))
+
+        xau = [a for a in ds
+               if str(a.get("phep_so") or "<=") not in TC.PHEP_SO]
+        if xau:
+            return ToolResult(False, error=EideError(
+                "E4007", "Phép so không hợp lệ: "
+                         + ", ".join(str(a.get("phep_so")) for a in xau),
+                hint_for_agent="Chỉ nhận: " + ", ".join(TC.PHEP_SO),
+                blame="agent"))
+
+        khong_nguon = [str(a.get("ma")) for a in ds if not str(a.get("nguon_nguong") or "")]
+        moi = TC.TieuChi.from_dict({**kw, "assert": ds})
+        loi = str(kw.get("trich_loi") or "").strip()
+        if loi:
+            moi.xac_nhan_boi, moi.xac_nhan_luc, moi.trich_loi = "human", _bay_gio(), loi
+
+        cu = ctx.store.get(_ma_tc(moi.ma))
+        cs = ctx.history.ghi_kho(
+            author=f"agent:{ctx.run_id}", artefact_id=_ma_tc(moi.ma), type="criteria",
+            op="update" if cu else "create", canonical=moi.to_dict(), explain=explain,
+            run_id=ctx.run_id)
+        return {
+            **moi.to_dict(), "changeset": cs.id, "thieu_nguon_nguong": khong_nguon,
+            "note_vi": (
+                f"Đã ghi {len(ds)} tiêu chí cho mô phỏng {moi.ma}: "
+                + "; ".join(a.vi for a in moi.asserts[:4])
+                + (f" (còn {len(ds) - 4} tiêu chí nữa)" if len(ds) > 4 else "") + ". "
+                + (f"{len(moi.khong_mo_phong_duoc)} phần KHÔNG mô phỏng được đã ghi kèm — "
+                   "chúng sẽ đi cùng mọi kết quả, để không ai đọc “đạt” thành “đạt hết”. "
+                   if moi.khong_mo_phong_duoc else
+                   "CHƯA khai phần nào không mô phỏng được. Nếu có ngoại vi mà mô hình không "
+                   "dựng (WS2812, siêu âm…), khai ra — tuyên bố đạt cho phần chưa mô phỏng "
+                   "là đậu giả. ")
+                + (f"Thiếu nguồn ngưỡng cho: {', '.join(khong_nguon)} — người rà soát sẽ hỏi "
+                   "con số đó ở đâu ra. " if khong_nguon else "")
+                + ("Người dùng đã xác nhận, nên sim.run chạy được."
+                   if moi.da_xac_nhan else
+                   "CHƯA có xác nhận của người dùng: trình bảng này cho họ, và gọi lại với "
+                   "trich_loi là câu họ nói. sim.run sẽ từ chối tới khi đó."))}
+
     # ====================================================================== mô phỏng
     @r.tool("sim.run", "Mô phỏng",
             "Chạy mô phỏng vòng điều khiển bằng CHÍNH mã logic của firmware (biên dịch cho "
@@ -128,10 +403,31 @@ def dang_ky(r: Registry) -> None:
             risk="R2", produces=["sim_result"], needs_explain=True, writes_artefact=True,
             keywords=["mô phỏng", "sim", "kiểm chứng", "vòng điều khiển", "cân bằng"])
     def sim_run(ctx: Any, explain: dict[str, Any], nguon: list[str] | None = None,
-                tham_so: list[str] | None = None):
+                tham_so: list[str] | None = None, ma_tieu_chi: str = "sim-01"):
         from ..build import mo_phong as MP
+        from ..build import tieu_chi as TCM
 
         goc = ctx.config.paths.project_root
+
+        # §B1: "sim.run cần criteria đã xác nhận". Chạy trước rồi mới nêu tiêu chí là mở sẵn
+        # cửa cho việc đặt tiêu chí VỪA KHÍT với thứ vừa đo được.
+        a_tc = ctx.store.get(_ma_tc(ma_tieu_chi))
+        if a_tc is None:
+            return ToolResult(False, error=EideError(
+                "E4008", f"Chưa có tiêu chí {ma_tieu_chi} nào cho mô phỏng.",
+                hint_for_agent=("Nêu tiêu chí TRƯỚC bằng sim.criteria: mỗi assert đo gì, "
+                                "ngưỡng bao nhiêu, lấy từ đâu, đo REQ nào. Rồi trình cho "
+                                "người dùng xác nhận. Chạy trước rồi đặt tiêu chí sau là "
+                                "cách đặt tiêu chí vừa khít với kết quả."),
+                alternatives=["sim.criteria"], blame="agent"))
+        tc = TCM.TieuChi.from_dict(a_tc["canonical"])
+        if not tc.da_xac_nhan:
+            return ToolResult(False, error=EideError(
+                "E4009", f"Tiêu chí {tc.ma} chưa được người dùng xác nhận.",
+                hint_for_agent=("Trình bảng tiêu chí cho người dùng, hỏi họ có đồng ý không, "
+                                "rồi gọi lại sim.criteria với trich_loi là câu họ trả lời. "
+                                "Đừng tự xác nhận hộ."),
+                alternatives=["sim.criteria", "ask_user"], blame="agent"))
         if nguon:
             ds = [(goc / x) for x in nguon]
         else:
@@ -147,34 +443,117 @@ def dang_ky(r: Registry) -> None:
                     "JSON có khoá `dat`."),
                 alternatives=["fs.write", "fs.glob"], blame="agent"))
 
-        kq = MP.chay_mo_phong(goc=goc, nguon=ds, tham_so=tham_so)
+        kq = MP.chay_mo_phong(goc=goc, nguon=ds, tham_so=tham_so,
+                              giay_toi_da=max(tc.timeout_s, 1.0))
+        do = dict((kq.ket_qua or {}).get("do") or {})
+        xet = TCM.xet_ket_qua(tc, do)
+        canon = {**kq.to_dict(), "ma_tieu_chi": tc.ma, "xet": xet, "so_do": do,
+                 "khong_mo_phong_duoc": tc.khong_mo_phong_duoc,
+                 "dat": bool(kq.chay_duoc and xet["dat"])}
         ctx.store.apply(
             artefact_id=MA_SIM, type="sim_result",
             op="update" if ctx.store.get(MA_SIM) else "create",
-            author=f"agent:{ctx.run_id}", canonical=kq.to_dict(), explain=explain,
+            author=f"agent:{ctx.run_id}", canonical=canon, explain=explain,
             view_hint={"kind": "table", "path": "sim"})
 
         if not kq.chay_duoc:
+            treo = "chạy quá" in kq.vi_sao_khong_dat
             return ToolResult(False, error=EideError(
-                "E4004", f"Mô phỏng chưa chạy được: {kq.vi_sao_khong_dat}",
-                hint_for_agent=("Sửa lỗi biên dịch của phần mô phỏng rồi chạy lại.\n"
-                                + kq.loi_bien_dich[-1200:]),
+                "E4010" if treo else "E4004",
+                f"Mô phỏng chưa chạy được: {kq.vi_sao_khong_dat}",
+                hint_for_agent=(
+                    (f"Quá {tc.timeout_s:.0f} s mà chưa xong — gần như luôn là một vòng chờ "
+                     "cờ không bao giờ bật. Tìm vòng `while` chờ điều kiện trong mã logic, "
+                     "và nhớ mô phỏng không có ngắt nào bật cờ hộ."
+                     if treo else
+                     "Sửa lỗi biên dịch của phần mô phỏng rồi chạy lại.\n"
+                     + kq.loi_bien_dich[-1200:])),
+                details={"lenh": kq.lenh_bien_dich, "timeout_s": tc.timeout_s},
+                blame="agent"))
+
+        dem = xet["dem"]
+        return {
+            **canon,
+            "note_vi": (
+                (f"{dem['dat']}/{len(tc.asserts)} tiêu chí ĐẠT"
+                 + (f", {dem['khong_dat']} KHÔNG đạt" if dem["khong_dat"] else "")
+                 + (f", {dem['chua_do_duoc']} CHƯA đo được" if dem["chua_do_duoc"] else "")
+                 + ". ")
+                + ("" if xet["dat"] else "Chưa đạt: " + xet["vi_sao_khong_dat"] + ". ")
+                + (f"Số đo thừa (không assert nào nhận): {', '.join(xet['so_do_thua'])}. "
+                   if xet["so_do_thua"] else "")
+                + ("KHÔNG mô phỏng được: "
+                   + "; ".join(f"{x.get('gi')} ({x.get('vi_sao')}) — bù bằng "
+                               f"{x.get('cach_bu', 'đo trên bo')}"
+                               for x in tc.khong_mo_phong_duoc)
+                   + ". Phần đó KHÔNG nằm trong kết luận trên. "
+                   if tc.khong_mo_phong_duoc else "")
+                + "Đây là kết quả trên MÔ HÌNH: nó nói mã điều khiển tự nhất quán và ổn định "
+                  "được với mô hình đó, KHÔNG nói mạch thật sẽ chạy."),
+        }
+
+
+    # ====================================================================== unit test
+    @r.tool("test.run", "Mô phỏng",
+            "Chạy unit test của firmware trên MÁY CHỦ (phần cứng thay bằng mock): bao nhiêu "
+            "ca đạt, ca nào hỏng và vì sao, và độ phủ nếu đo được.",
+            {"type": "object",
+             "properties": {
+                 "nguon": {"type": "array", "items": {"type": "string"},
+                           "description": "tệp .c cần biên dịch cùng nhau; mặc định "
+                                          "test/*.c + firmware/control*.c"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["explain"]},
+            risk="R2", core=False, needs_explain=True, writes_artefact=True,
+            produces=["sim_result"],
+            keywords=["test", "unit test", "kiểm thử", "độ phủ", "mock"])
+    def test_run(ctx: Any, explain: dict[str, Any], nguon: list[str] | None = None):
+        """TC052 — *"Test chạy trên máy chủ, có báo cáo đạt/không đạt và độ phủ"*.
+
+        Hai điều công cụ này từ chối làm: nhận một bản báo cáo bằng lời (không đếm được), và
+        im lặng bỏ cột độ phủ khi không đo được (người đọc sẽ hiểu là không có gì để nói).
+        """
+        from ..build import mo_phong as MP
+
+        goc = ctx.config.paths.project_root
+        ds = ([(goc / x) for x in nguon] if nguon else
+              sorted((goc / "test").glob("*.c")) + sorted((goc / "tests").glob("*.c"))
+              + sorted((goc / "firmware").glob("control*.c")))
+        ds = [x for x in ds if x.exists()]
+        if not ds:
+            return ToolResult(False, error=EideError(
+                "E4011", "Chưa có tệp test nào (test/*.c hoặc tests/*.c).",
+                hint_for_agent=(
+                    "Viết test cho phần LOGIC của firmware — phần không đụng thanh ghi. Mỗi "
+                    "tệp test có main() in ra một dòng JSON "
+                    '{"ca": [{"ten": "...", "dat": true, "vi": "..."}]}. '
+                    "Chưa có test thì nói thẳng là chưa có, đừng coi im lặng là đạt."),
+                alternatives=["fs.write", "fs.glob"], blame="agent"))
+
+        kq = MP.chay_test(goc=goc, nguon=ds)
+        ctx.store.apply(
+            artefact_id=MA_TEST, type="sim_result",
+            op="update" if ctx.store.get(MA_TEST) else "create",
+            author=f"agent:{ctx.run_id}", canonical=kq.to_dict(), explain=explain,
+            view_hint={"kind": "table", "path": "test"})
+
+        if not kq.chay_duoc:
+            return ToolResult(False, error=EideError(
+                "E4012", f"Test chưa chạy được: {kq.vi_sao_khong_dat}",
+                hint_for_agent=("Sửa lỗi rồi chạy lại.\n" + kq.loi_bien_dich[-1200:]),
                 details={"lenh": kq.lenh_bien_dich}, blame="agent"))
 
-        d = kq.ket_qua
+        phu = kq.do_phu
         return {
             **kq.to_dict(),
             "note_vi": (
-                ("Mô phỏng ĐẠT. " if kq.dat else
-                 f"Mô phỏng CHƯA đạt: {kq.vi_sao_khong_dat}. ")
-                + (f"Chạy {d.get('thoi_gian_s', '?')} s mô phỏng, "
-                   f"góc lớn nhất {d.get('goc_max_do', '?')}°, "
-                   f"góc cuối {d.get('goc_cuoi_do', '?')}°"
-                   if d else "")
-                + (". Đây là kết quả trên MÔ HÌNH: nó nói mã điều khiển tự nhất quán và ổn "
-                   "định được với mô hình đó, KHÔNG nói robot thật sẽ đứng — tham số cơ khí "
-                   "thật phải đo trên bo (tài liệu bàn giao gọi là hạng L).")),
-        }
+                f"{kq.so_dat}/{kq.so_ca} ca đạt"
+                + (f", {kq.so_hong} ca HỎNG: {kq.vi_sao_khong_dat}" if kq.so_hong else "")
+                + ". "
+                + (f"Độ phủ dòng {phu.get('dong')}. " if phu.get("do_duoc") else
+                   f"CHƯA đo được độ phủ — {phu.get('vi_sao', '')} ")
+                + ("Test chạy trên máy chủ với phần cứng thay bằng mock: nó kiểm LOGIC, "
+                   "không kiểm định thời và không kiểm thanh ghi."))}
 
 
 # --------------------------------------------------------------------------- phụ trợ

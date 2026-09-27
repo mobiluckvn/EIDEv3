@@ -196,6 +196,18 @@ rules:
     gate: G-SCOPE
     summary_vi: "Việc lớn — duyệt kế hoạch trước khi chạy"
 
+  - id: POL-N6-doi-tieu-chi
+    tool: "sim.criteria"
+    when: "criteria.exists && criteria.changed && criteria.has_result"
+    action: ask
+    gate: G-QUAL
+    never_auto: true
+    summary_vi: >
+      Đổi TIÊU CHÍ sau khi đã có kết quả mô phỏng — phải do người quyết
+    require_fields: [tu, den, vi_sao]
+    principle: N6
+    ca_do: [TC022]
+
   - id: POL-DESIGN-choose
     tool: "store.option_choose|board.freeze"
     action: ask

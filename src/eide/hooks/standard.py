@@ -161,6 +161,46 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                              fired=["constant_guard"])
 
     @bus.on_pre_tool
+    def doi_tieu_chi(call: dict[str, Any], ctx: Any) -> PreToolResult:
+        """N6 — đổi TIÊU CHÍ khi đã có kết quả là đường ngắn nhất tới một "đạt" vô nghĩa.
+
+        Hook này không chặn; nó nói cho lớp cấp quyền biết ba việc để `policy.yaml` quyết:
+        tiêu chí đã tồn tại chưa, có kết quả mô phỏng nào rồi chưa, và ngưỡng nào đang đổi.
+        Chính `từ bao nhiêu sang bao nhiêu` mới là thứ thẻ cổng cần hiện — một thẻ hỏi "đổi
+        tiêu chí?" mà không nói đổi từ đâu sang đâu thì người dùng bấm duyệt theo phản xạ.
+        """
+        if call.get("tool") != "sim.criteria":
+            return PreToolResult(facts={"criteria.exists": False, "criteria.changed": False})
+
+        args = call.get("args") or {}
+        ma = str(args.get("ma") or "sim-01")
+        cu = ctx.store.get(f"criteria:{ma}")
+        if cu is None:
+            return PreToolResult(facts={"criteria.exists": False, "criteria.changed": False},
+                                 fired=["doi_tieu_chi:moi"])
+
+        cu_theo_ma = {str(a.get("ma")): a
+                      for a in ((cu.get("canonical") or {}).get("assert") or [])}
+        doi: list[str] = []
+        for a in (args.get("assert") or []):
+            c = cu_theo_ma.get(str(a.get("ma")))
+            if c is None:
+                doi.append(f"{a.get('ma')}: thêm mới")
+                continue
+            for truong in ("nguong", "nguong_tren", "phep_so"):
+                if str(c.get(truong, "")) != str(a.get(truong, "")):
+                    doi.append(f"{a.get('ma')}.{truong}: {c.get(truong)} → {a.get(truong)}")
+        bo = sorted(set(cu_theo_ma) - {str(a.get("ma")) for a in (args.get("assert") or [])})
+        doi += [f"{x}: BỎ ĐI" for x in bo]
+
+        co_kq = ctx.store.get("sim_result:can-bang") is not None
+        return PreToolResult(
+            facts={"criteria.exists": True, "criteria.changed": bool(doi),
+                   "criteria.has_result": co_kq,
+                   "criteria.doi_gi": "; ".join(doi[:6])},
+            fired=["doi_tieu_chi:" + ("doi" if doi else "khong-doi")])
+
+    @bus.on_pre_tool
     def kiem_release(call: dict[str, Any], ctx: Any) -> PreToolResult:
         """Cấp `snapshot.has_release` cho lớp cấp quyền (CX15)."""
         if not str(call.get("tool", "")).startswith("target."):

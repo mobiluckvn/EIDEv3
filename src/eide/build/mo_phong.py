@@ -111,8 +111,147 @@ def chay_mo_phong(*, goc: Path, nguon: list[Path], thu_muc_build: Path | None = 
         kq.vi_sao_khong_dat = f"Dòng kết quả không phải JSON hợp lệ: {e}"
         return kq
 
-    kq.dat = bool(rr.returncode == 0 and kq.ket_qua.get("dat") is True)
+    # `dat` ở đây CHỈ nói "chương trình chạy trọn vẹn và in ra được kết quả". Đạt hay không
+    # là việc của TIÊU CHÍ (`build/tieu_chi.xet_ket_qua`) — xem docstring tệp đó.
+    kq.dat = rr.returncode == 0
     if not kq.dat:
-        kq.vi_sao_khong_dat = str(kq.ket_qua.get("vi_sao")
-                                  or f"mô phỏng kết luận chưa đạt (mã thoát {rr.returncode})")
+        kq.vi_sao_khong_dat = (f"chương trình mô phỏng thoát với mã {rr.returncode}")
     return kq
+
+
+# ==================================================== unit test trên máy chủ (test.run)
+@dataclass(slots=True)
+class KetQuaTest:
+    chay_duoc: bool = False
+    so_ca: int = 0
+    so_dat: int = 0
+    so_hong: int = 0
+    ca: list[dict[str, Any]] = field(default_factory=list)
+    do_phu: dict[str, Any] = field(default_factory=dict)
+    lenh_bien_dich: list[str] = field(default_factory=list)
+    loi_bien_dich: str = ""
+    nguyen_van: str = ""
+    vi_sao_khong_dat: str = ""
+    tep_nguon: list[str] = field(default_factory=list)
+
+    @property
+    def dat(self) -> bool:
+        return self.chay_duoc and self.so_ca > 0 and self.so_hong == 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"dat": self.dat, "chay_duoc": self.chay_duoc, "so_ca": self.so_ca,
+                "so_dat": self.so_dat, "so_hong": self.so_hong, "ca": self.ca[:60],
+                "do_phu": dict(self.do_phu), "lenh_bien_dich": list(self.lenh_bien_dich),
+                "loi_bien_dich": self.loi_bien_dich[-2000:],
+                "tep_nguon": list(self.tep_nguon),
+                "vi_sao_khong_dat": self.vi_sao_khong_dat,
+                "nguyen_van": self.nguyen_van[-3000:]}
+
+
+def chay_test(*, goc: Path, nguon: list[Path], thu_muc_build: Path | None = None,
+              giay_toi_da: float = 120.0, do_phu: bool = True) -> KetQuaTest:
+    """Chạy unit test của firmware trên MÁY CHỦ, với phần cứng được thay bằng mock.
+
+    Quy ước đầu ra giống `chay_mo_phong`: chương trình test in **một dòng JSON**
+    `{"ca": [{"ten": …, "dat": true/false, "vi": …}, …]}`. Không nhận "mọi test đã chạy" viết
+    bằng lời — TC052 đòi *"báo cáo đạt/không đạt và độ phủ"*, và một bản báo cáo bằng lời thì
+    không đếm được.
+
+    Độ phủ đo bằng `-fprofile-instr-generate -fcoverage-mapping` nếu trình biên dịch có, và
+    **nói rõ khi không đo được** thay vì im lặng bỏ cột đó.
+    """
+    kq = KetQuaTest(tep_nguon=[str(p.relative_to(goc)) if p.is_relative_to(goc) else str(p)
+                               for p in nguon])
+    cc = _trinh_bien_dich()
+    if not cc:
+        kq.vi_sao_khong_dat = "Máy này không có trình biên dịch C để chạy test."
+        return kq
+    thieu = [str(p) for p in nguon if not p.exists()]
+    if not nguon or thieu:
+        kq.vi_sao_khong_dat = ("Không có tệp test nào." if not nguon
+                               else f"Thiếu tệp: {', '.join(thieu)}")
+        return kq
+
+    build = thu_muc_build or (goc / ".eide" / "test")
+    build.mkdir(parents=True, exist_ok=True)
+    chay = build / "chay_test"
+    co_phu = do_phu and "clang" in Path(cc).name.lower() or do_phu and cc.endswith("cc")
+    co = ["-fprofile-instr-generate", "-fcoverage-mapping"] if co_phu else []
+    kq.lenh_bien_dich = [cc, "-O0", "-g", "-std=c11", "-Wall", "-Wextra", "-DEIDE_TEST=1",
+                         *co, "-o", str(chay), *[str(p) for p in nguon], "-lm"]
+    r = subprocess.run(kq.lenh_bien_dich, capture_output=True, text=True, cwd=str(goc),
+                       env={**os.environ, "LC_ALL": "C"})
+    if r.returncode != 0 or not chay.exists():
+        # Thử lại không đo độ phủ: thiếu độ phủ là mất một cột, không biên dịch được là mất
+        # cả phép thử.
+        if co:
+            kq.lenh_bien_dich = [x for x in kq.lenh_bien_dich if x not in co]
+            r = subprocess.run(kq.lenh_bien_dich, capture_output=True, text=True,
+                               cwd=str(goc), env={**os.environ, "LC_ALL": "C"})
+            co_phu = False
+        if r.returncode != 0 or not chay.exists():
+            kq.loi_bien_dich = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
+            kq.vi_sao_khong_dat = "Không biên dịch được chương trình test."
+            return kq
+
+    prof = build / "test.profraw"
+    try:
+        rr = subprocess.run([str(chay)], capture_output=True, text=True, cwd=str(goc),
+                            timeout=giay_toi_da,
+                            env={**os.environ, "LLVM_PROFILE_FILE": str(prof)})
+    except subprocess.TimeoutExpired:
+        kq.vi_sao_khong_dat = (f"Test chạy quá {giay_toi_da:.0f} s — nhiều khả năng có vòng "
+                               "chờ không bao giờ thoát.")
+        return kq
+
+    kq.chay_duoc = True
+    kq.nguyen_van = ((rr.stdout or "") + "\n" + (rr.stderr or "")).strip()
+    dong = [d.strip() for d in (rr.stdout or "").splitlines() if d.strip().startswith("{")]
+    if not dong:
+        kq.vi_sao_khong_dat = ("Chương trình test không in ra dòng JSON nào — không đếm được "
+                               "bao nhiêu ca đạt, nên không kết luận gì.")
+        return kq
+    try:
+        d = json.loads(dong[-1])
+    except ValueError as e:
+        kq.vi_sao_khong_dat = f"Dòng kết quả không phải JSON hợp lệ: {e}"
+        return kq
+
+    kq.ca = [dict(x) for x in (d.get("ca") or [])]
+    kq.so_ca = len(kq.ca)
+    kq.so_dat = sum(1 for x in kq.ca if x.get("dat") is True)
+    kq.so_hong = kq.so_ca - kq.so_dat
+    if kq.so_ca == 0:
+        kq.vi_sao_khong_dat = "Chương trình test chạy xong nhưng không có ca nào."
+    elif kq.so_hong:
+        kq.vi_sao_khong_dat = "; ".join(
+            f"{x.get('ten')}: {x.get('vi', 'hỏng')}" for x in kq.ca if not x.get("dat"))[:600]
+
+    kq.do_phu = _do_phu(build=build, prof=prof, chay=chay) if co_phu else {
+        "do_duoc": False,
+        "vi_sao": "Trình biên dịch trên máy không dựng được bản đo độ phủ; số ca đạt vẫn "
+                  "đúng, chỉ là chưa biết test chạm tới bao nhiêu phần mã."}
+    return kq
+
+
+def _do_phu(*, build: Path, prof: Path, chay: Path) -> dict[str, Any]:
+    """Độ phủ dòng, nếu `llvm-profdata`/`llvm-cov` có trên máy."""
+    pd = shutil.which("llvm-profdata") or shutil.which("xcrun")
+    cov = shutil.which("llvm-cov")
+    if not prof.exists() or not cov:
+        return {"do_duoc": False,
+                "vi_sao": "Không có llvm-cov (hoặc chương trình test không sinh hồ sơ đo)."}
+    data = build / "test.profdata"
+    tron = ([pd, "merge", "-sparse", str(prof), "-o", str(data)] if "profdata" in str(pd)
+            else [pd, "llvm-profdata", "merge", "-sparse", str(prof), "-o", str(data)])
+    if subprocess.run(tron, capture_output=True, text=True).returncode != 0:
+        return {"do_duoc": False, "vi_sao": "Không gộp được hồ sơ đo."}
+    r = subprocess.run([cov, "report", str(chay), f"-instr-profile={data}"],
+                       capture_output=True, text=True)
+    for d in r.stdout.splitlines():
+        if d.strip().lower().startswith("total"):
+            phan = d.split()
+            ty = [x for x in phan if x.endswith("%")]
+            return {"do_duoc": True, "dong": ty[1] if len(ty) > 1 else (ty[0] if ty else ""),
+                    "nguyen_van": d.strip()}
+    return {"do_duoc": False, "vi_sao": "llvm-cov không in ra dòng tổng."}
