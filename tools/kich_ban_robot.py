@@ -149,13 +149,11 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
     if lam(5):
         nk.buoc("Dựng bản đồ mạch: khối, Port, net — lấy từ chính Fact vừa trích")
         loi, cc = hoi(g, nk, du_an,
-                      "Giờ bạn dựng bản đồ mạch cho mình từ đúng những Fact chân vừa trích "
-                      "(đừng nhớ theo trí nhớ chung về Arduino). Bo có các khối: vi điều "
-                      "khiển ATmega328P (U1), hai mạch lái A4988 cho bánh phải và bánh trái, "
-                      "cảm biến MPU6050 trên I2C, còi chip, chuỗi WS2812 4 đèn, nút nhấn, "
-                      "cảm biến siêu âm SRF04, module âm thanh JQ6500, và cầu chia áp giám "
-                      "sát pin vào ADC0. Khai khối, Port ở biên mỗi khối và net nối chúng "
-                      "theo đúng bảng chân, rồi gộp bản đồ lại.",
+                      "Giờ dựng bản đồ mạch. Dùng ckm.from_pinout để MÃ dựng net và khối từ "
+                      "chính Fact chân vừa trích — đừng chép tay từng net, vì bảng có 23 chân "
+                      "và chép tay là chỗ sai không ai kiểm được. Sau khi nó dựng xong, bạn "
+                      "rà lại kết quả: khối nào tên chưa gọn thì đặt lại bằng ckm.module_set, "
+                      "rồi gộp bản đồ bằng ckm.build và nói cho mình biết bản đồ có gì.",
                       giay=1500)
         from eide.knowledge import cay as C
         from eide.knowledge import ckm as K
@@ -260,7 +258,8 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
             if (du_an / "firmware").exists() else []
         nk.ghi("Tệp firmware hiện có", ", ".join(ds) or "— chưa có —")
         ctrl = (du_an / "firmware/control.c")
-        nk.ket(ctrl.exists() and "avr/io.h" not in ctrl.read_text("utf-8", errors="replace"),
+        nk.ket(ctrl.exists()
+               and not phu_thuoc_avr(ctrl.read_text("utf-8", errors="replace")),
                "Có control.c và nó KHÔNG phụ thuộc thanh ghi AVR (mô phỏng được)",
                f"{ctrl.stat().st_size if ctrl.exists() else 0} byte")
         nk.anh(g, "control-c")
@@ -292,14 +291,13 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                       "hay số thực trong ISR. Gọi phần logic trong control.c, đừng viết lại "
                       "thuật toán. Viết thẳng ra tệp, đừng đọc thêm tài liệu nữa.",
                       giay=2400)
-        main_c = du_an / "firmware/main.c"
-        nk.ket(main_c.exists(), "Có firmware/main.c",
-               f"{main_c.stat().st_size if main_c.exists() else 0} byte")
-        if main_c.exists():
-            src = main_c.read_text("utf-8", errors="replace")
-            for x in (du_an / "firmware").glob("*.c"):
-                if x.name != "main.c":
-                    src += "\n" + x.read_text("utf-8", errors="replace")
+        # Mã thanh ghi nằm ở `main.c` hay `firmware.ino` là chuyện của chuẩn dự án, không
+        # phải chuyện của phép đo. Hỏi "có mã thanh ghi không", đừng hỏi "có tệp tên này không".
+        tep = sorted(x.name for x in (du_an / "firmware").glob("*")
+                     if x.suffix in (".c", ".h", ".ino", ".cpp"))
+        nk.ket(bool(tep), "Có mã firmware trong thư mục firmware/", ", ".join(tep) or "trống")
+        src = nguon_firmware(du_an / "firmware")
+        if src.strip():
             tg = thanh_ghi_trong_ma(src)
             nk.ghi("Thanh ghi đọc được từ mã",
                    "\n".join(f"{k:8} = 0x{v:02X} ({v})" for k, v in sorted(tg.items())),
@@ -444,10 +442,46 @@ def _tinh_bieu_thuc(bt: str) -> int | None:
         return None
 
 
+def bo_chu_thich(nguon: str) -> str:
+    """Bỏ `//…` và `/*…*/`.
+
+    Cần vì một phép so chuỗi trên mã nguồn sẽ trúng cả chú thích. Đo được: ca kiểm
+    "control.c không phụ thuộc AVR" báo ĐỎ cho một tệp sạch, vì trong đầu tệp có dòng chú
+    thích *"Không chứa mã phụ thuộc phần cứng, không include avr/io.h"*. Phép đo đọc lời
+    người viết thay vì đọc mã họ viết.
+    """
+    import re as _re
+
+    s = _re.sub(r"/\*.*?\*/", " ", nguon, flags=_re.S)
+    return _re.sub(r"//[^\n]*", " ", s)
+
+
+def phu_thuoc_avr(nguon: str) -> bool:
+    """Tệp này có đụng phần cứng AVR không — đọc CHỈ THỊ include, không đọc chú thích."""
+    import re as _re
+
+    return bool(_re.search(r"#\s*include\s*[<\"]avr/", bo_chu_thich(nguon)))
+
+
+def nguon_firmware(thu_muc: pathlib.Path) -> str:
+    """Toàn bộ mã firmware: `.c`, `.h` VÀ `.ino`.
+
+    Bỏ `.ino` là bỏ đúng chỗ mã thanh ghi nằm khi dự án theo chuẩn Arduino — phép đo khi đó
+    báo "0 thanh ghi" cho một firmware đầy thanh ghi, hoặc tệ hơn: báo một con số đúng ở lần
+    chạy này và sai ở lần sau, tuỳ tác tử đặt mã vào tệp nào.
+    """
+    ra = []
+    for x in sorted(thu_muc.glob("*")):
+        if x.suffix in (".c", ".h", ".ino", ".cpp"):
+            ra.append(x.read_text("utf-8", errors="replace"))
+    return "\n".join(ra)
+
+
 def thanh_ghi_trong_ma(nguon: str) -> dict[str, int]:
     """`{tên thanh ghi: giá trị}` đọc từ mã nguồn firmware."""
     import re as _re
 
+    nguon = bo_chu_thich(nguon)
     ra: dict[str, int] = {}
     for m in _re.finditer(r"^\s*([A-Z][A-Z0-9_]{2,8})\s*=\s*([^;]+);", nguon, _re.M):
         gt = _tinh_bieu_thuc(m.group(2))

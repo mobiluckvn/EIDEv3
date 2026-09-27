@@ -38,7 +38,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **SCH-B** | `sch.place` bố cục xác định, tiêu chí đo bằng số · `sch.write` `.kicad_sch` qua kiutils, uuid theo ref · `sch.render` SVG tự vẽ, kiểm chữ không đè | xong |
 | **SCH-C** | `sch.export` gói mở được ở máy có KiCad · `sch.import` phân loại ba loại thay đổi (bố cục / giá trị / cấu trúc), cấu trúc thì HỎI và KHÔNG ghi đè bản đồ | xong |
 | **SCH-D** | Tiêu chí bố cục đo trên TỪNG sheet + đề nghị phân cấp bằng số (SCH07) · sổ `sch_sheets` + bản ưng ý gói cả nội dung tệp sơ đồ (SCH-16) · ký hiệu sinh từ Fact CHỜ người xác nhận, kiểu chân người sửa thành Fact NGƯỜI (SCH-14/15) · khối A5.8: ảnh bấm được, băng chất lượng từng trang, bảng ký hiệu sửa được | xong |
-| G6 | Build/Sim + subagent | chưa |
+| **G6-tối thiểu** | `build.compile` (arduino-cli/avr-gcc thật, lỗi có toạ độ, kích thước từ avr-size) · `sim.run` (chạy CHÍNH mã logic firmware trong mô hình vật lý, kết luận bằng JSON) | xong |
+| G6 | Build/Sim đầy đủ (nạp chip, nhiều target) + subagent | chưa |
 | G7 | Mạch thật | chưa |
 
 ## Cài và chạy
@@ -115,6 +116,10 @@ EIDE_FEATURE_SCHEMATIC=1 .venv/bin/python tools/thu_sch.py    # 63 ca: sinh sơ 
 .venv/bin/python tools/so_ket_qua.py --hai-che-do tools/thu_ing_a.py   # hồi quy hai chế độ cờ
 .venv/bin/python tools/chay_kich_ban.py --lan 5      # bộ 76 TC, mỗi ca 5 lần
 .venv/bin/python tools/theo_doi.py --du-an <thư mục> # theo dõi phiên thật qua sổ cái
+
+# Một DỰ ÁN THẬT chạy từ đầu tới cuối, có ảnh chụp làm sở cứ (xem DEV-275):
+EIDE_FEATURE_SCHEMATIC=1 .venv/bin/python tools/phien_robot.py        # 12 bước, tác tử thật
+.venv/bin/python tools/doi_chieu_robot.py    # so netlist sinh ra với bảng 12/30/33 của tài liệu
 ```
 
 ### Kiểm thử qua giao diện thật

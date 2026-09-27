@@ -567,6 +567,136 @@ def register(r: Registry) -> Registry:
                 "changeset": cs.id, "canh_bao": canh_bao,
                 "note_vi": " ".join(canh_bao) or f"Đã ghi net {ten} với {len(cap)} chân."}
 
+    @r.tool("ckm.from_pinout", "Thiết kế",
+            "Dựng bản đồ mạch TỪ Fact chân đã trích: mỗi giá trị `net` thành một net, mỗi "
+            "`khoi` thành một khối, chân vi điều khiển thành đầu nối. MÃ dựng, không phải bạn "
+            "chép tay — bạn chỉ rà lại kết quả.",
+            {"type": "object",
+             "properties": {
+                 "chip": {"type": "string", "description": "ATmega328P"},
+                 "ref": {"type": "string", "description": "U1 — mã linh kiện trên bo"},
+                 "xem_truoc": {"type": "boolean",
+                               "description": "true = chỉ xem sẽ dựng gì, chưa ghi"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["chip", "explain"]},
+            risk="R2", writes_artefact=True, needs_explain=True,
+            produces=["netlist", "block_diagram"],
+            keywords=["dựng bản đồ", "từ bản đồ chân", "net từ fact", "khối", "ckm"])
+    def from_pinout(ctx: Any, chip: str, explain: dict[str, Any], ref: str = "",
+                    xem_truoc: bool = False):
+        """Vì sao việc này phải do MÃ làm, bằng hai lần chạy thật của cùng một câu hỏi.
+
+        Bảng bản đồ chân đã nằm trong kho dưới dạng Fact: `pin:ATmega328P.D4` có `net=DIR1`,
+        `khoi=A4988 #1`, `huong=ra`. Dựng bản đồ mạch từ đó là một phép biến đổi xác định.
+        Nhưng khi giao cho mô hình chép 14 net bằng 14 lời gọi `ckm.net_set`, hai lần chạy
+        cùng một câu cho ra **14/14 đúng** và **0/14 đúng** — lần thứ hai nó bỏ dở giữa
+        chừng. Một bước xác định mà kết quả phụ thuộc vào lượt chạy là một bước đặt sai chỗ.
+
+        Mô hình vẫn còn việc ở đây, và là việc chỉ nó làm được: đọc kết quả, thấy khối nào
+        đặt tên vô lý, chân nào tài liệu ghi thiếu, rồi sửa bằng `ckm.module_set`/`net_set`.
+        """
+        ten_chip = _ten_chip(chip)
+        ref = ref or "U1"
+        fs = ctx.store.query_facts(subject=f"pin:{ten_chip}.", limit=500)
+        theo_chan: dict[str, dict[str, str]] = {}
+        for f in fs:
+            sub = str(f.get("subject", ""))
+            so = sub.split(".", 1)[-1].strip()
+            if so:
+                theo_chan.setdefault(so, {})[str(f.get("key"))] = str(f.get("value") or "")
+        co_net = {so: d for so, d in theo_chan.items() if d.get("net")
+                  and not d["net"].startswith(("—", "-"))}
+        if not co_net:
+            return ToolResult(False, error=EideError(
+                "E8002",
+                f"Không có Fact chân nào của {ten_chip} mang khoá `net`.",
+                hint_for_agent=("Trích bản đồ chân trước: doc.load → fact.extract_pinout. "
+                                "Nếu tài liệu không có bảng net thì nói với người dùng và "
+                                "hỏi họ nối gì vào đâu — đừng tự đặt net."),
+                alternatives=["fact.extract_pinout", "doc.read", "ask_user"], blame="agent"))
+
+        # Gom theo net: mỗi net biết chân MCU của nó và khối ở đầu kia.
+        net_khoi: dict[str, str] = {}
+        net_chan: dict[str, list[str]] = {}
+        for so, d in sorted(co_net.items()):
+            ten_net = d["net"].strip().replace(" ", "_")
+            net_chan.setdefault(ten_net, []).append(so)
+            if d.get("khoi") and not net_khoi.get(ten_net):
+                net_khoi[ten_net] = d["khoi"].strip()
+
+        def _ma_khoi(ten: str) -> str:
+            t = "".join(c if c.isalnum() else "-" for c in ten.upper())
+            return "MOD-" + "-".join(x for x in t.split("-") if x)[:24]
+
+        khoi_moi = {}
+        for ten_net, k in net_khoi.items():
+            if k:
+                khoi_moi.setdefault(_ma_khoi(k), {"ten": k, "net": []})["net"].append(ten_net)
+
+        loai_net = {}
+        for ten_net in net_chan:
+            t = ten_net.upper()
+            loai_net[ten_net] = ("power" if any(x in t for x in ("3V3", "5V", "VCC", "VDD"))
+                                 else "ground" if "GND" in t
+                                 else "clock" if any(x in t for x in ("SCL", "XTAL", "CLK"))
+                                 else "signal")
+
+        xem = {"chip": ten_chip, "ref": ref, "so_net": len(net_chan),
+               "so_khoi": len(khoi_moi),
+               "net": [{"ten": n, "loai": loai_net[n], "chan_mcu": sorted(c),
+                        "khoi": net_khoi.get(n, "")} for n, c in sorted(net_chan.items())],
+               "khoi": [{"ma": m, "ten": v["ten"], "net": sorted(v["net"])}
+                        for m, v in sorted(khoi_moi.items())]}
+        if xem_truoc:
+            return {**xem, "da_ghi": False,
+                    "note_vi": (f"Xem trước: sẽ dựng {len(net_chan)} net và {len(khoi_moi)} "
+                                "khối từ bản đồ chân. Chưa ghi gì. Gọi lại với "
+                                "xem_truoc=false để ghi.")}
+
+        # Ghi: khối trước (net cần khối tồn tại), rồi net.
+        a_mg = ctx.store.get(K.MA_DO_THI)
+        mg = dict(a_mg["canonical"]) if a_mg else {"khoi": [], "lien_ket": []}
+        da_co = {k.get("ma") for k in (mg.get("khoi") or [])}
+        for m, v in sorted(khoi_moi.items()):
+            if m in da_co:
+                continue
+            mg.setdefault("khoi", []).append(
+                {"ma": m, "ten": v["ten"],
+                 "muc_dich": f"Khối {v['ten']} — dựng từ cột “Net · khối” của bảng bản đồ "
+                             "chân trong tài liệu",
+                 "linh_kien": [], "tier": "BAC"})
+        ctx.history.ghi_kho(
+            author=f"agent:{ctx.run_id}", artefact_id=K.MA_DO_THI, type="block_diagram",
+            op="update" if a_mg else "create", canonical=mg, explain=explain,
+            run_id=ctx.run_id)
+
+        a_net = ctx.store.get(K.MA_NETLIST)
+        canon = dict(a_net["canonical"]) if a_net else {"nguon": "CKM", "net": [],
+                                                        "linh_kien": []}
+        cu = {n.get("ten"): n for n in (canon.get("net") or [])}
+        for ten_net, chan_mcu in sorted(net_chan.items()):
+            cu[ten_net] = {"ten": ten_net, "loai": loai_net[ten_net], "ap_danh_dinh": "",
+                           "bus": "", "chan": [f"{ref}.{c}" for c in sorted(chan_mcu)],
+                           "tier": "BAC", "trong_khoi": "", "noi_port": [],
+                           "khoi_dau_kia": net_khoi.get(ten_net, "")}
+        canon["net"] = sorted(cu.values(), key=lambda n: str(n.get("ten")))
+        canon["so_net"], canon["nguon"] = len(canon["net"]), "CKM"
+        cs = ctx.history.ghi_kho(
+            author=f"agent:{ctx.run_id}", artefact_id=K.MA_NETLIST, type="netlist",
+            op="update" if a_net else "create", canonical=canon, explain=explain,
+            run_id=ctx.run_id)
+        K.chieu(ctx.store)
+
+        return {**xem, "da_ghi": True, "changeset": cs.id,
+                "note_vi": (
+                    f"Đã dựng {len(net_chan)} net và {len(khoi_moi)} khối từ bản đồ chân của "
+                    f"{ten_chip} — bằng mã, nên nó khớp bảng trong tài liệu từng dòng. "
+                    "CÒN THIẾU và cần bạn làm: mỗi net mới có MỘT đầu là chân vi điều khiển; "
+                    "đầu kia là linh kiện trong khối (A4988, MPU6050…) mà tài liệu mô tả ở "
+                    "chương riêng. Đọc chương đó rồi thêm linh kiện và Port bằng "
+                    "ckm.chip_add/ckm.port_set/ckm.net_set. Tầng của những net này là BẠC: "
+                    "trích từ tài liệu nội bộ, chưa ai rà từng dòng.")}
+
     @r.tool("ckm.import_netlist", "Thiết kế",
             "Đưa một netlist đã đọc (bằng eda.netlist) vào Bản đồ tri thức mạch. Dùng khi "
             "người dùng đã có sơ đồ trong KiCad — khỏi phải khai lại từng net.",

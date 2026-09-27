@@ -515,3 +515,80 @@ def test_fact_query_NOI_RA_khi_bi_cat_bot(kho):
     assert kho.dem_fact(subject="pin:X.") == 130
     assert len(kho.query_facts(subject="pin:X.", limit=100)) == 100
     assert len(kho.query_facts(subject="pin:X.", limit=200)) == 130
+
+
+# ============================== ckm.from_pinout — dựng bản đồ mạch bằng MÃ, không chép tay
+def _ctx_ckm(agent):
+    from eide.loop import TurnContext
+
+    return TurnContext(config=agent.config, store=agent.store, ledger=agent.ledger,
+                       eide_md=agent.eide_md, ids=agent.ids, registry=agent.registry,
+                       emit=lambda c: None, history=agent.history, run_id="run-1")
+
+
+def _fact_chan(store, chip="ATmega328P"):
+    ds = [("D4", "PD4", "DIR1", "A4988 #1", "ra"),
+          ("D5", "PD5", "STEP1", "A4988 #1", "ra"),
+          ("A4", "PC4", "SDA", "MPU6050", "hai_chieu"),
+          ("A5", "PC5", "SCL", "MPU6050", "hai_chieu"),
+          ("D13", "PB5", "—", "", "ra")]
+    for so, cong, net, khoi, huong in ds:
+        for k, v in (("ten", cong), ("net", net), ("khoi", khoi), ("huong", huong)):
+            if not v:
+                continue
+            store.put_fact({"fact_id": f"f-{so}-{k}", "subject": f"pin:{chip}.{so}",
+                            "key": k, "value": v, "tier": "BAC", "origin": "extract",
+                            "source": {"doc_id": "D1", "cite": "4.2 Bảng 13"},
+                            "explain": {}})
+
+
+_EXC = {"summary": "s", "why": "w", "sources": [], "diff_prev": "—", "next": "—",
+        "confidence": "BAC"}
+
+
+def test_from_pinout_dung_net_va_khoi_tu_FACT(make_agent):
+    """Hai lần chạy cùng một câu hỏi cho ra 14/14 và 0/14 khi việc này giao cho mô hình chép
+    tay. Một bước xác định mà kết quả phụ thuộc vào lượt chạy là một bước đặt sai chỗ."""
+    a = make_agent([])
+    ctx = _ctx_ckm(a)
+    _fact_chan(a.store)
+    r = a.registry.run("ckm.from_pinout", {"chip": "ATmega328P", "ref": "U1",
+                                           "explain": _EXC}, ctx)
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["so_net"] == 4, r.data["net"]          # D13 không có net → bỏ đúng
+    ten = {n["ten"] for n in r.data["net"]}
+    assert ten == {"DIR1", "STEP1", "SDA", "SCL"}
+    # Khối lấy từ cột "Net · khối" của bảng, không phải do mô hình đặt.
+    assert {k["ten"] for k in r.data["khoi"]} == {"A4988 #1", "MPU6050"}
+    net = a.store.get("netlist:CKM")["canonical"]["net"]
+    assert {n["ten"]: n["chan"] for n in net}["DIR1"] == ["U1.D4"]
+
+
+def test_from_pinout_XEM_TRUOC_thi_khong_ghi_gi(make_agent):
+    a = make_agent([])
+    ctx = _ctx_ckm(a)
+    _fact_chan(a.store)
+    r = a.registry.run("ckm.from_pinout", {"chip": "ATmega328P", "xem_truoc": True,
+                                           "explain": _EXC}, ctx)
+    assert r.ok and r.data["da_ghi"] is False and r.data["so_net"] == 4
+    assert a.store.get("netlist:CKM") is None
+
+
+def test_from_pinout_NOI_RA_rang_moi_net_moi_co_mot_dau(make_agent):
+    """Không nói ra thì người đọc thấy "đã dựng 14 net" và tưởng mạch đã xong."""
+    a = make_agent([])
+    ctx = _ctx_ckm(a)
+    _fact_chan(a.store)
+    r = a.registry.run("ckm.from_pinout", {"chip": "ATmega328P", "explain": _EXC}, ctx)
+    assert "CÒN THIẾU" in r.data["note_vi"] and "MỘT đầu" in r.data["note_vi"]
+    assert "BẠC" in r.data["note_vi"]
+
+
+def test_from_pinout_khong_co_fact_net_thi_TU_CHOI(make_agent):
+    a = make_agent([])
+    ctx = _ctx_ckm(a)
+    a.store.put_fact({"fact_id": "f1", "subject": "pin:X.1", "key": "ten", "value": "P1",
+                      "tier": "BAC", "origin": "extract", "source": {}, "explain": {}})
+    r = a.registry.run("ckm.from_pinout", {"chip": "X", "explain": _EXC}, ctx)
+    assert not r.ok and r.error.code == "E8002"
+    assert "đừng tự đặt net" in r.error.hint_for_agent

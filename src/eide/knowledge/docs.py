@@ -542,7 +542,11 @@ def fact_tu_chan(uv: ChanUngVien, *, doc: TaiLieu, chip: str,
            "page": uv.don_vi_trich_dan, "cite": cite,
            "quote": f"{uv.so_chan} | {uv.huong} | {uv.net} | {uv.chuc_nang}"[:200]}
     ra: list[dict[str, Any]] = []
-    for khoa, gt in (("ten", uv.cong or uv.so_chan), ("net", uv.net),
+    # `khoi` đi cùng `net` vì bảng bàn giao viết chúng trong MỘT ô ("DIR1 · A4988 #1"): net
+    # nối đi đâu, và đầu kia thuộc khối nào. Giữ lại thì bản đồ mạch dựng được BẰNG MÃ; bỏ đi
+    # thì phải có người chép tay 14 net từ bảng sang bản đồ, và chép tay là chỗ sai không ai
+    # kiểm được.
+    for khoa, gt in (("ten", uv.cong or uv.so_chan), ("net", uv.net), ("khoi", uv.khoi),
                      ("huong", uv.huong), ("af", uv.chuc_nang if uv.chuc_nang else "")):
         if not gt:
             continue
