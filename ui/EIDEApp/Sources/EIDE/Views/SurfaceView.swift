@@ -252,11 +252,21 @@ struct KhoiRong: View {
 
 // MARK: - Khối khoá–giá trị
 
+/// Khối khoá–giá trị. Hợp đồng: `pairs = [[khoá, giá trị], …]`.
+///
+/// Khối RỖNG thì nói ra. Lõi từng gửi `items = [{k, v}, …]` cho loại khối này, và giao diện
+/// vẽ ra một ô trắng: không lỗi, không cảnh báo, chỉ là không có gì. Ca đo "giao diện vẽ
+/// được mọi loại khối" vẫn xanh, vì loại khối thì biết — chỉ có nội dung là mất.
 struct KhoiKV: View {
     let block: SurfaceBlock
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
+            if block.arr("pairs").isEmpty {
+                Label("Khối này không có cặp khoá–giá trị nào (lõi gửi thiếu `pairs`).",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 11)).foregroundStyle(Color.staleAmber)
+            }
             ForEach(Array(block.arr("pairs").enumerated()), id: \.offset) { _, p in
                 let cells = p.arrayValue
                 HStack(alignment: .top, spacing: 10) {
