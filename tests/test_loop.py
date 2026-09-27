@@ -343,3 +343,42 @@ def test_luot_ket_thuc_MA_khong_noi_gi_thi_van_phai_noi(make_agent):
     assert loi, [(c.method, str(c.params)[:50]) for c in seen]
     assert "chưa hoàn thành việc anh giao" in loi[-1].params["text"]
     assert "fs.glob ×1" in loi[-1].params["text"]
+
+
+def test_tac_tu_TIM_MAI_ma_khong_lam_thi_loi_NHAC(make_agent):
+    """Đo được trên một lượt thật: tác tử gọi `ledger.query` 21 lần liên tiếp để tìm một tệp
+    nó sắp phải tự viết, rồi hết ngân sách mà chưa viết dòng nào. Mô hình không thấy được
+    lượt của chính nó từ bên ngoài — nên lõi phải nói."""
+    from eide.protocol.humanact import HumanAct
+
+    agent = make_agent([Response(tool_calls=[ToolCall(f"c{i}", "fs.glob",
+                                                     {"pattern": f"**/*{i}"})])
+                        for i in range(8)] + [Response(text="xong")])
+    seen: list = []
+    agent.turn(HumanAct.from_dict({"kind": "say", "text": "viết giúp sim/plant.c",
+                                   "origin": {"surface": "console"}}), seen.append)
+    nhac = [m for m in agent.messages
+            if m.get("_he_thong") and "quay" not in str(m.get("text", ""))
+            and "fs.glob" in str(m.get("text", ""))]
+    assert nhac, [str(m)[:80] for m in agent.messages if m.get("_he_thong")]
+    t = nhac[0]["text"]
+    assert "chưa ghi được gì" in t and "Dừng tìm lại" in t
+
+
+def test_lượt_CO_GHI_thi_khong_bi_nhac(make_agent, tmp_path):
+    """Gọi nhiều công cụ đọc là chuyện bình thường khi đang thật sự làm việc. Nhắc nhầm thì
+    lần sau không ai đọc lời nhắc nữa."""
+    from eide.protocol.humanact import HumanAct
+
+    agent = make_agent(
+        [Response(tool_calls=[ToolCall("w", "fs.write",
+                                       {"path": "a.txt", "content": "x",
+                                        "explain": {"summary": "s", "why": "w",
+                                                    "sources": [], "diff_prev": "—",
+                                                    "next": "—", "confidence": "VANG"}})])]
+        + [Response(tool_calls=[ToolCall(f"c{i}", "fs.glob", {"pattern": f"**/*{i}"})])
+           for i in range(8)] + [Response(text="xong")])
+    agent.turn(HumanAct.from_dict({"kind": "say", "text": "làm đi",
+                                   "origin": {"surface": "console"}}), lambda c: None)
+    assert not [m for m in agent.messages
+                if m.get("_he_thong") and "Dừng tìm lại" in str(m.get("text", ""))]

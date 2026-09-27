@@ -86,6 +86,10 @@ class TurnContext:
     # Tên công cụ đã gọi trong lượt, theo thứ tự — để nói được "tôi đã làm gì" khi phải
     # dừng giữa chừng vì hết ngân sách.
     cong_cu_da_goi: list[str] = field(default_factory=list)
+    # Lượt này đã GHI được gì chưa (tệp hoặc hiện vật). Dùng để phân biệt "đang tìm hiểu"
+    # với "đang quay vòng".
+    da_ghi_gi_do: bool = False
+    da_nhac_quay_vong: set[str] = field(default_factory=set)
     # Lời NGƯỜI đã nói trong phiên — constant-guard coi con số họ tự nói là có nguồn.
     loi_nguoi_trong_phien: list[str] = field(default_factory=list)
     usage_luot: Any = None                       # chi phí CỦA LƯỢT NÀY, không phải phiên
@@ -475,6 +479,46 @@ class Agent:
             extra_round_used = True
             self.messages.append({"role": "user", "text": stop.injection})
 
+    # Bao nhiêu lần gọi cùng một công cụ ĐỌC mà chưa ghi gì thì coi là đang quay vòng.
+    # 6 là con số đo được: trên một lượt thật, tác tử gọi `ledger.query` 21 lần liên tiếp để
+    # tìm một tệp nó sắp phải tự viết, rồi hết ngân sách mà chưa viết dòng nào.
+    NGUONG_QUAY_VONG = 6
+    _CONG_CU_DOC = ("fs.read", "fs.glob", "fs.grep", "fs.stat", "fact.query", "store.get",
+                    "store.list", "ledger.query", "doc.read", "tool.search", "ckm.graph",
+                    "inventory.get", "memory.read", "blob.read")
+
+    def _nhac_neu_dang_quay_vong(self, ctx: TurnContext) -> str:
+        """Nhắc khi tác tử TÌM mãi mà không LÀM. Nhắc một lần cho mỗi công cụ, không càm ràm.
+
+        Vì sao lõi phải nói câu này thay vì để mô hình tự nhận ra: mô hình không thấy được
+        lượt của chính nó từ bên ngoài. Nó thấy từng lời gọi một, mỗi lời gọi đều hợp lý, và
+        không có chỗ nào để nhận ra rằng hai mươi lời gọi vừa rồi không đưa việc tiến lên
+        được một bước. Ngân sách 40 lời gọi cạn trong im lặng là kết quả tự nhiên của chỗ mù
+        đó — và người dùng là người trả giá.
+        """
+        from collections import Counter
+
+        goi = getattr(ctx, "cong_cu_da_goi", []) or []
+        if getattr(ctx, "da_ghi_gi_do", False) or len(goi) < self.NGUONG_QUAY_VONG:
+            return ""
+        da_nhac = getattr(ctx, "da_nhac_quay_vong", None)
+        if da_nhac is None:
+            da_nhac = set()
+            ctx.da_nhac_quay_vong = da_nhac
+        dem = Counter(t for t in goi if t in self._CONG_CU_DOC)
+        for ten, n in dem.most_common(1):
+            if n < self.NGUONG_QUAY_VONG or ten in da_nhac:
+                return ""
+            da_nhac.add(ten)
+            return (
+                f"[EIDE] Lượt này bạn đã gọi `{ten}` {n} lần và chưa ghi được gì — "
+                f"{len(goi)}/{self.config.budget.max_tool_calls} lời gọi đã dùng. Dừng tìm "
+                "lại. Chọn một trong ba: (1) làm việc chính bằng dữ kiện đang có; (2) nói "
+                "thẳng với người dùng là bạn chưa tìm ra thứ gì và hỏi họ; (3) nếu việc quá "
+                "lớn cho một lượt thì làm phần đầu rồi báo lại. Đừng tìm tiếp bằng một truy "
+                "vấn khác cho cùng một câu hỏi.")
+        return ""
+
     def _cau_im_lang(self, ctx: TurnContext) -> str:
         """Câu thay cho sự im lặng: nói đã làm gì và mời người dùng đẩy tiếp."""
         from collections import Counter
@@ -559,6 +603,9 @@ class Agent:
                 self._one_tool(call, ctx)
                 if ctx.awaiting_human:
                     return
+            nhac = self._nhac_neu_dang_quay_vong(ctx)
+            if nhac:
+                self.messages.append({"role": "user", "_he_thong": True, "text": nhac})
 
             muc = self.config.context_budget.muc_nen(self._context_pressure(asm))
             if muc != "C0":
@@ -607,6 +654,12 @@ class Agent:
 
         res = self.registry.run(call.tool, call.args, ctx)
         self.hooks.post_tool_use(c, res, ctx)
+        # "Đã ghi được gì chưa" — dùng để phân biệt một lượt đang tìm hiểu với một lượt đang
+        # quay vòng. Lấy từ HỢP ĐỒNG công cụ, không từ tên nó: một công cụ mới thêm vào mà
+        # có `writes_artefact` thì tự động tính, không phải nhớ cập nhật một danh sách.
+        if res.ok and (getattr(spec, "writes_artefact", False)
+                       or call.tool in ("fs.write", "fs.edit")):
+            ctx.da_ghi_gi_do = True
 
         # MEM-42 §5.1 — kết quả KHÔNG đi nguyên văn vào transcript. Phần vượt trần nằm
         # ở blob và mô hình đọc lại bằng `blob.read`. Đây là chỗ rẻ nhất để giữ cửa sổ.

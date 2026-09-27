@@ -1885,3 +1885,94 @@ Hồi quy: mười ba bộ E2E đều giữ nguyên — G3 31 · G4 23 · G5 35 
 Bằng chứng SCH-19, **hai bộ**: `--hai-che-do tools/thu_cuoi.py` 36/36 giống hệt và
 `--hai-che-do tools/thu_giao_dien.py` 24/24 giống hệt — bộ thứ hai quan trọng vì SCH-D thêm khối
 vào tab Thiết kế, tức chạm đúng thứ mà bộ đo giao diện đang đo.
+
+---
+
+### [DEV-275] 27/09/2026 · Làm một dự án THẬT từ đầu tới cuối, và bảy lỗ hổng nó phơi ra
+
+**Bối cảnh.** Chủ sản phẩm đưa một tài liệu bàn giao phần cứng có thật — *MOBILUCK Robot hai
+bánh tự cân bằng v1.1*, 43 trang, 93 bảng, viết bằng tiếng Việt — và yêu cầu làm trọn vẹn
+một dự án: tạo dự án → nạp tài liệu → trích xuất thiết kế → ghim chip → bản đồ mạch → sơ đồ
+nguyên lý → firmware → biên dịch → mô phỏng, có ảnh chụp làm sở cứ.
+
+Việc này khác mọi bộ kiểm đã có ở một điểm: **không ai dựng sẵn dữ liệu cho nó.** Mọi bộ
+`tools/thu_*.py` đều tự dựng mạch mẫu bằng vài lời gọi công cụ rồi đo phần sau. Ở đây, đầu
+vào là một tệp `.docx` của người khác, và mỗi lần EIDE không đọc nổi một thứ gì trong đó thì
+đường ống dừng tại chỗ. Bảy lỗ hổng dưới đây đều lộ ra theo cách đó, và **không lỗ nào bị bộ
+kiểm nào bắt được trước đó** — vì bộ kiểm nào cũng bắt đầu sau chỗ chúng nằm.
+
+Hạ tầng đo: `tools/phien_robot.py` (đóng vai người dùng gõ từng câu vào app thật, duyệt thẻ
+cổng, chụp **đúng cửa sổ EIDE**) + `tools/kich_ban_robot.py` (kịch bản và phép đối chiếu) +
+`tools/doi_chieu_robot.py` (so netlist sinh ra với bảng 12/30/33 của tài liệu).
+
+### Bảy lỗ hổng
+
+**1. Bảng bản đồ chân không được nhận là bảng.** Từ điển tên cột chỉ biết datasheet điện
+(*parameter/min/typ/max/unit*), nên bảng `Chân | Hướng | Net · khối | Chức năng` bị đọc như
+một dòng chữ. Tác tử trích được 7 Fact — không Fact nào là chân — trong khi bảng có 23 chân
+nằm ngay đó. Thêm `la_bang_chan()` và trường `loai_bang` trên `Trang`.
+
+**2. Không có công cụ nào trích bản đồ chân.** `fact.extract` đọc **số kèm đơn vị**; bản đồ
+chân là **quan hệ** (`D4 → net DIR1, hướng ra`). Ép chân vào khuôn của số thì mất đúng phần
+mang thông tin. Thêm `fact.extract_pinout` sinh Fact `pin:<chip>.<chân>` với `ten`/`net`/
+`huong`/`af`, mỗi Fact trỏ tới đúng dòng bảng.
+
+**3. Mở lại dự án là mất tài liệu.** `doc.load` giữ tài liệu đã phân tích trong bộ nhớ tiến
+trình; đóng app rồi mở lại thì hiện vật `doc` vẫn nằm trong kho và tab Tài liệu vẫn hiện nó,
+nhưng mọi công cụ đọc tài liệu trả `E2001 "chưa được nạp"` — tác tử im lặng bỏ dở việc.
+`_lay_tai_lieu()` đọc lại từ tệp và **so hash**: tệp đổi thì báo `E2005` chứ không dùng nội
+dung mới dưới tên cũ.
+
+**4. Không có đường nào ĐỌC một mục của tài liệu.** Tác tử nạp xong 43 trang, trích được bản
+đồ chân, rồi khi được yêu cầu viết firmware nó **dừng lại và hỏi người dùng chép giúp** bảng
+quy đổi throttle và các hằng hiệu chuẩn. Nó làm đúng luật N1, nhưng lý do phải hỏi là EIDE
+chỉ có hai đường vào tài liệu (trích số, trích chân) — mọi câu văn và mọi bảng khác nằm ngoài
+tầm với. Thêm `doc.read` (theo từ khoá, theo mục, theo khoảng), trả nguyên văn kèm trích dẫn.
+
+**5. Chốt hằng số N1 chặn việc viết mã, và ba đường nó gợi ý đều không vừa.** Ghi `main.c`
+đầy giá trị thanh ghi thì bị `deny` vì những con số đó chưa là Fact. `fact.query` không có gì
+để tìm; `fact.assert_human` sẽ gán cho người dùng một câu họ chưa nói; `ask_user` là bắt họ
+chép tay thứ đang nằm sẵn trong tài liệu. Thêm `fact.from_doc`: **mô hình chọn đoạn và đặt
+tên, MÃ kiểm giá trị có mặt nguyên văn trong đoạn được trích dẫn**. Sai giá trị thì `E2006`
+kèm chính nội dung đoạn đó — không có cửa nào để một con số nhớ được lọt vào kho.
+
+**6. `fact.query` cắt im lặng ở 100 dòng.** Trên dự án có 256 Fact, tác tử đọc `count: 100`
+rồi kết luận về "toàn bộ Fact trong kho" — một câu trả lời thiếu 60 % dữ liệu mà không có
+dấu hiệu nào cho thấy nó thiếu. Nay trả thêm `tong`, `bi_cat`, và câu "đang xem 100/256, còn
+156 Fact nữa" — N6 áp vào một phép tra.
+
+**7. Chưa có công cụ biên dịch hay mô phỏng nào (G6).** Thêm bản tối thiểu:
+`build.compile` gọi chuỗi công cụ thật (arduino-cli / avr-gcc), trả lỗi kèm `tệp:dòng:cột`,
+kích thước đọc từ `avr-size`, và **"đạt" chỉ khi trình biên dịch trả 0 VÀ có tệp ảnh trên
+đĩa**; `sim.run` biên dịch phần logic của firmware bằng trình biên dịch máy chủ rồi chạy nó
+trong mô hình vật lý, kết luận đạt/không do **chương trình mô phỏng in ra JSON**. Cả hai xếp
+**R2 chứ không R3**: chúng chạy trong dự án, không cài gì, không ra mạng — xếp R3 thì mỗi
+vòng sửa–dịch là một thẻ cổng, và người dùng sẽ bấm duyệt theo phản xạ.
+
+### Ba đường im lặng — cùng một hình dạng
+
+Cả ba đều kết thúc bằng việc EIDE đứng im trong khi người dùng đợi:
+
+- **Hết 40 lời gọi công cụ** chỉ treo một băng cảnh báo ở góc. Nay nói trong hội thoại: đã
+  gọi bao nhiêu công cụ, nhiều nhất là cái nào, những gì đã ghi vẫn còn, gõ "làm tiếp" để đi
+  tiếp.
+- **Lượt kết thúc mà mô hình không nói gì** (gọi mười công cụ rồi trả về câu rỗng). Nay lõi
+  tự nói thay.
+- **Tác tử tìm mãi mà không làm**: một lượt gọi `ledger.query` 21 lần để tìm một tệp nó sắp
+  phải tự viết. Mô hình không thấy được lượt của chính nó từ bên ngoài — nó thấy từng lời gọi
+  một, mỗi cái đều hợp lý. Nay lõi đếm và nhắc: *"bạn đã gọi `X` 6 lần và chưa ghi được gì —
+  dừng tìm lại, chọn một trong ba"*.
+
+### Kết quả đo được trên dự án thật
+
+| Mốc | Kết quả | Đối chiếu với tài liệu |
+|---|---|---|
+| Bản đồ chân | 22 chân vào kho, mỗi chân có trích dẫn tới dòng bảng | **14/14** chân của bảng 12 khớp |
+| Bản đồ mạch | 10 khối, 21 nút, 14 net | **14/14** net nối đúng chân |
+| Sơ đồ nguyên lý | 11 sheet phân cấp + SVG + `.net` | **14/14** net khớp (`doi-chieu.md`) |
+| Giá trị thanh ghi | 19 Fact có trích dẫn | **19/19** khớp bảng 91 |
+| Firmware | `control.c` (logic thuần) + `main.c` (thanh ghi) | 0 cấu trúc bị cấm (bảng 83); MCUSR đọc trước watchdog |
+| Biên dịch | `arduino-cli` → `firmware.ino.hex` | Flash 3.520 B / 30.720 B · SRAM 81 B / 2.048 B |
+
+`783 ca đơn vị` (+21 so với DEV-274) · `tools/thu_giao_dien.py` **27/27** · `81 công cụ` khi
+cờ sơ đồ tắt (+3), `90` khi bật.

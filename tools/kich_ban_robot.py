@@ -349,13 +349,24 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
     # ------------------------------------------------------------------ 11. mô phỏng
     if lam(11):
         nk.buoc("Mô phỏng vòng điều khiển bằng chính mã logic của firmware")
+        # Một lượt viết, một lượt chạy–sửa. Gộp lại thì lượt đầu tiêu hết ngân sách vào
+        # việc đọc và chưa viết được dòng nào — đã xảy ra đúng như vậy.
+        hoi(g, nk, du_an,
+            "Viết tệp sim/plant.c (chỉ tệp này thôi, đừng đọc lại tài liệu): một mô hình con "
+            "lắc ngược hai bánh và hàm main(). Mô hình: trạng thái gồm góc nghiêng, tốc độ "
+            "góc, vị trí và tốc độ bánh; mỗi bước 4 ms, gia tốc góc = g/L·sin(góc) trừ đóng "
+            "góp của gia tốc bánh; throttle do control.c trả về quy ra tốc độ bánh theo đúng "
+            "bảng ở mục 7.6. Sinh số đo IMU giả từ góc thật (gia tốc kế và con quay, cùng tỷ "
+            "lệ LSB như tài liệu) rồi gọi control_system_step của firmware/control.c — mô "
+            "phỏng phải chạy ĐÚNG mã đó, không viết lại thuật toán. Chạy 5 giây mô phỏng từ "
+            "góc nghiêng ban đầu 3 độ, rồi in ra MỘT dòng JSON gồm: dat (true nếu góc luôn "
+            "dưới 15 độ và 2 giây cuối dưới 2 độ), goc_max_do, goc_cuoi_do, thoi_gian_s.",
+            giay=2400)
         loi, cc = hoi(g, nk, du_an,
-                      "Giờ mô phỏng: viết sim/ gồm một mô hình con lắc ngược hai bánh (góc "
-                      "nghiêng, tốc độ góc, tác động của xung bước lên gia tốc bánh) và hàm "
-                      "main() gọi ĐÚNG mã trong firmware/control.c, chạy vài giây mô phỏng từ "
-                      "một góc nghiêng ban đầu, rồi in ra MỘT dòng JSON có khoá dat, "
-                      "goc_max_do, goc_cuoi_do, thoi_gian_s. Rồi chạy mô phỏng và cho mình "
-                      "biết robot có đứng được không.",
+                      "Giờ chạy mô phỏng bằng công cụ sim.run. Nếu nó không biên dịch được "
+                      "hoặc robot ngã thì sửa sim/plant.c hoặc tham số PID trong control.c "
+                      "rồi chạy lại, tối đa vài vòng, và nói cho mình biết kết quả thật — "
+                      "đừng kết luận đạt nếu nó chưa đạt.",
                       giay=2400)
         a = ctx.store.get("sim_result:can-bang")
         canon = (a or {}).get("canonical") or {}
@@ -364,6 +375,34 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Mô phỏng chạy được và kết luận robot giữ được thăng bằng",
                str(canon.get("vi_sao_khong_dat") or canon.get("ket_qua"))[:200])
         nk.anh(g, "mo-phong")
+
+    # --------------------------------------------- 12. sửa cho tới khi robot đứng được
+    if lam(12):
+        nk.buoc("Sửa vòng điều khiển cho tới khi robot đứng được trong mô phỏng")
+        for vong in range(4):
+            a = ctx.store.get("sim_result:can-bang")
+            kq = ((a or {}).get("canonical") or {}).get("ket_qua") or {}
+            if kq.get("dat") is True:
+                break
+            loi, cc = hoi(g, nk, du_an,
+                          f"Mô phỏng đang cho kết quả {kq or 'chưa có'} — robot chưa đứng "
+                          "được. Mục 11.5 của tài liệu nói có ba chỗ có thể đảo dấu trong "
+                          "vòng phản hồi (chiều trục cảm biến, chiều lắp động cơ, dấu đầu ra "
+                          "bộ điều khiển). Bạn xem lại dấu và hệ số PID trong "
+                          "firmware/control.c, sửa, rồi chạy lại sim.run. Nói rõ bạn đổi gì "
+                          "và vì sao. Đừng sửa mô hình vật lý để nó đẹp lên — sửa bộ điều "
+                          "khiển.",
+                          giay=2400)
+            a = ctx.store.get("sim_result:can-bang")
+            kq = ((a or {}).get("canonical") or {}).get("ket_qua") or {}
+            nk.ghi(f"Kết quả mô phỏng sau vòng sửa {vong + 1}", str(kq)[:300])
+        a = ctx.store.get("sim_result:can-bang")
+        kq = ((a or {}).get("canonical") or {}).get("ket_qua") or {}
+        nk.ket(kq.get("dat") is True,
+               "Robot giữ được thăng bằng trong mô phỏng",
+               f"góc lớn nhất {kq.get('goc_max_do')}°, góc cuối {kq.get('goc_cuoi_do')}°, "
+               f"chạy {kq.get('thoi_gian_s')} s")
+        nk.anh(g, "mo-phong-dat")
 
     nk.buoc("Kết thúc phần đã chạy", loai="ket")
     nk.ghi("Nhật ký", str(RA / "NHAT-KY.md"))

@@ -62,16 +62,28 @@ class NhatKy:
         (self.ra / "anh").mkdir(exist_ok=True)
         self.md = self.ra / "NHAT-KY.md"
         self.js = self.ra / "buoc.jsonl"
-        self.so = 0
         self.bat_dau = time.time()
-        self.md.write_text(
-            "# Phiên làm việc: robot hai bánh tự cân bằng\n\n"
-            "Ghi tự động bởi `tools/phien_robot.py`. Mỗi mục là một bước có thật trong một "
-            "phiên EIDE chạy trên máy, với ảnh chụp cửa sổ EIDE làm sở cứ.\n\n"
-            f"- Tài liệu nguồn: `{TAI_LIEU.relative_to(REPO)}`\n"
-            f"- Thư mục dự án: `{DU_AN.relative_to(REPO)}`\n"
-            f"- Bắt đầu: {time.strftime('%d/%m/%Y %H:%M:%S')}\n\n---\n", "utf-8")
-        self.js.write_text("", "utf-8")
+        # NỐI vào nhật ký cũ, không ghi đè. Bản đầu ghi đè mỗi lần chạy, nên chạy tiếp một
+        # bước là xoá sạch sở cứ của mọi bước trước — đúng thứ mà nhật ký này tồn tại để giữ.
+        # Số bước tiếp tục từ số cao nhất đã có, để ảnh chụp không đè lên nhau.
+        cu = self.md.read_text("utf-8") if self.md.exists() else ""
+        self.so = max([int(x.name.split("-", 1)[0])
+                       for x in (self.ra / "anh").glob("*.png")
+                       if x.name.split("-", 1)[0].isdigit()] or [0])
+        if not cu:
+            self.md.write_text(
+                "# Phiên làm việc: robot hai bánh tự cân bằng\n\n"
+                "Ghi tự động bởi `tools/phien_robot.py`. Mỗi mục là một bước có thật trong "
+                "một phiên EIDE chạy trên máy, với ảnh chụp cửa sổ EIDE làm sở cứ.\n\n"
+                f"- Tài liệu nguồn: `{TAI_LIEU.relative_to(REPO)}`\n"
+                f"- Thư mục dự án: `{DU_AN.relative_to(REPO)}`\n"
+                f"- Bắt đầu: {time.strftime('%d/%m/%Y %H:%M:%S')}\n\n---\n", "utf-8")
+        else:
+            with self.md.open("a", encoding="utf-8") as f:
+                f.write(f"\n\n---\n\n*(chạy tiếp lúc {time.strftime('%d/%m/%Y %H:%M:%S')})*"
+                        "\n")
+        if not self.js.exists():
+            self.js.write_text("", "utf-8")
 
     def buoc(self, ten: str, *, loai: str = "buoc") -> int:
         self.so += 1
