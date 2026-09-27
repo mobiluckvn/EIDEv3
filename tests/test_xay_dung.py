@@ -153,3 +153,72 @@ def test_han_muc_bo_nho_lay_tu_FACT_khong_tu_tri_nho(make_agent):
 
     agent = make_agent([])
     assert _han_muc(_ctx(agent), None) == (0, 0)
+
+
+# ===================================================================== hiện lên bề mặt
+def _inv_gia():
+    class Inv:
+        def __getattr__(self, k):
+            return 0
+    return Inv()
+
+
+def test_ket_qua_mo_phong_HIEN_LEN_tab_Mo_phong(make_agent):
+    """Một công cụ ghi vào kho mà bề mặt không đọc là một nửa tính năng: người dùng chạy
+    xong rồi nhìn vào chỗ đáng lẽ thấy kết quả và thấy chữ "chưa chạy lần nào"."""
+    from eide import surfaces as S
+
+    agent = make_agent([])
+    truoc = S.simulation(agent.store, _inv_gia())
+    assert truoc["blocks"][0]["type"] == "empty"
+
+    agent.store.apply(artefact_id="sim_result:can-bang", type="sim_result", op="create",
+                      author="agent:run-1", explain=_EX,
+                      canonical={"dat": True, "chay_duoc": True,
+                                 "ket_qua": {"dat": True, "goc_max_do": 3.0,
+                                             "goc_cuoi_do": 1.07, "thoi_gian_s": 5.0},
+                                 "tep_nguon": ["sim/plant.c", "firmware/control.c"]})
+    sau = S.simulation(agent.store, _inv_gia())
+    b = sau["blocks"][0]
+    # Hợp đồng của khối `kv` là `pairs`, không phải `items` — gửi sai khoá thì giao diện vẽ
+    # ra một ô trắng và không ai biết.
+    assert b["type"] == "kv" and "ĐẠT" in b["summary"] and b.get("pairs")
+    chu = " ".join(f"{a} {b2}" for a, b2 in b["pairs"])
+    assert "goc_max_do" in chu and "sim/plant.c" in chu
+    # Và phải nói ra giới hạn: mô hình không phải bo thật.
+    assert "KHÔNG nói mạch thật sẽ chạy" in chu
+
+
+def test_ket_qua_bien_dich_HIEN_LEN_tab_Ma_nguon(make_agent):
+    from eide import surfaces as S
+
+    agent = make_agent([])
+    agent.store.apply(artefact_id="build:firmware", type="build", op="create",
+                      author="agent:run-1", explain=_EX,
+                      canonical={"dat": True, "cong_cu": "arduino-cli",
+                                 "tep_ra": ".eide/build/firmware.ino.hex",
+                                 "flash": 2500, "sram": 72,
+                                 "flash_toi_da": 30720, "sram_toi_da": 2048,
+                                 "ty_le_flash": 0.081, "ty_le_sram": 0.035,
+                                 "so_loi": 0, "so_canh_bao": 0})
+    m = S.code_surface(agent.store, _inv_gia())
+    b = next(x for x in m["blocks"] if x["id"] == "build:firmware")
+    chu = " ".join(f"{a} {b2}" for a, b2 in b["pairs"])
+    assert "arduino-cli" in chu and "2500 B / 30720 B" in chu
+
+
+def test_khong_co_han_muc_thi_NOI_RA_chua_biet(make_agent):
+    """Thiếu Fact flash.size mà vẫn in một tỉ lệ thì đó là một con số bịa."""
+    from eide import surfaces as S
+
+    agent = make_agent([])
+    agent.store.apply(artefact_id="build:firmware", type="build", op="create",
+                      author="agent:run-1", explain=_EX,
+                      canonical={"dat": True, "cong_cu": "avr-gcc", "tep_ra": "a.elf",
+                                 "flash": 2500, "sram": 72, "flash_toi_da": 0,
+                                 "sram_toi_da": 0, "ty_le_flash": None,
+                                 "ty_le_sram": None, "so_loi": 0, "so_canh_bao": 0})
+    m = S.code_surface(agent.store, _inv_gia())
+    b = next(x for x in m["blocks"] if x["id"] == "build:firmware")
+    chu = " ".join(f"{a} {b2}" for a, b2 in b["pairs"])
+    assert "chưa biết hạn mức" in chu

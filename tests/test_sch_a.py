@@ -1453,7 +1453,8 @@ def test_A5_8d_noi_ro_muc_render_va_KHONG_de_nghi_cai_KiCad(make_agent):
     _dung_mach(a, goi)
     goi("sch.symbols")
     b = _design(a.store)["A5.8d"]
-    chu = " ".join(f"{x['k']} {x['v']}" for x in b["items"]) + b["summary"]
+    assert b.get("pairs"), "khối kv phải gửi `pairs`, không phải `items`"
+    chu = " ".join(f"{k} {v}" for k, v in b["pairs"]) + b["summary"]
     assert "KHÔNG cài KiCad" in chu
     for xau in ("hãy cài", "nên cài", "cài KiCad để", "brew install"):
         assert xau not in chu, xau

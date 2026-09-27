@@ -1976,3 +1976,85 @@ Cả ba đều kết thúc bằng việc EIDE đứng im trong khi người dùn
 
 `783 ca đơn vị` (+21 so với DEV-274) · `tools/thu_giao_dien.py` **27/27** · `81 công cụ` khi
 cờ sơ đồ tắt (+3), `90` khi bật.
+
+---
+
+### [DEV-276] 27/09/2026 · Dựng bản đồ mạch bằng mã, giao diện vừa mọi khổ, và bốn phép đo tự lừa mình
+
+Tiếp DEV-275 — cùng một dự án robot thật, chạy thêm vài vòng nữa. Lần này thứ lộ ra không
+phải chỗ EIDE **thiếu** tính năng, mà chỗ nó **có mà không đúng**.
+
+### 1. Một bước xác định bị giao cho mô hình
+
+Chạy cùng một kịch bản hai lần: lần đầu **14/14** net đúng, lần sau **0/14**. Việc chép 14
+net từ bảng bàn giao sang bản đồ mạch được giao cho mô hình qua 14 lời gọi `ckm.net_set`, và
+lần thứ hai nó bỏ dở giữa chừng. Nhưng dữ liệu đã nằm sẵn trong kho: `pin:ATmega328P.D4` có
+`net=DIR1`, `khoi=A4988 #1`, `huong=ra`. **Một bước xác định mà kết quả phụ thuộc vào lượt
+chạy là một bước đặt sai chỗ.**
+
+`ckm.from_pinout` dựng net + khối từ chính những Fact đó. Đo lại: **14/14 ngay lần đầu**, và
+sau một lượt hoàn thiện của tác tử thì **19/19 net có đủ hai đầu**. Mô hình vẫn còn phần việc
+chỉ nó làm được — đọc chương riêng của từng linh kiện, thêm Port, đặt tên khối cho gọn — và
+công cụ nói thẳng phần đó còn thiếu thay vì để người đọc tưởng mạch đã xong.
+
+### 2. Giao diện không vừa khổ màn hình
+
+Chủ sản phẩm báo: *"màn hình thiết kế khi dữ liệu nhiều đang bị mất các control phía bên
+phải"*. Đúng, và nguyên nhân là một chuỗi ba lần sửa nối nhau, mỗi lần chữa lỗi trước và tạo
+lỗi sau:
+
+| Lần | Sửa gì | Tạo ra lỗi gì |
+|---|---|---|
+| 1 | Bảng dài cắt bằng `maxHeight` trong `ScrollView(.horizontal)` | Cuộn ngang KHÔNG cắt dọc → bảng 256 dòng **vẽ đè** lên hai khối dưới |
+| 2 | Thêm `.fixedSize(vertical:)` + cắt còn 40 dòng | `ScrollView` đòi bề rộng nội tại → **panel hội thoại bị đẩy ra ngoài mép trái** |
+| 3 | Cột co theo `beRongKhaDung`, bỏ cuộn ngang | Khối ảnh SVG (`WKWebView`) vẫn đòi bề rộng riêng → **nút "Vì sao?" trôi ra ngoài** |
+
+Chốt lại bằng ba việc cùng lúc: mỗi khối bị **khoá vào bề rộng có thật** của tab (+ clip);
+`WKWebView` bị ép bằng `maxWidth: .infinity`; panel hội thoại co theo cửa sổ (trần 38 %). Và
+thanh 11 tab rút gọn tên khi chật — *một tab phải cuộn mới thấy là một tab người dùng sẽ
+không bấm*. Thêm ca đo ở khổ **nhỏ nhất** (1100×720), vì đó là chỗ giao diện vỡ trước.
+
+### 3. Bốn phép đo báo xanh/đỏ vì lý do không phải sự thật
+
+Tất cả đều là phép đo của chính bộ kiểm, và không cái nào bị phát hiện bởi một phép đo khác:
+
+- **"control.c không phụ thuộc AVR"** so chuỗi `"avr/io.h"` trên cả tệp, nên nó trúng dòng
+  **chú thích** *"không include avr/io.h"* và báo ĐỎ cho một tệp sạch. Nay bỏ chú thích rồi
+  mới đọc, và đọc chỉ thị `#include` chứ không đọc lời người viết.
+- **Phép đếm thanh ghi** chỉ đọc `*.c`, bỏ `*.ino` — đúng chỗ mã thanh ghi nằm khi dự án theo
+  chuẩn Arduino. Nó báo 18/19 rồi 0/19 cho cùng một firmware, tuỳ tác tử đặt mã vào tệp nào.
+- **`khoi_de_nhau`** (cặp khối vẽ đè) so KHUNG KHAI BÁO, nên nó vẫn rỗng trong khi nội dung
+  tràn ra ngoài khung của chính nó. Kiểm lại bằng cách cố tình bỏ giới hạn dòng: vẫn rỗng.
+  Giữ lại kèm ghi chú giới hạn, và thêm `cao_khoi`/`rong_khoi` — hai con số này thì đỏ đúng chỗ.
+- **Vòng chờ `until ! pgrep -f phien_robot.py`** khớp chính dòng lệnh của nó, nên nó đợi
+  chính nó mãi mãi trong khi phiên đã xong từ lâu.
+
+### 4. Công cụ ghi vào kho mà bề mặt không đọc
+
+`sim.run` chạy xong, ghi `sim_result` vào kho, báo ĐẠT — và tab Mô phỏng vẫn hiện *"Chưa có
+tiêu chí và chưa chạy mô phỏng lần nào"*. Tương tự với `build:firmware` trên tab Mã nguồn.
+**Một công cụ ghi vào kho mà bề mặt không đọc là một nửa tính năng.** Nay cả hai hiện kết
+quả thật, kèm câu giới hạn: *"đây là kết quả trên MÔ HÌNH, KHÔNG nói mạch thật sẽ chạy"*.
+
+Và một lỗi hợp đồng cùng họ: khối `kv` đọc `pairs = [[khoá, giá trị], …]`, lõi gửi
+`items = [{k, v}, …]` — giao diện vẽ ra **một ô trắng**, không lỗi, không cảnh báo. Ca đo
+"giao diện vẽ được mọi loại khối" vẫn xanh, vì *loại* khối thì biết, chỉ có *nội dung* là
+mất. Nay khối `kv` rỗng tự nói ra.
+
+### 5. Và một lỗi của chính tôi, nặng hơn tất cả những thứ trên
+
+Ảnh chụp làm sở cứ dùng `screencapture -R` theo **vùng màn hình**. Hai lần nó lọt cửa sổ
+riêng của người dùng vào ảnh — một lần có tệp `.env` kèm khoá API. Ảnh đã chụp thì không rút
+lại được, nên cách chụp phải **không thể** lấy nhầm, chứ không phải cẩn thận để đừng lấy
+nhầm. Nay app **tự vẽ cửa sổ của nó** ra PNG (`cacheDisplay` → `NSBitmapImageRep`); mọi ảnh
+cũ đã xoá và chụp lại.
+
+### Số đo cuối
+
+`790 ca đơn vị` (+7) · `thu_giao_dien` **28/28** · `thu_sch` **63/63** · `thu_hier` 46/46 ·
+`thu_cuoi` 36/36 · `thu_g3` 31/31 · `82 công cụ` khi cờ sơ đồ tắt, `91` khi bật.
+
+Dự án robot (sở cứ ở `du-lieu/ket-qua/robot/`): 14/14 chân · 14/14 net khớp bảng 12 ·
+19/19 net đủ hai đầu · 18/19 thanh ghi khớp bảng 91 · biên dịch thật ra `.hex`
+(Flash 2.500 B / 30.720 B, SRAM 72 B / 2.048 B) · mô phỏng vòng kín **ĐẠT**
+(góc lớn nhất 3,0°, góc cuối 0,155°, chạy 5 s).

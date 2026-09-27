@@ -418,15 +418,15 @@ def _khoi_so_do(store: Any) -> list[dict[str, Any]]:
     khoi.append(block(
         "A5.8d", "Mức render đang dùng", "kv",
         summary="Máy này KHÔNG cài KiCad — quyết định 25/09/2026.",
-        items=[
-            {"k": "Đang dùng", "v": ("R1 — renderer nội bộ của EIDE (SVG tự vẽ)" if rp
-                                     else "R3 — sơ đồ khối và đồ thị net của bản đồ mạch")},
-            {"k": "Muốn xem trong KiCad",
-             "v": "Xuất gói (sch.export) rồi mở ở máy có KiCad; sửa xong chép về và Nạp lại "
-                  "(sch.import)."},
-            {"k": "Vì sao không cài",
-             "v": "Cả đường ống chạy bằng Python thuần trong sandbox dự án, nên không có bước "
-                  "nào cần KiCad trên máy này."},
+        pairs=[
+            ["Đang dùng", ("R1 — renderer nội bộ của EIDE (SVG tự vẽ)" if rp
+                           else "R3 — sơ đồ khối và đồ thị net của bản đồ mạch")],
+            ["Muốn xem trong KiCad",
+             "Xuất gói (sch.export) rồi mở ở máy có KiCad; sửa xong chép về và Nạp lại "
+             "(sch.import)."],
+            ["Vì sao không cài",
+             "Cả đường ống chạy bằng Python thuần trong sandbox dự án, nên không có bước nào "
+             "cần KiCad trên máy này."],
         ]))
     return khoi
 
@@ -752,6 +752,34 @@ def code_surface(store: Any, inv: Any) -> dict[str, Any]:
                    "kỹ thuật trong đó phải truy vết được tới một nguồn có tên (N1).",
             can_gi="Bảo tác tử viết phần anh cần."))
 
+    # Kết quả biên dịch — `build.compile` ghi vào kho, và tab Mã nguồn là chỗ người đọc
+    # tìm nó. Không hiện ở đây thì kích thước Flash/SRAM chỉ tồn tại trong một câu trả lời
+    # đã trôi khỏi màn hình.
+    for a in store.list("build", limit=5):
+        c = a.get("canonical") or {}
+        dat = bool(c.get("dat"))
+        ty_f = c.get("ty_le_flash")
+        ty_s = c.get("ty_le_sram")
+        khoi.append(khoi_hien_vat(
+            a["id"], "Kết quả biên dịch", "kv", a,
+            summary=("ĐẠT" if dat else "KHÔNG ĐẠT") + " · " + str(c.get("cong_cu") or "?")
+                    + (f" · {c.get('so_loi', 0)} lỗi, {c.get('so_canh_bao', 0)} cảnh báo"),
+            pairs=[["Trạng thái", ("Biên dịch xong, có tệp ảnh trên đĩa" if dat else
+                                  f"KHÔNG xong — {c.get('vi_sao_khong_dat', '')}")],
+                   ["Chuỗi công cụ", str(c.get("cong_cu") or "—")],
+                   ["Tệp ra", str(c.get("tep_ra") or "—")],
+                   ["Flash", (f"{c.get('flash', 0)} B"
+                              + (f" / {c.get('flash_toi_da')} B ({ty_f:.0%})" if ty_f
+                                 else " (chưa biết hạn mức — chưa có Fact flash.size)"))],
+                   ["SRAM", (f"{c.get('sram', 0)} B"
+                             + (f" / {c.get('sram_toi_da')} B ({ty_s:.0%})" if ty_s
+                                else " (chưa biết hạn mức — chưa có Fact ram.size)"))],
+                   *([["Lỗi đầu tiên",
+                       f"{x['tep']}:{x['dong']}:{x['cot']} {x['thong_diep']}"]
+                      for x in (c.get("loi") or [])[:3]]),
+                   *([["Cảnh báo", f"{x['tep']}:{x['dong']} {x['thong_diep']}"]
+                      for x in (c.get("canh_bao") or [])[:3]])]))
+
     qt = store.list("procedure", limit=50)
     if qt:
         for a in qt:
@@ -780,12 +808,43 @@ def code_surface(store: Any, inv: Any) -> dict[str, Any]:
 
 
 def simulation(store: Any, inv: Any) -> dict[str, Any]:
-    return _don_gian("simulation", "A8", "Mô phỏng", [empty(
-        "A8.1", "Tiêu chí & kết quả mô phỏng",
-        chua_co="Chưa có tiêu chí và chưa chạy mô phỏng lần nào.",
-        vi_sao="Nền biên dịch – mô phỏng thuộc bước G6. Tác tử sẽ nêu tiêu chí TRƯỚC khi "
-               "chạy, và không bao giờ tuyên bố 'đạt' từ một log rỗng (N6).",
-        can_gi="—", buoc="G6")])
+    """Tab Mô phỏng: kết quả `sim.run`, và **con số do chương trình mô phỏng in ra**.
+
+    Bản trước luôn hiện ô trống "chưa chạy mô phỏng lần nào" — kể cả sau khi `sim.run` đã
+    chạy thật và ghi hiện vật `sim_result` vào kho. Một công cụ ghi vào kho mà bề mặt không
+    đọc là một nửa tính năng: người dùng chạy xong rồi nhìn vào chỗ đáng lẽ thấy kết quả và
+    thấy chữ "chưa chạy lần nào".
+    """
+    ds = store.list("sim_result", limit=10)
+    if not ds:
+        return _don_gian("simulation", "A8", "Mô phỏng", [empty(
+            "A8.1", "Tiêu chí & kết quả mô phỏng",
+            chua_co="Chưa chạy mô phỏng lần nào.",
+            vi_sao="Tác tử nêu tiêu chí TRƯỚC khi chạy, và không bao giờ tuyên bố 'đạt' từ "
+                   "một log rỗng (N6).",
+            can_gi="Bảo tác tử mô phỏng vòng điều khiển (sim.run) sau khi đã có mã.",
+            buoc="G6")])
+
+    khoi: list[dict[str, Any]] = []
+    for a in ds:
+        c = a.get("canonical") or {}
+        kq = c.get("ket_qua") or {}
+        dat = bool(c.get("dat"))
+        khoi.append(khoi_hien_vat(
+            a["id"], f"Kết quả mô phỏng — {a['id'].split(':')[-1]}", "kv", a,
+            summary=(("ĐẠT" if dat else "CHƯA ĐẠT") + " · "
+                     + (str(c.get("vi_sao_khong_dat")) if not dat else "")
+                     + f" · chạy trên {len(c.get('tep_nguon') or [])} tệp nguồn"),
+            pairs=[["Kết luận", ("ĐẠT — theo đúng tiêu chí mà chương trình mô phỏng tự kiểm"
+                                if dat else
+                                f"CHƯA ĐẠT — {c.get('vi_sao_khong_dat', '')}")],
+                   *[[str(k), str(v)] for k, v in sorted(kq.items()) if k != "dat"],
+                   ["Chạy trên mã nào", ", ".join(c.get("tep_nguon") or []) or "—"],
+                   ["Giới hạn",
+                    "Đây là kết quả trên MÔ HÌNH: nó nói mã điều khiển tự nhất quán và ổn "
+                    "định được với mô hình đó, KHÔNG nói mạch thật sẽ chạy. Tham số cơ khí "
+                    "thật phải đo trên bo."]]))
+    return _don_gian("simulation", "A8", "Mô phỏng", khoi)
 
 
 def hardware(store: Any, inv: Any) -> dict[str, Any]:
