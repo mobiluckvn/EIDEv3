@@ -176,3 +176,175 @@ def test_netlist_khong_bi_nap_thanh_van_ban_tho(make_agent):
                                         "nguon": "noi_bo", "explain": _ex("NGUOI")},
                            _ctx(agent))
     assert not r.ok and r.error.code == "E1001"
+
+
+# ================================================ bản đồ chân từ #define (header BSP hãng)
+BSP = """\
+/** @defgroup STM32469I_Discovery_LED LED Constants */
+#define LEDn                              ((uint8_t)4)
+
+#define LED1_PIN                         ((uint32_t)GPIO_PIN_6)
+#define LED1_GPIO_PORT                   ((GPIO_TypeDef*)GPIOG)
+#define LED2_PIN                         ((uint32_t)GPIO_PIN_4)
+#define LED2_GPIO_PORT                   ((GPIO_TypeDef*)GPIOD)
+#define LED3_PIN                         ((uint32_t)GPIO_PIN_5)
+#define LED3_GPIO_PORT                   ((GPIO_TypeDef*)GPIOD)
+#define LED4_PIN                         ((uint32_t)GPIO_PIN_3)
+#define LED4_GPIO_PORT                   ((GPIO_TypeDef*)GPIOK)
+
+#define WAKEUP_BUTTON_PIN                   GPIO_PIN_0
+#define WAKEUP_BUTTON_GPIO_PORT             GPIOA
+
+#define AUDIO_INT_PIN                  GPIO_PIN_7
+#define AUDIO_INT_PORT                 GPIOB
+#define OTG_FS1_OVER_CURRENT_PIN       GPIO_PIN_7
+#define OTG_FS1_OVER_CURRENT_PORT      GPIOB
+
+#define MACRO_NHIEU_DONG(a, b)  do { \\
+    (a) = (b);                       \\
+} while (0)
+"""
+
+
+def test_boc_dung_chan_LED_tu_define(tmp_path):
+    p = tmp_path / "stm32469i_discovery.h"
+    p.write_text(BSP, "utf-8")
+    tl = docs_mod.nap_van_ban(p, doc_id="BSP", loai="source")
+    cap = docs_mod.ghep_chan_tu_dinh_nghia(docs_mod.trich_dinh_nghia(tl))
+    assert cap["LED1"]["chan"] == "PG6"
+    assert cap["LED2"]["chan"] == "PD4"
+    assert cap["LED3"]["chan"] == "PD5"
+    assert cap["LED4"]["chan"] == "PK3"
+    assert cap["WAKEUP_BUTTON"]["chan"] == "PA0"
+
+
+def test_ghep_theo_TIEN_TO_khong_theo_thu_tu(tmp_path):
+    """Ghép theo thứ tự xuất hiện sẽ nối cổng của khai báo này với số chân của khai báo kia."""
+    p = tmp_path / "loan.h"
+    p.write_text("#define A_PIN GPIO_PIN_1\n"
+                 "#define B_PIN GPIO_PIN_2\n"
+                 "#define B_GPIO_PORT GPIOB\n"
+                 "#define A_GPIO_PORT GPIOA\n", "utf-8")
+    tl = docs_mod.nap_van_ban(p, doc_id="X", loai="source")
+    cap = docs_mod.ghep_chan_tu_dinh_nghia(docs_mod.trich_dinh_nghia(tl))
+    assert cap["A"]["chan"] == "PA1"          # không phải PB1
+    assert cap["B"]["chan"] == "PB2"          # không phải PA2
+
+
+def test_macro_nhieu_dong_bi_bo_qua(tmp_path):
+    p = tmp_path / "m.h"
+    p.write_text(BSP, "utf-8")
+    tl = docs_mod.nap_van_ban(p, doc_id="X", loai="source")
+    ten = {d.ten for d in docs_mod.trich_dinh_nghia(tl)}
+    assert "MACRO_NHIEU_DONG" not in ten
+    assert "LED1_PIN" in ten
+
+
+def test_chan_cua_Fact_tro_toi_DUNG_HAI_dong_khai_bao(make_agent):
+    """Cổng và số chân nằm ở hai `#define` khác nhau — trích dẫn một dòng là kiểm lại không được."""
+    agent = make_agent([])
+    p = agent.config.paths.project_root / "bsp.h"
+    p.write_text(BSP, "utf-8")
+    ctx = _ctx(agent)
+    agent.registry.run("doc.load", {"path": "bsp.h", "doc_id": "BSP",
+                                    "nguon": "nha_san_xuat", "explain": _ex()}, ctx)
+    r = agent.registry.run("fact.extract_pinout",
+                           {"doc_id": "BSP", "chip": "STM32F469NI"}, ctx)
+    assert r.ok, getattr(r.error, "message_vi", r)
+    assert r.data["so_chan"] == 7 and r.data["nguon_doc"].startswith("#define")
+
+    fs = {(f["subject"], f["key"]): f for f in agent.store.query_facts(limit=200)}
+    led1 = fs[("pin:STM32F469NI.LED1", "ten")]
+    assert led1["value"] == "PG6"
+    import json as _json
+    ng = led1["source"]
+    ng = _json.loads(ng) if isinstance(ng, str) else ng
+    assert "dòng" in ng["cite"]
+    # Nguyên văn phải mang CẢ HAI dòng khai báo.
+    assert "LED1_PIN" in ng["quote"] and "LED1_GPIO_PORT" in ng["quote"]
+
+
+def test_hai_chuc_nang_cung_mot_chan_thi_canh_bao(make_agent):
+    """Header của ST tự khai AUDIO_INT và OTG_FS1_OVER_CURRENT cùng PB7 — phải nói ra."""
+    agent = make_agent([])
+    p = agent.config.paths.project_root / "bsp.h"
+    p.write_text(BSP, "utf-8")
+    ctx = _ctx(agent)
+    agent.registry.run("doc.load", {"path": "bsp.h", "doc_id": "BSP",
+                                    "nguon": "nha_san_xuat", "explain": _ex()}, ctx)
+    r = agent.registry.run("fact.extract_pinout",
+                           {"doc_id": "BSP", "chip": "STM32F469NI"}, ctx)
+    assert r.ok
+    assert r.data["chan_trung"] == {"PB7": ["AUDIO_INT", "OTG_FS1_OVER_CURRENT"]}
+    assert "CẢNH BÁO" in r.data["note_vi"]
+    assert "TÀI LIỆU nói, không phải lỗi đọc" in r.data["note_vi"]
+
+
+def test_tai_lieu_ma_nguon_khong_co_chan_thi_bao_ro(make_agent):
+    agent = make_agent([])
+    p = agent.config.paths.project_root / "x.h"
+    p.write_text("#define F_CPU 16000000UL\n#define BAUD 9600\n", "utf-8")
+    ctx = _ctx(agent)
+    agent.registry.run("doc.load", {"path": "x.h", "doc_id": "X",
+                                    "nguon": "nha_san_xuat", "explain": _ex()}, ctx)
+    r = agent.registry.run("fact.extract_pinout", {"doc_id": "X", "chip": "C"}, ctx)
+    assert not r.ok and r.error.code == "E2003"
+    assert "#define" in r.error.hint_for_agent
+    assert "ĐỪNG suy bản đồ chân từ tri thức chung" in r.error.hint_for_agent
+
+
+# ============================== con số vô lý không được thành hạn mức bộ nhớ
+CMSIS = """\
+/* ---- Bộ nhớ ---- */
+#define FLASHSIZE_BASE               0x1FFF7A22UL   /*!< FLASH Size register base address */
+#define PACKAGE_BASE                 0x1FFF7BF0UL   /*!< Package size register base address */
+#define UID_BASE                     0x1FFF7A10UL   /*!< Unique device ID register base */
+"""
+
+
+def test_dong_khai_DIA_CHI_khong_bi_doc_thanh_gia_tri(tmp_path):
+    """Ca thật trên bo STM32F469, và nó đi rất xa trước khi ai đó nhìn ra.
+
+    `FLASHSIZE_BASE 0x1FFF7A22UL /*!< FLASH Size register base address */` khớp mẫu
+    "FLASH Size", bộ đọc số lấy ra `7`, Fact thành `flash.size = 7.0`, `build.compile` lấy 7
+    làm trần Flash, và một firmware 224 byte được báo là chiếm **320 %** bộ nhớ chip.
+    """
+    p = tmp_path / "stm32f469xx.h"
+    p.write_text(CMSIS, "utf-8")
+    tl = docs_mod.nap_van_ban(p, doc_id="CMSIS", loai="source")
+    uv = docs_mod.trich_fact_ung_vien(tl, thuc_the="chip:STM32F469NI")
+    assert [u.khoa for u in uv if u.khoa == "flash.size"] == []
+
+
+@pytest.mark.parametrize("khoa,gt,dv,mong", [
+    ("flash.size", 7, "", False),              # ca thật
+    ("flash.size", 2, "MB", True),             # 2 MB của chính con chip này
+    ("flash.size", 512, "KB", True),
+    ("flash.size", 0.5, "KB", False),          # 512 byte thì không phải Flash của MCU
+    ("flash.size", 999, "GB", False),
+    ("vdd.max", 3.6, "V", True),
+    ("vdd.max", 0x1FFF, "", False),            # một địa chỉ lọt vào
+    ("temp.max", 85, "°C", True),
+    ("khoa.la", 12345, "", True),              # khoá chưa có khoảng → không chặn
+])
+def test_pham_vi_hop_ly(khoa, gt, dv, mong):
+    assert docs_mod.hop_ly(khoa, gt, dv) is mong
+
+
+def test_han_muc_bo_qua_fact_vo_ly(make_agent):
+    """Phanh thứ hai: kể cả khi một Fact vô lý đã nằm trong kho, nó không được thành trần."""
+    from eide.tools.xay_dung import _han_muc
+
+    agent = make_agent([])
+    agent.store.put_fact({"fact_id": "f-xau", "subject": "chip:STM32F469NI",
+                          "key": "flash.size", "value": "7.0", "unit": "",
+                          "condition": "", "tier": "BAC", "origin": "extract",
+                          "source": {"doc_id": "X", "cite": "dòng 1"}, "confidence": 1.0})
+    flash, ram = _han_muc(_ctx(agent), None)
+    assert flash == 0, "7 byte không phải kích thước Flash — thà không có trần"
+    agent.store.put_fact({"fact_id": "f-tot", "subject": "chip:STM32F469NI",
+                          "key": "flash.size", "value": "2", "unit": "MB",
+                          "condition": "", "tier": "BAC", "origin": "extract",
+                          "source": {"doc_id": "X", "cite": "dòng 2"}, "confidence": 1.0})
+    flash, ram = _han_muc(_ctx(agent), None)
+    assert flash == 2_000_000

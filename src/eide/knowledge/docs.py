@@ -235,6 +235,89 @@ def nap_van_ban(path: Path, *, doc_id: str, loai: str = "text", phien_ban: str =
         phien_ban=phien_ban, nha_phat_hanh=nha_phat_hanh, canh_bao_tiem_lenh=canh)
 
 
+# ======================================================= trích từ #define (ING-43, tài liệu mã)
+# `#define TEN     GIA_TRI` — có thể có ngoặc, ép kiểu, chú thích đuôi.
+_MAU_DEFINE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)\s+(.+?)\s*(?:/\*.*)?$")
+# Cặp khai chân của header BSP nhà sản xuất: `X_GPIO_PORT` + `X_PIN`.
+_HAU_TO_CONG = ("_GPIO_PORT", "_GPIO_Port", "_PORT")
+_HAU_TO_CHAN = ("_PIN", "_Pin")
+_CONG_TRONG_GT = re.compile(r"\bGPIO([A-K])\b")
+_SO_CHAN_TRONG_GT = re.compile(r"\bGPIO_PIN_(\d{1,2})\b|\b(?:1[uUlL]*\s*<<\s*)(\d{1,2})\b")
+
+
+@dataclass(slots=True)
+class DinhNghiaUngVien:
+    """Một `#define` đọc được từ tài liệu mã nguồn, kèm chỗ nó nằm."""
+
+    ten: str
+    gia_tri: str
+    don_vi_trich_dan: int
+    nguyen_van: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"ten": self.ten, "gia_tri": self.gia_tri,
+                "don_vi": self.don_vi_trich_dan, "nguyen_van": self.nguyen_van}
+
+
+def trich_dinh_nghia(tl: TaiLieu, *, gioi_han: int = 400) -> list[DinhNghiaUngVien]:
+    """Mọi `#define` trong một tài liệu VĂN BẢN, kèm đơn vị trích dẫn chứa nó.
+
+    Vì sao cần bộ trích riêng: `trich_fact_ung_vien` khớp theo tên thông số điện của datasheet
+    (VDD, VIH, nhiệt độ…). Một header BSP không có chữ nào trong bộ mẫu đó, nên nó trả **0 ứng
+    viên và vẫn báo thành công** — đo được trên bo STM32F469: tác tử gọi `fact.extract` hai
+    lần, cả hai `ok`, kho vẫn rỗng, rồi nó viết firmware bằng số đọc được từ tài liệu mà
+    **không có Fact nào đứng sau**. Đó đúng là thứ N1 tồn tại để ngăn.
+    """
+    ra: list[DinhNghiaUngVien] = []
+    for t in tl.trang:
+        for i, dong in enumerate(t.chu.splitlines()):
+            m = _MAU_DEFINE.match(dong)
+            if not m:
+                continue
+            gt = m.group(2).strip()
+            if not gt or gt.startswith("\\"):        # macro nhiều dòng — bỏ, không đoán
+                continue
+            ra.append(DinhNghiaUngVien(ten=m.group(1), gia_tri=gt[:120],
+                                       don_vi_trich_dan=t.so, nguyen_van=dong.strip()[:160]))
+            if len(ra) >= gioi_han:
+                return ra
+    return ra
+
+
+def ghep_chan_tu_dinh_nghia(ds: list[DinhNghiaUngVien]) -> dict[str, dict[str, Any]]:
+    """`{"LED1": {"chan": "PG6", "don_vi": [3, 3], "nguyen_van": [...]}}`.
+
+    Ghép `X_GPIO_PORT` với `X_PIN` theo **cùng tiền tố X**, không theo thứ tự xuất hiện: ghép
+    theo thứ tự sẽ nối cổng của khai báo này với số chân của khai báo kia và tạo ra một chân
+    không tồn tại — sai mà trông đúng.
+    """
+    cong: dict[str, DinhNghiaUngVien] = {}
+    so: dict[str, DinhNghiaUngVien] = {}
+    for d in ds:
+        for h in _HAU_TO_CONG:
+            if d.ten.endswith(h):
+                cong[d.ten[: -len(h)]] = d
+                break
+        else:
+            for h in _HAU_TO_CHAN:
+                if d.ten.endswith(h):
+                    so[d.ten[: -len(h)]] = d
+                    break
+
+    ra: dict[str, dict[str, Any]] = {}
+    for ten in sorted(set(cong) & set(so)):
+        mc = _CONG_TRONG_GT.search(cong[ten].gia_tri)
+        ms = _SO_CHAN_TRONG_GT.search(so[ten].gia_tri)
+        if not mc or not ms:
+            continue
+        n = ms.group(1) or ms.group(2)
+        ra[ten] = {"chan": f"P{mc.group(1)}{n}",
+                   "cong": f"GPIO{mc.group(1)}", "so_chan": int(n),
+                   "don_vi": [cong[ten].don_vi_trich_dan, so[ten].don_vi_trich_dan],
+                   "nguyen_van": [cong[ten].nguyen_van, so[ten].nguyen_van]}
+    return ra
+
+
 # =========================================================================== trích Fact
 @dataclass(slots=True)
 class FactUngVien:
@@ -310,6 +393,8 @@ def trich_fact_ung_vien(tl: TaiLieu, *, thuc_the: str,
             chu = dong.strip()
             if len(chu) < 3 or len(chu) > 400:
                 continue
+            if _la_dong_dia_chi(chu):
+                continue
             khoa = None
             for mau, k in _MAU_THONG_SO:
                 if mau.search(chu):
@@ -322,12 +407,68 @@ def trich_fact_ung_vien(tl: TaiLieu, *, thuc_the: str,
                     gt = float(m.group(1).replace(",", "."))
                 except ValueError:
                     continue
+                if not hop_ly(khoa, gt, m.group(2)):
+                    continue
                 ra.append(FactUngVien(
                     khoa=khoa, gia_tri=gt, don_vi=m.group(2), trang=t.so,
                     trich_doan=chu[:200], thuc_the=thuc_the, nguyen_van=m.group(0)))
                 if len(ra) >= gioi_han:
                     return _gom(ra)
     return _gom(ra)
+
+
+# Dòng khai ĐỊA CHỈ, không phải khai giá trị. Trong một header CMSIS,
+# `#define FLASHSIZE_BASE 0x1FFF7A22UL /*!< FLASH Size register base address */`
+# khớp mẫu "FLASH Size" nhưng con số trong đó là **địa chỉ của thanh ghi ghi kích thước**,
+# không phải kích thước. Đo được trên bo STM32F469: dòng này sinh ra Fact `flash.size = 7.0`,
+# rồi `build.compile` lấy nó làm hạn mức và báo firmware 224 byte chiếm **320 % Flash**.
+_MAU_DIA_CHI = re.compile(
+    r"#\s*define\s+\w*(?:_BASE|_ADDR|_ADDRESS|_REG)\b|base\s+address|register\s+base", re.I)
+
+
+def _la_dong_dia_chi(chu: str) -> bool:
+    return bool(_MAU_DIA_CHI.search(chu))
+
+
+# Khoảng giá trị hợp lý cho từng khoá, theo ĐƠN VỊ CƠ BẢN (V, A, Hz, byte, °C).
+# Đây là cái phanh cuối: một mẫu khớp nhầm dòng vẫn có thể cho ra một con số, và một con số
+# vô lý đi tiếp được vào mọi phép tính phía sau mà không ai chặn. Thà bỏ một Fact đúng hiếm
+# gặp còn hơn để một Fact sai thành hạn mức bộ nhớ.
+PHAM_VI_HOP_LY: dict[str, tuple[float, float]] = {
+    "flash.size": (1024, 64 * 1024 * 1024),
+    "ram.size": (64, 64 * 1024 * 1024),
+    "sram.size": (64, 64 * 1024 * 1024),
+    "eeprom.size": (16, 1024 * 1024),
+    "vdd.min": (0.5, 60), "vdd.max": (0.5, 60), "vdd.typ": (0.5, 60),
+    "vih.min": (0.3, 60), "vil.max": (0.0, 60),
+    "f.max": (1_000, 2_000_000_000),
+    "temp.min": (-100, 200), "temp.max": (-100, 200),
+}
+
+_NHAN_DON_VI = {
+    "k": 1e3, "K": 1e3, "M": 1e6, "G": 1e9, "m": 1e-3, "u": 1e-6, "µ": 1e-6, "n": 1e-9,
+}
+
+
+def ve_don_vi_co_ban(gia_tri: float, don_vi: str) -> float:
+    """`2 MB` → 2 000 000. Đơn vị lạ thì trả nguyên giá trị."""
+    dv = (don_vi or "").strip()
+    if len(dv) >= 2 and dv[0] in _NHAN_DON_VI:
+        return gia_tri * _NHAN_DON_VI[dv[0]]
+    # `KB`/`MB` viết liền, và dạng `Kbyte`/`Mbytes`.
+    m = re.match(r"^([kKMG])(?:B|byte|bytes|b)$", dv)
+    if m:
+        return gia_tri * _NHAN_DON_VI[m.group(1)]
+    return gia_tri
+
+
+def hop_ly(khoa: str, gia_tri: float, don_vi: str) -> bool:
+    """Giá trị này có thể là thứ mà khoá đó nói tới không."""
+    pv = PHAM_VI_HOP_LY.get(khoa)
+    if pv is None:
+        return True                       # chưa có khoảng cho khoá này thì không chặn
+    co_ban = ve_don_vi_co_ban(gia_tri, don_vi)
+    return pv[0] <= co_ban <= pv[1]
 
 
 # Tên cột → hậu tố khoá. "VDD" ở cột Max thành `vdd.max`, ở cột Min thành `vdd.min`.

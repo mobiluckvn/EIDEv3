@@ -30,6 +30,68 @@ from .writing import EXPLAIN_SCHEMA
 _LOAI_VAN_BAN = ("source", "vendor", "note", "config", "log", "text", "html", "script")
 
 
+def _chan_tu_dinh_nghia(ctx: Any, tl: Any, *, doc_id: str, chip: str, tang: str,
+                        gioi_han: int):
+    """Bản đồ chân đọc từ `#define` của một tài liệu mã nguồn (header BSP của hãng).
+
+    Ghi Fact `pin:<chip>.<TÊN>` với `ten` = chân dạng `PG6`, kèm trích dẫn tới ĐÚNG hai dòng
+    khai báo. Hai dòng chứ không một: cổng và số chân nằm ở hai `#define` khác nhau, và một
+    trích dẫn chỉ tới một trong hai thì người mở tài liệu ra không kiểm lại được kết luận.
+    """
+    import hashlib
+
+    ds = docs_mod.trich_dinh_nghia(tl, gioi_han=max(gioi_han, 400))
+    cap = docs_mod.ghep_chan_tu_dinh_nghia(ds)
+    if not cap:
+        return ToolResult(False, error=EideError(
+            "E2003",
+            f"{doc_id} là tài liệu mã nguồn nhưng không có cặp `X_GPIO_PORT` + `X_PIN` nào.",
+            hint_for_agent=(
+                f"Đọc được {len(ds)} chỉ thị #define, nhưng không cặp nào khai một chân. "
+                "Có thể đây không phải header BSP của bo. Gọi doc.read để xem tài liệu viết "
+                "gì, rồi dùng fact.from_doc cho từng số cụ thể — ĐỪNG suy bản đồ chân từ tri "
+                "thức chung về chip."),
+            alternatives=["doc.read", "fact.from_doc"], blame="agent"))
+
+    so_fact = 0
+    for ten, v in cap.items():
+        cite = " + ".join(tl.trich_dan(x) for x in dict.fromkeys(v["don_vi"]))
+        goc = {"doc_id": doc_id, "version": tl.phien_ban, "page": v["don_vi"][0],
+               "cite": cite, "quote": " | ".join(v["nguyen_van"])[:200]}
+        for khoa, gt in (("ten", v["chan"]), ("cong", v["cong"]),
+                         ("so_chan", str(v["so_chan"]))):
+            fid = "f-" + hashlib.sha1(
+                f"pin:{chip}.{ten}|{khoa}|{gt}|{tl.hash[:8]}".encode()).hexdigest()[:10]
+            ctx.store.put_fact({
+                "fact_id": fid, "subject": f"pin:{chip}.{ten}", "key": khoa, "value": gt,
+                "unit": "", "condition": "", "tier": tang, "origin": "extract",
+                "source": goc, "confidence": 1.0})
+            so_fact += 1
+
+    # Hai chức năng cùng một chân là thứ kỹ sư phải biết. Ở header của bo này, ST tự khai
+    # `AUDIO_INT` và `OTG_FS1_OVER_CURRENT` cùng PB7 — không phải lỗi đọc, mà là một xung đột
+    # có thật trong tài liệu, và im lặng về nó là giấu đi một quyết định phần cứng.
+    theo_chan: dict[str, list[str]] = {}
+    for ten, v in cap.items():
+        theo_chan.setdefault(v["chan"], []).append(ten)
+    trung = {k: v for k, v in theo_chan.items() if len(v) > 1}
+
+    return {
+        "doc_id": doc_id, "chip": chip, "nguon_doc": "#define trong tài liệu mã nguồn",
+        "so_chan": len(cap), "so_fact": so_fact, "tang": tang,
+        "so_dinh_nghia_da_doc": len(ds),
+        "chan": [{"ten": k, **v} for k, v in cap.items()],
+        "chan_trung": {k: v for k, v in trung.items()},
+        "note_vi": (
+            f"Đọc được {len(cap)} chân từ {len(ds)} chỉ thị #define, ghi {so_fact} Fact ở tầng "
+            f"{tang}. Mỗi Fact trỏ tới ĐÚNG hai dòng khai báo (cổng và số chân). Trình bảng "
+            "này cho người dùng rà soát; xác nhận thì Fact lên VÀNG."
+            + (f" CẢNH BÁO: {len(trung)} chân bị hai chức năng cùng khai — "
+               + "; ".join(f"{k}: {', '.join(v)}" for k, v in trung.items())
+               + ". Đây là điều TÀI LIỆU nói, không phải lỗi đọc; nói cho người dùng biết "
+                 "trước khi dùng những chân đó." if trung else ""))}
+
+
 def _nap_theo_loai(ctx: Any, p: Path, *, loai: str, doc_id: str, phien_ban: str,
                    nha_phat_hanh: str, mo_ta: str = "", de_xuat: list[str] | None = None,
                    chuyen_sang: str = "định dạng mới"):
@@ -743,6 +805,14 @@ def register(r: Registry) -> Registry:
         a_doc = ctx.store.get(doc_id)
         nguon = ((a_doc or {}).get("canonical") or {}).get("nguon", "nha_san_xuat")
         tang = docs_mod.tang_mac_dinh(nguon, tl.loai)
+
+        if tl.don_vi_trich_dan == "dòng":
+            # Tài liệu MÃ NGUỒN: bản đồ chân của nó nằm ở `#define X_GPIO_PORT` +
+            # `#define X_PIN`, không ở bảng. Đây là dạng máy đọc được chính xác nhất mà hãng
+            # phát hành cho một bo cụ thể — bỏ qua nó nghĩa là firmware được viết bằng số
+            # không có Fact nào đứng sau (N1).
+            return _chan_tu_dinh_nghia(ctx, tl, doc_id=doc_id, chip=chip, tang=tang,
+                                       gioi_han=gioi_han)
 
         uv = docs_mod.trich_chan_ung_vien(tl, gioi_han=gioi_han)
         if not uv:

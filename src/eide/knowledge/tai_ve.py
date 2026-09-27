@@ -78,6 +78,25 @@ def _loai_theo_magic(dau: bytes) -> str:
     return "khong_biet"
 
 
+def _la_van_ban(b: bytes) -> bool:
+    """Khối byte này có phải văn bản đọc được không.
+
+    Hai phép kiểm, và phép thứ hai mới là phép quyết định: UTF-8 giải mã được **và** hầu hết
+    ký tự in được. Chỉ kiểm giải mã là chưa đủ — một tệp nhị phân vẫn có thể tình cờ hợp lệ
+    UTF-8, và khi đó ta lưu nó thành "tài liệu" rồi trích dẫn "dòng 40" của một mớ ký tự
+    điều khiển.
+    """
+    try:
+        chu = b.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    if not chu.strip():
+        return False
+    mau = chu[:8000]
+    xau = sum(1 for c in mau if not (c.isprintable() or c in "\n\r\t\f\v"))
+    return xau / max(1, len(mau)) < 0.02
+
+
 def ten_tu_url(url: str) -> str:
     """Tên tệp an toàn suy ra từ URL. Không bao giờ trả về đường dẫn có `/` hay `..`."""
     from urllib.parse import unquote, urlparse
@@ -247,11 +266,19 @@ def tai_ve(url: str, thu_muc: Path, *, ten_tep: str = "", tran_byte: int = TRAN_
         return kq
 
     if kq.loai == "khong_biet":
-        kq.vi_sao_khong_dat = (
-            f"Tải về {kq.so_byte} byte nhưng không nhận ra định dạng (máy chủ khai "
-            f"“{kq.content_type or 'không khai'}”, byte đầu {noi_dung[:8]!r}). Không lưu — "
-            "EIDE chỉ nhận PDF, Office và RTF.")
-        return kq
+        # Không có magic byte KHÔNG có nghĩa là không đọc được: header BSP, linker script,
+        # Markdown, CSV đều là văn bản thuần. `doc.load` nạp được những thứ đó (trích dẫn theo
+        # dòng), nên `doc.fetch` mà từ chối chúng là hai công cụ của cùng một hệ thống nói
+        # ngược nhau — đo được trên phiên bo thật: tác tử tìm đúng `stm32469i_discovery.h` rồi
+        # bị chính EIDE chặn ở bước tải, và nó kết luận "hãng không lưu tài liệu trên GitHub".
+        if _la_van_ban(noi_dung):
+            kq.loai = "van_ban"
+        else:
+            kq.vi_sao_khong_dat = (
+                f"Tải về {kq.so_byte} byte nhưng không nhận ra định dạng, và nội dung không "
+                f"phải văn bản (máy chủ khai “{kq.content_type or 'không khai'}”, byte đầu "
+                f"{noi_dung[:8]!r}). Không lưu.")
+            return kq
 
     thu_muc.mkdir(parents=True, exist_ok=True)
     ten = re.sub(r"[^A-Za-z0-9._-]", "-", ten_tep).strip("-.") if ten_tep else ten_tu_url(url)

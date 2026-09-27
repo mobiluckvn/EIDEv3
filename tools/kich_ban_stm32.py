@@ -314,15 +314,57 @@ def _bao_cao_fact(nk: Any, ctx: Any, fs: list[dict[str, Any]]) -> None:
                      if not _co_trich_dan(f))[:400] or "—")
 
     # Trích dẫn trỏ tới tài liệu nào — tài liệu đó có trong kho không?
-    co_doc = {d["id"] for d in ctx.store.list("doc", limit=50)}
+    doc_theo_id = {d["id"]: d for d in ctx.store.list("doc", limit=50)}
     hong = []
     for f in fs:
         ng = _nguon(f)
         did = str(ng.get("doc_id") or "")
-        if did and did not in co_doc:
+        if did and did not in doc_theo_id:
             hong.append(f"{f.get('subject')}.{f.get('key')} → {did}")
     nk.ket(not hong, "Mọi trích dẫn trỏ tới một tài liệu CÓ THẬT trong kho",
            "; ".join(hong)[:400] or "—")
+    _kiem_trich_dan_mo_ra_thay(nk, fs, doc_theo_id)
+
+
+def _kiem_trich_dan_mo_ra_thay(nk: Any, fs: list[dict[str, Any]],
+                               doc_theo_id: dict[str, Any]) -> None:
+    """Mở ĐÚNG tệp ở ĐÚNG đơn vị được trích dẫn, và xem giá trị có nằm ở đó thật không.
+
+    Đây là phép kiểm độc lập với lõi, và nó phải độc lập: `fact.from_doc` có kiểm nguyên văn
+    (E2006), nhưng một bộ đo tin vào chính thứ nó đang đo thì không đo gì cả. Ở đây ta đọc
+    thẳng tệp trên đĩa, cắt đúng khoảng dòng của trích dẫn, rồi tìm giá trị trong đó.
+    """
+    import pathlib as _pl
+    import re as _re
+
+    xet, dung, sai = 0, [], []
+    for f in fs:
+        ng = _nguon(f)
+        did, cite = str(ng.get("doc_id") or ""), str(ng.get("cite") or "")
+        a = doc_theo_id.get(did)
+        if not a or not cite:
+            continue
+        canon = a.get("canonical") or {}
+        p = _pl.Path(str(canon.get("path") or ""))
+        m = _re.match(r"dòng (\d+)(?:–(\d+))?", cite)
+        if not p.exists() or not m:
+            continue                      # chỉ kiểm được tài liệu văn bản có trích dẫn dòng
+        xet += 1
+        dau = int(m.group(1))
+        cuoi = int(m.group(2) or m.group(1))
+        khuc = "\n".join(p.read_text("utf-8", errors="replace").splitlines()[dau - 1:cuoi])
+        gt = str(f.get("value") or "").strip()
+        # So lỏng: tài liệu viết `((uint32_t)GPIO_PIN_6)` còn Fact ghi `GPIO_PIN_6` hoặc `PG6`.
+        gon = _re.sub(r"[^A-Za-z0-9]", "", gt).upper()
+        khuc_gon = _re.sub(r"[^A-Za-z0-9]", "", khuc).upper()
+        (dung if (gon and gon in khuc_gon) else sai).append(
+            f"{f.get('subject')}.{f.get('key')}={gt} @ {cite}")
+    nk.ket(xet > 0 and not sai,
+           f"Mở đúng dòng được trích dẫn thì THẤY giá trị: {len(dung)}/{xet} Fact kiểm được",
+           ("KHÔNG THẤY: " + "; ".join(sai[:8]) if sai else
+            "; ".join(dung[:6]) if dung else
+            "Không Fact nào có trích dẫn theo dòng để kiểm — tài liệu nạp được có thể là PDF, "
+            "khi đó phép kiểm này không áp dụng."))
 
 
 def _nguon(f: dict[str, Any]) -> dict[str, Any]:

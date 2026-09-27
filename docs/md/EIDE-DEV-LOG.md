@@ -2367,9 +2367,90 @@ mà đi bới `.eide/tim-kiem/*.json` và `.eide/sessions/*/transcript.jsonl` b�
 phải: đó là dữ liệu của **máy** (danh sách repo của hãng), dùng chung cho mọi dự án. Chuyển ra
 `~/.cache/eide/tim-kiem`. Một nhớ đệm để lẫn vào chỗ chứa hiện vật sẽ được đọc như hiện vật.
 
+#### 10. `doc.fetch` từ chối đúng tệp mà `doc.load` nạp được
+
+Tác tử tìm ra đúng `stm32469i_discovery.h` trong repo `32f469idiscovery-bsp` của ST, gọi
+`doc.fetch`, và bị **chính EIDE** chặn: bộ nhận dạng theo magic byte trả `khong_biet` cho một
+tệp văn bản thuần, nên `doc.fetch` không lưu. Rồi tác tử rút ra một kết luận sai từ lỗi của ta:
+*"hãng chỉ lưu mã nguồn và header C, không lưu tài liệu bản gốc… nên công cụ đã từ chối tệp
+header thô"*.
+
+Đây là mục 2 lặp lại ở một chỗ khác: `doc.load` đã nạp được mã nguồn từ mục 2, nhưng
+`doc.fetch` vẫn giữ danh sách nhận-được cũ (PDF/Office/RTF). Hai công cụ của cùng một hệ thống
+nói ngược nhau, và cái nói "không" đứng trước.
+
+→ Không có magic byte KHÔNG có nghĩa là không đọc được. Thêm nhánh `van_ban`, với phép kiểm
+hai tầng: giải mã được UTF-8 **và** dưới 2 % ký tự không in được. Chỉ kiểm giải mã là chưa đủ —
+một tệp nhị phân vẫn có thể tình cờ hợp lệ UTF-8, và khi đó ta lưu nó thành "tài liệu" rồi
+trích dẫn "dòng 40" của một mớ ký tự điều khiển. Nhánh HTML vẫn đứng TRƯỚC nhánh này: HTML
+cũng là văn bản, nhưng nó phải rơi vào đường xử lý riêng của nó.
+
+Đo lại sau khi sửa: tải đúng tệp ấy về được, 10 728 byte, 362 dòng, và trong đó có đủ thứ cần
+cho firmware đầu tiên — `LED1_GPIO_PORT = GPIOG`, `LED1_PIN = GPIO_PIN_6`, `LED2 = PD4`,
+`LED3 = PD5`, `LED4 = PK3`, `WAKEUP_BUTTON = PA0`.
+
+Một ghi nhận cho bước đọc log: header BSP của bo này **không định nghĩa cổng COM nào**
+(`grep -E "COM|USART|UART"` trả rỗng). Nghĩa là cổng COM ảo của ST-LINK nhiều khả năng không
+nối sẵn vào USART nào — nên `target.log` im lặng sẽ là kết quả ĐÚNG, không phải dấu hiệu
+firmware sai, và đó chính là câu mà công cụ log được viết để nói.
+
+#### 11. Phiên chạy hết tới biên dịch — và ba lỗi chỉ hiện ra khi có firmware thật
+
+Lần chạy sạch đầu tiên đi được tới bước 8: tác tử tự tìm, tải và nạp **ba tài liệu**
+(`stm32469i_discovery.h` của BSP, `stm32f469xx.h` của CMSIS, và trang nhà phân phối anh Công
+đưa), ghim hộ chiếu chip, viết firmware bare-metal ba tệp, biên dịch **đạt** với 0 lỗi 0 cảnh
+báo, và ảnh nạp có vector table đúng hợp đồng Cortex-M (SP trỏ vào RAM, Reset_Handler trong
+Flash, bit Thumb bật).
+
+Firmware nó viết dùng **PG6** — đúng chân LED1 của bo — bật xung nhịp GPIOG trước khi chạm
+thanh ghi, và chú thích dẫn nguồn kèm **số dòng**: *"LED1 (Green) nối vào chân PG6 (tài liệu
+BSP-STM32469I-DISCO-H dòng 131, 145)"*.
+
+Nhưng kho chỉ có **một** Fact, và Fact đó **sai**.
+
+**`fact.extract` trả `ok` với 0 ứng viên.** Bộ mẫu của nó khớp theo tên thông số điện của
+datasheet (VDD, VIH, nhiệt độ). Một header BSP không có chữ nào trong bộ mẫu ấy, nên tác tử
+gọi hai lần, cả hai `ok`, kho vẫn rỗng — rồi nó viết firmware bằng số đọc được từ tài liệu mà
+**không có Fact nào đứng sau**. Đúng thứ N1 tồn tại để ngăn, và nó lọt qua vì "không tìm thấy
+gì" mang cùng hình dạng với "đã làm xong".
+
+→ Bộ trích `#define` cho tài liệu mã nguồn: `trich_dinh_nghia` + `ghep_chan_tu_dinh_nghia`.
+Trên `stm32469i_discovery.h` thật nó đọc được 50 chỉ thị và ghép ra **10 chân**: LED1 = PG6,
+LED2 = PD4, LED3 = PD5, LED4 = PK3, WAKEUP_BUTTON = PA0, SD_DETECT = PG2, TS_INT = PJ5…
+Ghép theo **tiền tố** chứ không theo thứ tự xuất hiện: ghép theo thứ tự sẽ nối cổng của khai
+báo này với số chân của khai báo kia và tạo ra một chân không tồn tại. Mỗi Fact trỏ tới **đúng
+hai dòng** khai báo — cổng và số chân nằm ở hai `#define` khác nhau, và một trích dẫn chỉ tới
+một trong hai thì người mở tài liệu ra không kiểm lại được.
+
+Một thứ bộ trích tìm thấy mà con người dễ bỏ qua: header của ST **tự khai** `AUDIO_INT` và
+`OTG_FS1_OVER_CURRENT` **cùng PB7**. Không phải lỗi đọc — đó là điều tài liệu nói, và im lặng
+về nó là giấu đi một quyết định phần cứng. Nay nó thành `chan_trung` kèm cảnh báo.
+
+**Và Fact duy nhất trong kho là `flash.size = 7.0`.** Mẫu "FLASH Size" khớp vào dòng
+`#define FLASHSIZE_BASE 0x1FFF7A22UL /*!< FLASH Size register base address */` — con số ở đó
+là **địa chỉ của thanh ghi ghi kích thước**, không phải kích thước. Bộ đọc số lấy ra `7`.
+`_han_muc` lấy 7 làm trần Flash. `build.compile` chia 224 byte cho 7 và báo firmware chiếm
+**320 % Flash của chip**. Không lớp nào trên đường đi ấy thấy con số vô lý.
+
+→ Hai cái phanh, đặt ở hai chỗ khác nhau vì một cái sẽ hỏng lần nữa:
+
+1. `_la_dong_dia_chi` — bỏ qua dòng khai địa chỉ (`*_BASE`, `*_ADDR`, "base address") trước
+   khi khớp mẫu thông số.
+2. `PHAM_VI_HOP_LY` — khoảng giá trị hợp lý theo đơn vị cơ bản cho từng khoá (Flash 1 KB…64 MB,
+   VDD 0,5…60 V, nhiệt độ −100…200 °C). Giá trị ngoài khoảng thì **không ghi thành Fact**, và
+   `_han_muc` kiểm lại lần nữa trước khi dùng làm trần. Thà không có hạn mức còn hơn có hạn
+   mức sai: "chưa biết firmware có vừa chip không" là một câu đúng, còn "320 %" thì không.
+
+**Bộ đo của tôi cũng suýt nói sai.** Bảng đối chiếu firmware ↔ tài liệu bóc chân từ mã nguồn
+bằng mẫu `PG6` / `GPIOG`+`GPIO_PIN_6`. Firmware bare-metal thật viết `GPIOG->BSRR = (1UL << 6)`
+— không khớp mẫu nào, nên bảng sẽ ghi "không" cho **cả bốn** LED và người đọc hiểu là firmware
+sai chân. Sửa: thêm mẫu dịch bit, và quan trọng hơn là trả về cờ **"có đọc được mã không"** —
+một tập rỗng có hai nghĩa trái ngược ("firmware không dùng chân nào" và "bộ đo không đọc nổi
+mã này"), và trả cùng một `set()` cho cả hai là biến cái thứ hai thành cái thứ nhất.
+
 ### Số đo
 
-`936 ca đơn vị` (+93 so với DEV-277) · `95 công cụ` khi cờ sơ đồ tắt (+4: `doc.fetch`,
+`946 ca đơn vị` (+93 so với DEV-277) · `95 công cụ` khi cờ sơ đồ tắt (+4: `doc.fetch`,
 `target.detect`, `target.flash`, `target.log`), `104` khi bật.
 
 Phiên bo thật (`tools/phien_stm32.py`): bước 1–2 chạy được trên bo đang cắm — tác tử tự tìm ra

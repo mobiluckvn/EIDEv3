@@ -236,16 +236,39 @@ def hoi(g: GiaoDien, nk: NhatKy, du_an: pathlib.Path, cau: str, *,
     a = g.doi_xong(giay)
     # Thẻ cổng: đóng vai người dùng bấm Duyệt. Ghi lại vào nhật ký — một lần duyệt cổng là
     # một quyết định của người, và sở cứ phải thấy được nó.
-    for _ in range(4):
-        the = [c for c in (a.get("the_dang_cho") or []) if c.get("gate_id")]
+    # Thẻ ĐÃ xử lý thì không ghi lại và không duyệt lại. Bản trước duyệt theo danh sách
+    # `the_dang_cho` của mỗi vòng thăm dò, mà một thẻ vừa duyệt vẫn còn trong ảnh chụp kế
+    # tiếp — nên nhật ký chép 18 thẻ cho một lượt chỉ có 2 thẻ thật, và sở cứ nói sai về
+    # chính thứ nó đang làm chứng.
+    da_xu_ly: set[str] = set()
+    rong_lien_tiep = 0
+    for _ in range(16):
+        the = [c for c in (a.get("the_dang_cho") or [])
+               if c.get("gate_id") and c["gate_id"] not in da_xu_ly]
         if not the:
-            break
+            # Dừng sau HAI vòng liên tiếp không thấy thẻ mới, không phải sau một vòng: duyệt
+            # một thẻ làm tác tử chạy tiếp và nó có thể dựng thẻ kế ngay sau đó. Dừng sớm thì
+            # lượt bị bỏ dở ở một thẻ đang mở, và nhật ký chép cái thẻ ấy như thể đó là câu
+            # trả lời của tác tử.
+            rong_lien_tiep += 1
+            if rong_lien_tiep >= 2:
+                break
+            a = g.doi_xong(giay)
+            continue
+        rong_lien_tiep = 0
         for c in the:
+            da_xu_ly.add(c["gate_id"])
             nk.ghi("Thẻ cổng hiện ra — người dùng bấm Duyệt",
                    f"{c.get('gate')} · {c.get('tieu_de', '')[:120]} · "
                    f"{c.get('so_hau_qua', 0)} hậu quả")
             g.quyet_cong(c["gate_id"], True, note="đồng ý, đây là việc mình vừa nhờ")
         a = g.doi_xong(giay)
+    con_mo = [c.get("gate_id") for c in (a.get("the_dang_cho") or [])
+              if c.get("gate_id") and c["gate_id"] not in da_xu_ly]
+    if con_mo:
+        nk.ghi("BỎ DỞ — còn thẻ cổng chưa trả lời",
+               f"{len(con_mo)} thẻ: {', '.join(map(str, con_mo))}. Lượt này dừng giữa chừng, "
+               "nên kết quả dưới đây CHƯA phải là việc tác tử làm xong.")
     # Tác tử có NÓI gì ở lượt này không, hay chỉ gọi công cụ rồi im? Không hỏi câu đó thì
     # `loi_tac_tu_cuoi` trả về lời của lượt TRƯỚC và nhật ký chép nhầm một cách rất hợp lý.
     loi = (a.get("loi_tac_tu_cuoi", "")

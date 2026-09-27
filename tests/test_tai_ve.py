@@ -363,3 +363,49 @@ def test_duong_dan_khop_qua_bien_the_bo_chu_ho():
     assert dung > 0 and dung > khac
     # Tệp không liên quan trong cùng repo thì 0 điểm, không phải "hơi liên quan".
     assert _diem_duong_dan("Middlewares/Third_Party/FatFs/src/ff.h", tu) == 0.0
+
+
+# ============================================ văn bản thuần: doc.fetch phải nhận
+def test_header_C_tai_ve_duoc(tmp_path):
+    """`doc.load` nạp được mã nguồn, nên `doc.fetch` mà từ chối là hệ thống tự nói ngược nhau.
+
+    Ca thật: tác tử tìm đúng `stm32469i_discovery.h` trên GitHub của ST rồi bị chính EIDE chặn
+    ở bước tải, và nó kết luận "hãng không lưu tài liệu trên GitHub" — một kết luận sai rút ra
+    từ một lỗi của ta.
+    """
+    h = ("/* stm32469i_discovery.h */\n"
+         "#define LED1_PIN GPIO_PIN_6\n"
+         "#define LED1_GPIO_PORT GPIOG\n").encode()
+    kq = tv.tai_ve("https://raw.githubusercontent.com/STMicroelectronics/"
+                   "32f469idiscovery-bsp/main/stm32469i_discovery.h", tmp_path,
+                   mo_url=MayChuGia(h, content_type="text/plain"))
+    assert kq.dat and kq.loai == "van_ban"
+    assert kq.tep == "stm32469i_discovery.h"
+    assert (tmp_path / kq.tep).read_bytes() == h
+
+
+@pytest.mark.parametrize("ten,noi_dung", [
+    ("mach.ld", b"MEMORY {\n  FLASH (rx) : ORIGIN = 0x08000000\n}\n"),
+    ("README.md", "# Bo STM32F469\n\nBốn đèn LED người dùng.\n".encode()),
+    ("chan.csv", b"ten,cong,huong\nLED1,PG6,ra\n"),
+])
+def test_cac_dang_van_ban_khac_cung_tai_duoc(ten, noi_dung, tmp_path):
+    kq = tv.tai_ve(f"https://x.com/{ten}", tmp_path, mo_url=MayChuGia(noi_dung))
+    assert kq.dat and kq.loai == "van_ban" and kq.tep == ten
+
+
+def test_nhi_phan_khong_magic_van_bi_tu_choi(tmp_path):
+    """Giải mã được UTF-8 chưa đủ — một tệp nhị phân vẫn có thể tình cờ hợp lệ UTF-8."""
+    kq = tv.tai_ve("https://x.com/a.bin", tmp_path,
+                   mo_url=MayChuGia(bytes(range(1, 32)) * 40))
+    assert not kq.dat and kq.loai == "khong_biet"
+    assert "không phải văn bản" in kq.vi_sao_khong_dat
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_html_van_bi_tu_choi_truoc_khi_toi_nhanh_van_ban(tmp_path):
+    """HTML cũng là văn bản — nhưng nó phải rơi vào nhánh HTML, không phải nhánh văn bản."""
+    kq = tv.tai_ve("https://st.com/x.pdf", tmp_path,
+                   mo_url=MayChuGia(HTML, content_type="text/html"))
+    assert not kq.dat and kq.loai == "html"
+    assert list(tmp_path.iterdir()) == []
