@@ -1078,9 +1078,14 @@ class Agent:
     def _assemble(self, ctx: TurnContext, s0: Any):
         inv = ctx.build_inventory()
         recent = [m.get("text", "") for m in self.messages[-6:] if m.get("role") == "user"]
+        from .skills import goi_y_cho_ngu_canh
+
         return assemble(
             eide_md=self.eide_md, inventory_text=inv.render(), store=self.store,
             recent_texts=recent or [""],
+            # §B5 "skill nạp theo ngữ cảnh": gợi ý theo từ khoá của câu vừa gõ, nội dung đầy
+            # đủ để mô hình tự nạp bằng `skill.load` khi nó thấy cần.
+            skills=goi_y_cho_ngu_canh(),
             human_edit_changesets=ctx.human_edits,
             pending_cards=self.pending_cards,
             stopped_run=inv.unfinished_run,

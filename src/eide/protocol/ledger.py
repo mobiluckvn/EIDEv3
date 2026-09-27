@@ -40,6 +40,11 @@ EVENT_KINDS = {
     "compact",            # nen ngu canh: pre / ok / kiem_truot / loi (MEM-42 §6)
     "changeset",          # chi muc; noi dung day o changesets.jsonl (§E5.1)
     "incident",           # mang, LLM, timeout, sandbox (UC19)
+    # Tac tu con (§B5): tung loi goi cong cu cua no, va ket luan luc no dung. Ghi rieng chu
+    # khong gop vao `tool_use` vi hai thu tra loi hai cau hoi khac nhau: "luot nay da lam
+    # gi" va "AI da lam viec do". Mot bao cao "dat" cua subagent phai tra ve duoc cho toi
+    # so cai — neu khong thi lop kiem chung doc lap khong kiem lai duoc.
+    "subagent_tool", "subagent_stop",
     "note",
 }
 

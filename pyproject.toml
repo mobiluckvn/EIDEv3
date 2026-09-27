@@ -41,6 +41,9 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 eide = ["rules/*.yaml", "policy/*.yaml", "context/*.md"]
+# Skill là tệp .md nằm trong gói — không khai ở đây thì bản cài đặt thiếu chúng, và
+# `skill.load` trả "không có skill nào" trên máy người dùng trong khi chạy tốt ở repo.
+"eide.skills" = ["*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
