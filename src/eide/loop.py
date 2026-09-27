@@ -83,6 +83,9 @@ class TurnContext:
     # Mọi câu tác tử đã NÓI RA trong lượt. Hook Stop và phép đánh dấu "đã nhắc" đọc
     # cái này, chứ không hỏi mô hình xem nó có nghĩ là đã nói hay chưa.
     loi_da_noi: list[str] = field(default_factory=list)
+    # Tên công cụ đã gọi trong lượt, theo thứ tự — để nói được "tôi đã làm gì" khi phải
+    # dừng giữa chừng vì hết ngân sách.
+    cong_cu_da_goi: list[str] = field(default_factory=list)
     # Lời NGƯỜI đã nói trong phiên — constant-guard coi con số họ tự nói là có nguồn.
     loi_nguoi_trong_phien: list[str] = field(default_factory=list)
     usage_luot: Any = None                       # chi phí CỦA LƯỢT NÀY, không phải phiên
@@ -271,6 +274,13 @@ class Agent:
 
         try:
             self._run(act, ctx)
+            # Lượt kết thúc mà tác tử KHÔNG nói câu nào là một lượt người dùng không đọc
+            # được. Đã gặp thật: mô hình gọi mười công cụ để đọc mã rồi trả về một câu trả
+            # lời rỗng; trên màn hình, EIDE đứng im và người dùng đợi một tệp không bao giờ
+            # tới. Im lặng không phải một câu trả lời, kể cả khi không có gì để nói.
+            if not im_lang and not ctx.said_anything and act.kind not in ("attend", "set"):
+                ctx.emit(uic.console_post(
+                    "[Tác tử] " + self._cau_im_lang(ctx), role="agent"))
         finally:
             self._ghi_nhan_da_nhac(ctx)
             self._tha_khoa(ctx)
@@ -465,6 +475,35 @@ class Agent:
             extra_round_used = True
             self.messages.append({"role": "user", "text": stop.injection})
 
+    def _cau_im_lang(self, ctx: TurnContext) -> str:
+        """Câu thay cho sự im lặng: nói đã làm gì và mời người dùng đẩy tiếp."""
+        from collections import Counter
+
+        dem = Counter(getattr(ctx, "cong_cu_da_goi", []) or [])
+        if not dem:
+            return ("Tôi kết thúc lượt mà không làm gì và cũng không nói gì — đó là lỗi của "
+                    "tôi, không phải ý anh. Anh nhắc lại yêu cầu giúp tôi, hoặc nói rõ bước "
+                    "đầu tiên anh muốn tôi làm.")
+        hay = ", ".join(f"{t} ×{n}" for t, n in dem.most_common(3))
+        return (f"Tôi đã gọi {sum(dem.values())} công cụ ({hay}) rồi dừng mà chưa nói gì — "
+                "nghĩa là tôi chưa hoàn thành việc anh giao và cũng chưa báo lại. Những gì "
+                "đã ghi thì vẫn còn. Anh bảo “làm tiếp” để tôi chạy tiếp, hoặc chia nhỏ yêu "
+                "cầu ra nếu nó quá dài cho một lượt.")
+
+    def _cau_het_ngan_sach(self, ctx: TurnContext, kind: str, lim: Any) -> str:
+        """Nói rõ: đã làm gì, dừng ở đâu, và người dùng cần gõ gì để đi tiếp."""
+        from collections import Counter
+
+        dem = Counter(t for t in getattr(ctx, "cong_cu_da_goi", []) or [])
+        hay = ", ".join(f"{t} ×{n}" for t, n in dem.most_common(3))
+        return ("Tôi hết " + kind + f" của lượt này ({lim}) nên phải dừng giữa chừng — "
+                "chưa xong việc anh giao."
+                + (f" Lượt này tôi đã gọi {sum(dem.values())} công cụ, nhiều nhất là {hay}."
+                   if dem else "")
+                + " Những gì đã ghi vào kho và vào tệp thì vẫn còn nguyên. Anh bảo “làm tiếp”"
+                  " là tôi chạy tiếp từ chỗ này; nếu muốn nhanh hơn thì nói rõ phần nào làm"
+                  " trước, để tôi khỏi đọc lại những thứ đã đọc.")
+
     def _tool_loop(self, ctx: TurnContext, s0: Any) -> None:
         while True:
             left_calls, left_secs = ctx.budget_left()
@@ -474,6 +513,14 @@ class Agent:
                        else f"{self.config.budget.max_seconds:.0f} s")
                 err = budget_exhausted(kind, lim)
                 ctx.emit(uic.notice(err.message_vi, level="warn", code=err.code))
+                # Và NÓI RA trong hội thoại, không chỉ treo một băng cảnh báo.
+                #
+                # Đo được trên một phiên thật: tác tử dùng hết 40 lời gọi để đọc tài liệu rồi
+                # lượt kết thúc — trên màn hình, nó im lặng. Người dùng đợi một tệp mã nguồn
+                # không bao giờ tới và không có cách nào biết vì sao. Một băng cảnh báo ở góc
+                # không phải một câu trả lời cho câu hỏi "nó đang làm gì vậy".
+                ctx.emit(uic.console_post(
+                    "[Tác tử] " + self._cau_het_ngan_sach(ctx, kind, lim), role="agent"))
                 ctx.said_anything = True
                 return
 
@@ -521,6 +568,7 @@ class Agent:
     def _one_tool(self, call: Any, ctx: TurnContext) -> None:
         c = {"tool": call.tool, "args": call.args, "id": call.id}
         ctx.tool_calls_used += 1
+        ctx.cong_cu_da_goi.append(call.tool)
         self.ledger.append("tool_use", {"run_id": ctx.run_id, "tool": call.tool,
                                         "args": call.args, "call_id": call.id})
         spec = self.registry.get(call.tool)

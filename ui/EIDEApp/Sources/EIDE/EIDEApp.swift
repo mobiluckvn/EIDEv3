@@ -11,7 +11,12 @@ struct EIDEApp: App {
                 .environmentObject(state)
                 .environmentObject(setup)
                 .frame(minWidth: 1100, minHeight: 720)
+                // Mở cửa sổ NẰM TRỌN trong màn hình đang dùng. Bản trước để macOS tự đặt,
+                // và trên một máy có nhiều màn hình nó mở lệch ra ngoài mép trái — phần
+                // hội thoại bị cắt mất, trông y như một lỗi trình bày.
                 .task {
+                    // Mở cửa sổ nằm trọn trong màn hình đang dùng (xem `DatCuaSo`).
+                    DatCuaSo.motLan()
                     guard setup.hopLe, !state.connection.ok else { return }
                     await state.mo(python: setup.pythonURL,
                                    repo: setup.repoURL,
@@ -25,7 +30,7 @@ struct EIDEApp: App {
                 Button("Dừng khẩn") { state.gui(.stopNow()) }
                     .keyboardShortcut(".", modifiers: .command)
                 Divider()
-                Button("Vẽ lại bề mặt") { state.veLai() }
+                Button("Vẽ lại bề mặt") { Task { await state.veLai() } }
                     .keyboardShortcut("r", modifiers: .command)
             }
         }

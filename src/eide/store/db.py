@@ -510,6 +510,23 @@ class Store:
         args.append(limit)
         return [dict(r) for r in self._db.execute(q, args)]
 
+    def dem_fact(self, *, subject: str | None = None, key: str | None = None,
+                 tier: str | None = None) -> int:
+        """Đếm Fact KHỚP điều kiện, không giới hạn — để người gọi biết mình đang thấy bao nhiêu
+        phần của bao nhiêu."""
+        q = "SELECT COUNT(*) n FROM facts WHERE superseded_by IS NULL"
+        args: list[Any] = []
+        if subject:
+            q += " AND subject LIKE ?"
+            args.append(f"%{subject}%")
+        if key:
+            q += " AND key LIKE ?"
+            args.append(f"%{key}%")
+        if tier:
+            q += " AND tier=?"
+            args.append(tier)
+        return int(self._db.execute(q, args).fetchone()["n"])
+
     def fact_tier_counts(self) -> dict[str, int]:
         return {r["tier"]: r["n"] for r in self._db.execute(
             "SELECT tier, COUNT(*) n FROM facts WHERE superseded_by IS NULL GROUP BY tier")}

@@ -503,3 +503,15 @@ def test_gan_chan_khi_DA_co_so_do_khoi_thi_khong_no(tac_tu):
     r = _goi(tac_tu, "ckm.pinout_set", chip="U1", chan="27", chuc_nang="SDA")
     assert r.ok, getattr(r.error, "message_vi", "")
     assert r.data["stale_theo_nut"], "phải lan STALE lên theo đường Port"
+
+
+def test_fact_query_NOI_RA_khi_bi_cat_bot(kho):
+    """Cắt im lặng ở 100 dòng rồi trả `count: 100` là một câu trả lời thiếu dữ liệu mà không
+    có dấu hiệu nào cho thấy nó thiếu — N6 áp vào một phép tra."""
+    for i in range(130):
+        kho.put_fact({"fact_id": f"f{i}", "subject": f"pin:X.{i}", "key": "ten",
+                      "value": f"P{i}", "tier": "BAC", "origin": "extract",
+                      "source": {}, "explain": {}})
+    assert kho.dem_fact(subject="pin:X.") == 130
+    assert len(kho.query_facts(subject="pin:X.", limit=100)) == 100
+    assert len(kho.query_facts(subject="pin:X.", limit=200)) == 130

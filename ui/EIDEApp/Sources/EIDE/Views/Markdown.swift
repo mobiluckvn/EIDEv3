@@ -354,7 +354,12 @@ private struct KhoiView: View {
     }
 }
 
-/// Bảng markdown. Cuộn ngang khi rộng — bảng so sánh phương án hay có 4–5 cột.
+/// Bảng markdown trong ô hội thoại.
+///
+/// Panel hội thoại chỉ rộng 320–640 px, nên một bảng cột cứng 130 px và chữ một dòng sẽ **cắt
+/// mất nội dung** — và trong bảng của tác tử, cột dài nhất thường là cột nói CÁCH LÀM. Nên:
+/// bề rộng cột tính theo nội dung của chính cột đó, và ô dài thì XUỐNG DÒNG chứ không cắt.
+/// Vẫn cuộn ngang được cho bảng nhiều cột.
 private struct BangMd: View {
     let cot: [String]
     let hang: [[String]]
@@ -364,10 +369,11 @@ private struct BangMd: View {
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 0) {
-                    ForEach(Array(cot.enumerated()), id: \.offset) { _, c in
+                    ForEach(Array(cot.enumerated()), id: \.offset) { j, c in
                         Text(Markdown.inline(c))
                             .font(.system(size: co - 1, weight: .semibold))
-                            .frame(width: rongCot, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(width: rongCot(j), alignment: .leading)
                             .padding(.vertical, 5).padding(.horizontal, 7)
                     }
                 }
@@ -375,12 +381,14 @@ private struct BangMd: View {
                 Divider()
                 ForEach(Array(hang.enumerated()), id: \.offset) { i, h in
                     HStack(alignment: .top, spacing: 0) {
-                        ForEach(Array(h.enumerated()), id: \.offset) { _, o in
+                        ForEach(Array(h.enumerated()), id: \.offset) { j, o in
                             Text(Markdown.inline(o))
                                 .font(.system(size: co - 1))
                                 .textSelection(.enabled)
-                                .frame(width: rongCot, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(width: rongCot(j), alignment: .topLeading)
                                 .padding(.vertical, 4).padding(.horizontal, 7)
+                                .help(o)
                         }
                     }
                     .background(i % 2 == 1
@@ -394,6 +402,14 @@ private struct BangMd: View {
             .strokeBorder(Color.secondary.opacity(0.2)))
     }
 
-    /// Cột hẹp khi nhiều cột, rộng khi ít — Console chỉ có 320–640 px.
-    private var rongCot: CGFloat { cot.count >= 4 ? 130 : cot.count == 3 ? 160 : 200 }
+    /// Bề rộng cột theo NỘI DUNG của cột đó, trong khoảng vừa panel hội thoại.
+    ///
+    /// Trần thấp hơn bảng trên tab (220 so với 420) vì panel hẹp hơn nhiều; phần dài hơn thì
+    /// xuống dòng, không cắt.
+    private func rongCot(_ j: Int) -> CGFloat {
+        let tran: CGFloat = cot.count >= 4 ? 170 : cot.count == 3 ? 200 : 240
+        let dai = max(j < cot.count ? cot[j].count : 0,
+                      hang.prefix(20).map { j < $0.count ? $0[j].count : 0 }.max() ?? 0)
+        return min(max(CGFloat(dai) * 6.2 + 14, 70), tran)
+    }
 }

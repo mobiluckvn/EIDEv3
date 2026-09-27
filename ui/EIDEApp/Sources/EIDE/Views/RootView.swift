@@ -291,3 +291,32 @@ struct MoDuAnView: View {
         if p.runModal() == .OK, let u = p.url { gia.wrappedValue = u.path }
     }
 }
+
+
+/// Kéo cửa sổ về trong màn hình — **đúng một lần cho cả phiên**.
+///
+/// Cửa sổ thò ra ngoài mép màn hình làm panel hội thoại bị cắt, và người dùng đọc nó thành
+/// một lỗi trình bày. Nhưng cách sửa cũng phải không gây hại: bản đầu gọi `setFrame` từ
+/// trong `makeNSView` của một `NSViewRepresentable` nằm trong `.background()` của khung gốc —
+/// đổi khung sinh ra một vòng bố cục, và **app treo ngay khi mở**, không mở nổi cả kênh kiểm
+/// thử. Nên bây giờ: một cờ tĩnh, hoãn nửa giây, và không bao giờ chạy lần thứ hai.
+enum DatCuaSo {
+    private static var daLam = false
+
+    static func motLan() {
+        guard !daLam else { return }
+        daLam = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard let w = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+                  let man = w.screen ?? NSScreen.main else { return }
+            let vung = man.visibleFrame
+            var f = w.frame
+            if vung.contains(f) { return }
+            f.size.width = min(f.width, vung.width)
+            f.size.height = min(f.height, vung.height)
+            f.origin.x = min(max(f.origin.x, vung.minX), vung.maxX - f.width)
+            f.origin.y = min(max(f.origin.y, vung.minY), vung.maxY - f.height)
+            w.setFrame(f, display: true)
+        }
+    }
+}

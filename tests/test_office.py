@@ -472,3 +472,100 @@ def test_tep_DOI_tu_lan_nap_thi_NOI_RA_chu_khong_dung_am_tham(make_agent, tep_ba
                            {"doc_id": "BG-2", "chip": "ATmega328P"}, ctx)
     assert not r.ok and r.error.code == "E2005", getattr(r, "data", None)
     assert "đã ĐỔI kể từ lần nạp" in r.error.message_vi
+
+
+def test_doc_read_doc_duoc_MUC_va_BANG_kem_trich_dan(make_agent, tep_ban_giao):
+    """Trước khi có `doc.read`, tác tử nạp xong một tài liệu 43 trang rồi vẫn phải HỎI người
+    dùng chép giúp bảng trong đó: chỉ có đường trích Fact (số kèm đơn vị) và trích bản đồ
+    chân, còn mọi câu văn và bảng khác nằm ngoài tầm với."""
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    shutil.copy(tep_ban_giao, agent.config.paths.project_root / "bg.docx")
+    agent.registry.run("doc.load", {"path": "bg.docx", "doc_id": "BG-3",
+                                    "nguon": "noi_bo", "explain": _EX}, ctx)
+
+    r = agent.registry.run("doc.read", {"doc_id": "BG-3", "tim": "Mức THẤP"}, ctx)
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["so_khop"] >= 1
+    d = r.data["doan"][0]
+    assert "4.2 Bảng chân đầy đủ" in d["trich_dan"] and d["la_bang"] is True
+
+    # Lọc theo mục cũng phải dùng được, vì người hay nói "mục 4.2 viết gì".
+    r2 = agent.registry.run("doc.read", {"doc_id": "BG-3", "muc": "4.2"}, ctx)
+    assert r2.ok and r2.data["so_khop"] >= 3
+
+
+def test_doc_read_khong_khop_thi_TU_CHOI_chu_khong_tra_ve_rong(make_agent, tep_ban_giao):
+    """Trả một danh sách rỗng kèm `ok` là mời tác tử điền nốt bằng trí nhớ."""
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    shutil.copy(tep_ban_giao, agent.config.paths.project_root / "bg.docx")
+    agent.registry.run("doc.load", {"path": "bg.docx", "doc_id": "BG-4",
+                                    "nguon": "noi_bo", "explain": _EX}, ctx)
+    r = agent.registry.run("doc.read", {"doc_id": "BG-4", "tim": "thuật toán PID"}, ctx)
+    assert not r.ok and r.error.code == "E2004"
+    assert "đừng lấy nội dung từ trí nhớ" in r.error.hint_for_agent
+
+
+def test_doc_read_NOI_RA_khi_cat_bot_doan(make_agent, tep_ban_giao):
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    shutil.copy(tep_ban_giao, agent.config.paths.project_root / "bg.docx")
+    agent.registry.run("doc.load", {"path": "bg.docx", "doc_id": "BG-5",
+                                    "nguon": "noi_bo", "explain": _EX}, ctx)
+    r = agent.registry.run("doc.read", {"doc_id": "BG-5", "gioi_han": 1}, ctx)
+    assert r.ok and r.data["bi_cat"] is True
+    assert "CÒN" in r.data["note_vi"] and "đoạn nữa" in r.data["note_vi"]
+
+
+def test_fact_from_doc_KIEM_gia_tri_co_that_trong_doan(make_agent, tep_ban_giao):
+    """Mô hình chọn đoạn và đặt tên; MÃ kiểm giá trị. Không có cửa nào để một con số nhớ
+    được lọt vào kho qua đây."""
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    shutil.copy(tep_ban_giao, agent.config.paths.project_root / "bg.docx")
+    agent.registry.run("doc.load", {"path": "bg.docx", "doc_id": "BG-6",
+                                    "nguon": "noi_bo", "explain": _EX}, ctx)
+    r = agent.registry.run("doc.read", {"doc_id": "BG-6", "tim": "400 kHz"}, ctx)
+    so = r.data["doan"][0]["so"]
+
+    ok = agent.registry.run("fact.from_doc", {
+        "doc_id": "BG-6", "don_vi": so, "thuc_the": "bus:TWI", "khoa": "toc_do",
+        "gia_tri": "400", "don_vi_do": "kHz"}, ctx)
+    assert ok.ok, getattr(ok.error, "message_vi", "")
+    assert "4.2 Bảng chân đầy đủ" in ok.data["trich_dan"]
+    f = [x for x in agent.store.query_facts(subject="bus:TWI", limit=5)]
+    assert f and f[0]["value"] == "400"
+    src = f[0]["source"]
+    if isinstance(src, str):
+        import json as _j
+        src = _j.loads(src)
+    assert src["cite"] == ok.data["trich_dan"]
+
+    xau = agent.registry.run("fact.from_doc", {
+        "doc_id": "BG-6", "don_vi": so, "thuc_the": "bus:TWI", "khoa": "toc_do",
+        "gia_tri": "1000", "don_vi_do": "kHz"}, ctx)
+    assert not xau.ok and xau.error.code == "E2006"
+    assert "KHÔNG có trong đoạn" in xau.error.message_vi
+
+
+def test_fact_from_doc_nhan_ca_hai_dang_cua_mot_gia_tri(make_agent, tmp_path):
+    """Tài liệu hay viết "39 (0x27)". Cả hai dạng đều là ĐỌC từ đoạn đó."""
+    import docx
+
+    agent = make_agent([])
+    ctx = _ctx(agent)
+    d = docx.Document()
+    d.add_heading("12.5 Thanh ghi ba bộ định thời", level=2)
+    d.add_paragraph("OCR2A = 39 (0x27) cho chu kỳ ngắt 20 µs.")
+    p = agent.config.paths.project_root / "tg.docx"
+    d.save(str(p))
+    agent.registry.run("doc.load", {"path": "tg.docx", "doc_id": "TG-1",
+                                    "nguon": "noi_bo", "explain": _EX}, ctx)
+    r = agent.registry.run("doc.read", {"doc_id": "TG-1", "tim": "OCR2A"}, ctx)
+    so = r.data["doan"][0]["so"]
+    for gt in ("39", "0x27"):
+        k = agent.registry.run("fact.from_doc", {
+            "doc_id": "TG-1", "don_vi": so, "thuc_the": "reg:OCR2A", "khoa": "gia_tri",
+            "gia_tri": gt}, ctx)
+        assert k.ok, (gt, getattr(k.error, "message_vi", ""))

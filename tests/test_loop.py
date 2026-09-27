@@ -301,3 +301,45 @@ def test_hau_qua_khoi_phuc_neu_dich_danh_thu_se_mat(chay, make_agent):
     chu = " ".join(hq)
     assert "FR-02" in chu, f"phải nêu đích danh thứ sẽ mất, mới có: {hq}"
     assert "CHÍNH ANH" in chu, "phải cảnh báo có sửa của người trong đó"
+
+
+def test_het_ngan_sach_thi_NOI_RA_trong_hoi_thoai_khong_chi_treo_bang(make_agent):
+    """Đo được trên một phiên thật: tác tử dùng hết 40 lời gọi để đọc tài liệu rồi lượt kết
+    thúc — trên màn hình nó IM LẶNG. Người dùng đợi một tệp mã nguồn không bao giờ tới và
+    không có cách nào biết vì sao. Một băng cảnh báo ở góc không trả lời câu hỏi đó."""
+    from eide.llm import Response, ToolCall
+
+    from eide.protocol.humanact import HumanAct
+
+    agent = make_agent([Response(tool_calls=[ToolCall(f"c{i}", "fs.glob",
+                                                     {"pattern": "**/*"})])
+                        for i in range(12)])
+    agent.config.budget.max_tool_calls = 3
+    seen: list = []
+    agent.turn(HumanAct.from_dict({"kind": "say", "text": "đọc hết tài liệu rồi viết mã",
+                                   "origin": {"surface": "console"}}), seen.append)
+
+    loi = [c for c in seen if c.method == "console.post"
+           and "hết số lời gọi công cụ" in str(c.params.get("text", ""))]
+    assert loi, [(c.method, str(c.params)[:60]) for c in seen]
+    text = loi[0].params["text"]
+    assert "vẫn còn nguyên" in text and "làm tiếp" in text
+    assert "fs.glob ×3" in text, text
+
+
+def test_luot_ket_thuc_MA_khong_noi_gi_thi_van_phai_noi(make_agent):
+    """Đã gặp thật: mô hình gọi mười công cụ để đọc mã rồi trả về một câu trả lời rỗng. Trên
+    màn hình, EIDE đứng im và người dùng đợi một tệp không bao giờ tới."""
+    from eide.protocol.humanact import HumanAct
+
+    # Ba lượt: gọi công cụ → trả lời rỗng → hook Stop cho thêm một vòng, vẫn rỗng.
+    agent = make_agent([Response(tool_calls=[ToolCall("c1", "fs.glob", {"pattern": "*"})]),
+                        Response(text=""), Response(text="")])
+    seen: list = []
+    agent.turn(HumanAct.from_dict({"kind": "say", "text": "viết giúp main.c",
+                                   "origin": {"surface": "console"}}), seen.append)
+    loi = [c for c in seen if c.method == "console.post"
+           and c.params.get("role") == "agent"]
+    assert loi, [(c.method, str(c.params)[:50]) for c in seen]
+    assert "chưa hoàn thành việc anh giao" in loi[-1].params["text"]
+    assert "fs.glob ×1" in loi[-1].params["text"]

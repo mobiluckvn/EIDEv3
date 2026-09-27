@@ -242,6 +242,186 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Có tệp .kicad_sch mở được bằng KiCad", ", ".join(tep))
         nk.anh(g, "so-do")
 
+    # ------------------------------------------------------- 8. firmware: phần logic thuần
+    if lam(8):
+        nk.buoc("Viết phần LOGIC của firmware (không đụng thanh ghi) để mô phỏng được")
+        loi, cc = hoi(g, nk, du_an,
+                      "Giờ ta viết firmware. Tách làm hai phần đã: bạn viết trước "
+                      "firmware/control.h và firmware/control.c chứa phần logic THUẦN, tuyệt "
+                      "đối không đụng thanh ghi AVR và không include avr/io.h — để mình biên "
+                      "dịch được nó trên máy tính mà mô phỏng. Phần này gồm: lọc bù ghép góc "
+                      "từ gia tốc kế và con quay, bộ PID giữ thăng bằng, và hàm quy đổi "
+                      "throttle sang số nhịp 20 µs giữa hai xung bước theo đúng bảng ở mục "
+                      "7.6 của tài liệu. Dùng số nguyên, không dùng số thực trong đường chạy "
+                      "nhanh. Ánh xạ trục IMU và các hằng hiệu chuẩn lấy đúng theo mục 8.3 và "
+                      "chương 11 của tài liệu.",
+                      giay=1800)
+        ds = sorted(x.name for x in (du_an / "firmware").glob("*")) \
+            if (du_an / "firmware").exists() else []
+        nk.ghi("Tệp firmware hiện có", ", ".join(ds) or "— chưa có —")
+        ctrl = (du_an / "firmware/control.c")
+        nk.ket(ctrl.exists() and "avr/io.h" not in ctrl.read_text("utf-8", errors="replace"),
+               "Có control.c và nó KHÔNG phụ thuộc thanh ghi AVR (mô phỏng được)",
+               f"{ctrl.stat().st_size if ctrl.exists() else 0} byte")
+        nk.anh(g, "control-c")
+
+    # ---------------------------------------------- 9. firmware: phần thanh ghi + ngắt
+    if lam(9):
+        nk.buoc("Viết phần THANH GHI: timer, TWI, UART, watchdog, trình tự khởi tạo")
+        # Chia làm hai lượt: một lượt ĐỌC tài liệu đã tiêu hết 40 lời gọi công cụ và lượt
+        # đó kết thúc mà chưa viết được dòng mã nào. Giao việc vừa một lượt là việc của
+        # người dùng, không phải của tác tử.
+        hoi(g, nk, du_an,
+            "Trước khi viết main.c: bạn đọc mục 12.5 (thanh ghi ba bộ định thời), mục 8.4 "
+            "(cấu hình khối TWI) và phụ lục A.2 (giá trị khởi tạo thanh ghi) rồi GHI từng "
+            "giá trị thanh ghi thành Fact có trích dẫn — dùng fact.from_doc cho từng cái: "
+            "TCCR2A, TCCR2B, OCR2A, TIMSK2, TCCR0A, TCCR0B, OCR0A, TIMSK0, TCCR1B, UBRR0L, "
+            "UCSR0A, UCSR0B, UCSR0C, TWSR, TWBR, TWCR, ADMUX, ADCSRA, và địa chỉ I2C của "
+            "MPU6050. Có Fact rồi thì lát nữa bạn mới viết được mã mà không vướng chốt hằng "
+            "số. Chưa viết mã ở lượt này.",
+            giay=1800)
+        loi, cc = hoi(g, nk, du_an,
+                      "Giờ viết firmware/main.c theo đúng bốn mục bạn vừa đọc. Dùng thanh ghi "
+                      "thật: Timer2 CTC chia 8 OCR2A=39 sinh nhịp 20 µs cho tầng sinh xung "
+                      "bước; Timer0 CTC chia 64 OCR0A=249 làm nhịp 1 ms cho bộ lập lịch; "
+                      "Timer1 chạy tự do chia 1 để đo; TWI 400 kHz với TWBR=12, TWSR=0; UART0 "
+                      "9600 baud dùng U2X với UBRR0=207; MPU6050 ở địa chỉ 0x68 khởi tạo bốn "
+                      "thanh ghi 0x6B, 0x1B, 0x1C, 0x1A rồi đọc khối 14 byte từ 0x3B; ADC0 "
+                      "đọc điện áp pin. Trình tự khởi tạo đúng 11 bước, đọc–xoá MCUSR rồi tắt "
+                      "watchdog là việc đầu tiên. Không dùng delay(), String, malloc, pulseIn "
+                      "hay số thực trong ISR. Gọi phần logic trong control.c, đừng viết lại "
+                      "thuật toán. Viết thẳng ra tệp, đừng đọc thêm tài liệu nữa.",
+                      giay=2400)
+        main_c = du_an / "firmware/main.c"
+        nk.ket(main_c.exists(), "Có firmware/main.c",
+               f"{main_c.stat().st_size if main_c.exists() else 0} byte")
+        if main_c.exists():
+            src = main_c.read_text("utf-8", errors="replace")
+            for x in (du_an / "firmware").glob("*.c"):
+                if x.name != "main.c":
+                    src += "\n" + x.read_text("utf-8", errors="replace")
+            tg = thanh_ghi_trong_ma(src)
+            nk.ghi("Thanh ghi đọc được từ mã",
+                   "\n".join(f"{k:8} = 0x{v:02X} ({v})" for k, v in sorted(tg.items())),
+                   ma=True)
+            dung = {k: v for k, v in THANH_GHI.items() if tg.get(k) == v}
+            lech = {k: (v, tg.get(k)) for k, v in THANH_GHI.items() if tg.get(k) != v}
+            nk.ket(len(dung) >= 14,
+                   f"Giá trị thanh ghi khớp bảng 91: {len(dung)}/{len(THANH_GHI)}",
+                   "ĐÚNG: " + ", ".join(sorted(dung))
+                   + ("\nLỆCH/THIẾU: " + "; ".join(
+                       f"{k} cần 0x{c:02X}, mã có {'0x%02X' % t if t is not None else '∅'}"
+                       for k, (c, t) in sorted(lech.items())) if lech else ""))
+
+            import re as _re
+            pham = [(mo_ta, m.group(0)) for mau, mo_ta in DIEU_CAM
+                    for m in [_re.search(mau, src)] if m]
+            nk.ket(not pham, "Không dùng cấu trúc bị cấm ở bảng 83",
+                   "; ".join(f"{t} ({d})" for d, t in pham) or "sạch")
+            nk.ket("MCUSR" in src and src.index("MCUSR") < src.index("wdt_disable")
+                   if "wdt_disable" in src else False,
+                   "Đọc–xoá MCUSR TRƯỚC khi tắt watchdog (mục 13.2)",
+                   "MCUSR ở vị trí " + str(src.find("MCUSR"))
+                   + ", wdt_disable ở " + str(src.find("wdt_disable")))
+        nk.anh(g, "main-c")
+
+    # ------------------------------------------------------------------ 10. biên dịch
+    if lam(10):
+        nk.buoc("Biên dịch firmware cho ATmega328P và sửa tới khi sạch lỗi")
+        loi, cc = hoi(g, nk, du_an,
+                      "Biên dịch firmware giúp mình. Có lỗi thì sửa rồi biên dịch lại cho tới "
+                      "khi sạch, và nói cho mình biết nó chiếm bao nhiêu Flash và SRAM so với "
+                      "hạn mức của chip.",
+                      giay=2400)
+        a = ctx.store.get("build:firmware")
+        canon = (a or {}).get("canonical") or {}
+        nk.ghi("Hiện vật build trong kho",
+               "\n".join(f"{k}: {v}" for k, v in canon.items()
+                          if k in ("dat", "cong_cu", "tep_ra", "flash", "sram",
+                                   "ty_le_flash", "ty_le_sram", "so_loi", "so_canh_bao")),
+               ma=True)
+        nk.ket(bool(canon.get("dat")),
+               "Firmware biên dịch được bằng chuỗi công cụ THẬT",
+               f"{canon.get('cong_cu', '?')} → {canon.get('tep_ra', '—')} · "
+               f"Flash {canon.get('flash', 0)} B, SRAM {canon.get('sram', 0)} B")
+        nk.anh(g, "bien-dich")
+
+    # ------------------------------------------------------------------ 11. mô phỏng
+    if lam(11):
+        nk.buoc("Mô phỏng vòng điều khiển bằng chính mã logic của firmware")
+        loi, cc = hoi(g, nk, du_an,
+                      "Giờ mô phỏng: viết sim/ gồm một mô hình con lắc ngược hai bánh (góc "
+                      "nghiêng, tốc độ góc, tác động của xung bước lên gia tốc bánh) và hàm "
+                      "main() gọi ĐÚNG mã trong firmware/control.c, chạy vài giây mô phỏng từ "
+                      "một góc nghiêng ban đầu, rồi in ra MỘT dòng JSON có khoá dat, "
+                      "goc_max_do, goc_cuoi_do, thoi_gian_s. Rồi chạy mô phỏng và cho mình "
+                      "biết robot có đứng được không.",
+                      giay=2400)
+        a = ctx.store.get("sim_result:can-bang")
+        canon = (a or {}).get("canonical") or {}
+        nk.ghi("Kết quả mô phỏng trong kho", str(canon.get("ket_qua") or canon)[:600], ma=True)
+        nk.ket(bool(canon.get("dat")),
+               "Mô phỏng chạy được và kết luận robot giữ được thăng bằng",
+               str(canon.get("vi_sao_khong_dat") or canon.get("ket_qua"))[:200])
+        nk.anh(g, "mo-phong")
+
     nk.buoc("Kết thúc phần đã chạy", loai="ket")
     nk.ghi("Nhật ký", str(RA / "NHAT-KY.md"))
     return 0
+
+
+# ==================================================================== đối chiếu firmware
+# Tên bit của AVR dùng trong biểu thức thanh ghi. Chép từ datasheet ATmega328P; cần thiết vì
+# firmware viết `(1 << WGM21)` chứ không viết `0x02`, và đối chiếu phải hiểu cả hai.
+BIT_AVR = {
+    "WGM20": 0, "WGM21": 1, "WGM22": 3, "CS20": 0, "CS21": 1, "CS22": 2, "OCIE2A": 1,
+    "WGM00": 0, "WGM01": 1, "WGM02": 3, "CS00": 0, "CS01": 1, "CS02": 2, "OCIE0A": 1,
+    "CS10": 0, "CS11": 1, "CS12": 2, "WGM12": 3, "OCIE1A": 1,
+    "U2X0": 1, "UCSZ00": 1, "UCSZ01": 2, "TXEN0": 3, "RXEN0": 4, "RXCIE0": 7, "UDRIE0": 5,
+    "TWEN": 2, "TWIE": 0, "TWINT": 7, "TWSTA": 5, "TWSTO": 4, "TWEA": 6,
+    "REFS0": 6, "REFS1": 7, "ADEN": 7, "ADSC": 6, "ADIE": 3,
+    "ADPS0": 0, "ADPS1": 1, "ADPS2": 2, "ADC0D": 0,
+    "WDRF": 3, "WDCE": 4, "WDE": 3, "PB5": 5, "PD5": 5, "PD7": 7,
+}
+
+
+def _tinh_bieu_thuc(bt: str) -> int | None:
+    """Tính một biểu thức thanh ghi đơn giản: `(1 << WGM21) | (1 << CS21)`, `0x27`, `39`.
+
+    Chỉ nhận dịch trái, hoặc, và, số — đủ cho mọi giá trị trong bảng 91, và **không** chạy mã
+    tuỳ ý: đây là đọc mã người khác viết, nên nó phải đọc được mà không tin được.
+    """
+    import re as _re
+
+    t = bt.strip().rstrip(";").strip()
+    if not t or len(t) > 200:
+        return None
+    t = _re.sub(r"\b([A-Z][A-Z0-9_]*)\b", lambda m: str(BIT_AVR.get(m.group(1), "\x00")), t)
+    if "\x00" in t or not _re.fullmatch(r"[\s0-9xXa-fA-F()<>|&+~-]*", t):
+        return None
+    try:
+        return int(eval(t, {"__builtins__": {}}, {})) & 0xFF   # noqa: S307 — đã lọc ký tự
+    except Exception:
+        return None
+
+
+def thanh_ghi_trong_ma(nguon: str) -> dict[str, int]:
+    """`{tên thanh ghi: giá trị}` đọc từ mã nguồn firmware."""
+    import re as _re
+
+    ra: dict[str, int] = {}
+    for m in _re.finditer(r"^\s*([A-Z][A-Z0-9_]{2,8})\s*=\s*([^;]+);", nguon, _re.M):
+        gt = _tinh_bieu_thuc(m.group(2))
+        if gt is not None:
+            ra[m.group(1)] = gt
+    return ra
+
+
+# Bảng 83 — cấu trúc bị cấm, và vì sao. Mẫu tìm phải đủ hẹp để không báo nhầm.
+DIEU_CAM = [
+    (r"\bmalloc\s*\(|\bfree\s*\(|\bnew\s+[A-Za-z]", "cấp phát động (2 KB SRAM, không MMU)"),
+    (r"\bString\b", "lớp String của Arduino gây phân mảnh SRAM"),
+    (r"\bdelay(Microseconds)?\s*\(", "delay() chặn tầng dưới, làm trượt hạn"),
+    (r"\bpulseIn\s*\(", "pulseIn chiếm vi điều khiển hàng chục ms"),
+    (r"\bSerial\.print", "Serial.print trong firmware này dùng UART thanh ghi, không dùng lớp"),
+]

@@ -215,6 +215,18 @@ def hoi(g: GiaoDien, nk: NhatKy, du_an: pathlib.Path, cau: str, *,
     nk.noi("nguoi", cau)
     g.go(cau)
     a = g.doi_xong(giay)
+    # Thẻ cổng: đóng vai người dùng bấm Duyệt. Ghi lại vào nhật ký — một lần duyệt cổng là
+    # một quyết định của người, và sở cứ phải thấy được nó.
+    for _ in range(4):
+        the = [c for c in (a.get("the_dang_cho") or []) if c.get("gate_id")]
+        if not the:
+            break
+        for c in the:
+            nk.ghi("Thẻ cổng hiện ra — người dùng bấm Duyệt",
+                   f"{c.get('gate')} · {c.get('tieu_de', '')[:120]} · "
+                   f"{c.get('so_hau_qua', 0)} hậu quả")
+            g.quyet_cong(c["gate_id"], True, note="đồng ý, đây là việc mình vừa nhờ")
+        a = g.doi_xong(giay)
     # Tác tử có NÓI gì ở lượt này không, hay chỉ gọi công cụ rồi im? Không hỏi câu đó thì
     # `loi_tac_tu_cuoi` trả về lời của lượt TRƯỚC và nhật ký chép nhầm một cách rất hợp lý.
     loi = (a.get("loi_tac_tu_cuoi", "")

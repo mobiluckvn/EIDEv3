@@ -38,29 +38,62 @@ struct ConsoleView: View {
 
     // MARK: Transcript
 
+    /// Vì sao có `GeometryReader` + `frame(width:)` ở đây, và vì sao nó không thừa.
+    ///
+    /// Một dòng trong hội thoại có thể chứa bảng markdown hoặc khối mã rộng hơn panel. Khi
+    /// đó `LazyVStack` lấy bề rộng theo dòng RỘNG NHẤT, rồi SwiftUI căn giữa phần thừa — kết
+    /// quả là **toàn bộ chữ bị đẩy lệch sang trái, mất chữ ở mép**, trông đúng như giao diện
+    /// hỏng. Đã đo được trên phiên thật: câu trả lời của tác tử có một bảng "Đã dùng / Hạn
+    /// mức" và mọi dòng trong panel bị cụt đầu.
+    ///
+    /// Khoá bề rộng từng dòng vào bề rộng panel thì bảng rộng tự cuộn ngang trong chính nó
+    /// (xem `BangMd`), còn chữ thì luôn bắt đầu từ mép trái.
     private var dongHoiThoai: some View {
-        ScrollViewReader { sp in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(state.transcript) { line in
-                        VStack(alignment: .leading, spacing: 6) {
-                            DongTranscript(line: line)
-                            if let card = line.card, !card.resolved {
-                                TheView(card: card)
+        GeometryReader { hh in
+            ScrollViewReader { sp in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(state.transcript) { line in
+                            VStack(alignment: .leading, spacing: 6) {
+                                DongTranscript(line: line)
+                                if let card = line.card, !card.resolved {
+                                    TheView(card: card)
+                                }
                             }
+                            .frame(width: max(hh.size.width - 20, 120), alignment: .leading)
+                            .clipped()
+                            .id(line.id)
                         }
-                        .id(line.id)
+                        // Thẻ chưa có dòng hội thoại nào gắn vào — xảy ra khi mở lại dự án:
+                        // lõi khôi phục thẻ đang chờ, nhưng transcript của phiên mới thì
+                        // trống. Không vẽ chúng ở đây thì băng "2 thẻ đang chờ anh trả lời ở
+                        // trên" chỉ vào một chỗ không có gì.
+                        ForEach(theMoCoi) { c in
+                            TheView(card: c)
+                                .frame(width: max(hh.size.width - 20, 120),
+                                       alignment: .leading)
+                        }
+                        ForEach(state.notices) { n in
+                            ThongBaoView(notice: n)
+                                .frame(width: max(hh.size.width - 20, 120),
+                                       alignment: .leading)
+                        }
                     }
-                    ForEach(state.notices) { n in ThongBaoView(notice: n) }
+                    .padding(10)
                 }
-                .padding(10)
-            }
-            .onChange(of: state.transcript.count) {
-                if let last = state.transcript.last {
-                    withAnimation { sp.scrollTo(last.id, anchor: .bottom) }
+                .onChange(of: state.transcript.count) {
+                    if let last = state.transcript.last {
+                        withAnimation { sp.scrollTo(last.id, anchor: .bottom) }
+                    }
                 }
             }
         }
+    }
+
+    /// Thẻ đang chờ mà không dòng transcript nào mang nó.
+    private var theMoCoi: [Card] {
+        let daCo = Set(state.transcript.compactMap { $0.card?.id })
+        return state.theDangCho.filter { !daCo.contains($0.id) }
     }
 
     // MARK: Ô nhập

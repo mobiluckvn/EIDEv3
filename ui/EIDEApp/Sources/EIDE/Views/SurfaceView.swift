@@ -1,6 +1,22 @@
 import SwiftUI
 import WebKit
 
+/// Bề rộng thật mà một khối được phép chiếm, truyền từ bề mặt xuống.
+///
+/// Có nó vì bảng cần biết nó có bao nhiêu chỗ. Không biết thì nó đoán, và mọi cách đoán đều
+/// sai ở một đầu: đoán hẹp thì cắt chữ, đoán rộng thì **đẩy cả panel hội thoại ra ngoài mép
+/// cửa sổ** — cả hai đều đã xảy ra trên máy thật, cách nhau đúng một lần sửa.
+private struct BeRongKhaDungKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 900
+}
+
+extension EnvironmentValues {
+    var beRongKhaDung: CGFloat {
+        get { self[BeRongKhaDungKey.self] }
+        set { self[BeRongKhaDungKey.self] = newValue }
+    }
+}
+
 /// Bề mặt (tab). Bộ render CHUNG: nó vẽ theo `type` của khối, không theo tên tab.
 ///
 /// I3 — "giao diện không quyết". Hệ quả thực tế của nguyên tắc đó: khi lõi thêm một
@@ -12,6 +28,7 @@ struct SurfaceView: View {
     let key: String
 
     var body: some View {
+        GeometryReader { be in
         ScrollView {
             if let s = surface {
                 VStack(alignment: .leading, spacing: 14) {
@@ -25,6 +42,7 @@ struct SurfaceView: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .coordinateSpace(name: "be-mat")
+                .environment(\.beRongKhaDung, max(be.size.width - 60, 320))
                 .onPreferenceChange(KhungKhoiKey.self) { k in
                     state.khungKhoi = k
                 }
@@ -40,6 +58,7 @@ struct SurfaceView: View {
             }
         }
         .background(Color(nsColor: .underPageBackgroundColor))
+        }
     }
 }
 
@@ -256,6 +275,7 @@ struct KhoiKV: View {
 /// thay vì vẽ hết rồi hỏng cả trang.
 struct KhoiBang: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.beRongKhaDung) private var beRongKhaDung
     let block: SurfaceBlock
     @State private var dangSua: String?          // "hàng|cột"
     @State private var hienHet = false
@@ -278,14 +298,40 @@ struct KhoiBang: View {
     }
     private var conLai: Int { rows.count - rowsHien.count }
 
+    /// Bề rộng từng cột: theo nội dung, rồi **co lại cho vừa chỗ thật sự có**.
+    ///
+    /// Hai lần sai liên tiếp ở đúng chỗ này, nên ghi lại cả hai. (1) Mọi cột 170 pt: cột
+    /// "Cách sửa" bị cắt đúng ở chỗ nó bắt đầu nói cách sửa. (2) Cột theo nội dung nhưng
+    /// không có trần theo bề rộng khung: bảng đòi 2.000 pt, `HStack` gốc phình ra, và
+    /// SwiftUI căn giữa phần thừa — **panel hội thoại bị đẩy ra ngoài mép trái cửa sổ**.
+    ///
+    /// Nên: tính nhu cầu theo nội dung, rồi chia tỉ lệ cho vừa `beRongKhaDung`. Ô dài thì
+    /// xuống dòng — cao lên thì vẫn đọc được, tràn ra ngoài thì không.
+    private var beRong: [CGFloat] {
+        let mau = rowsHien.prefix(20)
+        let nhuCau: [CGFloat] = cols.indices.map { j in
+            let dai = max(cols[j].count,
+                          mau.map { j < $0.count ? $0[j].display.count : 0 }.max() ?? 0)
+            return min(max(CGFloat(dai) * 6.4 + 18, 90), 420)
+        }
+        let tong = nhuCau.reduce(0, +)
+        let cho = max(beRongKhaDung - CGFloat(cols.count) * 12 - 120, 240)
+        guard tong > cho, tong > 0 else { return nhuCau }
+        let ty = cho / tong
+        return nhuCau.map { max($0 * ty, 64) }
+    }
+
     var body: some View {
         if rows.isEmpty {
             Text("Bảng rỗng.").font(.system(size: 11)).foregroundStyle(.tertiary)
         } else {
-            ScrollView(.horizontal, showsIndicators: true) {
+            // KHÔNG cuộn ngang nữa: cột đã co cho vừa khung, và ô dài thì xuống dòng. Một
+            // `ScrollView(.horizontal)` ở đây từng là chỗ nội dung tràn ra ngoài khung của
+            // chính nó và vẽ đè lên khối bên dưới.
+            VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 0) {
-                        ForEach(Array(cols.enumerated()), id: \.offset) { _, c in
+                        ForEach(Array(cols.enumerated()), id: \.offset) { j, c in
                             HStack(spacing: 3) {
                                 Text(c).font(.system(size: 10, weight: .semibold))
                                 if cotSua[c] != nil {
@@ -297,7 +343,7 @@ struct KhoiBang: View {
                                 Spacer()
                             }
                             .foregroundStyle(.secondary)
-                            .frame(width: 170, alignment: .leading)
+                            .frame(width: beRong[j], alignment: .leading)
                             .padding(.vertical, 5).padding(.horizontal, 6)
                         }
                     }
@@ -309,7 +355,6 @@ struct KhoiBang: View {
                     }
                 }
             }
-            .fixedSize(horizontal: false, vertical: true)
             if conLai > 0 {
                 Button {
                     hienHet = true
@@ -337,19 +382,21 @@ struct KhoiBang: View {
     private func hang(_ r: [JSONValue], chan: Bool) -> some View {
         let ma = r.first?.stringValue ?? ""
         let m = meta(ma)
-        HStack(spacing: 0) {
+        let w = beRong
+        HStack(alignment: .top, spacing: 0) {
             ForEach(Array(r.enumerated()), id: \.offset) { j, cell in
                 let cot = j < cols.count ? cols[j] : ""
+                let rong = j < w.count ? w[j] : 170
                 if let truong = cotSua[cot] {
                     OSuaDuoc(ma: ma, truong: truong, gia: cell.display,
                              phienBan: m?["phien_ban"]?.intValue ?? 1,
                              khoi: block.code,
                              loai: block.str("loai_sua") ?? "req")
-                        .frame(width: 170, alignment: .leading)
+                        .frame(width: rong, alignment: .leading)
                         .padding(.vertical, 4).padding(.horizontal, 6)
                 } else {
                     OCoTang(text: cell.display)
-                        .frame(width: 170, alignment: .leading)
+                        .frame(width: rong, alignment: .topLeading)
                         .padding(.vertical, 4).padding(.horizontal, 6)
                 }
             }
@@ -441,7 +488,8 @@ struct OSuaDuoc: View {
                 dangSua = true
             } label: {
                 HStack(spacing: 4) {
-                    TextMd(gia).font(.system(size: 11)).lineLimit(3)
+                    TextMd(gia).font(.system(size: 11))
+                        .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
                     Spacer(minLength: 0)
                 }
@@ -469,6 +517,11 @@ struct OSuaDuoc: View {
 
 /// Ô bảng biết tự nhận ra mình đang chứa một tầng tin cậy và tô đúng màu.
 /// §E3.2 §2: "mọi con số là một liên kết… không có số trần".
+///
+/// **Ô KHÔNG cắt nội dung.** Bản trước giới hạn 3 dòng, và trên một bảng ERC thật câu
+/// *"Thêm một cụm pull-up (thường 4,7 kΩ ở 3,3 V) trong khối sở hữu bus; giá trị đúng thì
+/// đối chiếu…"* bị cắt đúng ở chỗ nó bắt đầu nói CÁCH SỬA. Một bảng nói cho người dùng biết
+/// phải làm gì mà cắt mất phần "phải làm gì" thì thà đừng có cột đó.
 struct OCoTang: View {
     let text: String
 
@@ -479,7 +532,8 @@ struct OCoTang: View {
             TextMd(text)
                 .font(.system(size: 11))
                 .textSelection(.enabled)
-                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(text)
         }
     }
 }
