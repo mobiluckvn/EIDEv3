@@ -926,3 +926,548 @@ G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu q
 
 G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích thước · 2 hậu quả
 
+**Tác tử:**
+
+> [Tác tử] ## Firmware Bare-metal đầu tiên cho bo STM32F469I-Discovery
+> 
+> Firmware bare-metal điều khiển nhấp nháy đèn **LED1 (Xanh lá - PG6)** với chu kỳ ~0,5 giây đã được hoàn thiện đủ 3 tệp (`linker.ld`, `startup.c`, `main.c`) trong thư mục `firmware/` và **đã biên dịch thành công** ra các tệp thực thi `.eide/build/mach.elf`, `.eide/build/mach.bin`, `.eide/build/mach.hex` (kích thước Flash: 224 B, SRAM: 0 B).
+> 
+> ---
+> 
+> ### 1. Về cổng COM ảo (Virtual COM Port) của ST-LINK
+> - **Tra cứu tài liệu:** Trong toàn bộ 3 tài liệu đã nạp vào kho (`CMSIS-STM32F469XX-H`, `BSP-STM32469I-DISCO-H`, `PROE-STM32F469`):
+>   - Tệp `PROE-STM32F469` (dòng 745) chỉ nêu tính năng tổng quát: *"USB functions: USB virtual COM port, mass storage, debug port"*.
+>   - Tệp `BSP-STM32469I-DISCO-H` hoàn toàn **không** chứa bất kỳ định nghĩa hoặc sơ đồ nối chân nào cho USART/UART với mạch ST-LINK.
+> - **Kết luận:** Tài liệu hiện có trong kho **chưa cung cấp sơ đồ nối chân của cổng COM ảo tới UART nào của MCU**. Theo nguyên tắc §1 của Hiến pháp, tác tử **không tự phỏng đoán** chân/ngoại vi UART để tránh gửi sai phần cứng. Khi anh nạp thêm tài liệu User Manual (UM1932) hoặc sơ đồ nguyên lý của bo, ta sẽ cấu hình chính xác cổng UART này.
+> 
+> ---
+> 
+> ### 2. Chi tiết các tệp trong `firmware/`
+> 
+> #### a. `firmware/linker.ld` (Linker script)
+> - Định nghĩa vùng nhớ khớp thông số đã trích:
+>   - `FLASH (rx)`: Gốc `0x08000000`, độ dài `2048K` (2 MB Flash nội)
+>   - `RAM (rwx)`: Gốc `0x20000000`, độ dài `320K` (SRAM1 + SRAM2 + SRAM3 liên tục)
+> - Định vị `.isr_vector` ở đầu Flash, khởi tạo con trỏ đỉnh ngăn xếp `_estack = 0x20050000`.
+> 
+> #### b. `firmware/startup.c` (Khởi động bare-metal)
+> - Bảng véc-tơ ngắt Cortex-M4 (`.isr_vector`) chứa `_estack` và địa chỉ các trình phục vụ ngắt cơ bản.
+> - `Reset_Handler`: Sao chép phân đoạn `.data` từ Flash sang RAM, khởi tạo vùng `.bss` về `0`, sau đó chuyển điều khiển vào hàm `main()`.
+> 
+> #### c. `firmware/main.c` (Mã nguồn điều khiển LED)
+> - **Nguồn trích dẫn chân:** Chân **PG6** (LED1) trích từ `BSP-STM32469I-DISCO-H` (`tai-lieu/stm32469i_discovery.h`), dòng 130–148:
+>   ```c
+>   #define LED1_GPIO_PORT  GPIOG
+>   #define LED1_PIN        GPIO_PIN_6
+>   ```
+> - **Địa chỉ thanh ghi:** Tra từ `CMSIS-STM32F469XX-H` (`tai-lieu/stm32f469xx.h`):
+>   - `RCC_AHB1ENR` (địa chỉ `0x40023830UL`), bật bit 6 (`RCC_AHB1ENR_GPIOGEN`) để cấp xung clock cho `GPIOG`.
+>   - `GPIOG_MODER` (địa chỉ `0x40021800UL`), cấu hình chân 6 về chế độ General Purpose Output (`01b`).
+>   - `GPIOG_BSRR` (địa chỉ `0x40021818UL`), ghi bit 6 để bật LED và bit 22 (`6 + 16`) để tắt LED.
+> - **Chu kỳ chớp tắt:** Với tần số dao động nội HSI mặc định 16 MHz khi khởi động, vòng lặp trễ ~1.000.000 chu kỳ phần mềm tạo khoảng trễ ~0,25 giây bật và ~0,25 giây tắt, cho tổng chu kỳ nháy xấp xỉ **0,5 giây** (nửa giây).
+> 
+> ---
+> 
+> ### 3. Kết quả biên dịch thực tế (`build.compile`)
+> - **Trình biên dịch:** `arm-none-eabi-gcc` (tham số `-mcpu=cortex-m4 -mthumb -mfloat-abi=soft -Os -nostdlib`).
+> - **Kích thước bộ nhớ:**
+>   - Flash: **224 Bytes** (chiếm < 0,02 % của
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. tool.install         LỖI None {"explain": {"sources": [{"kind": "tool", "tier": "BAC", "ref": "env.check"}], "why": "env
+ 2. fs.read              ok  {"offset": 1, "path": "firmware/linker.ld", "limit": 100}
+ 3. fs.read              ok  {"offset": 1, "limit": 100, "path": "firmware/startup.c"}
+ 4. fs.read              ok  {"offset": 1, "limit": 100, "path": "firmware/main.c"}
+ 5. fs.grep              ok  {"glob": "tai-lieu/*", "pattern": "VCP|COM|USART|UART|ST-LINK|STLINK"}
+ 6. fs.grep              ok  {"pattern": "UART|USART|VCP|COM", "glob": "tai-lieu/stm32469i_discovery.h"}
+ 7. build.compile        ok  {"isa": "armv7e-m", "explain": {"summary": "Biên dịch mã nguồn firmware bare-metal nháy LE
+```
+
+**Tệp trong firmware/**
+
+firmware/linker.ld
+firmware/main.c
+firmware/startup.c
+
+✅ Có 3 tệp firmware trên đĩa
+
+✅ Có linker script (.ld) — thứ quyết định địa chỉ Flash/RAM
+
+✅ Có tệp mã nguồn
+
+**Chân xuất hiện trong mã**
+
+PG6
+
+❌ Mọi chân trong mã đều có Fact đứng sau: 0/1
+
+```
+KHÔNG CÓ FACT: PG6
+```
+
+![viet-firmware](anh/12-viet-firmware.png)
+
+
+## Bước 13. Biên dịch bằng chuỗi công cụ thật trên máy
+
+**Anh gõ:**
+
+> Bạn biên dịch firmware đó đi. Nếu lỗi thì sửa rồi dịch lại cho tới khi xong, và nói cho mình biết Flash/RAM chiếm bao nhiêu phần trăm chip.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích thước · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] ## Kết quả biên dịch và tỷ lệ chiếm dụng bộ nhớ
+> 
+> Firmware bare-metal nháy đèn **LED1 (PG6)** đã được biên dịch thành công bằng chuỗi công cụ `arm-none-eabi-gcc` mà **không có bất kỳ lỗi hay cảnh báo nào**.
+> 
+> ---
+> 
+> ### 1. Bảng số liệu kích thước bộ nhớ và tỷ lệ chiếm dụng
+> 
+> | Vùng nhớ | Kích thước sử dụng | Dung lượng chip | Tỷ lệ chiếm dụng | Nguồn xác thực |
+> |---|:---:|:---:|:---:|---|
+> | **Flash** | **224 Bytes** | **2 MB** (2.097.152 Bytes) | **0,011 %** (≈ 0,01 %) | Kích thước đọc từ `arm-none-eabi-size`; dung lượng 2 MB từ `PROE-STM32F469`, dòng 739 và `linker.ld` (2048 KB) |
+> | **SRAM** | **0 Bytes** (tĩnh) | **320 KB** (327.680 Bytes) | **0 %** | Phân đoạn `.data = 0 B`, `.bss = 0 B`; ngăn xếp (Stack) dùng động tại vùng đỉnh RAM `_estack = 0x20050000` |
+> 
+> #### Chi tiết các phân đoạn trong tệp thực thi ELF (`mach.elf`):
+> - `.isr_vector`: **64 Bytes** (bảng véc-tơ ngắt Cortex-M4 tại đầu Flash `0x08000000`)
+> - `.text`: **160 Bytes** (mã máy của `Reset_Handler`, `main`, cấu hình thanh ghi GPIO và vòng lặp trễ)
+> - `.data`: **0 Bytes** (không có dữ liệu khởi tạo giá trị tĩnh)
+> - `.bss`: **0 Bytes** (không có biến toàn cục chưa khởi tạo)
+> - **Tổng dung lượng Flash ghi vào chip:** `64 + 160 = 224 Bytes`.
+> 
+> ---
+> 
+> ### 2. Các tệp thực thi đã sinh sẵn sàng
+> Các tệp đã được tạo trong thư mục `.eide/build/`:
+> - **`mach.elf`** (26,9 KB kèm bảng ký hiệu gỡ lỗi DWARF)
+> - **`mach.hex`** (Intel HEX)
+> - **`mach.bin`** (224 Bytes, ảnh nhị phân thuần để nạp trực tiếp qua ST-Link)
+> 
+> ---
+> 
+> ### Báo cáo 5 dòng
+> 1. **Đã làm gì:** Nạp cấu hình bộ nhớ từ `linker.ld` vào kho Fact, biên dịch thành công firmware bằng `arm-none-eabi-gcc` và tính toán chính xác phần trăm Flash (0,011 %) và SRAM (0 %).
+> 2. **Bỏ gì và vì sao:** Không sửa mã vì lần biên dịch đầu tiên đã đạt 100 % (0 lỗi, 0 cảnh báo).
+> 3. **Giả định đang dùng:** Xung nhịp khởi động dùng dao động nội HSI 16 MHz, chu kỳ chớp tắt ~0,5 giây.
+> 4. **Hoàn tác được tới đâu:** Bản build nằm trong `.eide/build/`, mã nguồn quản lý trong git và sổ changeset.
+> 5. **Hết bao nhiêu:** 0 token nạp ngoài, 1 lần biên dịch (`build.compile`).
+> 
+> ---
+> 
+> **Đề xuất hành động tiếp theo:** Anh đã kết nối bo STM32F469I-Discovery vào máy qua cáp USB chưa? Nếu rồi, mình có thể tiến hành nạp (`target.flash`) bản firmware `mach.bin` này vào chip ngay.
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. fact.extract         ok  {"thuc_the": "chip:STM32F469NI", "gioi_han": 10, "doc_id": "PROE-STM32F469"}
+ 2. config.load          ok  {"path": "firmware/linker.ld", "explain": {"confidence": "BAC", "summary": "Nạp cấu hình v
+ 3. build.compile        ok  {"isa": "armv7e-m", "explain": {"confidence": "BAC", "next": "Tính tỷ lệ phần trăm Flash v
+```
+
+✅ Biên dịch ĐẠT (có tệp ảnh trên đĩa)
+
+```
+công cụ=arm-none-eabi-gcc · flash=224 B · ram=0 B · lỗi=0 · 
+```
+
+✅ Có tệp .bin để nạp vào bo
+
+```
+224 byte
+```
+
+**Vector table trong .bin**
+
+SP = 0x20050000 · Reset_Handler = 0x080000A1 (bit Thumb = 1)
+
+✅ Reset_Handler nằm trong vùng Flash của chip (0x0800_0000…)
+
+```
+0x080000A1
+```
+
+✅ Reset_Handler có bit Thumb — thiếu bit này là chip hard-fault ngay lệnh đầu
+
+```
+0x080000A1
+```
+
+✅ Con trỏ ngăn xếp trỏ vào vùng RAM
+
+```
+0x20050000 · linker script khai: RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 320K
+```
+
+![bien-dich](anh/13-bien-dich.png)
+
+
+## Bước 14. Nạp vào bo thật — cổng G-FLASH, thao tác KHÔNG hoàn tác được
+
+**Anh gõ:**
+
+> Nạp bản vừa dịch vào bo giúp mình. Mình biết là không hoàn tác được và bản demo của hãng trên chip sẽ bị ghi đè — cứ nạp.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích thước · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> **[G-FLASH] Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa**
+> - Tác động lên phần cứng thật: flash.
+> - Chưa có bản ưng ý nào để quay về nếu việc này hỏng.
+> - **Thao tác này KHÔNG hoàn tác được.**
+> 
+> → Duyệt  ·  Từ chối
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. target.flash         LỖI E4012 {"tep": ".eide/build/mach.bin", "explain": {"sources": [{"ref": "build.compile", "kind": "
+ 2. tool.search          ok  {"query": "target.detect kiểm tra kết nối bo mạch chipid"}
+ 3. target.detect        ok  {}
+```
+
+❌ Nạp ĐẠT
+
+```
+cách=None · None B · sha256=None · verify=None · 
+```
+
+**Changeset của việc nạp**
+
+reversible=None — None
+
+![nap-bo](anh/14-nap-bo.png)
+
+
+## Bước 15. Xác nhận chương trình đang chạy trên bo
+
+**Anh gõ:**
+
+> Bo đang chạy bản vừa nạp chưa? Bạn đọc log từ cổng nối tiếp xem có gì không, rồi nói cho mình biết bạn KẾT LUẬN được gì và chưa kết luận được gì.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích thước · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] ## Báo cáo trạng thái bo mạch và kiểm tra log cổng nối tiếp
+> 
+> ### 1. Bo đã chạy bản vừa biên dịch chưa?
+> **Chưa.** Bản firmware `mach.bin` **chưa được nạp vào vi điều khiển**.  
+> Ở lượt trước, lệnh nạp `target.flash` đã bị chốt an toàn **E4012** chặn lại do công cụ `st-info` đọc mã ID từ silicon trả về chuỗi hex `chipid 0x434`, không khớp trực tiếp với chuỗi ký hiệu `STM32F469NI` của dự án. Vì vậy, trên chip hiện tại vẫn là firmware cũ (bản demo của nhà sản xuất).
+> 
+> ---
+> 
+> ### 2. Kết quả đọc log từ cổng nối tiếp (`target.log`)
+> - **Cổng kết nối:** `/dev/cu.usbmodem103` (cổng COM ảo ST-LINK VCP)
+> - **Tốc độ baud:** `115200`
+> - **Thời gian đo:** 3 giây
+> - **Kết quả:** Nhận được **0 byte** (cổng hoàn toàn im lặng).
+> 
+> ---
+> 
+> ### 3. Phân định những gì kết luận được và chưa kết luận được
+> 
+> #### Những gì KẾT LUẬN ĐƯỢC:
+> 1. **Firmware bare-metal mới chắc chắn chưa chạy trên chip**, vì tiến trình nạp chưa thực thi (vẫn dừng ở lớp kiểm tra an toàn ID chip).
+> 2. **Cổng nối tiếp `/dev/cu.usbmodem103` tồn tại và kết nối được**, nhưng không nhận bất kỳ dữ liệu nào ở baudrate 115200 trong thời gian giám sát.
+> 
+> #### Những gì CHƯA KẾT LUẬN ĐƯỢC:
+> 1. **Không kết luận được bo hay firmware có lỗi hay không dựa vào log rỗng (theo §6):**
+>    - Bản firmware mới chúng ta viết chỉ cấu hình nhấp nháy đèn **LED1 (PG6)**, không chứa mã xuất ký tự ra UART (do tài liệu trong kho chưa có sơ đồ nối chân của ST-LINK VCP như đã báo cáo). Do đó, kể cả khi nạp xong, cổng serial này vẫn sẽ im lặng trừ khi ta bổ sung ngoại vi UART.
+>    - Bản firmware demo cũ của ST đang chạy trên chip có thể không sử dụng UART ở baudrate 115200 (hoặc hoàn toàn chỉ hiển thị đồ hoạ ra màn hình LCD DSI gắn trên bo).
+> 2. **Chưa kết luận được tính toàn vẹn của mã silicon:** Cần hoàn tất bước nạp và quan sát vật lý trực tiếp trên đèn LED1 (hoặc đọc thanh ghi qua ST-Link) mới xác nhận được firmware chạy đúng.
+> 
+> ---
+> 
+> ### Báo cáo 5 dòng
+> 1. **Đã làm gì:** Đọc log cổng nối tiếp `/dev/cu.usbmodem103` trong 3 giây ở 115200 baud; phân tích trạng thái nạp và đối chiếu với chốt chặn an toàn E4012.
+> 2. **Bỏ gì và vì sao:** Chưa nạp firmware vì đang chờ anh duyệt phương thức xử lý lệch chuỗi ID chip (`card-0002`).
+> 3. **Giả định đang dùng:** Cổng COM ảo ST-LINK mặc định nối qua `/dev/cu.usbmodem103`.
+> 4. **Hoàn tác được tới đâu:** Chưa thay đổi chip, chưa có flash đè.
+> 5. **Hết bao nhiêu:** 0 token nạp ngoài, 1 lần đọc log (`target.log`).
+> 
+> ---
+> 
+> **Đề xuất hành động tiếp theo:** Để nạp thật firmware vào bo, anh chọn phương án nào:
+> 1. **Nạp qua `st-flash`** với cờ `dong_y_khong_doi_chieu_chip=true` (bỏ qua lệch chuỗi tên và nạp thẳng vào chip mang Device ID `0x434`).
+> 2. **Nạp qua sao chép tệp:** Tác tử chép file `mach.bin` trực tiếp vào ổ đĩa ảo `/Volumes/DIS_F469NI` của ST-Link.
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. ask_user             ok  {"assumption_if_skipped": "Nếu anh không chọn, tác tử sẽ giữ nguyên và chờ anh chỉ dẫn thê
+ 2. tool.search          ok  {"query": "đọc cổng nối tiếp serial log terminal"}
+ 3. target.log           ok  {"baud": 115200, "giay": 3, "cong": "/dev/cu.usbmodem103"}
+```
+
+**Log đọc được**
+
+0 byte từ /dev/cu.usbmodem103 · im lặng=True
+
+
+✅ Cổng im lặng — và hệ thống nói đúng rằng điều đó KHÔNG chứng minh firmware sai
+
+```
+Cổng /dev/cu.usbmodem103 không gửi byte nào trong 3 s. Điều đó KHÔNG chứng minh firmware sai: có thể firmware chưa in gì, sai baud, hoặc in ra UART khác. Kiểm baud trong mã và chân UART nối tới ST-LINK trước khi kết luận.
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Đèn LED trên bo có đang nhấp nháy không? Đây là phần duy nhất của bài này mà không đo được bằng mã — kịch bản cố ý không tự trả lời.
+
+![chay-that](anh/15-chay-that.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 06:46:54)*
+
+## Bước 16. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+58 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/16-mo-du-an.png)
+
+
+## Bước 17. Nạp vào bo thật — cổng G-FLASH, thao tác KHÔNG hoàn tác được
+
+**Anh gõ:**
+
+> Nạp bản vừa dịch vào bo giúp mình. Mình biết là không hoàn tác được và bản demo của hãng trên chip sẽ bị ghi đè — cứ nạp.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích thước · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích thước · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] Firmware đầu tiên đã biên dịch và nạp thành công lên bo mạch thật STM32F469I-Discovery
+> 
+> Anh muốn ghi lại làm **bản ưng ý** không? Nếu có, anh đặt tên giúp — tôi không đặt hộ vì tên là thứ anh sẽ đọc lại sau này.
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. store.list           ok  {"type": "build"}
+ 2. store.get            ok  {"id": "build:firmware"}
+ 3. fs.stat              ok  {"path": ".eide/build/mach.bin"}
+ 4. store.list           ok  {"type": "target"}
+ 5. ledger.query         ok  {"run_id": "run-059", "limit": 10}
+ 6. ledger.query         ok  {"limit": 15, "run_id": "run-059"}
+ 7. ledger.query         ok  {"limit": 10, "loai": "incident"}
+ 8. tool.search          ok  {"query": "flash firmware target"}
+ 9. fact.query           ok  {}
+10. store.get            ok  {"id": "build:install:st-flash"}
+11. target.flash         ok  {"cach": "tu_chon", "tep": ".eide/build/mach.bin", "explain": {"next": "Quan sát trạng thá
+12. snapshot.list        ok  {}
+13. snapshot.propose     ok  {"ten_goi_y": "nap-thanh-cong-lan-dau", "ly_do": "Firmware đầu tiên đã biên dịch và nạp th
+```
+
+✅ Nạp ĐẠT
+
+```
+cách=st-flash · 224 B · sha256=bb463633c94cae1c · verify=True · 
+```
+
+**Changeset của việc nạp**
+
+reversible=False — Ghi đè Flash của chip; bản cũ không còn.
+
+![nap-bo](anh/17-nap-bo.png)
+
+
+## Bước 18. Xác nhận chương trình đang chạy trên bo
+
+**Anh gõ:**
+
+> Bo đang chạy bản vừa nạp chưa? Bạn đọc log từ cổng nối tiếp xem có gì không, rồi nói cho mình biết bạn KẾT LUẬN được gì và chưa kết luận được gì.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích thước · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích thước · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] ## Kết quả kiểm tra cổng nối tiếp và trạng thái bo mạch
+> 
+> ### 1. Dữ liệu ghi nhận từ cổng nối tiếp
+> * **Cổng:** `/dev/cu.usbmodem103` (ST-LINK Virtual COM Port).
+> * **Cấu hình:** `115200` baud, thời gian lắng nghe `3 s`.
+> * **Kết quả:** Nhận được `0 byte` (cổng hoàn toàn im lặng).
+> 
+> ---
+> 
+> ### 2. Những điều KẾT LUẬN ĐƯỢC
+> 
+> 1. **Firmware đã được nạp và đối chiếu tính toàn vẹn vào Flash:**
+>    * Tệp ảnh `mach.bin` (224 byte, sha256 `bb463633c94c...`) đã được ghi vào địa chỉ `0x08000000`.
+>    * Trình nạp `st-flash` đã thực hiện bước kiểm tra đối chiếu (verify) thành công trên chip `STM32F46x_F47x`.
+> 2. **Cổng nối tiếp im lặng là điều bình thường theo thiết kế mã hiện tại:**
+>    * Qua kiểm tra trực tiếp tệp `firmware/main.c`, firmware hiện hành chỉ cấu hình xung nhịp cho `GPIOG` và đảo trạng thái chân `PG6` (điều khiển LED1 màu xanh).
+>    * Trong mã nguồn **chưa có bất kỳ dòng lệnh nào khởi tạo ngoại vi USART/UART hay gửi byte dữ liệu** ra cổng nối tiếp. Do đó, việc không nhận được dữ liệu từ cổng nối tiếp là hoàn toàn đúng với mã nguồn đã nạp.
+> 
+> ---
+> 
+> ### 3. Những điều CHƯA KẾT LUẬN ĐƯỢC
+> 
+> 1. **Chưa thể khẳng định firmware đang chạy hay bị treo nếu chỉ dựa vào log cổng nối tiếp:**
+>    * Theo quy tắc §6, *log rỗng không đồng nghĩa với đạt hay hỏng*. Khi firmware không phát dữ liệu, việc cổng nối tiếp im lặng không phản ánh được lõi vi điều khiển Cortex-M4 đang chạy vòng lặp hay rơi vào HardFault / đứng ở một ngoại lệ nào khác.
+> 2. **Cách xác nhận thực tế hiện tại:**
+>    * **Quan sát trực quan:** Anh nhìn trực tiếp trên bo mạch xem **đèn LED1 (xanh lá)** có đang nhấp nháy (chu kỳ trễ bằng vòng lặp đếm) hay không. Nếu LED1 nhấp nháy, firmware đang chạy đúng thiết kế.
+>    * **Nếu cần xác nhận qua cổng nối tiếp:** Cần bổ sung cấu hình chân TX của cổng COM ảo (thường nối với ST-LINK) và gửi dữ liệu log ra cổng USART.
+> 
+> ---
+> 
+> ### Báo cáo 5 dòng
+> - **Đã làm gì:** Đọc tệp nguồn `firmware/main.c` và lắng nghe 3 s cổng nối tiếp `/dev/cu.usbmodem103` ở 115200 baud; phân tích dữ liệu thực tế.
+> - **Bỏ gì và vì sao:** Không kết luận trạng thái hoạt động của lõi MCU qua cổng nối tiếp vì mã nguồn hiện tại không phát log UART.
+> - **Giả định đang dùng:** LED1 trên chân PG6 được đấu nối theo đúng tài liệu BSP `stm32469i_discovery.h`.
+> - **Hoàn tác được tới đâu:** Thao tác đọc log chỉ đo lường, không thay đổi trạng thái kho hay phần cứng.
+> - **Hết bao nhiêu:** 0 token suy đoán không nguồn; 1 lượt gọi `target.log`.
+> 
+> ---
+> 
+> **Đề xuất hành động tiếp theo:** Anh kiểm tra xem đèn **LED1 (Green)** trên bo có đang nhấp nháy không, hoặc báo mình để viết thêm driver USART xuất chuỗi chào mừng ra cổng COM ảo.
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. fs.read              ok  {"path": "firmware/main.c"}
+ 2. target.log           ok  {"giay": 3}
+```
+
+**Log đọc được**
+
+0 byte từ /dev/cu.usbmodem103 · im lặng=True
+
+
+✅ Cổng im lặng — và hệ thống nói đúng rằng điều đó KHÔNG chứng minh firmware sai
+
+```
+Cổng /dev/cu.usbmodem103 không gửi byte nào trong 3 s. Điều đó KHÔNG chứng minh firmware sai: có thể firmware chưa in gì, sai baud, hoặc in ra UART khác. Kiểm baud trong mã và chân UART nối tới ST-LINK trước khi kết luận.
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Đèn LED trên bo có đang nhấp nháy không? Đây là phần duy nhất của bài này mà không đo được bằng mã — kịch bản cố ý không tự trả lời.
+
+![chay-that](anh/18-chay-that.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+

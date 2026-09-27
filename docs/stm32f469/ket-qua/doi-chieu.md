@@ -18,11 +18,15 @@ Sinh tự động bởi `tools/doi_chieu_stm32.py`. Bộ này **không có sẵn
 | LED3 | `PD5` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | không |
 | LED4 | `PK3` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | không |
 
-## Fact trong kho (1)
+## Fact trong kho (5)
 
 | Chủ đề | Khoá | Giá trị | Tầng | Trích dẫn |
 |---|---|---|---|---|
 | `chip:STM32F469NI` | flash.size | 7.0 | BAC | CMSIS-STM32F469XX-H · dòng 1241–1280 |
+| `config:flash` | config:flash.size | 2097152.0 | CAUHINH | ? · **KHÔNG CÓ** |
+| `config:flash` | config:flash.origin | None | CAUHINH | ? · **KHÔNG CÓ** |
+| `config:ram` | config:ram.size | 327680.0 | CAUHINH | ? · **KHÔNG CÓ** |
+| `config:ram` | config:ram.origin | None | CAUHINH | ? · **KHÔNG CÓ** |
 
 ## Biên dịch
 
@@ -30,21 +34,38 @@ Sinh tự động bởi `tools/doi_chieu_stm32.py`. Bộ này **không có sẵn
 - **cong_cu**: `arm-none-eabi-gcc`
 - **so_loi**: `0`
 - **so_canh_bao**: `0`
-- **tep_ra**: `.eide/build/mach.elf`
+- **tep_ra**: `.eide/build/mach.hex`
 - **tep_bin**: `.eide/build/mach.bin`
 - **thieu_libc**: `True`
 - **flash**: `224`
 - **sram**: `0`
-- **flash_toi_da**: `70`
-- **sram_toi_da**: `0`
-- **ty_le_flash**: `3.2`
-- **ty_le_sram**: `None`
+- **flash_toi_da**: `20971520`
+- **sram_toi_da**: `3276800`
+- **ty_le_flash**: `0.0`
+- **ty_le_sram**: `0.0`
 - **vi_sao_khong_dat**: ``
 
 ## Nạp vào bo
 
-*Chưa có.*
+- **dat**: `True`
+- **cach**: `st-flash`
+- **tep**: `mach.bin`
+- **so_byte**: `224`
+- **hash**: `bb463633c94cae1cadd495ac10d038ebcb7cc31ca6a373259cd4b20dbaf4a6da`
+- **dich**: `0x08000000`
+- **giay**: `0.4`
+- **da_verify**: `True`
+- **chip_da_doi_chieu**: `STM32F46x_F47x`
+- **vi_sao_khong_dat**: ``
+- **chip_du_an**: `STM32F469NI`
+- **chip_theo_nhan_o**: `STM32F469NI`
+- **reversible**: `False`
+- **vi_sao_khong_hoan_tac**: `Ghi đè Flash của chip; bản cũ không còn.`
 
 ## Log từ bo
 
-*Chưa có.*
+- **cong**: `/dev/cu.usbmodem103`
+- **baud**: `115200`
+- **giay**: `3`
+- **so_byte**: `0`
+- **im_lang**: `True`

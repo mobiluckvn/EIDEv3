@@ -348,3 +348,33 @@ def test_han_muc_bo_qua_fact_vo_ly(make_agent):
                           "source": {"doc_id": "X", "cite": "dòng 2"}, "confidence": 1.0})
     flash, ram = _han_muc(_ctx(agent), None)
     assert flash == 2_000_000
+
+
+def test_nap_header_thi_CHI_DUONG_toi_fact_extract_pinout(make_agent):
+    """Đo được trên bo thật: nạp xong header, tác tử đi `fs.grep` đọc chân thay vì gọi công cụ.
+
+    Bản đồ chân vào được mắt nó mà không vào kho, và firmware sau đó dùng số không có Fact nào
+    đứng sau. Chỉ đường ngay lúc nạp rẻ hơn nhiều so với hy vọng nó tự tìm ra công cụ.
+    """
+    agent = make_agent([])
+    p = agent.config.paths.project_root / "bsp.h"
+    p.write_text(BSP, "utf-8")
+    r = agent.registry.run("doc.load", {"path": "bsp.h", "doc_id": "BSP",
+                                        "nguon": "nha_san_xuat", "explain": _ex()},
+                           _ctx(agent))
+    assert r.ok
+    assert r.data["so_cap_chan_doc_duoc"] == 7
+    assert "fact.extract_pinout" in r.data["note_vi"]
+    assert "LED1" in r.data["note_vi"]
+    assert "fs.grep" in r.data["note_vi"]
+
+
+def test_tai_lieu_van_ban_khong_co_chan_thi_khong_chi_duong_bua(make_agent):
+    agent = make_agent([])
+    p = agent.config.paths.project_root / "ghi-chu.md"
+    p.write_text("# Ghi chú\n\nBo này có bốn đèn.\n", "utf-8")
+    r = agent.registry.run("doc.load", {"path": "ghi-chu.md", "doc_id": "GC",
+                                        "nguon": "noi_bo", "explain": _ex("NGUOI")},
+                           _ctx(agent))
+    assert r.ok and r.data["so_cap_chan_doc_duoc"] == 0
+    assert "fact.extract_pinout" not in (r.data.get("note_vi") or "")

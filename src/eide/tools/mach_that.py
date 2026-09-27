@@ -126,7 +126,10 @@ def dang_ky(r: Registry) -> None:
         doan = [t["chip_doan"] for t in d["thiet_bi"] if t["chip_doan"]]
         thay_that = d["chip_doc_duoc"]
         thay_doan = doan[0] if doan else ""
-        if chip_du_an and thay_that and not _cung_chip(chip_du_an, thay_that):
+        # CHỈ chặn khi chứng minh được là LỆCH. "Chưa so được" rơi xuống nhánh xin xác nhận
+        # bên dưới — chặn vì không so được là một báo động giả, và báo động giả dạy người
+        # dùng bấm qua cảnh báo.
+        if chip_du_an and thay_that and so_chip(chip_du_an, thay_that) == "lech":
             return ToolResult(False, error=EideError(
                 "E4012",
                 f"DỪNG: dự án ghim chip {chip_du_an} nhưng bo đang cắm là {thay_that}.",
@@ -134,7 +137,8 @@ def dang_ky(r: Registry) -> None:
                                 "hỏi họ muốn gì: đổi hộ chiếu chip, hay cắm bo khác."),
                 details={"chip_du_an": chip_du_an, "chip_tren_bo": thay_that},
                 alternatives=["passport.pin", "target.detect"], blame="user"))
-        if chip_du_an and thay_doan and not thay_that and not _cung_chip(chip_du_an, thay_doan):
+        if (chip_du_an and thay_doan and not thay_that
+                and so_chip(chip_du_an, thay_doan) == "lech"):
             return ToolResult(False, error=EideError(
                 "E4012",
                 f"DỪNG: dự án ghim {chip_du_an} nhưng nhãn ổ đĩa của bộ nạp cho thấy bo là "
@@ -143,11 +147,19 @@ def dang_ky(r: Registry) -> None:
                                 "thấy KHÔNG khớp. Không nạp; hỏi người dùng."),
                 details={"chip_du_an": chip_du_an, "chip_theo_nhan_o": thay_doan},
                 alternatives=["passport.pin", "target.detect"], blame="user"))
-        if not thay_that and not dong_y_khong_doi_chieu_chip:
+        da_doi_chieu = bool(chip_du_an and thay_that
+                            and so_chip(chip_du_an, thay_that) == "khop")
+        if not da_doi_chieu and not dong_y_khong_doi_chieu_chip:
             return ToolResult(False, error=EideError(
                 "E4013",
                 "Chưa đối chiếu được ID CHIP: "
-                + str(d["vi_sao_chua_doc_duoc_chip"] or "không đọc được qua SWD")
+                + (str(d["vi_sao_chua_doc_duoc_chip"])
+                   if d["vi_sao_chua_doc_duoc_chip"] else
+                   (f"đọc được “{thay_that}” từ bo nhưng dự án chưa ghim chip nào để so"
+                    if thay_that and not chip_du_an else
+                    f"đọc được “{thay_that}” từ bo, không suy ra được nó có phải "
+                    f"{chip_du_an} hay không" if thay_that else
+                    "không đọc được qua SWD"))
                 + ". MDD-40 đòi nạp phải đối chiếu ID chip.",
                 hint_for_agent=(
                     "Hai đường đi, để NGƯỜI DÙNG chọn — đừng tự chọn:\n"
@@ -267,12 +279,19 @@ def dang_ky(r: Registry) -> None:
                    "Đây là nguyên văn bo in ra — dùng nó làm bằng chứng, đừng kể lại theo ý."))}
 
 
-def _cung_chip(a: str, b: str) -> bool:
-    """Hai mã chip có nói về cùng một con chip không.
+def so_chip(a: str, b: str) -> str:
+    """Hai mã chip nói về cùng một con chip không. Trả `khop` | `lech` | `chua_so_duoc`.
 
-    So lỏng có chủ ý: hộ chiếu ghi `STM32F469NIH6` còn nhãn ổ đĩa khai `STM32F469NI` và
-    `st-info` khai `F46x/F47x`. Bắt khớp từng ký tự sẽ báo "sai chip" cho đúng con chip đang
-    cắm, và một cảnh báo sai kiểu đó dạy người dùng bỏ qua cảnh báo.
+    **Ba giá trị, không phải hai.** "Không chứng minh được là giống nhau" và "chứng minh được
+    là khác nhau" dẫn tới hai hành động trái ngược: cái sau phải chặn việc nạp, cái trước chỉ
+    được hỏi người dùng. Gộp chúng thành `False` là biến mọi chỗ không so được thành một lời
+    buộc tội — đo được trên bo thật: `st-info` trả `chipid 0x434`, phép so cũ không hiểu mã
+    số đó, và việc nạp bị **chặn bằng một báo động giả**. Một cảnh báo sai dạy người dùng bỏ
+    qua cảnh báo.
+
+    So lỏng có chủ ý ở nhánh `khop`: hộ chiếu ghi `STM32F469NIH6`, nhãn ổ đĩa khai
+    `STM32F469NI`, `st-info` khai `STM32F46x_F47x`. Bắt khớp từng ký tự sẽ báo "sai chip" cho
+    đúng con chip đang cắm.
     """
     import re
 
@@ -281,19 +300,24 @@ def _cung_chip(a: str, b: str) -> bool:
 
     ga, gb = gon(a), gon(b)
     if not ga or not gb:
-        return False
+        return "chua_so_duoc"
     if ga.startswith(gb) or gb.startswith(ga):
-        return True
-    # `STM32F469NIH6` vs `F46X/F47X`: lấy phần chữ+số đầu của mỗi bên rồi so tới chỗ có `X`.
+        return "khop"
+    # `STM32F469NIH6` vs `F46X_F47X`: lấy phần chữ+số đầu của mỗi bên rồi so tới chỗ có `X`.
     ma_a = re.search(r"([FLGHWU]\d{1,2}[0-9A-Z]*)", ga)
     ma_b = re.search(r"([FLGHWU]\d{1,2}[0-9A-Z]*)", gb)
     if not ma_a or not ma_b:
-        return False
+        # Một bên không có dạng mã chip nào nhận ra được (ví dụ chuỗi `CHIPID0X434`).
+        return "chua_so_duoc"
     ta, tb = ma_a.group(1), ma_b.group(1)
-    n = min(len(ta), len(tb))
-    for i in range(n):
+    for i in range(min(len(ta), len(tb))):
         if tb[i] == "X" or ta[i] == "X":
-            return True
+            return "khop"
         if ta[i] != tb[i]:
-            return False
-    return True
+            return "lech"
+    return "khop"
+
+
+def _cung_chip(a: str, b: str) -> bool:
+    """Giữ cho chỗ gọi cũ. Chỉ `khop` mới là True — `chua_so_duoc` KHÔNG phải là khớp."""
+    return so_chip(a, b) == "khop"

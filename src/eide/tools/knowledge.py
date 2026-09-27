@@ -354,6 +354,21 @@ def register(r: Registry) -> Registry:
                 (out.get("note_vi", "") + " ").strip()
                 + "Word KHÔNG có số trang cố định — trích dẫn theo đường tiêu đề và số "
                   "bảng. Người cần số trang thì gọi doc.to_pdf.")
+        if tl.don_vi_trich_dan == "dòng":
+            # Chỉ đường NGAY LÚC nạp, chứ không để tác tử tự đi tìm công cụ. Đo được trên bo
+            # STM32F469: nạp xong header BSP, tác tử đi `fs.grep` trong tệp để đọc chân thay
+            # vì gọi `fact.extract_pinout` — nên bản đồ chân vào được mắt nó mà không vào kho,
+            # và firmware sau đó dùng số không có Fact nào đứng sau (N1).
+            cap = docs_mod.ghep_chan_tu_dinh_nghia(
+                docs_mod.trich_dinh_nghia(tl, gioi_han=400))
+            out["so_cap_chan_doc_duoc"] = len(cap)
+            if cap:
+                out["note_vi"] = (
+                    (out.get("note_vi", "") + " ").strip()
+                    + f"Tài liệu này khai {len(cap)} chân theo lối `X_GPIO_PORT` + `X_PIN` "
+                      f"({', '.join(list(cap)[:5])}…). Gọi **fact.extract_pinout** để đưa "
+                      "chúng vào kho thành Fact có trích dẫn — đừng đọc bằng fs.grep rồi nhớ "
+                      "trong đầu, số nhớ được thì lần sau không ai kiểm lại được.")
         if tl.canh_bao_tiem_lenh:
             # §C3 bước 7 — nội dung tải về là DỮ LIỆU (TC014).
             ctx.emit(uic.notice(

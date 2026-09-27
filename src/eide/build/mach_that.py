@@ -140,29 +140,48 @@ def _cong_noi_tiep() -> list[BoTimDuoc]:
     return ra
 
 
-def doc_id_chip() -> tuple[str, str]:
-    """ID chip đọc qua SWD bằng `st-info`. Trả `(mô tả chip, vì sao không đọc được)`.
+def doc_id_chip() -> tuple[str, str, dict[str, int]]:
+    """Chip đọc qua SWD bằng `st-info`. Trả `(tên chip, vì sao không đọc được, bộ nhớ)`.
 
     Đây là phép kiểm mà TC034 đòi: firmware cho F103 nạp vào bo F401 phải bị dừng TRƯỚC khi
     nạp. Không có `st-info` thì không đọc được, và khi đó phải nói "chưa đọc được" — không
     được lấy tên ổ đĩa rồi trình bày nó như thể đã đọc từ silicon.
+
+    Thứ tự đọc có chủ ý: **`dev-type` trước `chipid`**. `st-info --probe` in cả hai —
+    `chipid: 0x434` và `dev-type: STM32F46x_F47x` — và chỉ cái sau là thứ so được với mã chip
+    trong hộ chiếu. Bản trước đọc `chipid`, nên phép đối chiếu nhận được chuỗi `chipid 0x434`,
+    không khớp `STM32F469NI`, và **chặn việc nạp bằng một báo động giả** — đúng loại cảnh báo
+    dạy người dùng bỏ qua cảnh báo.
+
+    Lấy luôn `flash`/`sram`: đó là số đọc từ chính con chip đang cắm, chắc hơn mọi con số
+    trích từ tài liệu bằng biểu thức chính quy.
     """
     st = shutil.which("st-info")
     if not st:
-        return "", ("máy chưa có `st-info` (gói `stlink`) nên không đọc được ID chip qua SWD")
+        return "", "máy chưa có `st-info` (gói `stlink`) nên không đọc được ID chip qua SWD", {}
     try:
         r = subprocess.run([st, "--probe"], capture_output=True, text=True, timeout=20)
     except (OSError, subprocess.SubprocessError) as e:
-        return "", f"gọi st-info thất bại: {type(e).__name__}: {e}"
+        return "", f"gọi st-info thất bại: {type(e).__name__}: {e}", {}
     out = (r.stdout or "") + (r.stderr or "")
-    m = re.search(r"^\s*descr:\s*(.+)$", out, re.M)
-    if m:
-        return m.group(1).strip(), ""
+
+    bo_nho: dict[str, int] = {}
+    for khoa in ("flash", "sram"):
+        m = re.search(rf"^\s*{khoa}:\s*(\d+)", out, re.M)
+        if m:
+            bo_nho[khoa] = int(m.group(1))
+
+    for mau in (r"^\s*dev-type:\s*(\S+)", r"^\s*descr:\s*(.+)$"):
+        m = re.search(mau, out, re.M)
+        if m:
+            return m.group(1).strip(), "", bo_nho
     m = re.search(r"chipid:\s*(0x[0-9a-fA-F]+)", out)
     if m:
-        return f"chipid {m.group(1)}", ""
+        # Chỉ có mã số: đọc được bo nhưng KHÔNG suy ra được tên chip. Nói đúng như thế.
+        return "", (f"st-info chỉ đọc được mã `chipid {m.group(1)}` mà không có `dev-type`, "
+                    "nên chưa suy ra được tên chip để đối chiếu"), bo_nho
     return "", ("st-info chạy xong nhưng không thấy bo nào: "
-                + " ".join(out.split())[:200])
+                + " ".join(out.split())[:200]), bo_nho
 
 
 def do_bo() -> dict[str, Any]:
@@ -178,11 +197,13 @@ def do_bo() -> dict[str, Any]:
             ds.append(b)
     ds += _cong_noi_tiep()
 
-    chip, vi_sao_chip = doc_id_chip()
-    if chip:
-        ds.append(BoTimDuoc(loai="swd", duong_dan="(SWD qua ST-LINK)", ten=chip,
-                            chip_doc_duoc=chip, nap_duoc_bang="st-flash",
-                            biet_bang_cach="st-info --probe đọc ID chip qua SWD"))
+    chip, vi_sao_chip, bo_nho = doc_id_chip()
+    if chip or bo_nho:
+        ds.append(BoTimDuoc(
+            loai="swd", duong_dan="(SWD qua ST-LINK)", ten=chip or "(chưa rõ tên chip)",
+            chip_doc_duoc=chip, nap_duoc_bang="st-flash",
+            chi_tiet={k: str(v) for k, v in bo_nho.items()},
+            biet_bang_cach="st-info --probe đọc qua SWD"))
 
     bo_nap = [b for b in ds if b.nap_duoc_bang]
     la_bo = [b for b in ds if b.co_the_la_bo]
@@ -192,6 +213,9 @@ def do_bo() -> dict[str, Any]:
         "thiet_bi": [b.to_dict() for b in ds],
         "nap_duoc": bool(bo_nap),
         "chip_doc_duoc": chip,
+        # Đọc từ CHÍNH con chip đang cắm — chắc hơn mọi con số trích từ tài liệu bằng biểu
+        # thức chính quy (xem Fact `flash.size = 7` đọc nhầm từ dòng khai địa chỉ thanh ghi).
+        "bo_nho_doc_tu_chip": bo_nho,
         "vi_sao_chua_doc_duoc_chip": vi_sao_chip,
         # Danh sách kiểm tra hiện ra khi không có thứ nào CÓ THỂ là bo — không phải khi
         # không có thiết bị nào, vì một cái tai nghe Bluetooth vẫn tính là "có thiết bị".

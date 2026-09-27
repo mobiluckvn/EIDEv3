@@ -32,7 +32,7 @@ def _o_gia(tmp_path: Path, ten: str = "DIS_F469NI", *, details: str = "Version: 
 def test_nhan_ra_bo_va_suy_chip_tu_nhan_o_dia(tmp_path, monkeypatch):
     o = _o_gia(tmp_path)
     monkeypatch.setattr(MT, "THU_MUC_O_DIA", tmp_path / "Volumes")
-    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "không có st-info"))
+    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "không có st-info", {}))
     monkeypatch.setattr(MT, "_cong_noi_tiep", lambda: [])
     d = MT.do_bo()
     assert d["so_thiet_bi"] == 1 and d["nap_duoc"]
@@ -48,7 +48,7 @@ def test_chip_doan_khac_chip_doc_duoc(tmp_path, monkeypatch):
     """Nhãn ổ đĩa là bằng chứng về BO; ID chip là bằng chứng về silicon. Không gộp hai thứ."""
     _o_gia(tmp_path)
     monkeypatch.setattr(MT, "THU_MUC_O_DIA", tmp_path / "Volumes")
-    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "chưa có st-info"))
+    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "chưa có st-info", {}))
     monkeypatch.setattr(MT, "_cong_noi_tiep", lambda: [])
     d = MT.do_bo()
     assert d["chip_doc_duoc"] == ""
@@ -61,7 +61,7 @@ def test_o_dia_thuong_khong_bi_coi_la_bo(tmp_path, monkeypatch):
     (tmp_path / "Volumes" / "Macintosh HD").mkdir(parents=True)
     (tmp_path / "Volumes" / "USB cua toi").mkdir(parents=True)
     monkeypatch.setattr(MT, "THU_MUC_O_DIA", tmp_path / "Volumes")
-    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x"))
+    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x", {}))
     monkeypatch.setattr(MT, "_cong_noi_tiep", lambda: [])
     d = MT.do_bo()
     assert d["so_thiet_bi"] == 0 and not d["nap_duoc"]
@@ -71,7 +71,7 @@ def test_khong_co_bo_thi_tra_danh_sach_kiem_tra_du_bon_muc(tmp_path, monkeypatch
     """TC032 đòi đúng bốn thứ: nguồn, cáp, driver, chân BOOT/NRST."""
     (tmp_path / "Volumes").mkdir()
     monkeypatch.setattr(MT, "THU_MUC_O_DIA", tmp_path / "Volumes")
-    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x"))
+    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x", {}))
     monkeypatch.setattr(MT, "_cong_noi_tiep", lambda: [])
     d = MT.do_bo()
     ds = " ".join(d["danh_sach_kiem_tra"]).lower()
@@ -93,7 +93,7 @@ def test_tai_nghe_bluetooth_khong_bi_coi_la_bo(tmp_path, monkeypatch):
         (dev / t).write_text("", "utf-8")
     monkeypatch.setattr(MT, "THU_MUC_DEV", dev)
     monkeypatch.setattr(MT, "THU_MUC_O_DIA", tmp_path / "Volumes")
-    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x"))
+    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x", {}))
     d = MT.do_bo()
     theo_ten = {t["ten"]: t["co_the_la_bo"] for t in d["thiet_bi"]}
     assert theo_ten["cu.usbmodem1103"] is True
@@ -116,7 +116,7 @@ def test_chi_co_cong_khong_phai_bo_thi_van_ra_danh_sach_kiem_tra(tmp_path, monke
         (dev / t).write_text("", "utf-8")
     monkeypatch.setattr(MT, "THU_MUC_DEV", dev)
     monkeypatch.setattr(MT, "THU_MUC_O_DIA", tmp_path / "Volumes")
-    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x"))
+    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x", {}))
     d = MT.do_bo()
     assert d["so_thiet_bi"] == 3 and d["so_co_the_la_bo"] == 0
     assert len(d["danh_sach_kiem_tra"]) == 4
@@ -341,7 +341,7 @@ def _bo_gia(monkeypatch, tmp_path, *, chip_doan="STM32F469NI", chip_doc=""):
     monkeypatch.setattr(MT, "THU_MUC_DEV", tmp_path / "dev-rong")
     (tmp_path / "dev-rong").mkdir(exist_ok=True)
     monkeypatch.setattr(MT, "doc_id_chip",
-                        lambda: (chip_doc, "" if chip_doc else "chưa có st-info"))
+                        lambda: (chip_doc, "" if chip_doc else "chưa có st-info", {}))
     return o
 
 
@@ -414,7 +414,7 @@ def test_khong_co_bo_thi_bao_loi_kem_danh_sach_kiem_tra(make_agent, tmp_path, mo
     (tmp_path / "dev-rong").mkdir()
     monkeypatch.setattr(MT, "THU_MUC_O_DIA", tmp_path / "Volumes")
     monkeypatch.setattr(MT, "THU_MUC_DEV", tmp_path / "dev-rong")
-    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x"))
+    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x", {}))
     b = agent.config.paths.project_root / ".eide" / "build" / "mach.bin"
     b.parent.mkdir(parents=True, exist_ok=True)
     b.write_bytes(BIN)
@@ -446,7 +446,7 @@ def test_log_nhieu_cong_thi_khong_doan(make_agent, tmp_path, monkeypatch):
     monkeypatch.setattr(MT, "THU_MUC_DEV", dev)
     monkeypatch.setattr(MT, "THU_MUC_O_DIA", tmp_path / "Volumes")
     (tmp_path / "Volumes").mkdir(exist_ok=True)
-    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x"))
+    monkeypatch.setattr(MT, "doc_id_chip", lambda: ("", "x", {}))
     r = agent.registry.run("target.log", {"giay": 0.2}, _ctx(agent))
     assert not r.ok and "không đoán dùng cổng nào" in r.error.message_vi
     assert "tai nghe Bluetooth" in r.error.hint_for_agent
@@ -456,3 +456,78 @@ def test_log_qua_lau_thi_tu_choi(make_agent):
     agent = make_agent([])
     r = agent.registry.run("target.log", {"giay": 600}, _ctx(agent))
     assert not r.ok and r.error.code == "E5001"
+
+
+# ============================== so chip: ba giá trị, không phải hai
+@pytest.mark.parametrize("a,b,mong", [
+    ("STM32F469NI", "STM32F46x_F47x", "khop"),     # st-info khai theo họ
+    ("STM32F469NIH6", "STM32F469NI", "khop"),      # hộ chiếu dài hơn nhãn ổ
+    ("STM32F469NI", "chipid 0x434", "chua_so_duoc"),   # ca thật đã chặn nhầm
+    ("STM32F469NI", "", "chua_so_duoc"),
+    ("", "STM32F469NI", "chua_so_duoc"),
+    ("STM32F103C8", "STM32F401RE", "lech"),        # TC034
+    ("STM32F469NI", "STM32F407VG", "lech"),
+])
+def test_so_chip_ba_gia_tri(a, b, mong):
+    from eide.tools.mach_that import so_chip
+
+    assert so_chip(a, b) == mong
+
+
+def test_chua_so_duoc_thi_HOI_chu_khong_chan(make_agent, tmp_path, monkeypatch):
+    """Ca thật: st-info trả `chipid 0x434`, phép so cũ không hiểu, và việc nạp bị CHẶN.
+
+    Chặn vì không so được là một báo động giả, và báo động giả dạy người dùng bấm qua cảnh
+    báo. "Không chứng minh được là giống" phải dẫn tới HỎI, không dẫn tới DỪNG.
+    """
+    agent = make_agent([])
+    _bo_gia(monkeypatch, tmp_path, chip_doan="STM32F469NI", chip_doc="chipid 0x434")
+    _ghim_chip(agent, "STM32F469NIH6")
+    b = agent.config.paths.project_root / ".eide" / "build" / "mach.bin"
+    b.parent.mkdir(parents=True, exist_ok=True)
+    b.write_bytes(BIN)
+    r = agent.registry.run("target.flash", {"explain": _EX}, _ctx(agent))
+    assert not r.ok and r.error.code == "E4013", "phải là XIN XÁC NHẬN, không phải DỪNG"
+    assert "dong_y_khong_doi_chieu_chip=true" in r.error.hint_for_agent
+
+
+def test_doc_duoc_dev_type_thi_nap_thang_khong_can_xac_nhan(make_agent, tmp_path, monkeypatch):
+    """Đọc được `dev-type: STM32F46x_F47x` và nó khớp hộ chiếu → đã đối chiếu, nạp được."""
+    agent = make_agent([])
+    o = _bo_gia(monkeypatch, tmp_path, chip_doan="STM32F469NI",
+                chip_doc="STM32F46x_F47x")
+    _ghim_chip(agent, "STM32F469NIH6")
+    b = agent.config.paths.project_root / ".eide" / "build" / "mach.bin"
+    b.parent.mkdir(parents=True, exist_ok=True)
+    b.write_bytes(BIN)
+    r = agent.registry.run("target.flash", {"explain": _EX, "cach": "sao_tep"}, _ctx(agent))
+    assert r.ok, getattr(r.error, "message_vi", r)
+    assert r.data["chip_da_doi_chieu"] == "STM32F46x_F47x"
+    assert "Chip đã đối chiếu" in r.data["note_vi"]
+    assert (o / "mach.bin").read_bytes() == BIN
+
+
+def test_st_info_doc_duoc_bo_nho_tu_chip(monkeypatch):
+    """Flash/SRAM đọc từ chính con chip chắc hơn mọi con số trích từ tài liệu bằng regex."""
+    import subprocess
+
+    ra = ("Found 1 stlink programmers\n  version:    V2J35S26\n"
+          "  flash:      2097152 (pagesize: 16384)\n  sram:       262144\n"
+          "  chipid:     0x434\n  dev-type:   STM32F46x_F47x\n")
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/st-info")
+    monkeypatch.setattr(MT.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a[0], 0, ra, ""))
+    ten, vi_sao, bo_nho = MT.doc_id_chip()
+    assert ten == "STM32F46x_F47x" and not vi_sao
+    assert bo_nho == {"flash": 2097152, "sram": 262144}
+
+
+def test_chi_co_chipid_thi_noi_la_chua_suy_ra_duoc_ten(monkeypatch):
+    import subprocess
+
+    ra = "Found 1 stlink programmers\n  chipid:     0x434\n"
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/st-info")
+    monkeypatch.setattr(MT.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a[0], 0, ra, ""))
+    ten, vi_sao, _ = MT.doc_id_chip()
+    assert ten == "" and "chưa suy ra được tên chip" in vi_sao

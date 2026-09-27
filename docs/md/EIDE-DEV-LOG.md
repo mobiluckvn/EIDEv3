@@ -2448,9 +2448,43 @@ sai chân. Sửa: thêm mẫu dịch bit, và quan trọng hơn là trả về c
 một tập rỗng có hai nghĩa trái ngược ("firmware không dùng chân nào" và "bộ đo không đọc nổi
 mã này"), và trả cùng một `set()` cho cả hai là biến cái thứ hai thành cái thứ nhất.
 
+#### 12. Việc nạp bị chặn bằng một báo động giả
+
+Phiên đi tới bước nạp, và `target.flash` **từ chối** với E4012: *"dự án ghim STM32F469NI nhưng
+bo đang cắm là chipid 0x434"*. Bo đang cắm đúng là F469. Lỗi là của tôi, ở hai chỗ chồng lên
+nhau — và chỗ thứ hai nguy hiểm hơn chỗ thứ nhất.
+
+**Chỗ thứ nhất: đọc nhầm dòng.** Tác tử đã tự xin cài `stlink` qua cổng G-TOOL (đúng điều anh
+Công yêu cầu — công cụ do *nó* xin, không phải tôi cài hộ), nên `st-info --probe` chạy được.
+Đầu ra của nó có **cả hai** dòng:
+
+    chipid:     0x434
+    dev-type:   STM32F46x_F47x
+
+`doc_id_chip` đọc `chipid` trước, nên phép đối chiếu nhận được chuỗi `chipid 0x434` — một mã
+số mà nó không có cách nào so với `STM32F469NI`. Đổi thứ tự: `dev-type` trước, `descr` sau,
+`chipid` chỉ còn dùng để nói *"đọc được bo nhưng chưa suy ra được tên chip"*. Tiện thể lấy
+luôn `flash: 2097152` và `sram: 262144` — số đọc từ **chính con chip đang cắm**, chắc hơn mọi
+con số trích từ tài liệu bằng biểu thức chính quy (xem `flash.size = 7` ở mục 11).
+
+**Chỗ thứ hai: phép so chỉ có hai giá trị.** `_cung_chip` trả `True`/`False`, và `False` được
+dùng làm *"chứng minh được là khác chip"* → dừng. Nhưng `False` thật ra gộp hai chuyện trái
+ngược: **"chứng minh được là khác"** và **"không so được"**. Cái sau phải dẫn tới HỎI, không
+dẫn tới DỪNG.
+
+Đây đúng là hình dạng của bài học đã viết ở G6 cho `chua_do_duoc`: *"không kiểm được" không
+bao giờ được hiện ra thành "đã kiểm"*. Ở đây nó xuất hiện theo chiều ngược lại — "không kiểm
+được" hiện ra thành "đã kiểm và thấy sai". Cả hai đều là cùng một lỗi: một trạng thái thứ ba
+bị ép vào một ô nhị phân.
+
+→ `so_chip()` trả `khop` | `lech` | `chua_so_duoc`. `target.flash` **chỉ** chặn ở `lech`;
+`chua_so_duoc` rơi xuống nhánh xin xác nhận tường minh đã có sẵn. Hậu quả thực tế của việc
+làm sai: một cảnh báo sai ở đúng chỗ nguy hiểm nhất (thao tác không hoàn tác được) dạy người
+dùng bấm qua cảnh báo — và lần sau, khi thẻ cổng báo đúng, họ cũng bấm qua.
+
 ### Số đo
 
-`946 ca đơn vị` (+93 so với DEV-277) · `95 công cụ` khi cờ sơ đồ tắt (+4: `doc.fetch`,
+`968 ca đơn vị` (+93 so với DEV-277) · `95 công cụ` khi cờ sơ đồ tắt (+4: `doc.fetch`,
 `target.detect`, `target.flash`, `target.log`), `104` khi bật.
 
 Phiên bo thật (`tools/phien_stm32.py`): bước 1–2 chạy được trên bo đang cắm — tác tử tự tìm ra
