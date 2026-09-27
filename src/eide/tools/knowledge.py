@@ -24,6 +24,53 @@ from ..protocol import uicommand as uic
 from .registry import Registry, ToolResult
 from .writing import EXPLAIN_SCHEMA
 
+# Những loại `phan_loai` trả về mà `doc.load` nạp như TÀI LIỆU VĂN BẢN (trích dẫn theo dòng).
+# Cố ý KHÔNG có netlist/schematic/eagle/svd: bốn loại đó có công cụ riêng đọc đúng cấu trúc
+# của chúng, và nạp chúng thành văn bản thô sẽ che mất đường đúng bằng một đường tệ hơn.
+_LOAI_VAN_BAN = ("source", "vendor", "note", "config", "log", "text", "html", "script")
+
+
+def _nap_theo_loai(ctx: Any, p: Path, *, loai: str, doc_id: str, phien_ban: str,
+                   nha_phat_hanh: str, mo_ta: str = "", de_xuat: list[str] | None = None,
+                   chuyen_sang: str = "định dạng mới"):
+    """Chọn bộ đọc theo loại tệp. Trả `(tài_liệu, lỗi)` — đúng một trong hai khác None.
+
+    Một hàm, hai người gọi: `doc.load` (nạp lần đầu) và `_lay_tai_lieu` (đọc lại sau khi mở
+    lại dự án). Bản trước có hai bản sao của phép chọn này, và chúng đã lệch nhau: đường đọc
+    lại gửi *mọi* thứ không phải PDF cho `nap_office`, nên một tài liệu văn bản nạp được lần
+    đầu sẽ chết ở lần mở dự án sau — kiểu lỗi chỉ hiện ra sau khi khởi động lại, tức là ở xa
+    chỗ gây ra nó nhất.
+    """
+    if loai == "pdf":
+        return docs_mod.nap_tai_lieu(p, doc_id=doc_id, phien_ban=phien_ban,
+                                     nha_phat_hanh=nha_phat_hanh), None
+    if loai in _LOAI_VAN_BAN:
+        # `phan_loai` đã nói những loại này đọc được; trước đây `doc.load` vẫn từ chối, nên
+        # tác tử bị dẫn vào ngõ cụt giữa hai câu trả lời trái nhau của cùng một hệ thống.
+        try:
+            return docs_mod.nap_van_ban(p, doc_id=doc_id, loai=loai, phien_ban=phien_ban,
+                                        nha_phat_hanh=nha_phat_hanh), None
+        except (ValueError, OSError) as e:
+            return None, EideError(
+                "E1001", f"{p.name}: {e}",
+                hint_for_agent="Tệp văn bản quá lớn hoặc không đọc được — nói rõ cho người "
+                               "dùng, đừng thử lại y nguyên.",
+                alternatives=["ingest.file"], blame="user")
+    if loai in ("docx", "xlsx", "pptx", "office_cu"):
+        from ..knowledge import office as office_mod
+        tl, vi_sao = office_mod.nap_office(
+            p, loai=loai, doc_id=doc_id,
+            thu_muc_tam=ctx.config.paths.state_dir / "chuyen-doi",
+            phien_ban=phien_ban, nha_phat_hanh=nha_phat_hanh)
+        if tl is None:
+            return None, convert_failed(p.name, chuyen_sang, vi_sao)
+        return tl, None
+    return None, EideError(
+        "E1001", f"{p.name} là {mo_ta or loai} — chưa có bộ đọc nạp nó vào kho tài liệu.",
+        hint_for_agent=("Dùng ingest.file để phân loại và nói cho người dùng cách xuất sang "
+                        "định dạng đọc được."),
+        alternatives=de_xuat or ["ingest.file"], blame="user")
+
 
 def _lay_tai_lieu(ctx: Any, doc_id: str):
     """Tài liệu đã nạp — lấy từ bộ nhớ lượt, hoặc **đọc lại từ tệp** nếu phiên đã khởi động lại.
@@ -66,22 +113,18 @@ def _lay_tai_lieu(ctx: Any, doc_id: str):
 
     kq = ingest_mod.phan_loai(p)
     try:
-        if kq.loai == "pdf":
-            tl = docs_mod.nap_tai_lieu(
-                p, doc_id=doc_id, phien_ban=str(canon.get("version") or ""),
-                nha_phat_hanh=str(canon.get("publisher") or ""))
-        else:
-            from ..knowledge import office as office_mod
-            tl, vi_sao = office_mod.nap_office(
-                p, loai=kq.loai, doc_id=doc_id,
-                thu_muc_tam=ctx.config.paths.state_dir / "chuyen-doi",
-                phien_ban=str(canon.get("version") or ""),
-                nha_phat_hanh=str(canon.get("publisher") or ""))
-            if tl is None:
-                return None, EideError(
-                    "E2001", f"Không đọc lại được {doc_id}: {vi_sao}",
-                    hint_for_agent="Báo người dùng và thử doc.load lại.",
-                    alternatives=["doc.load"], blame="system")
+        tl, loi = _nap_theo_loai(
+            ctx, p, loai=kq.loai, doc_id=doc_id,
+            phien_ban=str(canon.get("version") or ""),
+            nha_phat_hanh=str(canon.get("publisher") or ""),
+            mo_ta=kq.mo_ta, de_xuat=kq.de_xuat,
+            chuyen_sang=kq.chi_tiet.get("chuyen_sang", "định dạng mới"))
+        if tl is None:
+            return None, EideError(
+                "E2001",
+                f"Không đọc lại được {doc_id}: {loi.message_vi if loi else 'không rõ'}",
+                hint_for_agent="Báo người dùng và thử doc.load lại.",
+                alternatives=["doc.load"], blame="system")
     except Exception as e:                      # bộ đọc hỏng thì NÓI RA, không nuốt
         return None, EideError(
             "E2001", f"Đọc lại tài liệu {doc_id} thất bại: {type(e).__name__}: {e}",
@@ -216,25 +259,12 @@ def register(r: Registry) -> Registry:
                 hint_for_agent="Gọi ingest.file để biết tệp này là gì và cách xử lý.",
                 alternatives=kq.de_xuat or ["ingest.file"], blame="user"))
 
-        if kq.loai == "pdf":
-            tl = docs_mod.nap_tai_lieu(p, doc_id=doc_id, phien_ban=phien_ban,
-                                       nha_phat_hanh=nha_phat_hanh)
-        elif kq.loai in ("docx", "xlsx", "pptx", "office_cu"):
-            from ..knowledge import office as office_mod
-            tl, vi_sao = office_mod.nap_office(
-                p, loai=kq.loai, doc_id=doc_id,
-                thu_muc_tam=ctx.config.paths.state_dir / "chuyen-doi",
-                phien_ban=phien_ban, nha_phat_hanh=nha_phat_hanh)
-            if tl is None:
-                return ToolResult(False, error=convert_failed(
-                    p.name, kq.chi_tiet.get("chuyen_sang", "định dạng mới"), vi_sao))
-        else:
-            return ToolResult(False, error=EideError(
-                "E1001",
-                f"{p.name} là {kq.mo_ta} — chưa có bộ đọc nạp nó vào kho tài liệu.",
-                hint_for_agent=("Dùng ingest.file để phân loại và nói cho người dùng "
-                                "cách xuất sang định dạng đọc được."),
-                alternatives=kq.de_xuat or ["ingest.file"], blame="user"))
+        tl, loi = _nap_theo_loai(
+            ctx, p, loai=kq.loai, doc_id=doc_id, phien_ban=phien_ban,
+            nha_phat_hanh=nha_phat_hanh, mo_ta=kq.mo_ta, de_xuat=kq.de_xuat,
+            chuyen_sang=kq.chi_tiet.get("chuyen_sang", "định dạng mới"))
+        if tl is None:
+            return ToolResult(False, error=loi)
         tang = docs_mod.tang_mac_dinh(nguon, tl.loai)
         ctx.tai_lieu[tl.doc_id] = tl
         canon = {**tl.to_canonical(), "nguon": nguon, "tang_mac_dinh": tang}
@@ -970,36 +1000,93 @@ def register(r: Registry) -> Registry:
             keywords=["tìm", "datasheet", "mạng", "web", "search"])
     def doc_search_web(ctx: Any, truy_van: str, so_luong: int = 8):
         import os
-        url = os.environ.get("EIDE_SEARXNG_URL", "").rstrip("/")
-        if not url:
-            # TC072 — lỗi MẠNG phải được gọi đúng tên, không đội lốt lỗi khác.
-            return ToolResult(False, error=network_down(
-                "SearXNG",
-                "chưa cấu hình máy chủ tìm kiếm (đặt EIDE_SEARXNG_URL trong .env)",
-                state_saved=True))
-        try:
-            import json as _json
-            import urllib.parse
-            import urllib.request
-            q = urllib.parse.urlencode({"q": truy_van, "format": "json"})
-            with urllib.request.urlopen(f"{url}/search?{q}", timeout=20) as r:
-                data = _json.loads(r.read().decode("utf-8"))
-        except Exception as e:                                # noqa: BLE001
-            return ToolResult(False, error=network_down("SearXNG", str(e)[:150]))
 
-        TIN = ("st.com", "microchip.com", "ti.com", "nxp.com", "infineon.com",
-               "renesas.com", "espressif.com", "nordicsemi.com", "raspberrypi.com",
-               "analog.com", "onsemi.com", "rohm.com", "toshiba.com")
-        ds = []
-        for k in data.get("results", [])[: so_luong * 3]:
-            u = k.get("url", "")
-            nha_sx = any(t in u for t in TIN)
-            ds.append({"tieu_de": k.get("title", ""), "url": u,
-                       "nha_san_xuat": nha_sx,
-                       "trich": (k.get("content") or "")[:150]})
-        ds.sort(key=lambda x: (not x["nha_san_xuat"],))
-        return {"truy_van": truy_van, "so_ket_qua": len(ds), "ung_vien": ds[:so_luong],
-                "note_vi": "Đây là ỨNG VIÊN, chưa phải tài liệu của dự án. Trình danh "
-                           "sách cho người dùng chọn — ưu tiên nguồn từ nhà sản xuất."}
+        from ..knowledge import tim_kiem as tk
+
+        # Nhớ đệm để NGOÀI dự án, cố ý. Nó là dữ liệu của MÁY (danh sách repo của hãng), không
+        # phải của dự án — và quan trọng hơn: đặt trong `.eide/` thì `fs.glob`/`fs.read` thấy
+        # nó và tác tử đọc thẳng tệp nhớ đệm thay vì gọi lại công cụ tìm. Đo được trên phiên bo
+        # thật: một lượt "tự tìm tài liệu" trôi hết vào việc bới `.eide/tim-kiem/*.json` và
+        # `.eide/sessions/*/transcript.jsonl`, không gọi `doc.search_web` lần nào.
+        cache = Path(os.environ.get("EIDE_CACHE_DIR")
+                     or (Path.home() / ".cache" / "eide")) / "tim-kiem"
+        kq = tk.tim(truy_van, url_searxng=os.environ.get("EIDE_SEARXNG_URL", ""),
+                    so_luong=so_luong, cache=cache)
+        if not kq.dat:
+            if kq.het_han_muc:
+                # HẠN MỨC khác MẤT MẠNG. Gọi nó là lỗi mạng thì tác tử thử lại ngay, và lần
+                # nào cũng thất bại y như thế cho tới khi hết lượt gọi công cụ của lượt.
+                return ToolResult(False, error=EideError(
+                    "E3003", kq.vi_sao_khong_dat,
+                    hint_for_agent=(
+                        "ĐỪNG gọi lại doc.search_web trong lượt này — hạn mức chưa nạp lại thì "
+                        "kết quả chắc chắn y như vậy. Nói cho người dùng biết và hỏi họ một "
+                        "trong hai: đưa thẳng đường dẫn tài liệu (rồi bạn gọi doc.fetch), hoặc "
+                        "đặt EIDE_GITHUB_TOKEN. Trong lúc chờ, làm tiếp những việc không cần "
+                        "tài liệu."),
+                    alternatives=["doc.fetch", "ask_user"],
+                    details=kq.to_dict(), blame="external"))
+            # Lỗi MẠNG phải được gọi đúng tên (TC072), và "không tìm được" phải nói rõ ĐÃ
+            # THỬ NHỮNG GÌ — nếu không, tác tử gọi lại y nguyên câu vừa thất bại.
+            return ToolResult(False, error=network_down(
+                "máy tìm kiếm", kq.vi_sao_khong_dat, state_saved=True))
+        ra = kq.to_dict()
+        ra["note_vi"] = (
+            f"Đây là ỨNG VIÊN do “{kq.nguon_tim}” trả về, chưa phải tài liệu của dự án. "
+            "Trình danh sách cho người dùng chọn, rồi gọi doc.fetch để tải về và doc.load để "
+            "nạp. Nói rõ nguồn nào trả lời — tầng tin cậy của mọi Fact về sau dựa vào đó."
+            + (" " + " ".join(kq.ghi_chu) if kq.ghi_chu else ""))
+        return ra
+
+    @r.tool("doc.fetch", "Tri thức",
+            "Tải một tài liệu từ URL về thư mục `tai-lieu/` của dự án. Việc này CHƯA nạp tài "
+            "liệu vào kho — tải xong phải gọi doc.load và khai `nguon` mới có tầng tin cậy. "
+            "Nếu URL trả về trang HTML (trang giới thiệu, tường cookie), công cụ KHÔNG lưu "
+            "mà liệt kê các liên kết PDF trên trang đó làm ứng viên.",
+            {"type": "object",
+             "properties": {
+                 "url": {"type": "string", "description": "http/https, trỏ tới tệp tài liệu"},
+                 "ten_tep": {"type": "string",
+                             "description": "tên muốn lưu; bỏ trống thì lấy theo URL"},
+                 "nhan_html": {
+                     "type": "boolean",
+                     "description": ("true khi CHÍNH trang web đó là tài liệu (trang nhà "
+                                     "phân phối, wiki). Lưu cả HTML gốc và bản chữ bóc ra.")}},
+             "required": ["url"]},
+            risk="R3", gate="G-DATA",
+            keywords=["tải", "download", "url", "datasheet", "tài liệu", "về máy"])
+    def doc_fetch(ctx: Any, url: str, ten_tep: str = "", nhan_html: bool = False):
+        from ..knowledge import tai_ve as tai_ve_mod
+        from .builtin import _rel
+
+        thu_muc = ctx.config.paths.project_root / "tai-lieu"
+        kq = tai_ve_mod.tai_ve(url, thu_muc, ten_tep=ten_tep, nhan_html=nhan_html)
+        ra = kq.to_dict()
+        if kq.dat:
+            ra["duong_dan"] = _rel(ctx, thu_muc / kq.tep)
+            ra["note_vi"] = (
+                f"Đã có tệp {kq.loai} trên đĩa ({kq.so_byte / 1024:.0f} KB). Đây CHƯA là tài "
+                "liệu của dự án: gọi doc.load với đường dẫn này và khai `nguon` "
+                "(nha_san_xuat nếu tải từ tên miền của hãng) để mọi Fact trích ra có tầng "
+                "tin cậy đúng."
+                + (" " + " ".join(kq.canh_bao) if kq.canh_bao else ""))
+            return ra
+
+        # Không tải được thì phải nói ĐÚNG loại nguyên nhân. Một trang HTML trả 200 OK không
+        # phải lỗi mạng, và gọi nó là lỗi mạng sẽ khiến tác tử đi thử lại mãi.
+        if kq.ung_vien_pdf or kq.loai == "html":
+            ra["note_vi"] = (
+                "URL này là một TRANG WEB, không phải tệp. Trình danh sách `ung_vien_pdf` cho "
+                "người dùng chọn rồi gọi lại doc.fetch với URL đã chọn. Đừng thử lại URL cũ."
+                if kq.ung_vien_pdf else
+                "URL này trả về trang web và trên trang không có liên kết PDF nào. Nói cho "
+                "người dùng biết và nhờ họ tải tệp về rồi chỉ đường dẫn — đừng đoán URL khác.")
+            return ra
+        return ToolResult(False, error=EideError(
+            "E3002", f"Không tải được {url}: {kq.vi_sao_khong_dat}",
+            hint_for_agent=("Đây là lỗi khi TẢI, không phải lỗi định dạng tài liệu. Đừng gọi "
+                            "doc.load — chưa có tệp nào. Nói nguyên nhân cho người dùng."),
+            alternatives=["doc.search_web", "Nhờ người dùng tải thủ công rồi doc.load"],
+            details=ra, blame="external"))
 
     return r

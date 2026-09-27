@@ -263,12 +263,20 @@ def test_bo_qua_the_thi_noi_ro_gia_dinh(chay):
 
 # =========================================================================== hậu quả
 def test_the_cong_luon_co_hau_qua_truoc_nut_bam(chay):
-    """§E7 quy tắc 1 — hậu quả đứng trước lựa chọn. Rỗng thì cổng chỉ làm chậm."""
+    """§E7 quy tắc 1 — hậu quả đứng trước lựa chọn. Rỗng thì cổng chỉ làm chậm.
+
+    Lời gọi phải có `explain`: hook N8 chặn một lời gọi ghi hiện vật mà thiếu lớp giải thích
+    **trước** khi cổng được dựng, và thứ tự đó đúng — dựng thẻ cổng cho một việc chưa khai lý
+    do là hỏi người dùng duyệt đúng cái mà không ai giải trình được.
+    """
+    ex = {"summary": "nạp bản vừa dịch", "why": "chạy thử trên bo", "sources": [],
+          "diff_prev": "—", "next": "đọc log", "confidence": "BAC"}
     agent, seen = chay(
         {"kind": "say", "text": "nạp firmware lên bo đi"},
-        script=[Response(tool_calls=[ToolCall("c1", "target.flash", {"file": "a.bin"})])])
+        script=[Response(tool_calls=[ToolCall("c1", "target.flash", {"explain": ex})])])
     the = [c for c in _cards(seen) if c.get("type") == "gate"]
     assert the, "phải dựng thẻ cổng"
+    assert the[0]["gate"] == "G-FLASH" and the[0]["irreversible"] is True
     assert the[0]["consequences_vi"], "thẻ cổng không có dòng hậu quả nào"
     assert any("bản ưng ý" in c.lower() for c in the[0]["consequences_vi"]), \
         "thao tác R2/R3 phải nói có bản nào để quay về không"
@@ -382,3 +390,84 @@ def test_lượt_CO_GHI_thi_khong_bi_nhac(make_agent, tmp_path):
                                    "origin": {"surface": "console"}}), lambda c: None)
     assert not [m for m in agent.messages
                 if m.get("_he_thong") and "Dừng tìm lại" in str(m.get("text", ""))]
+
+
+# ==================================================== duyệt một lần cho cả lượt việc
+def _duyet_het(agent, core, seen, lan=12):
+    """Đóng vai người bấm Duyệt cho mọi thẻ cổng đang chờ, tối đa `lan` vòng."""
+    for _ in range(lan):
+        cho = [c for c in _cards(seen) if c.get("type") == "gate"
+               and c["gate_id"] in agent.pending_gates]
+        if not cho:
+            break
+        for c in cho:
+            core.console_act({"kind": "decide",
+                              "data": {"gate_id": c["gate_id"], "approved": True},
+                              "origin": {"surface": "console"}})
+    return [c for c in _cards(seen) if c.get("type") == "gate"]
+
+
+def test_duyet_mot_lan_thi_khong_hoi_lai_cung_cong_cu_trong_luot(make_agent):
+    """Đo được trên phiên bo thật: một lượt "tự tìm tài liệu" dựng 16 thẻ G-DATA.
+
+    Hỏi lại mỗi lần không làm người dùng an toàn hơn — nó dạy người ta bấm Duyệt theo phản xạ,
+    và khi một thẻ ĐÁNG đọc hiện ra thì họ cũng bấm nốt.
+    """
+    from eide.protocol.rpc import Core
+
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "doc.search_web", {"truy_van": "lần 1"})]),
+        Response(tool_calls=[ToolCall("c2", "doc.search_web", {"truy_van": "lần 2"})]),
+        Response(tool_calls=[ToolCall("c3", "doc.search_web", {"truy_van": "lần 3"})]),
+        Response(text="xong"),
+    ])
+    seen = []
+    core = Core(agent.ledger, agent.ids, agent.turn, on_emit=seen.append)
+    core.console_act({"kind": "say", "text": "tự tìm tài liệu giúp mình",
+                      "origin": {"surface": "console"}})
+    the = _duyet_het(agent, core, seen)
+    assert len(the) == 1, f"phải chỉ một thẻ cho cả lượt, đang có {len(the)}"
+    assert the[0]["tool"] == "doc.search_web"
+
+
+def test_luot_MOI_thi_hoi_lai(make_agent):
+    """Nhớ qua lượt sẽ thành "duyệt một lần, dùng mãi mãi" — đúng thứ cổng tồn tại để ngăn."""
+    from eide.protocol.rpc import Core
+
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "doc.search_web", {"truy_van": "a"})]),
+        Response(text="xong"),
+        Response(tool_calls=[ToolCall("c2", "doc.search_web", {"truy_van": "b"})]),
+        Response(text="xong"),
+    ])
+    seen = []
+    core = Core(agent.ledger, agent.ids, agent.turn, on_emit=seen.append)
+    core.console_act({"kind": "say", "text": "tìm lần một",
+                      "origin": {"surface": "console"}})
+    _duyet_het(agent, core, seen)
+    n1 = len([c for c in _cards(seen) if c.get("type") == "gate"])
+    core.console_act({"kind": "say", "text": "tìm lần hai",
+                      "origin": {"surface": "console"}})
+    _duyet_het(agent, core, seen)
+    n2 = len([c for c in _cards(seen) if c.get("type") == "gate"])
+    assert n2 == n1 + 1, "câu mới của người dùng phải hỏi lại cổng"
+
+
+def test_thao_tac_KHONG_HOAN_TAC_thi_hoi_lai_tung_lan(make_agent):
+    """Nạp chip là R4 và không hoàn tác được — lần thứ mười cũng phải hỏi."""
+    from eide.protocol.rpc import Core
+
+    ex = {"summary": "nạp", "why": "thử", "sources": [], "diff_prev": "—",
+          "next": "—", "confidence": "BAC"}
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "target.flash", {"explain": ex})]),
+        Response(tool_calls=[ToolCall("c2", "target.flash", {"explain": ex})]),
+        Response(text="xong"),
+    ])
+    seen = []
+    core = Core(agent.ledger, agent.ids, agent.turn, on_emit=seen.append)
+    core.console_act({"kind": "say", "text": "nạp hai lần đi",
+                      "origin": {"surface": "console"}})
+    the = _duyet_het(agent, core, seen)
+    assert len(the) == 2, f"mỗi lần nạp một thẻ, đang có {len(the)}"
+    assert all(c["irreversible"] for c in the)

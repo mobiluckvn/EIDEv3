@@ -266,13 +266,27 @@ def test_env_check_liet_ke_CO_va_THIEU_khong_tu_tuyen_bo_san_sang(make_agent):
 
 
 def test_env_check_kien_truc_LA_thi_noi_thang_chu_khong_chon_gan_giong(make_agent):
-    """TC018 ghi nhận: chọn `armv7e-m` cho một chip Cortex-M3 sẽ sinh mã mang lệnh chip
-    không chạy được."""
+    """TC018 ghi nhận: chọn một kiến trúc gần giống sẽ sinh mã mang lệnh chip không chạy được.
+
+    `armv7-m` từng là ví dụ ở đây, nhưng từ 27/09/2026 nó **đã được hỗ trợ** (xem
+    `test_armv7_m_dich_cho_cortex_m3_khong_phai_m4` bên dưới — đúng cái nguy hiểm mà ca này
+    mô tả nay được xử lý bằng một dòng riêng trong bảng, không phải bằng một lời từ chối).
+    Nên ca này chuyển sang một kiến trúc thật sự chưa có bộ dịch trên máy.
+    """
     agent = make_agent([])
-    r = agent.registry.run("env.check", {"isa": "armv7-m"}, _ctx(agent))
+    r = agent.registry.run("env.check", {"isa": "xtensa-lx6"}, _ctx(agent))
     assert r.ok and r.data["isa_chua_biet"] is True
     assert "chưa biên dịch được cho chip này" in r.data["note_vi"]
     assert "gần giống" in r.data["note_vi"]
+
+
+def test_armv7_m_dich_cho_cortex_m3_khong_phai_m4():
+    """Cortex-M3 KHÔNG có lệnh DSP của M4 — dịch bằng armv7e-m là sinh lệnh chip không hiểu."""
+    from eide.build import toolchain as TC
+
+    assert TC.CHUOI_CONG_CU["armv7-m"]["cpu"] == "cortex-m3"
+    assert TC.CHUOI_CONG_CU["armv7e-m"]["cpu"] == "cortex-m4"
+    assert TC.CHUOI_CONG_CU["armv6-m"]["cpu"] == "cortex-m0plus"
 
 
 def test_tool_install_KHONG_nhan_lenh_do_mo_hinh_soan(make_agent):

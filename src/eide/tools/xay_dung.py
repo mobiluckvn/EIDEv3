@@ -166,7 +166,13 @@ def dang_ky(r: Registry) -> None:
              "properties": {
                  "sketch": {"type": "string",
                             "description": "thư mục sketch hoặc tệp nguồn, ví dụ firmware/"},
-                 "isa": {"type": "string", "description": "avr8 — mặc định lấy từ hộ chiếu"},
+                 "isa": {"type": "string",
+                         "description": "avr8 | armv6-m | armv7-m | armv7e-m — mặc định lấy "
+                                        "từ hộ chiếu chip"},
+                 "fpu": {"type": "string",
+                         "description": ("CHỈ truyền khi có Fact nói chip có FPU, ví dụ "
+                                         "fpv4-sp-d16. Bỏ trống thì dùng dấu phẩy động mềm — "
+                                         "chậm hơn nhưng chạy trên mọi biến thể.")},
                  "explain": EXPLAIN_SCHEMA},
              "required": ["explain"]},
             # R2, không phải R3. Thang rủi ro đọc là: R2 "ghi trong dự án", R3 "chạm hệ
@@ -178,7 +184,7 @@ def dang_ky(r: Registry) -> None:
             risk="R2", produces=["build"], needs_explain=True, writes_artefact=True,
             keywords=["biên dịch", "build", "compile", "firmware", "gcc", "kích thước"])
     def build_compile(ctx: Any, explain: dict[str, Any], sketch: str = "firmware",
-                      isa: str = ""):
+                      isa: str = "", fpu: str = ""):
         from ..build import toolchain as TC
 
         goc = ctx.config.paths.project_root
@@ -193,7 +199,7 @@ def dang_ky(r: Registry) -> None:
         isa = isa or str((hc or {}).get("isa") or "avr8")
         flash_max, sram_max = _han_muc(ctx, hc)
 
-        kq = TC.bien_dich(goc=goc, sketch=p, isa=isa,
+        kq = TC.bien_dich(goc=goc, sketch=p, isa=isa, fpu=fpu,
                           flash_toi_da=flash_max, sram_toi_da=sram_max)
         ctx.store.apply(
             artefact_id=MA_BUILD, type="build",
@@ -234,7 +240,16 @@ def dang_ky(r: Registry) -> None:
                    "trên AVR thường là lỗi thật: "
                    + "; ".join(x.vi for x in kq.canh_bao[:3])
                    if kq.canh_bao else "Không có cảnh báo nào.")
-                + (" VƯỢT hạn mức bộ nhớ của chip." if (qua_flash or qua_sram) else ""))}
+                + (" VƯỢT hạn mức bộ nhớ của chip." if (qua_flash or qua_sram) else "")
+                + (f" Có tệp nạp {kq.tep_bin} (ảnh nhị phân thô, dùng cho bo nạp kiểu ổ đĩa)."
+                   if kq.tep_bin else "")
+                + (" LƯU Ý: máy này KHÔNG có newlib cho ARM, nên firmware được liên kết ở chế "
+                   "độ `-nostdlib`. Mọi hàm chuẩn (memset, memcpy, printf, strlen…) sẽ báo "
+                   "“undefined reference” khi liên kết — kể cả khi bạn không gọi trực tiếp, vì "
+                   "trình biên dịch tự sinh memcpy/memset cho phép gán cấu trúc và khởi tạo "
+                   "mảng. Viết mã không dùng thư viện chuẩn, hoặc nhờ người dùng cài newlib "
+                   "qua tool.install."
+                   if kq.thieu_libc else ""))}
 
     @r.tool("build.map", "Mã nguồn",
             "Đọc bản đồ bộ nhớ của tệp ảnh vừa biên dịch: từng section chiếm bao nhiêu, "

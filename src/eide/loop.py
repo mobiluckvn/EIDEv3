@@ -200,6 +200,8 @@ class Agent:
         self.dang_nhin: str = "project"          # bề mặt người đang mở (HumanAct attend)
         self.pending_cards: list[dict[str, Any]] = []
         self.pending_gates: dict[str, dict[str, Any]] = {}
+        # (công cụ, cổng) đã được người duyệt trong LƯỢT VIỆC hiện tại. Xoá ở đầu mỗi câu mới.
+        self._cong_cu_da_duyet: set[tuple[str, str]] = set()
         self.assumptions: list[str] = []
         self.last_report: dict[str, Any] = {}
         self.locks: set[str] = set()             # tệp tác tử đang giữ soft-lock
@@ -409,6 +411,10 @@ class Agent:
                     {"kind": "snapshot",
                      "data": {"name": tl["ten"], "note": tl.get("ghi_chu", "")},
                      "origin": {"surface": "console"}}), ctx)
+
+        # Một câu mới của người dùng mở một LƯỢT VIỆC mới — quên mọi lần duyệt cổng của lượt
+        # trước. Giữ lại qua lượt sẽ biến "duyệt một lần" thành "duyệt mãi mãi".
+        self._cong_cu_da_duyet.clear()
 
         # --- S0: hook UserPromptSubmit, 0 token, đứng trước mọi phép đoán (N5).
         s0 = self.s0.run(act.text, attachments_text=act.data.get("_attachment_text", ""),
@@ -630,6 +636,25 @@ class Agent:
 
         if perm.action == "deny":
             return self._tool_error(call, self.policy.deny_error(c, perm, pre.facts), ctx)
+
+        if perm.action == "ask" and self._da_duyet_roi(call.tool, perm):
+            # Đã duyệt công cụ này trong chính lượt việc này rồi thì không hỏi lại.
+            #
+            # Đo được trên phiên bo thật: một lượt "tự tìm tài liệu" dựng **16 thẻ cổng
+            # G-DATA**, tất cả cho cùng một công cụ `doc.search_web`. Hỏi lại mỗi lần không làm
+            # người dùng an toàn hơn — nó dạy người ta bấm Duyệt theo phản xạ, và khi một thẻ
+            # ĐÁNG đọc hiện ra thì họ cũng bấm nốt. Cùng lý lẽ với chú thích ở `build.compile`
+            # về việc không xếp nó R3.
+            #
+            # Cố ý KHÔNG nhớ cho: thao tác không hoàn tác được, thao tác `never_auto`, và mọi
+            # thứ từ R4 trở lên — ba loại đó phải hỏi lại từng lần, kể cả lần thứ mười.
+            import dataclasses as _dc
+
+            self.ledger.append("gate", {"run_id": ctx.run_id, "gate": perm.gate,
+                                        "tool": call.tool, "state": "da_duyet_truoc_do"})
+            perm = _dc.replace(perm, action="allow",
+                               reason_vi=(perm.reason_vi
+                                          + " (đã duyệt cho công cụ này trong lượt này)"))
 
         if perm.action == "ask":
             gid = self.ids.next("gate")
@@ -1111,6 +1136,22 @@ class Agent:
             self.paint(ctx.emit, only=["history"])
 
     # ------------------------------------------------------------------ cổng
+    def _da_duyet_roi(self, tool: str, perm: Any) -> bool:
+        """Công cụ này đã được duyệt trong lượt việc hiện tại chưa.
+
+        "Lượt việc" tính từ câu người dùng gõ cho tới khi tác tử dừng — `self._cong_cu_da_duyet`
+        được xoá ở đầu mỗi `console_act`. Nhớ qua lượt sẽ thành "duyệt một lần, dùng mãi mãi",
+        đúng thứ thẻ cổng tồn tại để ngăn.
+        """
+        if perm.irreversible or perm.never_auto:
+            return False
+        return (tool, perm.gate or "") in self._cong_cu_da_duyet
+
+    def _nho_da_duyet(self, tool: str, card: dict[str, Any]) -> None:
+        if card.get("irreversible") or card.get("never_auto"):
+            return
+        self._cong_cu_da_duyet.add((tool, card.get("gate") or ""))
+
     def _resolve_gate(self, act: HumanAct, ctx: TurnContext) -> None:
         gid = act.data["gate_id"]
         pend = self.pending_gates.pop(gid, None)
@@ -1137,6 +1178,8 @@ class Agent:
             return
 
         call = pend.get("call")
+        if call is not None:
+            self._nho_da_duyet(str(call.get("tool") or ""), pend["card"])
         if call is None:
             # Cổng do S0 phát (chưa có lời gọi công cụ nào) — để mô hình tiếp tục.
             self.messages.append({"role": "user",

@@ -923,12 +923,60 @@ def simulation(store: Any, inv: Any) -> dict[str, Any]:
 
 
 def hardware(store: Any, inv: Any) -> dict[str, Any]:
-    return _don_gian("hardware", "A9", "Mạch thật", [empty(
-        "A9.1", "Dò board · Nạp · Gỡ lỗi",
-        chua_co="Chưa kết nối bo mạch nào.",
-        vi_sao="Năng lực chạm phần cứng thuộc bước G7. Mọi thao tác không đảo ngược "
-               "(xoá Flash, option bytes, RDP, eFuse) đã có cổng chặn sẵn từ bây giờ.",
-        can_gi="—", buoc="G7")])
+    """Tab Mạch thật — §E7 dòng "Dò board / nạp / verify".
+
+    Cột bắt buộc của dòng đó: *"Nạp gì (hash, kích thước) vào đâu; verify thế nào; nếu không
+    khớp thì vì sao dừng"*. Nên khối nạp ở đây không được rút gọn thành "đã nạp xong": nó phải
+    mang theo hash, số byte, đích, và **verify hay không verify** — vì "đã nạp" mà không verify
+    là một câu đúng chữ nhưng dẫn tới một kết luận sai về việc chip đang chạy bản nào.
+    """
+    khoi: list[dict[str, Any]] = []
+
+    for a in store.list("target", limit=10):
+        c = a.get("canonical") or {}
+        if "cach" in c:                                        # bản ghi NẠP
+            dat = bool(c.get("dat"))
+            khoi.append(khoi_hien_vat(
+                a["id"], "Nạp firmware vào bo", "kv", a,
+                summary=("ĐÃ NẠP" if dat else "KHÔNG NẠP ĐƯỢC")
+                        + f" · {c.get('cach') or '?'}"
+                        + (" · đã verify" if c.get("da_verify") else " · CHƯA verify"),
+                pairs=[
+                    ["Nạp gì", f"{c.get('tep') or '?'} · {c.get('so_byte') or 0} B"],
+                    ["sha256", str(c.get("hash") or "")[:16] or "—"],
+                    ["Vào đâu", str(c.get("dich") or "—")],
+                    ["Chip dự án ghim", str(c.get("chip_du_an") or "—")],
+                    ["Chip đã đối chiếu",
+                     str(c.get("chip_da_doi_chieu")
+                         or "CHƯA đối chiếu bằng ID đọc từ silicon")],
+                    ["Nhãn ổ của bộ nạp", str(c.get("chip_theo_nhan_o") or "—")],
+                    ["Verify", "Trình nạp đã đọc lại và so khớp"
+                     if c.get("da_verify") else
+                     "KHÔNG verify — chưa có bằng chứng nội dung trên chip đúng bản này"],
+                    ["Thời gian", f"{c.get('giay') or 0} s"],
+                    ["Hoàn tác được", "KHÔNG — " + str(c.get("vi_sao_khong_hoan_tac") or "")],
+                ] + ([["Vì sao dừng", str(c.get("vi_sao_khong_dat"))]] if not dat else [])
+                  + [["Cảnh báo", x] for x in (c.get("canh_bao") or [])]))
+        elif "cong" in c:                                      # bản ghi ĐỌC LOG
+            im = bool(c.get("im_lang"))
+            khoi.append(khoi_hien_vat(
+                a["id"], "Log từ bo", "log", a,
+                summary=(f"{c.get('so_byte') or 0} B từ {c.get('cong')} "
+                         f"ở {c.get('baud')} baud"
+                         + (" · IM LẶNG" if im else "")),
+                # Nguyên văn, không tóm tắt: log là bằng chứng, và một bản tóm tắt log là
+                # lời của người tóm tắt, không phải của bo.
+                noi_dung=str(c.get("chu") or ""),
+                canh_bao=list(c.get("canh_bao") or [])))
+
+    if not khoi:
+        khoi.append(empty(
+            "A9.1", "Dò board · Nạp · Gỡ lỗi",
+            chua_co="Chưa nạp gì lên bo trong dự án này.",
+            vi_sao="Nạp là thao tác KHÔNG hoàn tác được — bản firmware đang chạy trên chip bị "
+                   "ghi đè — nên nó chỉ xảy ra khi anh duyệt thẻ cổng G-FLASH.",
+            can_gi="Cắm bo rồi bảo tác tử dò (target.detect) và nạp (target.flash)."))
+    return _don_gian("hardware", "A9", "Mạch thật", khoi)
 
 
 def journal(ledger: Any, limit: int = 300) -> dict[str, Any]:

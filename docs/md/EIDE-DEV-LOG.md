@@ -2158,3 +2158,229 @@ Bằng chứng SCH-19: `--hai-che-do tools/thu_g6.py` **34/34 giống hệt** gi
 `plan.enter`/`plan.exit` (§B5 plan mode) chưa làm — nó nằm ở bảng công cụ §B1 chứ không nằm
 trong dòng nghiệm thu của G6. `target.*` (nạp chip, đọc log) thuộc **G7** và cần bo thật;
 subagent `hardware` đã có khung nhưng sẽ trả `chua_du_du_kien` cho tới khi có những công cụ đó.
+
+---
+
+### [DEV-278] 27/09/2026 · G7 — bo STM32F469 thật, và bốn chỗ luồng "bo mới" bị đứt
+
+Anh Công cắm một **STM32F469I-DISCO** vào máy và yêu cầu: *"tổng hợp toàn bộ thông tin từ mạch
+này, sau đó viết một ứng dụng biên dịch và chạy được trên kit"*, với hai điều kiện — **tác tử
+tự tìm tài liệu** ("Hãy để agent tự tìm tài liệu và load bạn nhé. Bạn giám sát và fix cho agent
+nhé") và **tác tử tự xin cài công cụ** ("Thiếu tool bạn hãy yêu cầu agent cài thêm nhé. Bạn
+không làm hộ nhé").
+
+Đây là bước đầu tiên của dự án có phần cứng thật, nên nó không phơi ra lỗi logic mà phơi ra
+**bốn chỗ luồng bị đứt hẳn** — mỗi chỗ đều ở dạng "hệ thống nói được là nó đọc được, rồi từ
+chối ở bước sau".
+
+#### 1. Không có đường nào tải tài liệu từ URL
+
+`doc.search_web` trả về **ứng viên**; `doc.load` đọc tệp **đã nằm trong dự án**. Giữa hai thứ
+đó không có gì cả — người dùng phải tự mở trình duyệt, tự tải, tự chép vào thư mục. Với bo mới
+thì đó chính là bước đầu tiên.
+
+→ `doc.fetch` (R3, cổng G-DATA). Hai điều nó cố ý làm khác bản nhanh nhất có thể viết:
+
+- **Không tin phần mở rộng, không tin `Content-Type`** — tin *magic byte*. Trang tài liệu của
+  nhiều hãng trả HTML tường cookie cho một URL kết thúc bằng `.pdf`, và lưu khối HTML đó thành
+  `datasheet.pdf` là cách chắc chắn nhất để bước trích Fact hỏng ở chỗ không ai nghĩ tới.
+- **Không tin `Content-Length`** — nó là lời khai của máy chủ. Trần dung lượng được ép trong
+  lúc đọc từng khối, nếu không thì một máy chủ khai 1 KB vẫn đẩy được 4 GB vào đĩa.
+
+Trang web CHÍNH LÀ tài liệu (trang nhà phân phối, wiki) thì nhận được, nhưng phải gọi lại với
+`nhan_html=true` — và khi đó lưu **cả hai** tệp: bản HTML gốc để đối chiếu, bản chữ đã bóc để
+trích dẫn theo dòng. Không thể vừa đánh số dòng theo chữ đã bóc vừa nói là đang trích dẫn tệp
+HTML; trích dẫn chỉ có nghĩa nếu mở đúng tệp đó ra là thấy.
+
+#### 2. `phan_loai` nói mã nguồn đọc được, `doc.load` lại từ chối
+
+Tài liệu chân của bo này mà còn với tới được lại là **header BSP do chính hãng viết**
+(`stm32469i_discovery.h`), không phải PDF. `ingest.phan_loai` nhận ra nó là `source` và trả
+`doc_duoc=True`; `doc.load` chỉ có nhánh cho PDF và Office. Hệ thống tự trả về hai câu trái
+nhau, và tác tử đi vào ngõ cụt giữa chúng.
+
+→ `docs.nap_van_ban()`: nạp mã nguồn / header / linker script / Markdown / log với **đơn vị
+trích dẫn là KHOẢNG DÒNG** (`dòng 121–160`), không phải "trang". Tệp văn bản không có trang, và
+bịa ra số trang thì người mở tệp ra không kiểm lại được — mất đúng thứ N1 tồn tại để bảo vệ.
+
+Và một lỗi kề bên, chỉ hiện ra sau khi khởi động lại app: đường **đọc lại** tài liệu
+(`_lay_tai_lieu`) gửi *mọi* thứ không phải PDF cho bộ đọc Office. Một tài liệu văn bản nạp
+được lần đầu, dùng được cả phiên, rồi chết ở phiên sau. Hai bản sao của cùng một phép chọn bộ
+đọc đã lệch nhau → dồn về một hàm `_nap_theo_loai`, hai người gọi.
+
+#### 3. Không biên dịch được cho ARM, và `avr-size` trả về "0 byte"
+
+`CHUOI_CONG_CU` chỉ biết `avr8`. Thêm `armv6-m`/`armv7-m`/`armv7e-m` với đường biên dịch
+bare-metal (nguồn `.c/.s` + linker script bắt buộc → `.elf` → `.bin` + `.hex` + `.map`).
+
+Ba quyết định trong bảng, mỗi cái chọn phía "sai thì chậm" thay vì "sai thì treo":
+
+- **`cpu = cortex-m4` cho armv7e-m**, dù ISA đó phủ cả M7. Lệnh của M4 chạy được trên M7 (M7
+  là tập trên) nên firmware dịch cho M4 chỉ chậm hơn; dịch cho M7 rồi nạp vào M4 thì sinh lệnh
+  chip không hiểu.
+- **`float = soft`** mặc định. "FPU tuỳ biến thể" nghĩa là bật `-mfloat-abi=hard` trên chip
+  không có FPU sẽ hard-fault ở lệnh dấu phẩy động đầu tiên — một lỗi phải chạy thật mới hiện.
+  Muốn hard-float thì phải truyền `fpu=` và nó được đối chiếu với bảng `FPU_HOP_LE`.
+- **Không tự sinh linker script.** Nó quyết định địa chỉ Flash/RAM của đúng con chip này; một
+  địa chỉ đoán ra cho một firmware dịch xong, nạp xong, và không chạy. Có hai tệp `.ld` thì
+  cũng từ chối — không đoán dùng cái nào.
+
+Và bộ đọc kích thước phải viết riêng: `avr-size -C` in `Program:/Data:`, còn binutils ARM thì
+không, nên bộ đọc của AVR khớp **0 dòng** và trả về `(0, 0)` — "firmware nặng 0 byte", một con
+số vô lý mà vẫn đi tiếp được vào phép so hạn mức và cho ra kết luận "vừa chip" cho mọi
+firmware. `kich_thuoc_arm()` đọc `-A` và **loại trừ** theo tên thay vì liệt kê trắng: một
+section do linker script tự đặt (`.isr_vector`, `.qspi_text`) phải được tính, còn `.debug_*`
+thì không — trên firmware thử, riêng `.debug_str` đã 14 KB so với 24 byte mã thật.
+
+Chuyện thứ tư: `arm-none-eabi-gcc` của Homebrew **không kèm newlib**, nên `-lc` báo
+`cannot find -lc` — một câu không nói được phải làm gì. Nay hỏi thẳng trình biên dịch bằng
+`-print-file-name=libc.a`; không có thì liên kết `-nostdlib` **và khai ra cờ `thieu_libc`**,
+kèm câu giải thích rằng `memcpy`/`memset` do chính trình biên dịch tự sinh cũng sẽ không liên
+kết được. Đổi cách liên kết trong im lặng là cách để `undefined reference to memset` xuất hiện
+sau đó, ở một chỗ không liên quan gì tới nguyên nhân thật.
+
+#### 4. G7 — nạp vào bo mà không có `st-info` thì đối chiếu ID chip bằng gì
+
+`target.detect` / `target.flash` (R4, cổng G-FLASH) / `target.log`. Bo này chạy firmware
+ST-LINK kiểu **mass-storage** nên nạp được bằng cách sao `.bin` vào `/Volumes/DIS_F469NI`, không
+cần cài gì. Nhưng MDD-40 §B1 đòi *"flash đối chiếu ID chip"* (TC034), và đường ổ đĩa **không
+đọc được ID chip**.
+
+Chỗ này dễ làm tròn lên, nên viết rõ cả trong mã: nhãn ổ `DIS_F469NI` là bằng chứng về **bo**,
+không phải về **silicon**. Nó đủ để *bác bỏ* (ghim F103 mà nhãn nói F469 → dừng, E4012), không
+đủ để *khẳng định*. Không đọc được ID chip thì `target.flash` **từ chối** với E4013 và trình hai
+đường cho người dùng chọn: cài `st-info`/`st-flash` qua `tool.install`, hoặc gọi lại với
+`dong_y_khong_doi_chieu_chip=true`. Tác tử không được tự chọn hộ.
+
+Ba điều khác của G7, mỗi điều từ một ca kiểm:
+
+- **`shutil.copy` trả 0 không phải bằng chứng đã nạp** (TC032). Firmware DAPLink nhận cả tệp
+  rồi mới kiểm, và khi từ chối thì nó gắn lại ổ kèm `FAIL.TXT`. Nên `dat=True` đòi: không có
+  `FAIL.TXT` (và `FAIL.TXT` của lần trước bị dọn trước khi sao, nếu không thì lần này đọc lại
+  kết luận của lần trước); còn nếu không thấy ổ gắn lại thì vẫn `dat` nhưng **kèm cảnh báo rằng
+  chưa có bằng chứng bo đã ghi xong**.
+- **Sao tệp thất bại giữa đường** (TC033) → nói thẳng Flash đang ở trạng thái không nhất quán,
+  kèm đường khôi phục (connect-under-reset, bootloader ROM).
+- **Không thấy bo** (TC032) → danh sách kiểm tra **đủ bốn mục** đề bài đòi: nguồn, cáp, driver,
+  chân BOOT/NRST. Ghi chú cũ của TC032 là *"mới có một bước"*; nay đủ bốn.
+
+Và một thứ chỉ lộ ra khi chạy trên máy thật: **tai nghe Bluetooth của anh Công cũng hiện ra ở
+`/dev/cu.*`**. Đọc log từ nó thì im lặng, mà im lặng sẽ bị đọc thành "firmware sai". Nên cổng
+được **phân loại** (`co_the_la_bo`) kèm lý do, chứ không lẳng lặng bỏ — người dùng thấy cổng đó
+trong Terminal và sẽ hỏi tại sao nó thiếu. `target.log` có nhiều hơn một ứng viên thì **không
+đoán**, nó trình danh sách để người chọn.
+
+#### 5. Chuyện mạng: `www.st.com` bị chặn, và không có máy tìm kiếm nào dùng được
+
+Đo được trên máy anh Công: `www.st.com` bị **reset ở tầng mạng** sau ~0,6 s, kể cả khi ép đúng
+IP Akamai và kể cả ngoài sandbox — trong khi `ti.com`, `github.com`, `example.com` vào bình
+thường. `st.com` (không `www`) trả 301 về đúng host bị chặn. Mọi instance SearXNG công khai thử
+được đều chặn bằng anti-bot; DuckDuckGo, Mojeek, Bing đều trả trang xác minh trình duyệt hoặc
+chỉ dựng kết quả bằng JS; tự dựng SearXNG thì cần Docker, máy chưa có.
+
+Còn lại một nguồn vào được **và** do chính hãng viết: tổ chức GitHub của nhà sản xuất. Nên
+`doc.search_web` có backend thứ hai (`tim_kiem.py`): SearXNG nếu cấu hình, **rồi** GitHub của
+hãng — và kết quả luôn khai `nguon_tim`, vì một danh sách ứng viên không khai nguồn sẽ được đọc
+như thể nó từ datasheet.
+
+Hai chi tiết đáng ghi:
+
+- Repo của hãng đặt tên theo **họ** chip: tài liệu của `stm32f469` nằm trong `STM32CubeF4`. Tìm
+  thẳng "stm32f469" trong tên repo thì khớp **0**, và "không khớp" ở đây bị đọc thành "hãng
+  không phát hành tài liệu". Nên từ khoá được sinh thêm dạng họ (`stm32f469` → `stm32f4`, `f4`).
+- Bảng `TO_CHUC_HANG` **không có** mục "mọi thứ khác → cứ tìm cả GitHub". Một repo của người lạ
+  trùng tên chip sẽ được trả về trông y như tài liệu hãng — sai mà trông đúng là cách hỏng tệ
+  nhất.
+
+Lần chạy thật đầu tiên đụng ngay **hết hạn mức GitHub API** (60 lượt/giờ cho cả máy khi không
+xác thực; chính tôi dùng hết trong lúc thăm dò). Đây là chỗ dễ gọi sai tên: hạn mức **không
+phải** mất mạng. Mất mạng thì thử lại ngay được; hết hạn mức thì thử lại ngay là chắc chắn thất
+bại lần nữa, và một tác tử được bảo "lỗi mạng" sẽ thử lại đúng như thế cho tới khi hết lượt gọi
+công cụ. Nên có mã riêng **E3003**, nói rõ **còn bao nhiêu phút** nữa mới thử lại được, và chỉ
+thẳng hai đường đi tiếp (người dùng đưa URL, hoặc đặt `EIDE_GITHUB_TOKEN`). Hết hạn mức mà có
+nhớ đệm quá hạn thì dùng nhớ đệm và **khai ra là cũ** — một danh sách repo cũ vài ngày vẫn gần
+đúng, còn không trả gì thì tác tử mất hẳn đường tìm.
+
+#### 6. Tab Mạch thật không còn là chỗ trống chờ G7
+
+A9 trước đây là một khối `empty` ghi "thuộc bước G7". Nay nó hiện đúng cột mà §E7 đòi: *nạp gì
+(hash, kích thước) vào đâu, verify thế nào, nếu không khớp thì vì sao dừng*. Khối nạp **không**
+được rút gọn thành "đã nạp xong": nó mang hash, số byte, đích, chip đã đối chiếu (hoặc câu
+"CHƯA đối chiếu bằng ID đọc từ silicon"), và **verify hay không verify** — "đã nạp" mà không
+verify là một câu đúng chữ nhưng dẫn tới kết luận sai về việc chip đang chạy bản nào.
+
+Thêm khối `log` bên Swift: hiện **nguyên văn**, không tóm tắt (log là bằng chứng; một bản tóm
+tắt log là lời của người tóm tắt, không phải của bo), và **cổng im lặng phải trông khác cổng
+chưa đọc** — một khung trống không nói được đó là "bo không in gì" hay "chưa ai bấm đọc", mà
+hai thứ đó dẫn tới hai kết luận trái nhau.
+
+#### 7. Một test của tôi xanh vì nó kiểm bản sao của chính nó
+
+`_cong_noi_tiep` viết thẳng `Path("/dev")` trong thân hàm, nên ca kiểm không trỏ được sang thư
+mục giả. Bản đầu tôi **chép lại phép phân loại cổng vào chính test** — và một test như thế xanh
+kể cả khi hàm thật sai. Sửa: `THU_MUC_DEV` thành hằng số của mô-đun, test kiểm đúng hàm thật.
+Cùng loại với bốn phép đo tự lừa mình ở DEV-276; đây là lần thứ năm.
+
+#### 8. Hai lỗi chỉ lộ ra khi cho tác tử tự tìm thật
+
+**Tìm ra bo KHÁC cùng họ, và tác tử từ chối đúng.** Với truy vấn "STM32F469I-DISCO", bộ tìm
+trả về `stm32f4_discovery.h` của repo `stm32f4discovery-bsp` — đó là bo **STM32F4-DISCOVERY
+(F407)**, không phải bo đang cắm. Tác tử đọc xong và nói *"chưa tìm được tài liệu phù hợp"*:
+phán đoán đúng, nhưng nó phải làm việc đó để bù cho một phép chấm điểm sai của tôi.
+
+Sai ở đâu: điểm được **cộng dồn** cho mọi biến thể khớp được, nên một tên chứa cả `stm32`,
+`stm32f4` và `f4` nhận ba lần điểm cho **cùng một sự thật** ("thuộc họ F4") — đủ để đè một
+tên khớp đúng mã bo. Nay lấy **max theo độ đặc hiệu**: biến thể đầy đủ 100, mã đặt hàng 90,
+bỏ chữ họ 80, họ chung 40, tiền tố hãng 10.
+
+Và một chi tiết đặt tên của ST phải biết mới tìm được: repo/thư mục đặt theo **mã đặt hàng**,
+bỏ tiền tố `stm` và đôi khi bỏ cả chữ họ — chip `STM32F469I` → repo `32f469idiscovery-bsp`,
+thư mục `Drivers/BSP/STM32469I-Discovery/`, tệp `stm32469i_discovery.h` (**không có chữ F**).
+Tìm thẳng "stm32f469" thì khớp 0, và "không khớp" bị đọc thành "hãng không phát hành tài liệu".
+Sau khi sửa, cùng truy vấn ấy trả về đúng `stm32469i_discovery.h` của `32f469idiscovery-bsp`,
+điểm 254 so với 140 của bo F407.
+
+**Danh sách đánh số hiện ra 1, 2, 5.** Ảnh chụp bước 2 cho thấy tác tử viết `1. 2. 3.` mà giao
+diện hiện `1. 2. 5.`: số thứ tự lấy theo chỉ số trong danh sách **đã làm phẳng**, nên hai gạch
+đầu dòng con của mục 2 cũng được đếm. Tác tử viết đúng, giao diện đọc sai, và người đọc tưởng
+tác tử đếm nhầm. Nay đếm riêng theo mức thụt, và quay về mức nông hơn thì xoá bộ đếm của các
+mức sâu hơn.
+
+#### 9. Mười sáu thẻ cổng cho một công cụ, và một nhớ đệm bị tưởng là dữ liệu
+
+Lượt "tự tìm tài liệu" dựng **16 thẻ cổng G-DATA**, tất cả cho cùng `doc.search_web`. Nguyên
+nhân không phải luật G-DATA mà là ma trận rủi ro/tự chủ: R3 ở mức A3 thì hỏi, và mỗi lời gọi
+là một lần hỏi. Hỏi lại mười sáu lần không làm người dùng an toàn hơn — nó dạy người ta bấm
+Duyệt theo phản xạ, và khi một thẻ ĐÁNG đọc hiện ra thì họ cũng bấm nốt. (Cùng lý lẽ với chú
+thích sẵn có ở `build.compile` về việc không xếp nó R3.)
+
+→ Duyệt một lần thì **cả lượt việc** đó không hỏi lại cùng công cụ nữa; câu mới của người dùng
+mở lượt mới và xoá trí nhớ ấy. Cố ý KHÔNG nhớ cho ba loại: thao tác không hoàn tác được,
+`never_auto`, và R4 — `target.flash` gọi mười lần thì hỏi đủ mười lần. Đã kiểm ngược cả hai
+chiều: bỏ phép nhớ → ca "một thẻ cho cả lượt" đỏ; nhớ cả thao tác không hoàn tác → ca
+"nạp hai lần, hai thẻ" đỏ.
+
+Và một lỗi kín hơn, chỉ lộ ra ở lượt chạy sau: tác tử **không gọi `doc.search_web` lần nào**
+mà đi bới `.eide/tim-kiem/*.json` và `.eide/sessions/*/transcript.jsonl` bằng `fs.read`. Nhớ
+đệm tìm kiếm nằm trong sandbox dự án nên `fs.glob` thấy nó, và một tệp JSON tên
+`STMicroelectronics-32f469idiscovery-bsp-main.json` trông y như dữ liệu của dự án. Nó không
+phải: đó là dữ liệu của **máy** (danh sách repo của hãng), dùng chung cho mọi dự án. Chuyển ra
+`~/.cache/eide/tim-kiem`. Một nhớ đệm để lẫn vào chỗ chứa hiện vật sẽ được đọc như hiện vật.
+
+### Số đo
+
+`936 ca đơn vị` (+93 so với DEV-277) · `95 công cụ` khi cờ sơ đồ tắt (+4: `doc.fetch`,
+`target.detect`, `target.flash`, `target.log`), `104` khi bật.
+
+Phiên bo thật (`tools/phien_stm32.py`): bước 1–2 chạy được trên bo đang cắm — tác tử tự tìm ra
+công cụ (`tool.search` → `target.detect`), nhận đúng **ST Discovery F469NI**, và **tự nói ra**
+rằng mã chip đó suy từ nhãn bộ nạp *"chưa phải là ID chip đọc trực tiếp từ silicon qua SWD"*.
+
+### Còn lại
+
+- Bước 3–10 của phiên (tự tìm tài liệu → trích Fact → viết firmware → nạp → đọc log) đang chạy;
+  hạn mức GitHub cần ~17 phút để nạp lại trước khi bước 3 đo được.
+- `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.
+- `target.verify` / `target.debug` / `target.dangerous` chưa làm — TC030 (breakpoint, thanh ghi)
+  và TC035 (RDP/eFuse) cần chúng. TC035 hiện đã được chặn ở tầng S0 nên không có lỗ hổng an
+  toàn, chỉ là năng lực còn thiếu.

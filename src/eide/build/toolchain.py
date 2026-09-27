@@ -29,6 +29,28 @@ from typing import Any
 CHUOI_CONG_CU = {
     "avr8": {"arduino_fqbn": "arduino:avr:nano:cpu=atmega328old",
              "gcc": "avr-gcc", "size": "avr-size", "mcu": "atmega328p"},
+    # Cortex-M4/M7. `cpu` là cortex-m4 **cố ý**: lệnh của M4 chạy được trên M7 (M7 là tập
+    # trên), nên một firmware dịch cho M4 chậm hơn nhưng vẫn đúng, còn dịch cho M7 rồi nạp
+    # vào M4 thì sinh lệnh chip không hiểu. Chọn phía sai-thì-chậm, không chọn phía sai-thì-treo.
+    #
+    # `float: soft` cũng cố ý. ARMv7E-M "có FPU tuỳ biến thể": bật `-mfloat-abi=hard` trên
+    # một chip không có FPU thì chương trình hard-fault ngay lệnh dấu phẩy động đầu tiên —
+    # một lỗi chạy được tới lúc chạy thật mới hiện. Muốn hard-float thì phải có Fact nói chip
+    # này có FPU, và truyền vào qua `fpu=`.
+    "armv7e-m": {"gcc": "arm-none-eabi-gcc", "size": "arm-none-eabi-size",
+                 "objcopy": "arm-none-eabi-objcopy", "cpu": "cortex-m4", "float": "soft"},
+    "armv7-m": {"gcc": "arm-none-eabi-gcc", "size": "arm-none-eabi-size",
+                "objcopy": "arm-none-eabi-objcopy", "cpu": "cortex-m3", "float": "soft"},
+    "armv6-m": {"gcc": "arm-none-eabi-gcc", "size": "arm-none-eabi-size",
+                "objcopy": "arm-none-eabi-objcopy", "cpu": "cortex-m0plus", "float": "soft"},
+}
+
+# FPU hợp lệ theo `cpu`. Bảng này tồn tại để một chuỗi FPU sai không lọt xuống trình biên dịch
+# rồi hiện ra dưới dạng lỗi khó hiểu của `as`.
+FPU_HOP_LE: dict[str, tuple[str, ...]] = {
+    "cortex-m4": ("fpv4-sp-d16",),
+    "cortex-m7": ("fpv5-sp-d16", "fpv5-d16"),
+    "cortex-m33": ("fpv5-sp-d16",),
 }
 
 # Thư mục con của một gói Arduino, dùng khi `avr-gcc` không nằm trong PATH.
@@ -60,10 +82,13 @@ class KetQuaBienDich:
     loi: list[LoiBienDich] = field(default_factory=list)
     canh_bao: list[LoiBienDich] = field(default_factory=list)
     tep_ra: str = ""
+    tep_bin: str = ""             # ảnh nhị phân thô, cần cho bo nạp kiểu ổ đĩa (ST-LINK MSD)
+    thieu_libc: bool = False      # máy không có newlib → mọi hàm chuẩn sẽ không liên kết được
     flash: int = 0
     sram: int = 0
     flash_toi_da: int = 0
     sram_toi_da: int = 0
+    section: dict[str, int] = field(default_factory=dict)   # từng section, để người kiểm lại
     nguyen_van: str = ""          # đuôi đầu ra thật, để người đọc kiểm được
     vi_sao_khong_dat: str = ""
 
@@ -72,7 +97,10 @@ class KetQuaBienDich:
                 "so_loi": len(self.loi), "so_canh_bao": len(self.canh_bao),
                 "loi": [x.to_dict() for x in self.loi[:40]],
                 "canh_bao": [x.to_dict() for x in self.canh_bao[:20]],
-                "tep_ra": self.tep_ra, "flash": self.flash, "sram": self.sram,
+                "tep_ra": self.tep_ra, "tep_bin": self.tep_bin,
+                "thieu_libc": self.thieu_libc,
+                "section": dict(self.section),
+                "flash": self.flash, "sram": self.sram,
                 "flash_toi_da": self.flash_toi_da, "sram_toi_da": self.sram_toi_da,
                 "ty_le_flash": (round(self.flash / self.flash_toi_da, 3)
                                 if self.flash_toi_da else None),
@@ -126,8 +154,10 @@ def tim_chuoi_cong_cu(isa: str) -> dict[str, str]:
     if not cau_hinh:
         return {}
     ra = {"isa": isa, "fqbn": cau_hinh.get("arduino_fqbn", ""),
-          "mcu": cau_hinh.get("mcu", "")}
-    for ten in ("arduino-cli", cau_hinh.get("gcc", ""), cau_hinh.get("size", "")):
+          "mcu": cau_hinh.get("mcu", ""), "cpu": cau_hinh.get("cpu", ""),
+          "float": cau_hinh.get("float", "")}
+    for ten in ("arduino-cli", cau_hinh.get("gcc", ""), cau_hinh.get("size", ""),
+                cau_hinh.get("objcopy", "")):
         if ten:
             duong = _tim_lenh(ten)
             if duong:
@@ -151,15 +181,81 @@ def _doc_kich_thuoc(size_bin: str, elf: Path) -> tuple[int, int]:
     return flash, sram
 
 
+def kich_thuoc_arm(size_bin: str, elf: Path) -> tuple[int, int, dict[str, int]]:
+    """`arm-none-eabi-size -A` → (flash, ram, từng section).
+
+    Không dùng `-C` như AVR: `-C` của binutils ARM **không** in "Program:/Data:" mà in bảng
+    Berkeley, nên bộ đọc của AVR sẽ khớp 0 dòng và trả về (0, 0) — tức là "firmware nặng 0
+    byte", một con số vô lý mà vẫn đi tiếp được vào phép so hạn mức.
+
+    Flash = mọi section nằm trong ảnh nạp (`.text`, `.rodata`, `.data`, các `.isr_vector`);
+    RAM = `.data` + `.bss` (+ vùng đã ghi sẵn khác). `.data` đếm CẢ HAI vì nó tốn chỗ trong
+    Flash để lưu giá trị khởi tạo *và* chỗ trong RAM lúc chạy.
+    """
+    if not size_bin or not elf.exists():
+        return 0, 0, {}
+    r = subprocess.run([size_bin, "-A", str(elf)], capture_output=True, text=True)
+    sec: dict[str, int] = {}
+    for d in r.stdout.splitlines():
+        m = re.match(r"\s*(\.\S+)\s+(\d+)\s+", d)
+        if m:
+            sec[m.group(1)] = int(m.group(2))
+    ram_ten = (".data", ".bss", ".noinit")
+    # Mọi section có kích thước mà KHÔNG phải vùng RAM thuần và không phải thông tin gỡ lỗi
+    # thì nằm trong ảnh nạp. Liệt kê trắng theo tên sẽ bỏ sót section do linker script tự đặt
+    # (`.isr_vector`, `.ARM.exidx`, `.qspi_text`…) và cho ra một con số Flash nhỏ hơn thật.
+    flash = sum(v for k, v in sec.items()
+                if k not in (".bss", ".noinit", ".stack", ".heap", ".comment")
+                and not k.startswith((".debug", ".ARM.attributes")))
+    ram = sum(v for k, v in sec.items() if k in ram_ten)
+    return flash, ram, sec
+
+
+def duong_libc(gcc: str, cpu: str, co_fpu: bool = False) -> str:
+    """Đường dẫn `libc.a` mà chính gcc sẽ dùng, hoặc "" nếu máy không có newlib.
+
+    Hỏi thẳng trình biên dịch bằng `-print-file-name`: nó trả về đường dẫn tuyệt đối nếu tìm
+    thấy, và trả về đúng cái tên vừa hỏi nếu không. Cách này đúng cho mọi cách cài (Homebrew,
+    cask của ARM, gói của hãng) vì nó dùng đúng đường tìm kiếm của bản gcc đang chạy — dò tay
+    trong `/opt/homebrew` thì sẽ sai ngay khi người dùng cài bằng cách khác.
+
+    `arm-none-eabi-gcc` của Homebrew **không** kèm newlib, nên trên máy này libc không có. Đó
+    là một sự thật về môi trường, không phải lỗi của dự án, và nó phải hiện ra thành một câu
+    người dùng đọc được chứ không phải `cannot find -lc` từ `ld`.
+    """
+    if not gcc:
+        return ""
+    lenh = [gcc, f"-mcpu={cpu}", "-mthumb", "-print-file-name=libc.a"]
+    try:
+        r = subprocess.run(lenh, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    ra = (r.stdout or "").strip()
+    return ra if ra and ra != "libc.a" and Path(ra).exists() else ""
+
+
+def _nguon_bare_metal(sketch: Path) -> tuple[list[str], list[str]]:
+    """(tệp nguồn, tệp linker script) trong một thư mục firmware bare-metal."""
+    if sketch.is_file():
+        return [str(sketch)], []
+    nguon = [str(x) for x in sorted(sketch.rglob("*.c"))]
+    nguon += [str(x) for x in sorted(sketch.rglob("*.s"))]
+    nguon += [str(x) for x in sorted(sketch.rglob("*.S"))]
+    return nguon, [str(x) for x in sorted(sketch.rglob("*.ld"))]
+
+
 def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
               flash_toi_da: int = 0, sram_toi_da: int = 0,
-              thu_muc_build: Path | None = None) -> KetQuaBienDich:
+              thu_muc_build: Path | None = None, fpu: str = "") -> KetQuaBienDich:
     """Biên dịch `sketch` (một thư mục sketch Arduino hoặc một tệp .ino/.c).
 
     Trả về kết quả ĐÃ ĐỌC từ trình biên dịch. `dat=True` chỉ khi tiến trình trả 0 **và** có
     tệp ảnh nhị phân trên đĩa: một trình biên dịch trả 0 mà không sinh ra tệp nào là một
     trường hợp đã gặp thật (đường dẫn sai), và nếu tin vào mã trả về thì ta báo "biên dịch
     xong" cho một firmware không tồn tại.
+
+    `fpu` chỉ truyền khi có Fact nói chip này có FPU (ví dụ `fpv4-sp-d16`). Bỏ trống thì dịch
+    dấu phẩy động bằng thư viện — chậm hơn, nhưng chạy trên mọi biến thể.
     """
     kq = KetQuaBienDich(flash_toi_da=flash_toi_da, sram_toi_da=sram_toi_da)
     cc = tim_chuoi_cong_cu(isa)
@@ -170,6 +266,7 @@ def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
 
     build = thu_muc_build or (goc / ".eide" / "build")
     build.mkdir(parents=True, exist_ok=True)
+    la_arm = bool(cc.get("cpu"))
 
     if cc.get("arduino-cli") and cc.get("fqbn"):
         kq.cong_cu = "arduino-cli"
@@ -182,6 +279,17 @@ def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
         kq.lenh = [cc["avr-gcc"], f"-mmcu={cc.get('mcu', 'atmega328p')}", "-Os",
                    "-DF_CPU=16000000UL", "-std=gnu11", "-Wall", "-Wextra",
                    "-o", str(build / "mach.elf"), *nguon]
+    elif la_arm and cc.get("arm-none-eabi-gcc"):
+        loi = _lenh_arm(kq, cc, sketch=sketch, build=build, fpu=fpu)
+        if loi:
+            kq.vi_sao_khong_dat = loi
+            return kq
+    elif la_arm:
+        kq.vi_sao_khong_dat = (
+            f"Máy này chưa có `arm-none-eabi-gcc` để biên dịch cho {isa} "
+            f"({cc.get('cpu')}). EIDE không tự cài — đó là việc của người dùng, qua cổng "
+            "G-TOOL (tool.install).")
+        return kq
     else:
         kq.vi_sao_khong_dat = (
             "Máy này chưa có trình biên dịch cho AVR. Cần `arduino-cli` (kèm nhân "
@@ -213,10 +321,84 @@ def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
         return kq
 
     kq.tep_ra = str(ra.relative_to(goc)) if ra.is_relative_to(goc) else str(ra)
-    if elf is not None:
+    if elf is not None and la_arm:
+        kq.flash, kq.sram, kq.section = kich_thuoc_arm(cc.get("arm-none-eabi-size", ""), elf)
+        loi_bin = _sinh_bin(kq, cc, elf=elf, build=build, goc=goc)
+        if loi_bin:
+            # Không có .bin thì không nạp được vào bo kiểu ổ đĩa — mà "biên dịch xong nhưng
+            # không nạp được" là đúng loại nửa-thành-công phải nói ra, không được làm tròn lên.
+            kq.vi_sao_khong_dat = loi_bin
+            return kq
+    elif elf is not None:
         kq.flash, kq.sram = _doc_kich_thuoc(cc.get("avr-size", ""), elf)
     kq.dat = True
     return kq
+
+
+def _lenh_arm(kq: "KetQuaBienDich", cc: dict[str, str], *, sketch: Path, build: Path,
+              fpu: str) -> str:
+    """Dựng lệnh biên dịch bare-metal ARM. Trả chuỗi lý do nếu KHÔNG dựng được."""
+    kq.cong_cu = "arm-none-eabi-gcc"
+    nguon, ld = _nguon_bare_metal(sketch)
+    if not nguon:
+        return (f"Không có tệp .c/.s nào trong {sketch.name} để biên dịch.")
+    if not ld:
+        # Không tự sinh linker script: nó quyết định địa chỉ Flash/RAM của đúng con chip này,
+        # và một địa chỉ đoán ra sẽ cho một firmware dịch xong, nạp xong, rồi không chạy.
+        return ("Firmware bare-metal cho ARM cần một linker script (`*.ld`) khai địa chỉ và "
+                f"kích thước Flash/RAM của chip. Không thấy tệp .ld nào trong {sketch.name}. "
+                "EIDE không tự sinh — hãy viết nó từ số liệu trong datasheet.")
+    if len(ld) > 1:
+        return ("Có " + str(len(ld)) + " tệp .ld trong thư mục nguồn ("
+                + ", ".join(Path(x).name for x in ld)
+                + "). Không đoán dùng cái nào — chỉ giữ lại một, hoặc tách thư mục.")
+
+    cpu = cc.get("cpu") or "cortex-m4"
+    cờ_fpu = ["-mfloat-abi=soft"]
+    if fpu:
+        hop_le = FPU_HOP_LE.get(cpu, ())
+        if hop_le and fpu not in hop_le:
+            return (f"FPU “{fpu}” không hợp lệ cho {cpu} (hợp lệ: {', '.join(hop_le)}). "
+                    "Không dịch với FPU sai — chương trình sẽ hard-fault ở lệnh dấu phẩy "
+                    "động đầu tiên.")
+        cờ_fpu = [f"-mfpu={fpu}", "-mfloat-abi=hard"]
+
+    # Có newlib thì liên kết với nó; không có thì liên kết thuần `libgcc` và NÓI RA. Đổi âm
+    # thầm là cách để `undefined reference to memset` xuất hiện sau đó, ở một chỗ không liên
+    # quan gì tới nguyên nhân thật.
+    libc = duong_libc(cc["arm-none-eabi-gcc"], cpu)
+    thu_vien = ["-lc", "-lgcc"] if libc else ["-nostdlib", "-lgcc"]
+    if not libc:
+        kq.thieu_libc = True
+
+    kq.lenh = [
+        cc["arm-none-eabi-gcc"], f"-mcpu={cpu}", "-mthumb", *cờ_fpu,
+        "-Os", "-g3", "-std=gnu11", "-Wall", "-Wextra",
+        "-ffreestanding", "-ffunction-sections", "-fdata-sections",
+        f"-I{sketch}",
+        "-T", ld[0], "-nostartfiles",
+        "-Wl,--gc-sections", f"-Wl,-Map={build / 'mach.map'}",
+        "-o", str(build / "mach.elf"), *nguon, *thu_vien]
+    return ""
+
+
+def _sinh_bin(kq: "KetQuaBienDich", cc: dict[str, str], *, elf: Path, build: Path,
+              goc: Path) -> str:
+    """ELF → .bin và .hex. Trả lý do nếu không sinh được."""
+    oc = cc.get("arm-none-eabi-objcopy", "")
+    if not oc:
+        return ("Đã có mach.elf nhưng thiếu `arm-none-eabi-objcopy` nên không tạo được tệp "
+                ".bin để nạp vào bo. Cài nó qua tool.install (cổng G-TOOL).")
+    for dinh_dang, duoi in (("binary", "bin"), ("ihex", "hex")):
+        p = build / f"mach.{duoi}"
+        r = subprocess.run([oc, "-O", dinh_dang, str(elf), str(p)],
+                           capture_output=True, text=True)
+        if r.returncode != 0 or not p.exists() or p.stat().st_size == 0:
+            return (f"objcopy không tạo được mach.{duoi}: "
+                    f"{(r.stderr or r.stdout or 'không rõ').strip()[:200]}")
+    kq.tep_bin = str((build / "mach.bin").relative_to(goc)) \
+        if (build / "mach.bin").is_relative_to(goc) else str(build / "mach.bin")
+    return ""
 
 
 # ============================================================ kiểm môi trường (env.check)
@@ -256,6 +438,23 @@ CAN_GI: dict[str, list[dict[str, Any]]] = {
          "bat_buoc": True, "cach_cai": "brew install --cask gcc-arm-embedded"},
         {"ten": "arm-none-eabi-size", "de_lam_gi": "đọc kích thước Flash/RAM",
          "bat_buoc": True, "cach_cai": "brew install --cask gcc-arm-embedded"},
+        {"ten": "arm-none-eabi-objcopy", "de_lam_gi": "ELF → .bin/.hex để nạp vào bo",
+         "bat_buoc": True, "cach_cai": "brew install arm-none-eabi-binutils"},
+        # newlib KHÔNG phải một lệnh nên không dò được bằng PATH. Nó vẫn phải có mặt trong
+        # bảng này: `arm-none-eabi-gcc` của Homebrew không kèm newlib, và người dùng chỉ biết
+        # điều đó khi trình liên kết báo `cannot find -lc` — một câu không nói được phải làm gì.
+        {"ten": "newlib (libc cho ARM)", "kiem": "libc_arm",
+         "de_lam_gi": "hàm chuẩn C (memset/memcpy/printf) khi liên kết firmware",
+         "bat_buoc": False, "cach_cai": "brew install --cask gcc-arm-embedded"},
+        # G7 — mạch thật. Bo ST-LINK kiểu ổ đĩa nạp được bằng cách sao tệp, nhưng **không** đọc
+        # được ID chip; mà MDD-40 §B1 đòi "flash đối chiếu ID chip" (TC034). Nên hai công cụ
+        # dưới đây là cách duy nhất làm đúng phép đối chiếu đó.
+        {"ten": "st-info", "de_lam_gi": "đọc ID chip qua SWD để đối chiếu với hộ chiếu (TC034)",
+         "bat_buoc": False, "cach_cai": "brew install stlink"},
+        {"ten": "st-flash", "de_lam_gi": "nạp và verify qua SWD (TC029)",
+         "bat_buoc": False, "cach_cai": "brew install stlink"},
+        {"ten": "openocd", "de_lam_gi": "nạp, gỡ lỗi, đọc thanh ghi ngoại vi (TC030)",
+         "bat_buoc": False, "cach_cai": "brew install open-ocd"},
     ],
     "rv32imac": [
         {"ten": "riscv64-unknown-elf-gcc", "de_lam_gi": "biên dịch cho RISC-V",
@@ -271,6 +470,17 @@ CAN_GI_CHUNG = [
     {"ten": "git", "de_lam_gi": "lưu lịch sử tệp của dự án",
      "bat_buoc": False, "cach_cai": "xcode-select --install"},
 ]
+
+
+def _kiem_libc_arm(isa: str) -> str:
+    """Có newlib cho ISA này không. Trả đường dẫn `libc.a` hoặc "" — cùng giao kèo `_tim_lenh`."""
+    cf = CHUOI_CONG_CU.get(isa or "", {})
+    gcc = _tim_lenh(str(cf.get("gcc") or ""))
+    return duong_libc(gcc, str(cf.get("cpu") or "cortex-m4")) if gcc else ""
+
+
+# Thứ cần có mà KHÔNG phải một lệnh trong PATH thì dò bằng hàm riêng ở đây.
+_KIEM_RIENG: dict[str, Any] = {"libc_arm": _kiem_libc_arm}
 
 
 def _phien_ban(duong_dan: str) -> str:
@@ -306,7 +516,8 @@ def kiem_moi_truong(isa: str = "") -> dict[str, Any]:
     """
     ds: list[CongCu] = []
     for c in CAN_GI_CHUNG + CAN_GI.get(isa or "", []):
-        duong = _tim_lenh(str(c["ten"]))
+        duong = (_KIEM_RIENG[str(c["kiem"])](isa) if c.get("kiem")
+                 else _tim_lenh(str(c["ten"])))
         ds.append(CongCu(
             ten=str(c["ten"]), de_lam_gi=str(c["de_lam_gi"]), co=bool(duong),
             duong_dan=duong, phien_ban=_phien_ban(duong) if duong else "",

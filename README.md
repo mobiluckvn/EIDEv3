@@ -39,8 +39,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **SCH-C** | `sch.export` gói mở được ở máy có KiCad · `sch.import` phân loại ba loại thay đổi (bố cục / giá trị / cấu trúc), cấu trúc thì HỎI và KHÔNG ghi đè bản đồ | xong |
 | **SCH-D** | Tiêu chí bố cục đo trên TỪNG sheet + đề nghị phân cấp bằng số (SCH07) · sổ `sch_sheets` + bản ưng ý gói cả nội dung tệp sơ đồ (SCH-16) · ký hiệu sinh từ Fact CHỜ người xác nhận, kiểu chân người sửa thành Fact NGƯỜI (SCH-14/15) · khối A5.8: ảnh bấm được, băng chất lượng từng trang, bảng ký hiệu sửa được | xong |
 | **G6** | `env.check`/`tool.install` (G-TOOL) · `build.compile`/`build.map` (lỗi có toạ độ, symbol nào chiếm chỗ) · **criteria-first**: `sim.criteria` nêu tiêu chí TRƯỚC, tiêu chí PHÁN XỬ kết quả chứ không phải chương trình mô phỏng, đổi ngưỡng khi đã có kết quả → G-QUAL · `test.run` + độ phủ · **6 subagent** ngữ cảnh sạch, tool giới hạn, hook SubagentStop tự gọi **verifier** chỉ-đọc · **6 skill** nạp theo ngữ cảnh | xong |
-| G7 | Mạch thật: `target.*`, G-FLASH/G-OPS, subagent hardware (cần bo thật) | chưa |
-| G7 | Mạch thật | chưa |
+| **G7-A** | Bo thật STM32F469I-DISCO: `doc.fetch` (tải tài liệu, magic byte, trần ép trong lúc đọc) · nạp tài liệu dạng **văn bản/mã nguồn** trích dẫn theo dòng · `doc.search_web` có backend GitHub của hãng khi `st.com` bị chặn · biên dịch **ARM bare-metal** (`armv6-m`/`armv7-m`/`armv7e-m`, `.bin` cho bo nạp kiểu ổ đĩa) · `target.detect`/`flash` (R4, G-FLASH, đối chiếu chip)/`log` · tab A9 hiện hash–đích–verify | xong |
+| G7-B | `target.verify`/`debug`/`dangerous` (breakpoint, thanh ghi, RDP/eFuse) · subagent hardware | chưa |
 
 ## Cài và chạy
 

@@ -184,6 +184,57 @@ def nap_tai_lieu(path: Path, *, doc_id: str, phien_ban: str = "",
         canh_bao_tiem_lenh=canh)
 
 
+# Bao nhiêu dòng thành một đơn vị trích dẫn cho tài liệu văn bản. 40 dòng vừa một màn hình
+# biên tập: người đọc "dòng 121–160" mở tệp ra là thấy ngay chỗ đó, mà đơn vị vẫn đủ hẹp để
+# `fact.from_doc` kiểm được giá trị có nằm trong đó thật (N1).
+DONG_MOI_DON_VI = 40
+TRAN_CHU_VAN_BAN = 8 * 1024 * 1024
+
+
+def nap_van_ban(path: Path, *, doc_id: str, loai: str = "text", phien_ban: str = "",
+                nha_phat_hanh: str = "", dong_moi_don_vi: int = DONG_MOI_DON_VI) -> TaiLieu:
+    """Nạp tài liệu dạng VĂN BẢN (mã nguồn, header, linker script, Markdown, log).
+
+    Trước bước này `phan_loai` nhận ra mã nguồn và nói `doc_duoc=True`, nhưng `doc.load` chỉ
+    có đường cho PDF và Office — nên tác tử được bảo là "đọc được" rồi bị từ chối ở bước sau.
+    Đo trên bo STM32F469 ngày 27/09/2026: tài liệu chân của kit mà còn với tới được lại là
+    **header BSP do chính hãng viết**, và không nạp được nó nghĩa là không có Fact chân nào có
+    trích dẫn.
+
+    Đơn vị trích dẫn là KHOẢNG DÒNG, không phải "trang": tệp văn bản không có trang, và bịa ra
+    số trang thì người mở tệp ra không kiểm lại được — mất đúng thứ N1 tồn tại để bảo vệ.
+    """
+    data = path.read_bytes()
+    if len(data) > TRAN_CHU_VAN_BAN:
+        raise ValueError(
+            f"{path.name} nặng {len(data) / 1e6:.1f} MB, vượt trần "
+            f"{TRAN_CHU_VAN_BAN / 1e6:.0f} MB cho tài liệu văn bản.")
+    h = hashlib.sha256(data).hexdigest()
+    chu = data.decode("utf-8", errors="replace")
+    dong = chu.splitlines()
+
+    buoc = max(1, dong_moi_don_vi)
+    trang: list[Trang] = []
+    for i in range(0, max(len(dong), 1), buoc):
+        khuc = dong[i:i + buoc]
+        dau, cuoi = i + 1, i + len(khuc)
+        trang.append(Trang(len(trang) + 1, "\n".join(khuc),
+                           nhan=(f"dòng {dau}" if dau == cuoi else f"dòng {dau}–{cuoi}")))
+
+    canh: list[str] = []
+    for t in trang:
+        for mau in _MAU_TIEM_LENH:
+            m = mau.search(t.chu)
+            if m:
+                canh.append(f"{t.trich_dan}: “{m.group(0)[:60]}”")
+                break
+
+    return TaiLieu(
+        doc_id=doc_id, ten=path.name, duong_dan=str(path), hash=h,
+        so_trang=len(trang), trang=trang, loai=loai, don_vi_trich_dan="dòng",
+        phien_ban=phien_ban, nha_phat_hanh=nha_phat_hanh, canh_bao_tiem_lenh=canh)
+
+
 # =========================================================================== trích Fact
 @dataclass(slots=True)
 class FactUngVien:

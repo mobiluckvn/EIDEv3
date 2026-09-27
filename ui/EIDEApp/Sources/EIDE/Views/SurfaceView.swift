@@ -186,6 +186,7 @@ struct BlockView: View {
         case "changesets": KhoiChangeset(block: block)
         case "procedure": KhoiQuyTrinh(block: block)
         case "snapshots": KhoiSnapshot(block: block)
+        case "log":      KhoiLog(block: block)
         case "list":     KhoiDanhSach(block: block)
         case "sections": KhoiMuc(block: block)
         case "text":     MarkdownView(text: block.str("text") ?? "")
@@ -276,6 +277,46 @@ struct KhoiKV: View {
                     OCoTang(text: cells.count > 1 ? cells[1].display : "")
                     Spacer()
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Log từ bo
+
+/// Log đọc từ cổng nối tiếp của mạch thật.
+///
+/// Hai điều khối này cố ý làm. **Hiện nguyên văn, không tóm tắt** — log là bằng chứng, và một
+/// bản tóm tắt log là lời của người tóm tắt, không phải của bo. Và **cổng im lặng phải trông
+/// khác cổng chưa đọc**: một khung trống không nói được đó là "bo không in gì" hay "chưa ai
+/// bấm đọc", mà hai thứ đó dẫn tới hai kết luận trái nhau về firmware.
+struct KhoiLog: View {
+    let block: SurfaceBlock
+
+    var body: some View {
+        let chu = block.str("noi_dung") ?? ""
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(block.arr("canh_bao").enumerated()), id: \.offset) { _, c in
+                Label(c.display, systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 11)).foregroundStyle(Color.staleAmber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if chu.isEmpty {
+                Label("Bo không gửi byte nào — cổng IM LẶNG (đây là kết quả đã đo, "
+                      + "không phải “chưa đọc”).", systemImage: "speaker.slash")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ScrollView(.vertical) {
+                    Text(chu)
+                        .font(.system(size: 11, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .frame(maxHeight: 320)
+                .background(Color(nsColor: .textBackgroundColor),
+                            in: RoundedRectangle(cornerRadius: 5))
             }
         }
     }

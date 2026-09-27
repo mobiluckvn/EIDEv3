@@ -56,7 +56,14 @@ class NhatKy:
     jsonl — mắt người bỏ sót đúng loại khác biệt nguy hiểm nhất).
     """
 
-    def __init__(self, ra: pathlib.Path):
+    def __init__(self, ra: pathlib.Path, *, tieu_de: str = "", nguon: str = "",
+                 du_an: str = ""):
+        # Ba tham số này để một phiên KHÁC dùng lại nguyên lớp nhật ký. Bản đầu viết thẳng
+        # tên dự án robot vào phần mở đầu, nên phiên STM32 sẽ ghi ra một tệp nói rằng nó
+        # đang làm robot — một sở cứ tự mâu thuẫn với chính nó.
+        self.tieu_de = tieu_de or "robot hai bánh tự cân bằng"
+        self.nguon = nguon or str(TAI_LIEU.relative_to(REPO))
+        self.du_an = du_an or str(DU_AN.relative_to(REPO))
         self.ra = ra
         self.ra.mkdir(parents=True, exist_ok=True)
         (self.ra / "anh").mkdir(exist_ok=True)
@@ -72,11 +79,11 @@ class NhatKy:
                        if x.name.split("-", 1)[0].isdigit()] or [0])
         if not cu:
             self.md.write_text(
-                "# Phiên làm việc: robot hai bánh tự cân bằng\n\n"
-                "Ghi tự động bởi `tools/phien_robot.py`. Mỗi mục là một bước có thật trong "
-                "một phiên EIDE chạy trên máy, với ảnh chụp cửa sổ EIDE làm sở cứ.\n\n"
-                f"- Tài liệu nguồn: `{TAI_LIEU.relative_to(REPO)}`\n"
-                f"- Thư mục dự án: `{DU_AN.relative_to(REPO)}`\n"
+                f"# Phiên làm việc: {self.tieu_de}\n\n"
+                "Ghi tự động. Mỗi mục là một bước có thật trong một phiên EIDE chạy trên "
+                "máy, với ảnh chụp cửa sổ EIDE làm sở cứ.\n\n"
+                f"- Nguồn: `{self.nguon}`\n"
+                f"- Thư mục dự án: `{self.du_an}`\n"
                 f"- Bắt đầu: {time.strftime('%d/%m/%Y %H:%M:%S')}\n\n---\n", "utf-8")
         else:
             with self.md.open("a", encoding="utf-8") as f:

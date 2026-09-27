@@ -167,6 +167,27 @@ enum Markdown {
         return t.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
+    /// Số hiện ra cho từng mục của một danh sách đã làm phẳng.
+    ///
+    /// Đếm **riêng theo mức thụt**, và mỗi lần quay về mức nông hơn thì xoá bộ đếm của các mức
+    /// sâu hơn. Bản trước lấy thẳng chỉ số trong mảng đã làm phẳng, nên một danh sách viết
+    /// `1. 2. 3.` mà mục 2 có hai gạch đầu dòng con sẽ hiện ra **1, 2, 5** — tác tử viết đúng,
+    /// giao diện đọc sai, và người đọc tưởng tác tử đếm nhầm.
+    static func soThuTu(_ muc: [(String, Bool, Int)]) -> [Int] {
+        var dem: [Int: Int] = [:]
+        var ra: [Int] = []
+        for m in muc {
+            for k in dem.keys where k > m.2 { dem[k] = nil }
+            if m.1 {
+                dem[m.2, default: 0] += 1
+                ra.append(dem[m.2] ?? 1)
+            } else {
+                ra.append(0)
+            }
+        }
+        return ra
+    }
+
     private static func mucDanhSach(_ d: String) -> (String, Bool, Int)? {
         let thut = d.prefix(while: { $0 == " " }).count / 2
         let t = d.trimmingCharacters(in: .whitespaces)
@@ -278,10 +299,11 @@ private struct KhoiView: View {
                 .padding(.top, muc <= 2 ? 4 : 2)
 
         case .danhSach(let muc):
+            let so = Markdown.soThuTu(muc)
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(Array(muc.enumerated()), id: \.offset) { i, m in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(m.1 ? "\(i + 1)." : "•")
+                        Text(m.1 ? "\(so[i])." : "•")
                             .font(.system(size: co - 1))
                             .foregroundStyle(.secondary)
                             .frame(minWidth: 16, alignment: .trailing)
