@@ -3090,9 +3090,78 @@ Bước kế tiếp trả lại **kết luận của chính nó** thay vì nói 
 một việc, lượt đó đi thẳng vào `fs.grep` → … → `fs.edit` → `build.compile` → `target.flash`.
 Đây là một lỗ hổng thật của EIDE (thiếu một bản tóm tắt "tôi đang ở đâu" rẻ tiền), chưa vá.
 
+#### Lần 11 — "ai đặt ra giá trị ấy": N6 nằm trong firmware, sống sót mười lượt
+
+Anh Công hỏi thẳng: *"kiểm tra xem nhận nhầm loại panel không"*. Đọc biến toàn cục
+`Lcd_Driver_Type` từ RAM chip → `1` = `LCD_CTRL_OTM8009A`. Nghe như đã dò đúng.
+
+Rồi hỏi tiếp câu mà con số ấy **không** trả lời được — *ai đặt ra nó*:
+
+```c
+uint16_t OTM8009A_ReadID(void) { return OTM8009A_ID; }        /* 4 byte mã */
+static inline uint16_t NT35510_ReadID(void) { return 0; }
+```
+
+Phép "dò loại panel" của BSP **khai báo** kết quả chứ không dò. `Lcd_Driver_Type` là lời của
+mã, không phải lời của panel. Hai cái vỏ này là lối tắt tác tử tạo hồi vá HardFault ở lần 2 —
+và chúng che mất đúng câu hỏi anh Công vừa đặt, suốt mười lượt, vì **mọi phép đo đều hỏi "giá
+trị bằng bao nhiêu" chứ không ai hỏi "ai đặt ra giá trị ấy"**. N6 (không báo đạt giả), lần này
+nằm trong firmware thay vì trong EIDE.
+
+→ **`ky_hieu_theo_ten()`**: tên biến/hàm → địa chỉ **và kích thước**, đọc từ `nm -S`. Địa chỉ
+để đọc biến toàn cục trên chip đang chạy mà không tra tay. Kích thước để hỏi câu thứ hai: một
+hàm 4 byte không thể vừa gửi lệnh DSI vừa đợi panel trả lời.
+
+Kích thước một mình vẫn **chưa đủ**, và bản đầu đã báo động giả ngay: `BSP_LCD_Init` cũng chỉ
+6 byte, nhưng thân nó là `movs r0,#1 ; b.w BSP_LCD_InitEx` — một vỏ mỏng, hoàn toàn bình
+thường. Thứ phân biệt được nằm trong chính mã máy: **có lệnh nhảy đi đâu không**. `objdump`
+cho từng hàm nhỏ, rồi phân ba nhánh: *trả hằng số* / *vỏ mỏng* / *chưa kết luận được* (thiếu
+`objdump`).
+
+(Và bản đầu của phép đọc `objdump` lấy `split("\t")[-1]` — đó là cột **toán hạng**, nên từ
+khoá lệnh mất sạch và phép dò "có nhảy không" luôn trả lời KHÔNG. Lệnh nằm ở cột thứ ba.)
+
+Tác tử viết lại phép dò cho thật. Đo sau khi nạp — và lần này chip được đối chiếu hash trước
+khi tin con số:
+
+| | trước | sau |
+|---|---|---|
+| `OTM8009A_ReadID` | 4 byte, `movs r0,#64 ; bx lr` | **34 byte**, `bl DSI_IO_ReadCmd(0xDA,…)` |
+| `Lcd_Driver_Type` | `1` — do mã khai | `1` — **do panel trả lời ID `0x40`** |
+
+**Trả lời được câu anh Công hỏi: không nhận nhầm.** Và nó chứng minh thêm một thứ quý hơn:
+đường DSI **đọc-ghi hai chiều** đang chạy, panel nghe được và nói lại được.
+
+#### Lần 12 — sáu số 0, và cái bẫy quen thuộc ở dạng mới
+
+Tác tử dựng một khối `g_panel_status` đọc các thanh ghi DCS tự khai của panel (`0x0A` power
+mode, `0x0C` pixel format, `0x52` brightness, `0x54` ctrl display). Đọc từ RAM chip: **cả sáu
+byte bằng 0**. Nghe như panel khai màn của nó đang tắt.
+
+Nhưng byte đầu là `id1`, đọc bằng đúng lệnh `0xDA` vừa trả về `0x40` mấy dòng trước. Cùng một
+lệnh, cùng một panel, hai kết quả. Nên sáu số 0 kia là **"lệnh đọc thất bại"**, không phải
+"panel trả lời 0" — và mã lúc đó **bỏ mã trả về** của `DSI_IO_ReadCmd`, nên không ai phân biệt
+được. Một phép đo im lặng trông y hệt một phép đo có kết quả; đây là lần thứ N của cùng một
+hình dạng trong phiên này.
+
+Giao lại, và tác tử làm đúng hai việc: giữ mã trả về từng lần đọc, **và** khởi tạo bộ đệm bằng
+**giá trị mồi** `AA BB CC DD EE FF 12 34` để "chưa ai ghi vào" khác được với "đọc ra 0". Kết
+quả đo trên chip (hash đã đối chiếu):
+
+```
+g_panel_status   = AA BB CC DD EE FF 12 34     ← nguyên mồi: không lần đọc nào ghi được gì
+g_panel_read_ret = [1, 1, 1, 1, 1, 1, -1, -1]  ← 1 = LCD_ERROR, cả sáu lần
+```
+
+Sáu lệnh đọc DCS đều **thất bại** sau khi chế độ video chạy, trong khi cùng lệnh ấy **thành
+công** lúc `LCD_ReadType()` dò panel (trước `HAL_DSI_Start`). Đó là số đo, và nó hẹp hơn hẳn
+"màn hình đen".
+
 ### Còn lại
 
-- Màn hình: đã bổ sung bốn lệnh DCS, nạp bản `d42932ca`. Chờ mắt anh Công.
+- Đọc DCS hỏng sau khi vào chế độ video → chưa hỏi được panel về trạng thái của chính nó.
+  Tác tử đang xử lý; đây là chỗ hẹp nhất còn lại.
+- Tóm tắt "tôi đang ở đâu" cho tác tử giữa hai lượt — lỗ hổng đo được ở lần 10, chưa vá.
 - Tóm tắt "tôi đang ở đâu" cho tác tử giữa hai lượt — lỗ hổng đo được ở trên, chưa vá. Phần vẽ đã chứng minh là đúng bằng số.
 - Chữ vỡ (dựng phông) và hộp nền đen của logo (alpha) — hai lỗi do `target.screen` lộ ra.
 - `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.

@@ -1506,3 +1506,150 @@ def test_dau_vet_ngan_xep_khong_thay_gi_thi_noi_ra(monkeypatch):
     assert not d["doc_duoc"] and "chưa đọc được từ nào" in d["vi_sao"]
     d = MT.doc_dau_vet_ngan_xep(0x20000000, ["00000000"] * 8)
     assert not d["doc_duoc"] and "không từ nào" in d["vi_sao"]
+
+
+# ============================== "ai đặt ra giá trị ấy" — N6 nằm trong firmware
+def test_ky_hieu_theo_ten_tra_dia_chi_bien_toan_cuc(tmp_path, monkeypatch):
+    """Đọc một biến toàn cục trên chip đang chạy mà không phải tra địa chỉ bằng tay."""
+    import subprocess
+
+    elf = tmp_path / "mach.elf"
+    elf.write_bytes(b"ELF")
+    ra = ("200000b0 00000001 B Lcd_Driver_Type\n"
+          "08000f94 00000004 T OTM8009A_ReadID\n"
+          "0800158c 00000006 T BSP_LCD_Init\n"
+          "08000810 00000744 T OTM8009A_Init_Ext\n")
+    monkeypatch.setattr(MT.shutil, "which",
+                        lambda x: "/fake/nm" if x.endswith("nm") else None)
+    monkeypatch.setattr(MT.subprocess, "run",
+                        lambda cl, **k: subprocess.CompletedProcess(cl, 0, ra, ""))
+    d = MT.ky_hieu_theo_ten(elf, ["Lcd_Driver_Type", "OTM8009A_Init_Ext", "khong_co"])
+    assert d["dat"]
+    assert d["ky_hieu"]["Lcd_Driver_Type"]["dia_chi"] == 0x200000B0
+    assert d["ky_hieu"]["Lcd_Driver_Type"]["la_ham"] is False
+    assert d["ky_hieu"]["OTM8009A_Init_Ext"]["kich_thuoc"] == 0x744
+    assert not d["ky_hieu"]["OTM8009A_Init_Ext"]["rong_tuech"]
+    # Ký hiệu xin mà không có phải được NÓI RA, không im lặng biến mất.
+    assert d["thieu"] == ["khong_co"]
+
+
+def test_ham_TRA_HANG_SO_bi_bat_con_VO_MONG_thi_khong(tmp_path, monkeypatch):
+    """Đo được trên bo STM32F469 ngày 28/09/2026, và đây là lỗi sống lâu nhất của phiên:
+
+        uint16_t OTM8009A_ReadID(void) { return OTM8009A_ID; }
+        static inline uint16_t NT35510_ReadID(void) { return 0; }
+
+    Phép "dò loại panel" của BSP không dò gì — nó **khai báo** kết quả. Biến
+    `Lcd_Driver_Type` đọc ra `LCD_CTRL_OTM8009A` là lời của MÃ, không phải lời của panel. Nó
+    sống sót qua mười lượt gỡ lỗi vì mọi phép đo đều hỏi "giá trị bằng bao nhiêu" chứ không
+    ai hỏi "ai đặt ra giá trị ấy". N6 (không báo đạt giả), lần này nằm trong firmware.
+
+    Nhưng kích thước KHÔNG đủ để kết luận: `BSP_LCD_Init` cũng chỉ 6 byte, mà thân nó là
+    `movs r0,#1 ; b.w BSP_LCD_InitEx` — một vỏ mỏng, hoàn toàn bình thường. Gọi nó là "trả
+    hằng số" là báo động giả, và báo động giả dạy người ta bỏ qua cảnh báo.
+    """
+    import subprocess
+
+    elf = tmp_path / "mach.elf"
+    elf.write_bytes(b"ELF")
+    nm_ra = ("08000f94 00000004 T OTM8009A_ReadID\n"
+             "0800158c 00000006 T BSP_LCD_Init\n")
+    dis = {0x08000F94: " 8000f94:\t2040      \tmovs\tr0, #64\n 8000f96:\t4770      \tbx\tlr\n",
+           0x0800158C: (" 800158c:\t2001      \tmovs\tr0, #1\n"
+                        " 800158e:\tf7ff beed \tb.w\t800136c <BSP_LCD_InitEx>\n")}
+
+    def _run(cl, **k):
+        if "objdump" in cl[0]:
+            dc = int(next(x for x in cl if x.startswith("--start-address")).split("=")[1], 16)
+            return subprocess.CompletedProcess(cl, 0, dis[dc], "")
+        return subprocess.CompletedProcess(cl, 0, nm_ra, "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: f"/fake/{x}")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    d = MT.ky_hieu_theo_ten(elf, ["OTM8009A_ReadID", "BSP_LCD_Init"])
+
+    stub = d["ky_hieu"]["OTM8009A_ReadID"]
+    assert stub["tra_hang_so"] and "lời của MÃ" in stub["canh_bao"]
+    assert "movs r0, #64" in stub["ma_may"] and "bx lr" in stub["ma_may"]
+
+    vo = d["ky_hieu"]["BSP_LCD_Init"]
+    assert vo["vo_mong"] and vo["rong_tuech"] is False
+    assert "canh_bao" not in vo and "Bình thường" in vo["ghi_chu"]
+
+
+def test_ham_nho_ma_thieu_objdump_thi_CHUA_KET_LUAN(tmp_path, monkeypatch):
+    """"Chưa phân biệt được" không phải "trả hằng số" — trạng thái thứ ba, lần thứ N."""
+    import subprocess
+
+    elf = tmp_path / "mach.elf"
+    elf.write_bytes(b"ELF")
+    monkeypatch.setattr(MT.shutil, "which",
+                        lambda x: "/fake/nm" if x.endswith("nm") else None)
+    monkeypatch.setattr(MT.subprocess, "run", lambda cl, **k: subprocess.CompletedProcess(
+        cl, 0, "08000f94 00000004 T OTM8009A_ReadID\n", ""))
+    v = MT.ky_hieu_theo_ten(elf, ["OTM8009A_ReadID"])["ky_hieu"]["OTM8009A_ReadID"]
+    assert "Chưa kết luận" in v["canh_bao"] and "tra_hang_so" not in v
+
+
+def test_ky_hieu_theo_ten_doc_duoc_dong_BA_COT(tmp_path, monkeypatch):
+    """`nm -S` bỏ cột kích thước với một số ký hiệu. Bỏ qua dòng ba cột thì đúng những ký
+    hiệu ấy im lặng biến thành "không tìm thấy"."""
+    import subprocess
+
+    elf = tmp_path / "mach.elf"
+    elf.write_bytes(b"ELF")
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/nm")
+    monkeypatch.setattr(MT.subprocess, "run", lambda cl, **k: subprocess.CompletedProcess(
+        cl, 0, "20000100 D uwTick\n", ""))
+    d = MT.ky_hieu_theo_ten(elf, ["uwTick"])
+    assert d["ky_hieu"]["uwTick"]["dia_chi"] == 0x20000100
+    assert d["ky_hieu"]["uwTick"]["kich_thuoc"] == 0 and not d["thieu"]
+
+
+def test_ky_hieu_theo_ten_thieu_nm_thi_KHONG_TRA_DUOC_chu_khong_phai_khong_ton_tai(
+        tmp_path, monkeypatch):
+    elf = tmp_path / "mach.elf"
+    elf.write_bytes(b"ELF")
+    monkeypatch.setattr(MT.shutil, "which", lambda x: None)
+    d = MT.ky_hieu_theo_ten(elf, ["x"])
+    assert not d["dat"] and "KHÁC với ký hiệu không tồn tại" in d["vi_sao_khong_dat"]
+
+
+def test_target_debug_doc_bien_theo_TEN_va_to_cao_ham_tra_hang_so(make_agent, monkeypatch):
+    """Câu hỏi "giá trị bằng bao nhiêu" và câu hỏi "ai đặt ra giá trị ấy" là hai câu khác
+    nhau, và suốt mười lượt gỡ lỗi chỉ câu thứ nhất được hỏi."""
+    import subprocess
+
+    agent = make_agent([])
+    goc = agent.config.paths.project_root
+    (goc / ".eide" / "build").mkdir(parents=True, exist_ok=True)
+    (goc / ".eide" / "build" / "mach.elf").write_bytes(b"ELF" * 40)
+    nm_ra = ("200000b0 00000001 B Lcd_Driver_Type\n"
+             "08000f94 00000004 T OTM8009A_ReadID\n")
+
+    def _run(cl, **k):
+        if "nm" in cl[0]:
+            return subprocess.CompletedProcess(cl, 0, nm_ra, "")
+        if "objdump" in cl[0]:
+            return subprocess.CompletedProcess(
+                cl, 0, " 8000f94:\t2040      \tmovs\tr0, #64\n 8000f96:\t4770      \tbx\tlr\n", "")
+        if "a2l" in cl[0]:
+            return subprocess.CompletedProcess(cl, 0, "main\n/x/main.c:79\n" * 9, "")
+        return subprocess.CompletedProcess(
+            cl, 0, "[stm32f4x.cpu] halted due to debug-request, current mode: Thread\n"
+                   "xPSR: 0x01000000 pc: 0x08000200 msp: 0x2002ffd0\n"
+                   "0x200000b0: 00000001 \n", "")
+
+    monkeypatch.setattr(MT.shutil, "which",
+                        lambda x: {"openocd": "/fake/openocd",
+                                   "arm-none-eabi-nm": "/fake/nm",
+                                   "arm-none-eabi-objdump": "/fake/objdump",
+                                   "arm-none-eabi-addr2line": "/fake/a2l"}.get(x))
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    r = agent.registry.run(
+        "target.debug", {"bien": ["Lcd_Driver_Type", "OTM8009A_ReadID"]}, _ctx(agent))
+    assert r.ok, getattr(r.error, "message_vi", r)
+    n = r.data["note_vi"]
+    assert "Lcd_Driver_Type @ 0x200000B0 = 0x00000001" in n
+    assert "OTM8009A_ReadID" in n and "lời của MÃ" in n
+    assert r.data["bien"]["OTM8009A_ReadID"]["tra_hang_so"] is True

@@ -383,6 +383,12 @@ def dang_ky(r: Registry) -> None:
                              "description": "địa chỉ cần đọc, ví dụ [0x40016800] cho LTDC"},
                  "so_tu": {"type": "integer",
                            "description": "đọc mấy từ 32-bit mỗi địa chỉ (mặc định 4)"},
+                 "bien": {"type": "array", "items": {"type": "string"},
+                          "description": ("tên biến/hàm toàn cục cần tra, ví dụ "
+                                          "[\"Lcd_Driver_Type\", \"OTM8009A_ReadID\"]. "
+                                          "Biến thì đọc luôn giá trị trên chip; hàm thì "
+                                          "báo kích thước mã và cảnh báo nếu nó chỉ trả "
+                                          "về một hằng số")},
                  "lay_mau": {"type": "integer",
                              "description": ("lấy mẫu PC bấy nhiêu lần để biết chương trình "
                                              "đang tiến hay quanh quẩn một chỗ; 0 = không "
@@ -391,10 +397,19 @@ def dang_ky(r: Registry) -> None:
             keywords=["gỡ lỗi", "debug", "treo", "đứng", "không chạy", "màn hình đen",
                       "thanh ghi", "chip đang làm gì", "halt", "pc"])
     def target_debug(ctx: Any, dia_chi: list[int] | None = None, so_tu: int = 4,
-                     lay_mau: int = 0):
+                     lay_mau: int = 0, bien: list[str] | None = None):
         from ..build import mach_that as MT
 
-        d = MT.soi_chip(list(dia_chi or []), so_tu=so_tu)
+        # Tra tên → địa chỉ TRƯỚC khi dừng chip, để đọc biến trong cùng một lần dừng.
+        goc0 = Path(ctx.config.paths.project_root)
+        ky = MT.ky_hieu_theo_ten(goc0 / ".eide" / "build" / "mach.elf",
+                                 list(bien or [])) if bien else {}
+        dia_chi = list(dia_chi or [])
+        for v in (ky.get("ky_hieu") or {}).values():
+            if not v["la_ham"]:
+                dia_chi.append(v["dia_chi"])
+
+        d = MT.soi_chip(dia_chi, so_tu=so_tu)
         if not d["dat"]:
             return ToolResult(False, error=EideError(
                 "E4018", f"Chưa soi được chip: {d['vi_sao_khong_dat']}",
@@ -500,6 +515,34 @@ def dang_ky(r: Registry) -> None:
         elif dv:
             cau_vet = f"Chưa dựng được dấu vết ngăn xếp: {dv.get('vi_sao', '?')} "
 
+        # Biến toàn cục: giá trị đọc từ chip, kèm câu hỏi mà giá trị ấy KHÔNG trả lời được —
+        # ai đặt ra nó. Đo được trên bo STM32F469: `Lcd_Driver_Type = 1 = LCD_CTRL_OTM8009A`,
+        # nghe như đã dò được panel; mà `OTM8009A_ReadID()` chỉ có 4 byte mã
+        # (`movs r0,#64 ; bx lr`) — nó KHAI BÁO kết quả chứ không dò gì. N6 nằm trong firmware.
+        cau_bien = ""
+        if ky.get("ky_hieu"):
+            d["bien"] = {}
+            phan = []
+            for ten, v in sorted(ky["ky_hieu"].items()):
+                if v["la_ham"]:
+                    mo = f"{ten}: hàm, {v['kich_thuoc']} byte mã tại {v['dia_chi_hex']}"
+                    if v.get("canh_bao"):
+                        mo += f" ⚠️ {v['canh_bao']}"
+                    elif v.get("ghi_chu"):
+                        mo += f" ({v['ghi_chu']})"
+                else:
+                    o = d["o_nho"].get(f"0x{v['dia_chi']:08x}") or []
+                    gt = o[0] if o else "?"
+                    v["gia_tri"] = gt
+                    mo = f"{ten} @ {v['dia_chi_hex']} = 0x{gt}"
+                d["bien"][ten] = v
+                phan.append(mo)
+            cau_bien = "**Ký hiệu tra được**: " + " · ".join(phan) + ". "
+            if ky.get("thieu"):
+                cau_bien += f"Không thấy trong ELF: {', '.join(ky['thieu'])}. "
+        elif bien:
+            cau_bien = (f"Chưa tra được ký hiệu: {ky.get('vi_sao_khong_dat', '?')} ")
+
         cau_mau = ""
         nm = d.get("nhieu_mau") or {}
         if nm.get("dat"):
@@ -546,7 +589,7 @@ def dang_ky(r: Registry) -> None:
             "dang_ket_trong_ngat": trong_ngat,
             "note_vi": (
                 f"Chip đang ở chế độ **{d['che_do']}**, PC = {d['pc'] or '?'}. "
-                + cau_loi + cau_khung + cau_vet + cau_mau + cau_ten
+                + cau_loi + cau_khung + cau_vet + cau_bien + cau_mau + cau_ten
                 + ("ĐÂY LÀ MANH MỐI CHÍNH: “Handler …” nghĩa là CPU đang nằm trong một trình "
                    "phục vụ ngắt. Nếu nó ở đó mãi thì chương trình chính đã chết ở đúng chỗ "
                    "ấy — hay gặp nhất là một handler để mặc định thành `while(1){}` trong "

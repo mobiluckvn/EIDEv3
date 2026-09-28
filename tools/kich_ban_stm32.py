@@ -798,8 +798,207 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
         nk.anh(g, "lenh-dcs-panel")
 
+    # ------------------------------------------- 30. phép dò panel không hề dò gì
+    #
+    # Anh Công hỏi thẳng: "kiểm tra xem nhận nhầm loại panel không". Đọc biến toàn cục
+    # `Lcd_Driver_Type` từ RAM chip: `1` = `LCD_CTRL_OTM8009A` — nghe như đã dò đúng.
+    #
+    # Nhưng hỏi tiếp câu mà con số ấy KHÔNG trả lời được — ai đặt ra nó:
+    #
+    #     uint16_t OTM8009A_ReadID(void) { return OTM8009A_ID; }      /* 4 byte mã */
+    #     static inline uint16_t NT35510_ReadID(void) { return 0; }
+    #
+    # Phép "dò loại panel" **khai báo** kết quả chứ không dò. Đây là N6 (không báo đạt giả)
+    # nằm trong firmware, và nó sống sót qua mười lượt vì mọi phép đo đều hỏi "giá trị bằng
+    # bao nhiêu" chứ không ai hỏi "ai đặt ra giá trị ấy".
+    if lam(30):
+        nk.buoc("Phép dò loại panel không hề dò gì — nó khai báo kết quả")
+        loi, cc = hoi(g, nk, du_an,
+                      "Anh Công vẫn thấy màn đen và bảo kiểm xem có nhận nhầm loại panel "
+                      "không. Mình đọc biến `Lcd_Driver_Type` từ RAM chip: bằng `1`, tức "
+                      "`LCD_CTRL_OTM8009A`.\n\n"
+                      "Nhưng mình hỏi thêm một câu mà con số ấy không trả lời được: **ai đặt "
+                      "ra nó**. Và đây là chỗ đáng nhìn:\n\n"
+                      "```c\n"
+                      "uint16_t OTM8009A_ReadID(void) { return OTM8009A_ID; }\n"
+                      "static inline uint16_t NT35510_ReadID(void) { return 0; }\n"
+                      "```\n\n"
+                      "`OTM8009A_ReadID` trong ảnh nạp chỉ có **4 byte mã** — `movs r0,#64 ; "
+                      "bx lr`. Nó không gửi lệnh nào qua DSI cả. Nghĩa là `LCD_ReadType()` "
+                      "không dò panel, nó **khai báo** rằng panel là OTM8009A. Giá trị "
+                      "`Lcd_Driver_Type` là lời của mã, không phải lời của phần cứng — nên "
+                      "câu hỏi của anh Công vẫn đang bỏ ngỏ.\n\n"
+                      "Mình vừa thêm cho `target.debug` tham số **`bien`**: truyền tên biến "
+                      "hay tên hàm, nó tra địa chỉ trong ELF, đọc giá trị trên chip, và cảnh "
+                      "báo khi một hàm chỉ trả về hằng số.\n\n"
+                      "Việc của bạn: làm cho phép dò ID trở thành phép dò THẬT — đọc ID của "
+                      "panel qua đường DSI rồi so với hằng số của từng loại. Nếu panel không "
+                      "trả lời thì nói ra là không trả lời, đừng mặc định. Đo xong mới biết "
+                      "có nhận nhầm hay không, và lúc đó mới sửa.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_do_id_panel(nk, ctx, du_an)
+        _kiem_duong_hien_thi(nk, ctx)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "do-id-panel")
+
+    # ------------------------------------------- 31. nạp rồi ĐỌC kết quả dò thật
+    #
+    # Tác tử đã viết hàm đọc ID thật, nhưng chip vẫn giữ bản cũ (hash lệch). "Đã sửa" và
+    # "đang chạy" là hai chuyện — đúng cái bẫy đã sập ở lượt 26.
+    if lam(31):
+        nk.buoc("Nạp bản có phép dò thật, rồi đọc xem panel TRẢ LỜI ID gì")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn viết phép dò ID thật rồi, tốt. Nhưng chip vẫn đang giữ bản cũ — "
+                      "hash ảnh nạp lệch với tệp bạn vừa dịch.\n\n"
+                      "Nạp bản mới đi, rồi gọi `target.debug` với "
+                      "`bien: [\"Lcd_Driver_Type\"]` để đọc xem lần này phép dò THẬT trả ra "
+                      "loại nào. Nếu panel không trả lời thì giá trị sẽ là `LCD_CTRL_NONE` "
+                      "(bằng 2) — và đó cũng là một câu trả lời, đừng coi nó là thất bại của "
+                      "phép đo.\n\n"
+                      "Nói cho mình biết con số đọc được và nó nghĩa là gì.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_do_id_panel(nk, ctx, du_an)
+        _kiem_loai_panel_doc_duoc(nk, ctx)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "id-panel-that")
+
+    # ------------------------------------------- 32. hỏi thẳng panel: mày đang bật hay tắt?
+    #
+    # Phép dò thật đã chạy trên chip và panel TRẢ LỜI đúng ID 0x40 → không nhận nhầm loại, và
+    # quan trọng hơn: **đường DSI đọc-ghi hai chiều đang chạy**. Đó là năng lực mở ra câu hỏi
+    # cuối cùng chưa ai hỏi được — hỏi chính tấm panel xem nó nghĩ màn của nó đang thế nào.
+    if lam(32):
+        nk.buoc("Hỏi thẳng panel qua DSI: nó nghĩ màn của nó đang bật hay tắt")
+        loi, cc = hoi(g, nk, du_an,
+                      "Phép dò của bạn chạy thật rồi: mình đọc `Lcd_Driver_Type` từ RAM chip "
+                      "(chip đang chạy đúng bản vừa dịch, đã đối chiếu hash) ra `1` = "
+                      "`LCD_CTRL_OTM8009A`, và `OTM8009A_ReadID` giờ là 34 byte mã gọi thật "
+                      "`DSI_IO_ReadCmd(0xDA, …)`. **Panel trả lời đúng ID `0x40`.**\n\n"
+                      "Nên: không nhận nhầm loại panel. Và nó vừa chứng minh một thứ quý "
+                      "hơn — **đường DSI đọc-ghi hai chiều đang chạy**, panel nghe được và "
+                      "nói lại được.\n\n"
+                      "Vậy thì đừng đoán nữa: **hỏi thẳng nó**. Panel MIPI có những thanh "
+                      "ghi DCS tự khai trạng thái của chính mình — bạn đọc tài liệu "
+                      "OTM8009A / chuẩn MIPI DCS để chọn đúng thanh ghi, nhưng ý là: nó có "
+                      "đang ngủ không, màn của nó đang bật hay tắt, độ sáng nó đang giữ là "
+                      "bao nhiêu.\n\n"
+                      "Đọc ra rồi báo mình con số và nghĩa của nó. Nếu panel khai màn đang "
+                      "TẮT trong khi ta đã gửi lệnh bật thì đó là manh mối; nếu nó khai màn "
+                      "ĐANG BẬT mà mắt vẫn thấy đen thì manh mối nằm ở đèn nền. Hai hướng "
+                      "khác hẳn nhau, nên đo trước rồi hẵng sửa.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_do_id_panel(nk, ctx, du_an)
+        _kiem_loai_panel_doc_duoc(nk, ctx)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "hoi-panel")
+
+    # ------------------------------------------- 33. số 0 ấy là "panel tắt" hay "đọc hỏng"?
+    #
+    # `g_panel_status` đọc từ RAM chip ra SÁU byte 0. Nghe như panel khai màn đang tắt. Nhưng
+    # byte đầu là `id1` — và chính lệnh đọc ID ấy đã trả về `0x40` lúc dò loại panel. Cùng
+    # một lệnh, cùng một panel, hai kết quả khác nhau ở hai thời điểm.
+    #
+    # Nên sáu số 0 kia gần như chắc chắn là "lệnh đọc thất bại", không phải "panel trả lời 0".
+    # Và mã hiện tại **bỏ mã trả về** của `DSI_IO_ReadCmd`, nên không ai phân biệt được hai
+    # thứ đó. Lại đúng hình dạng N6 — một phép đo im lặng trông y hệt một phép đo có kết quả.
+    if lam(33):
+        nk.buoc("Sáu số 0 đó là “panel tắt” hay “lệnh đọc hỏng”?")
+        loi, cc = hoi(g, nk, du_an,
+                      "Mình đọc `g_panel_status` từ RAM chip (chip đang chạy đúng bản vừa "
+                      "dịch): **cả sáu byte đều bằng 0**.\n\n"
+                      "Nghe như panel khai màn của nó đang tắt. Nhưng nhìn kỹ byte đầu: đó "
+                      "là `id1`, đọc bằng DCS `0xDA` — **đúng cái lệnh vừa trả về `0x40`** "
+                      "lúc `LCD_ReadType()` dò loại panel, và nhờ nó mà `Lcd_Driver_Type` "
+                      "thành `LCD_CTRL_OTM8009A`. Cùng một lệnh, cùng một panel, hai kết quả "
+                      "khác nhau ở hai thời điểm khác nhau.\n\n"
+                      "Nên sáu số 0 kia nhiều khả năng là **lệnh đọc thất bại**, không phải "
+                      "panel trả lời 0. Mà mã của bạn đang **bỏ mã trả về** của "
+                      "`DSI_IO_ReadCmd`, nên không ai phân biệt được hai thứ ấy — một phép "
+                      "đo im lặng trông y hệt một phép đo có kết quả.\n\n"
+                      "Việc của bạn: giữ lại mã trả về của từng lần đọc vào một ô riêng, nạp "
+                      "lại, rồi mình đọc ra xem lệnh nào hỏng. Có số đó mới biết là panel "
+                      "tắt hay đường đọc hỏng — và hai cái đó sửa hoàn toàn khác nhau.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_do_id_panel(nk, ctx, du_an)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "0-hay-hong")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_loai_panel_doc_duoc(nk: Any, ctx: Any) -> None:
+    """Loại panel mà phép dò THẬT đọc ra, lấy từ hiện vật target:debug."""
+    TEN = {0: "LCD_CTRL_NT35510", 1: "LCD_CTRL_OTM8009A", 2: "LCD_CTRL_NONE (panel không trả lời)"}
+    d = (ctx.store.get("target:debug") or {}).get("canonical") or {}
+    # Cùng lý do như trên: giá trị đọc từ RAM chỉ nói lên điều gì khi chip đang chạy đúng bản
+    # có phép dò thật. `ky_hieu_tin_duoc` là cờ mà `target.debug` đã tự đối chiếu sẵn.
+    if d.get("ky_hieu_tin_duoc") is False:
+        nk.ket(False, "Đọc được loại panel mà phép dò THẬT trả ra",
+               "chip đang chạy bản KHÁC bản vừa dịch — con số đọc về vẫn do bản cũ sinh ra")
+        return
+    v = (d.get("bien") or {}).get("Lcd_Driver_Type")
+    if not v or "gia_tri" not in v:
+        nk.ket(False, "Đọc được loại panel mà phép dò THẬT trả ra",
+               "— tác tử chưa đọc `Lcd_Driver_Type` bằng target.debug ở lượt này —")
+        return
+    try:
+        x = int(v["gia_tri"], 16) & 0xFF
+    except ValueError:
+        nk.ket(False, "Đọc được loại panel mà phép dò THẬT trả ra",
+               f"giá trị đọc ra không phải số: {v['gia_tri']!r}")
+        return
+    nk.ghi("Loại panel do phép dò đọc ra",
+           f"Lcd_Driver_Type @ {v['dia_chi_hex']} = {x} = {TEN.get(x, '? giá trị lạ')}")
+
+
+def _kiem_do_id_panel(nk: Any, ctx: Any, du_an: pathlib.Path) -> None:
+    """Hàm đọc ID panel đã là phép đo thật chưa, hay vẫn trả hằng số.
+
+    BA chỗ khác nhau mà một phép kiểm cẩu thả sẽ gộp làm một: mã nguồn, ảnh vừa dịch, và con
+    chip đang chạy. Bản đầu của hàm này đọc ELF rồi báo XANH — trong khi chip vẫn giữ bản cũ
+    có cái vỏ trả hằng số, nên số `Lcd_Driver_Type` đọc về vẫn do cái vỏ ấy sinh ra. Một ô
+    xanh chưa xứng đáng, ở đúng chỗ đang cần câu trả lời thật. Cùng cái bẫy đã sập ở lượt 26,
+    lần này nằm trong phép kiểm của chính mình.
+    """
+    import hashlib
+
+    from eide.build.mach_that import doc_nguoc_flash, ky_hieu_theo_ten
+
+    elf = du_an / ".eide" / "build" / "mach.elf"
+    binp = du_an / ".eide" / "build" / "mach.bin"
+    nap = doc_nguoc_flash(binp) if binp.exists() else {"do_duoc": False, "vi_sao": "chưa dịch"}
+    if not nap.get("dat"):
+        nk.ket(False, "Hàm đọc ID panel là phép đo THẬT **và đang chạy trên chip**",
+               ("chip KHÔNG chứa bản vừa dịch — mọi giá trị đọc từ RAM vẫn do bản CŨ sinh ra. "
+                + (nap.get("vi_sao") or "")) if nap.get("do_duoc") else
+               f"chưa đối chiếu được ảnh nạp với chip: {nap.get('vi_sao') or 'không rõ'}")
+        return
+    d = ky_hieu_theo_ten(elf, ["OTM8009A_ReadID", "NT35510_ReadID"])
+    if not d["dat"]:
+        nk.ket(False, "Hàm đọc ID panel là phép đo THẬT (không trả hằng số)",
+               d["vi_sao_khong_dat"])
+        return
+    xau = [f"{t}: {v['kich_thuoc']} byte — {v.get('ma_may', '')}"
+           for t, v in sorted(d["ky_hieu"].items()) if v.get("tra_hang_so")]
+    tot = [f"{t}: {v['kich_thuoc']} byte" for t, v in sorted(d["ky_hieu"].items())
+           if not v.get("tra_hang_so")]
+    nk.ket(not xau,
+           "Hàm đọc ID panel là phép đo THẬT **và đang chạy trên chip**",
+           ("VẪN TRẢ HẰNG SỐ → " + "; ".join(xau)) if xau else
+           ("đã có thân hàm thật, và chip đang chạy đúng bản này: " + "; ".join(tot)))
 
 
 def _kiem_ten_ham_tin_duoc(nk: Any, ctx: Any) -> None:

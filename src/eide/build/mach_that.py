@@ -1210,6 +1210,130 @@ def doc_cau_hinh_ltdc(*, timeout: float = 60.0) -> dict[str, Any]:
     return ra
 
 
+# Một hàm có nói chuyện với phần cứng thì không thể nhỏ hơn chừng này byte mã: nạp địa chỉ
+# thanh ghi, ghi, đợi, đọc về — riêng phần đó đã vài chục byte. Ngưỡng là quy ước và được nói
+# ra, không giấu trong một câu kết luận.
+NGUONG_HAM_RONG_TUECH = 16
+
+
+def _phan_loai_ham_nho(elf: Path, dia_chi: int, kich_thuoc: int, ten: str, *,
+                       timeout: float = 30.0) -> dict[str, Any]:
+    """Một hàm nhỏ: nó TRẢ HẰNG SỐ, hay chỉ là vỏ mỏng nhảy sang hàm thật?
+
+    Hai thứ này cùng nhỏ như nhau và nghĩa ngược hẳn nhau. Trả hằng số = phép đo giả; vỏ mỏng
+    = hoàn toàn bình thường. Phân biệt bằng chính mã máy, không bằng kích thước.
+    """
+    od = shutil.which("arm-none-eabi-objdump")
+    if not od:
+        return {"canh_bao": (f"`{ten}` chỉ có {kich_thuoc} byte mã, nhưng máy chưa có "
+                             "`arm-none-eabi-objdump` nên chưa phân biệt được “trả hằng số” "
+                             "với “vỏ mỏng gọi hàm khác”. Chưa kết luận."),
+                "ma_may": ""}
+    try:
+        r = subprocess.run([od, "-d", f"--start-address=0x{dia_chi:x}",
+                            f"--stop-address=0x{dia_chi + kich_thuoc:x}", str(elf)],
+                           capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return {"canh_bao": "", "ma_may": ""}
+    # objdump in `  địa chỉ:\tbyte mã\tlệnh\ttoán hạng`. Lệnh ở cột THỨ BA.
+    # Bản đầu lấy `split("\t")[-1]` — đó là cột toán hạng, nên từ khoá lệnh bị mất sạch và
+    # phép dò "có nhảy không" luôn trả lời KHÔNG. Nó gán nhãn "trả hằng số" cho cả
+    # `BSP_LCD_Init` (thật ra là `movs r0,#1` rồi `b.w BSP_LCD_InitEx`) — đúng loại báo động
+    # giả mà cả hàm này sinh ra để tránh.
+    lenh: list[tuple[str, str]] = []
+    for l in (r.stdout or "").splitlines():
+        c = l.split("\t")
+        if len(c) >= 3 and c[0].strip().endswith(":"):
+            lenh.append((c[2].strip(), c[3].strip() if len(c) > 3 else ""))
+    ma = " ; ".join((m + " " + t).strip() for m, t in lenh)
+    # `b`, `bl`, `blx`, `b.w`, `b.n` — nhảy đi chỗ khác. `bx lr` là TRỞ VỀ, không tính.
+    nhay = any(re.fullmatch(r"(bl|blx|b|b\.w|b\.n)", m)
+               or (m.startswith("bx") and not t.startswith("lr"))
+               for m, t in lenh)
+    if nhay:
+        return {"rong_tuech": False, "vo_mong": True, "ma_may": ma,
+                "ghi_chu": (f"`{ten}` chỉ {kich_thuoc} byte nhưng CÓ lệnh nhảy — đây là vỏ "
+                            "mỏng gọi sang hàm khác, không phải hàm trả hằng số. Bình thường.")}
+    return {"tra_hang_so": True, "ma_may": ma,
+            "canh_bao": (f"`{ten}` chỉ có {kich_thuoc} byte mã và KHÔNG có lệnh nhảy nào — "
+                         f"thân nó chỉ nạp một hằng số rồi trở về ({ma}). "
+                         "Giá trị nó trả về là lời của MÃ, không phải lời của phần cứng. Mọi "
+                         "kết luận dựa vào nó đều là kết luận về chính mã nguồn.")}
+
+
+def ky_hieu_theo_ten(elf: Path, ten: list[str], *, timeout: float = 30.0) -> dict[str, Any]:
+    """Tên biến/hàm → địa chỉ và KÍCH THƯỚC, đọc từ bảng ký hiệu của ELF (`nm -S`).
+
+    Hai việc, và việc thứ hai mới là lý do hàm này đáng có.
+
+    **Địa chỉ**: để đọc được một biến toàn cục trên chip đang chạy mà không phải đi tra địa
+    chỉ bằng tay. Đo được trên bo STM32F469 ngày 28/09/2026: đọc `Lcd_Driver_Type` ra `1` =
+    `LCD_CTRL_OTM8009A`, tức chương trình *tin rằng* nó đang nói chuyện với panel OTM8009A.
+
+    **Kích thước**: để hỏi tiếp câu mà con số kia không trả lời được — *vì sao* nó tin thế.
+    `OTM8009A_ReadID()` trên bo ấy chỉ có **6 byte mã**, vì thân hàm là `return OTM8009A_ID;`.
+    Một hàm sáu byte không thể vừa gửi lệnh qua DSI vừa đợi panel trả lời. Nói cách khác:
+    phép "dò loại panel" không dò gì cả, nó **khai báo** kết quả — và biến `Lcd_Driver_Type`
+    là lời của mã, không phải lời của phần cứng.
+
+    Đây đúng là N6 (không báo đạt giả) xuất hiện bên trong firmware thay vì bên trong EIDE, và
+    nó sống sót qua mười lượt gỡ lỗi vì mọi phép đo đều hỏi "giá trị bằng bao nhiêu" chứ không
+    ai hỏi "ai đặt ra giá trị ấy".
+    """
+    ra: dict[str, Any] = {"dat": False, "ky_hieu": {}, "vi_sao_khong_dat": ""}
+    if not elf.exists():
+        ra["vi_sao_khong_dat"] = f"không có {elf.name} — biên dịch trước."
+        return ra
+    nm = shutil.which("arm-none-eabi-nm")
+    if not nm:
+        ra["vi_sao_khong_dat"] = ("máy chưa có `arm-none-eabi-nm`. Không tra được KHÁC với "
+                                  "ký hiệu không tồn tại.")
+        return ra
+    try:
+        r = subprocess.run([nm, "-S", "--defined-only", str(elf)],
+                           capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as e:
+        ra["vi_sao_khong_dat"] = f"nm không chạy được: {type(e).__name__}: {e}"
+        return ra
+    if r.returncode != 0:
+        ra["vi_sao_khong_dat"] = "nm thất bại: " + ((r.stderr or "").strip()[-160:] or "?")
+        return ra
+
+    muon = set(ten)
+    for dong in (r.stdout or "").splitlines():
+        p = dong.split()
+        # `nm -S` in "địa chỉ [kích thước] loại tên". Kích thước vắng mặt với một số ký hiệu,
+        # nên phải chấp nhận cả ba cột lẫn bốn cột — bỏ qua dòng ba cột thì mất đúng những
+        # ký hiệu không có kích thước, và chúng im lặng biến thành "không tìm thấy".
+        if len(p) == 4:
+            dc, kt, loai, t = p[0], int(p[1], 16), p[2], p[3]
+        elif len(p) == 3:
+            dc, kt, loai, t = p[0], 0, p[1], p[2]
+        else:
+            continue
+        if t not in muon:
+            continue
+        la_ham = loai.upper() in ("T", "W")
+        ra["ky_hieu"][t] = {
+            "dia_chi": int(dc, 16), "dia_chi_hex": f"0x{int(dc, 16):08X}",
+            "kich_thuoc": kt, "loai": loai, "la_ham": la_ham,
+            "rong_tuech": bool(la_ham and 0 < kt < NGUONG_HAM_RONG_TUECH),
+        }
+    # Hàm nhỏ CHƯA đủ để kết luận. `BSP_LCD_Init` cũng chỉ 6 byte, nhưng thân nó là
+    # `return BSP_LCD_InitEx(...)` — một vỏ mỏng nhảy tiếp sang hàm thật, và nó CÓ chạm phần
+    # cứng. Gọi nó là "trả hằng số" là một báo động giả, và báo động giả dạy người ta bỏ qua
+    # cảnh báo. Thứ phân biệt được nằm trong chính mã máy: có lệnh nhảy đi đâu không.
+    for t, v in ra["ky_hieu"].items():
+        if v["rong_tuech"]:
+            v.update(_phan_loai_ham_nho(elf, v["dia_chi"], v["kich_thuoc"], t,
+                                        timeout=timeout))
+    ra["thieu"] = sorted(muon - set(ra["ky_hieu"]))
+    ra["dat"] = bool(ra["ky_hieu"])
+    if not ra["dat"]:
+        ra["vi_sao_khong_dat"] = f"không thấy ký hiệu nào trong ELF: {', '.join(sorted(muon))}"
+    return ra
+
+
 def khop_tai_dia_chi(bin_path: Path, dia_chi: int, *, so_byte: int = 32,
                      goc_flash: int = 0x08000000, timeout: float = 60.0) -> dict[str, Any]:
     """Mã tại đúng địa chỉ này trên chip có giống tệp vừa dịch không?
