@@ -1149,8 +1149,215 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
         nk.anh(g, "sua-lop-boc")
 
+    # ------------------------------------------- 39. chuỗi ~50 lệnh có THẬT SỰ chạy không?
+    #
+    # Sửa lớp bọc là đúng nhưng chưa đủ: anh Công nhìn bo, vẫn đen xì. Hai khả năng còn lại,
+    # và chúng khác hẳn nhau:
+    #   (a) chuỗi khởi tạo CHẠY, nhưng một lệnh nào đó trong đó hỏng;
+    #   (b) chuỗi khởi tạo KHÔNG hề chạy (nhánh `if` không vào, hoặc bị bỏ giữa chừng).
+    #
+    # Hiện không ai phân biệt được, vì không có con số nào nói "đã gửi bao nhiêu lệnh". Đếm
+    # là phép đo rẻ nhất biến hai khả năng ấy thành hai con số khác nhau.
+    if lam(39):
+        nk.buoc("Chuỗi ~50 lệnh khởi tạo panel có thật sự chạy không — đếm ra số")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn sửa đúng chỗ, mình đã kiểm chứng. Nhưng anh Công vừa nhìn bo: "
+                      "**vẫn đen xì, toàn bộ màn**. Nên chỗ ấy đúng mà chưa đủ.\n\n"
+                      "Mình kiểm hai thứ rẻ giúp bạn, cả hai đều ỔN, khỏi mất công: "
+                      "`LCD_Driver_ID` = 0 (kênh ảo đúng), và `DSI_IO_WriteCmd` giờ trả về "
+                      "mã HAL thật.\n\n"
+                      "Còn lại hai khả năng, và chúng khác hẳn nhau:\n"
+                      "- **(a)** chuỗi khởi tạo CHẠY, nhưng một lệnh nào đó trong đó hỏng;\n"
+                      "- **(b)** chuỗi khởi tạo **không hề chạy** — nhánh `if` không vào, "
+                      "hoặc nó bị bỏ giữa chừng.\n\n"
+                      "Không ai phân biệt được, vì chưa có con số nào nói *đã gửi bao nhiêu "
+                      "lệnh*. Đếm đi: một biến đếm trong `bsp_otm8009a_write`, một biến giữ "
+                      "mã trả về khác 0 đầu tiên, và một biến giữ **số thứ tự của lệnh hỏng "
+                      "đầu tiên** cùng mã thanh ghi của nó. Thêm một cờ đặt ngay trước khi "
+                      "gọi `OTM8009A_Init` và một cờ ngay sau khi nó trả về — để biết mã có "
+                      "vào tới đó không.\n\n"
+                      "Nạp rồi mình đọc ra. Nếu đếm được ~50 thì loại hẳn khả năng (b) và ta "
+                      "biết đích xác lệnh thứ mấy làm hỏng; nếu đếm ra 0 thì ta đang sửa một "
+                      "đoạn mã không bao giờ chạy — và suốt mười mấy lượt vừa rồi không ai "
+                      "loại trừ được điều đó.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_dem_lenh_init(nk, du_an)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "dem-lenh-init")
+
+    # ------------------------------------------- 40. gói DÀI dựng ngược bố cục
+    #
+    # Đếm được: init_called=1, init_done=1, cmd_count=101, không lệnh nào lỗi. Chuỗi khởi tạo
+    # CHẠY ĐỦ và HAL nhận hết — loại cả hai khả năng của lượt trước. Nên soi tiếp NỘI DUNG gói.
+    #
+    #   DSI_IO_WriteCmd nhánh dài:
+    #     HAL_DSI_LongWrite(..., NbrParams, pParams[NbrParams], pParams)
+    #                                       ^ byte LỆNH ở CUỐI   ^ payload từ đầu
+    #   Bố cục ST đòi : {dữ liệu..., LỆNH}
+    #   Lớp bọc dựng  : {LỆNH, dữ liệu...}        ← ngược
+    #
+    # Với `0xFF {0x80,0x09,0x01}` — đúng lệnh mở khoá CMD2, thiếu nó thì panel bỏ qua TOÀN BỘ
+    # cấu hình phía sau — gói gửi đi thành lệnh `0x01`, payload `{0xFF,0x80,0x09}`.
+    if lam(40):
+        nk.buoc("Gói DÀI dựng ngược bố cục — 101 lệnh “thành công” mà panel không nhận gì")
+        loi, cc = hoi(g, nk, du_an,
+                      "Số đếm của bạn trả lời dứt khoát, và nó loại cả hai khả năng lượt "
+                      "trước:\n\n"
+                      "```\n"
+                      "g_otm8009a_init_called = 1   g_otm8009a_init_done = 1\n"
+                      "g_otm8009a_cmd_count   = 101\n"
+                      "g_otm8009a_first_err_idx = 0   first_err_ret = 0   ← không lệnh nào lỗi\n"
+                      "```\n\n"
+                      "Chuỗi khởi tạo **chạy đủ**, HAL nhận hết. Nên mình soi tiếp **nội "
+                      "dung** gói, và thấy chỗ này:\n\n"
+                      "```c\n"
+                      "/* DSI_IO_WriteCmd, nhánh gói DÀI: */\n"
+                      "HAL_DSI_LongWrite(..., NbrParams, pParams[NbrParams], pParams);\n"
+                      "/*                                ↑ byte LỆNH ở CUỐI  ↑ payload từ đầu */\n"
+                      "```\n\n"
+                      "Bố cục mà `DSI_IO_WriteCmd` đòi là **`{dữ liệu…, LỆNH}`** — lệnh nằm "
+                      "ở phần tử thứ `NbrParams`. Còn lớp bọc dựng **`{LỆNH, dữ liệu…}`**, "
+                      "ngược lại.\n\n"
+                      "Hệ quả với lệnh đầu tiên của cả chuỗi, `0xFF` + `{0x80,0x09,0x01}` — "
+                      "đúng lệnh **mở khoá CMD2**, thiếu nó thì panel bỏ qua toàn bộ cấu "
+                      "hình phía sau: gói thật sự gửi đi mang lệnh `0x01` với payload "
+                      "`{0xFF,0x80,0x09}`. Sai cả lệnh lẫn dữ liệu, mà HAL vẫn trả `OK` vì "
+                      "nó chỉ nhận gói vào hàng đợi.\n\n"
+                      "Đó là lý do 101 lệnh “thành công” mà panel không nhận được gì. Bạn "
+                      "kiểm lại giúp mình xem mình đọc có đúng không, rồi sửa cho hai bên "
+                      "khớp bố cục. Dịch, nạp, và nhớ đọc lại `cmd_count` cùng mã lỗi đầu "
+                      "tiên sau khi sửa — nếu panel bắt đầu từ chối lệnh sai thì đó là tin "
+                      "tốt, không phải tin xấu.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_dem_lenh_init(nk, du_an)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "goi-dai-nguoc")
+
+    # ------------------------------------------- 41. sửa đầu này, hỏng lại đầu kia
+    #
+    # Tác tử sửa ở `DSI_IO_WriteCmd` thay vì ở lớp bọc — hợp lý, và nhánh gói DÀI giờ đúng:
+    # `pParams[0]` làm lệnh, `&pParams[1]` làm payload, khớp bố cục `{LỆNH, dữ liệu...}`.
+    #
+    # Nhưng cùng lúc nó đổi nhánh gói NGẮN thành `(NbrParams == 0) ? P0 : P1`. Với OTM8009A,
+    # `NbrParams == 0` nghĩa là "gói ngắn có MỘT byte dữ liệu" — bản gốc của ST luôn dùng P1.
+    # Dùng P0 thì byte dữ liệu bị bỏ, tức đúng cái lỗi vừa sửa xong ở lượt 38, sống lại ở một
+    # chỗ khác. Đây là hình dạng rất quen: vá một đầu, thủng đầu kia, vì hai đầu cùng nói về
+    # một quy ước mà quy ước ấy không được viết ra ở đâu cả.
+    if lam(41):
+        nk.buoc("Nhánh gói DÀI đã đúng, nhưng nhánh gói NGẮN vừa hỏng lại")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn đọc đúng, và cách bạn chọn sửa ở `DSI_IO_WriteCmd` thay vì ở lớp "
+                      "bọc thì hợp lý hơn cách mình nghĩ — nhánh gói **dài** giờ khớp: "
+                      "`pParams[0]` làm lệnh, `&pParams[1]` làm payload.\n\n"
+                      "Nhưng cùng lúc, nhánh gói **ngắn** vừa hỏng lại:\n\n"
+                      "```c\n"
+                      "(NbrParams == 0) ? DSI_DCS_SHORT_PKT_WRITE_P0 : DSI_DCS_SHORT_PKT_WRITE_P1\n"
+                      "```\n\n"
+                      "Với driver OTM8009A, `Length == 0` **không** có nghĩa “không có dữ "
+                      "liệu” — nó là “gói ngắn có MỘT byte dữ liệu, dữ liệu nằm ở `pData`”. "
+                      "Đó chính là quy ước bạn đã tìm ra và sửa ở lượt trước. Bản gốc của ST "
+                      "luôn dùng `P1` ở nhánh này, không phân nhánh theo `NbrParams`. Dùng "
+                      "`P0` thì byte dữ liệu bị bỏ — đúng cái lỗi cũ, sống lại ở một chỗ "
+                      "khác.\n\n"
+                      "Bằng chứng nó chưa chạy: mình đọc lại từ chip, `cmd_count = 101`, "
+                      "`first_err_*` vẫn bằng 0 — và anh Công nhìn bo vẫn đen.\n\n"
+                      "Sửa nốt nhánh ngắn. Và nhân thể: quy ước “`Length == 0` nghĩa là một "
+                      "byte dữ liệu” là thứ đã làm ta mất mấy lượt và vừa suýt mất thêm một "
+                      "lượt nữa — ghi nó vào `EIDE.md` (mục Quy ước) bằng `memory.note`, để "
+                      "lần sau không ai phải tìm lại.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_goi_ngan_P1(nk, du_an)
+        _kiem_dem_lenh_init(nk, du_an)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "goi-ngan-P1")
+
+    # ------------------------------------------- 42. nạp bản đã sửa cả hai nhánh
+    if lam(42):
+        nk.buoc("Nạp bản đã sửa cả nhánh gói dài lẫn gói ngắn")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn sửa xong nhánh gói ngắn rồi (mình kiểm: không còn `P0`), và đã "
+                      "ghi quy ước vào `EIDE.md` — cảm ơn, đó là lần đầu trong cả phiên bộ "
+                      "nhớ dài hạn được dùng đúng việc.\n\n"
+                      "Nhưng chip vẫn giữ bản cũ: hash ảnh nạp lệch với tệp bạn vừa dịch. "
+                      "**Nạp đi**, rồi đọc lại `g_otm8009a_cmd_count` và `first_err_*` bằng "
+                      "`target.debug` với `bien`. Báo mình ba con số đó.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_dem_lenh_init(nk, du_an)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "nap-ban-sua-ca-hai")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_goi_ngan_P1(nk: Any, du_an: pathlib.Path) -> None:
+    """Nhánh gói ngắn có còn bỏ byte dữ liệu không (P0 thay vì P1)."""
+    import re as _re
+
+    f = du_an / "firmware" / "stm32469i_discovery_lcd.c"
+    if not f.exists():
+        nk.ket(False, "Gói ngắn gửi P1 (mang theo byte dữ liệu), không phải P0", "không thấy tệp")
+        return
+    m = _re.search(r"DSI_IO_WriteCmd\(uint32_t NbrParams.*?\n[}]", f.read_text("utf-8"), _re.S)
+    if not m:
+        nk.ket(False, "Gói ngắn gửi P1 (mang theo byte dữ liệu), không phải P0",
+               "không thấy hàm DSI_IO_WriteCmd")
+        return
+    than = m.group(0)
+    nhanh = than.split("else")[0]
+    co_p0 = "SHORT_PKT_WRITE_P0" in nhanh
+    nk.ket(not co_p0, "Gói ngắn gửi P1 (mang theo byte dữ liệu), không phải P0",
+           ("vẫn còn nhánh P0 — byte dữ liệu bị bỏ với mọi lệnh ghi một byte"
+            if co_p0 else "nhánh ngắn luôn dùng P1, byte dữ liệu được mang theo"))
+
+
+def _kiem_dem_lenh_init(nk: Any, du_an: pathlib.Path) -> None:
+    """Đã gửi bao nhiêu lệnh khởi tạo panel, và lệnh nào hỏng đầu tiên.
+
+    Đọc mọi biến toàn cục `g_*` nhỏ từ chip sau khi đối chiếu hash — không đoán trước tác tử
+    sẽ đặt tên gì, cứ trình hết ra rồi để người đọc nhìn.
+    """
+    import subprocess
+
+    from eide.build.mach_that import doc_nguoc_flash, ky_hieu_theo_ten, soi_chip
+
+    xd = du_an / ".eide" / "build"
+    if not doc_nguoc_flash(xd / "mach.bin").get("dat"):
+        nk.ket(False, "Đếm được số lệnh khởi tạo panel đã gửi",
+               "chip không chứa bản vừa dịch — số đọc từ RAM vẫn do bản cũ sinh ra")
+        return
+    nm = shutil.which("arm-none-eabi-nm")
+    if not nm:
+        nk.ket(False, "Đếm được số lệnh khởi tạo panel đã gửi", "máy chưa có arm-none-eabi-nm")
+        return
+    r = subprocess.run([nm, "--defined-only", str(xd / "mach.elf")],
+                       capture_output=True, text=True)
+    ten = [c[2] for c in (l.split() for l in r.stdout.splitlines())
+           if len(c) == 3 and c[1] in "bBdD" and c[2].startswith("g_")]
+    k = ky_hieu_theo_ten(xd / "mach.elf", ten)
+    dong = []
+    for t, v in sorted((k.get("ky_hieu") or {}).items()):
+        if v["kich_thuoc"] > 16:
+            continue
+        d = soi_chip([v["dia_chi"]], so_tu=max(1, (v["kich_thuoc"] + 3) // 4))
+        w = d["o_nho"].get(f"0x{v['dia_chi']:08x}") or []
+        b = b"".join(bytes.fromhex(x)[::-1] for x in w)[:v["kich_thuoc"]]
+        dong.append(f"{t} = " + " ".join(f"{x:02X}" for x in b))
+    dem = [x for x in dong if "dem" in x or "count" in x or "n_" in x]
+    nk.ket(bool(dem), "Đếm được số lệnh khởi tạo panel đã gửi",
+           "\n".join(dong) if dong else "không đọc được biến g_* nào")
 
 
 def _kiem_lop_boc_ghi(nk: Any, du_an: pathlib.Path) -> None:

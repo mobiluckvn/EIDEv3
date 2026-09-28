@@ -3306,9 +3306,66 @@ viết.
 ra**, thay vì im lặng như suốt mười mấy lượt trước, khi mọi lệnh đều là `0x00` nên panel chẳng
 phản ứng gì.
 
+#### Lần 17 — **MÀN HÌNH ĐÃ SÁNG**, và gốc rễ là một quy ước không ai viết ra
+
+> *"Lên rồi bạn ơi. Đẹp quá"* — anh Công, 28/09/2026.
+
+Logo PTIT và bốn dòng thông tin hiện trên màn 800×480 của bo STM32F469I-DISCO. Ảnh khung đọc
+từ chính SDRAM lúc màn đang sáng: `docs/stm32f469/ket-qua/anh/KHUNG-ANH-KHI-MAN-HINH-DA-SANG.png`
+(1319 màu, `#FFFFFF` nền, `#DE2219` đỏ PTIT, `#000080` xanh tiêu đề).
+
+**Gốc rễ, viết gọn một câu:** lớp bọc nối driver OTM8009A (API v2) sang hàm `DSI_IO_WriteCmd`
+của BSP (API v1) hiểu sai quy ước đóng gói của cả hai loại gói DSI.
+
+| | bố cục `DSI_IO_WriteCmd` đòi | lớp bọc dựng | hệ quả |
+|---|---|---|---|
+| gói **ngắn** (`Length == 0`) | lệnh + **một byte dữ liệu** (P1) | vứt dữ liệu, gửi `0x00` | ~50 lệnh ghi thanh ghi đều ghi `0x00` |
+| gói **dài** (`Length > 0`) | `{dữ liệu…, LỆNH}` | `{LỆNH, dữ liệu…}` | lệnh mở khoá CMD2 `0xFF {0x80,0x09,0x01}` gửi đi thành lệnh `0x01` |
+
+Không mở được CMD2 thì panel **bỏ qua toàn bộ** cấu hình phía sau — kể cả bơm nguồn nội và
+điều khiển đèn nền. Panel vẫn đủ sống để trả lời lệnh đọc ID, nhưng không sáng.
+
+Và cả hai lỗi đều **im lặng**: `HAL_DSI_ShortWrite`/`LongWrite` trả `HAL_OK` vì chúng chỉ nhận
+gói vào hàng đợi, không biết gì về việc panel có hiểu hay không. Đo được: `cmd_count = 101`,
+`first_err_ret = 0` — một trăm lẻ một lệnh "thành công" trong khi không lệnh nào tới đích.
+
+**Lần thứ năm trong phiên, cùng một hình dạng: `ok` nói về LỜI GỌI, không nói về KẾT QUẢ.**
+Bốn lần trước: `code.vendor_fetch` trả `ok` với 0/26 tệp · `soi_chip` gộp `-c` nên `mdw` im
+lặng · `bsp_otm8009a_write` `return 0` cứng · `g_otm8009a_init_ret = 0` vô nghĩa. Đây là bài
+học trung tâm của cả phiên, và nó không phải bài học về DSI.
+
+Một ghi nhận nữa: sửa xong nhánh gói dài, tác tử **làm hỏng lại nhánh gói ngắn** (`(NbrParams
+== 0) ? P0 : P1`) — đúng cái lỗi vừa vá hai lượt trước, sống lại ở chỗ khác. Vì quy ước
+*"`Length == 0` nghĩa là một byte dữ liệu"* không được viết ra ở đâu cả. Sau khi được chỉ ra,
+tác tử ghi nó vào `EIDE.md` bằng `memory.note` — **lần đầu trong cả phiên bộ nhớ dài hạn được
+dùng đúng việc**, và đúng cho thứ đáng ghi nhất.
+
+#### Tổng kết quãng "màn hình đen": 17 lần, 11 năng lực mới
+
+Từ lúc anh Công nói *"màn hình đen xì"* tới lúc *"lên rồi"*, EIDE được bổ sung:
+
+| năng lực | trả lời câu hỏi nào |
+|---|---|
+| `target.debug` | chip đang làm gì |
+| đọc CFSR/HFSR + giải 17 bit | fault gì |
+| khung ngoại lệ | **lệnh nào** fault (không phải handler nào) |
+| `giai_ma_dia_chi` | địa chỉ → tên hàm + tệp:dòng |
+| `khop_tai_dia_chi` | tên hàm ấy có nói về mã ĐANG CHẠY không |
+| dấu vết ngăn xếp | ai gọi tới đây |
+| `lay_mau_pc` + `RCC_CSR` | kẹt / vòng lặp / reset lại |
+| `target.screen` | chip đã VẼ được gì (đọc framebuffer → PNG) |
+| `doc_duong_hien_thi` | chuỗi 11 mắt đứt ở đâu |
+| `ky_hieu_theo_ten` | biến toàn cục + **hàm nào chỉ trả hằng số** |
+| lượt dở tự khai | tác tử đang dở việc gì |
+
+Và ba lỗi của chính phép đo, mỗi lỗi **tự chế ra một bằng chứng sai**: `GPIOH_ODR` đọc nhầm
+sang `LCKR` · `DSIEN` để bit 2 thay vì 3 · `DSI_WCR` đọc nhầm sang `WCFGR` (lỗi này do **tác
+tử** tìm ra, không phải tôi). Cả ba đều là con số tự dựng lại thay vì tra từ header của ST.
+
 ### Còn lại
 
-- Cần anh Công nhìn bo: đèn nền đã sáng chưa.
+- Khôi phục bản demo gốc của ST cho bo, nếu anh Công muốn (ta đã ghi đè lên nó).
+- Tóm tắt "tôi đang ở đâu" đã vá; `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.
 - Cần anh Công nhìn bo trong phòng tối: **đèn nền có sáng không** (màn đen-xám có ánh so với
   đen tuyệt đối). Đó là phép đo duy nhất còn lại mà máy không làm được, và nó chia đôi phần
   việc còn lại: đèn nền sáng → dữ liệu điểm ảnh không tới panel; đèn nền tắt → đường nguồn /

@@ -7996,3 +7996,886 @@ Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đâ
 
 nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
 
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 12:51:01)*
+
+## Bước 96. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+58 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/96-mo-du-an.png)
+
+
+## Bước 97. Chuỗi ~50 lệnh khởi tạo panel có thật sự chạy không — đếm ra số
+
+**Anh gõ:**
+
+> Bạn sửa đúng chỗ, mình đã kiểm chứng. Nhưng anh Công vừa nhìn bo: **vẫn đen xì, toàn bộ màn**. Nên chỗ ấy đúng mà chưa đủ.
+> 
+> Mình kiểm hai thứ rẻ giúp bạn, cả hai đều ỔN, khỏi mất công: `LCD_Driver_ID` = 0 (kênh ảo đúng), và `DSI_IO_WriteCmd` giờ trả về mã HAL thật.
+> 
+> Còn lại hai khả năng, và chúng khác hẳn nhau:
+> - **(a)** chuỗi khởi tạo CHẠY, nhưng một lệnh nào đó trong đó hỏng;
+> - **(b)** chuỗi khởi tạo **không hề chạy** — nhánh `if` không vào, hoặc nó bị bỏ giữa chừng.
+> 
+> Không ai phân biệt được, vì chưa có con số nào nói *đã gửi bao nhiêu lệnh*. Đếm đi: một biến đếm trong `bsp_otm8009a_write`, một biến giữ mã trả về khác 0 đầu tiên, và một biến giữ **số thứ tự của lệnh hỏng đầu tiên** cùng mã thanh ghi của nó. Thêm một cờ đặt ngay trước khi gọi `OTM8009A_Init` và một cờ ngay sau khi nó trả về — để biết mã có vào tới đó không.
+> 
+> Nạp rồi mình đọc ra. Nếu đếm được ~50 thì loại hẳn khả năng (b) và ta biết đích xác lệnh thứ mấy làm hỏng; nếu đếm ra 0 thì ta đang sửa một đoạn mã không bao giờ chạy — và suốt mười mấy lượt vừa rồi không ai loại trừ được điều đó.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> **[G-FLASH] Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa**
+> - Tác động lên phần cứng thật: flash.
+> - Chưa có bản ưng ý nào để quay về nếu việc này hỏng.
+> - **Thao tác này KHÔNG hoàn tác được.**
+> 
+> → Duyệt  ·  Từ chối
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. fs.glob              ok  {"pattern": "**/*.c"}
+ 2. fs.glob              ok  {"pattern": "**/*.h"}
+ 3. fs.grep              ok  {"pattern": "bsp_otm8009a_write"}
+ 4. fs.read              ok  {"path": "firmware/otm8009a.c", "offset": 850, "limit": 70}
+ 5. fs.grep              ok  {"pattern": "OTM8009A_Init"}
+ 6. fs.read              ok  {"limit": 40, "path": "firmware/stm32469i_discovery_lcd.c", "offset": 450}
+ 7. fs.read              ok  {"limit": 70, "offset": 1, "path": "firmware/main.c"}
+ 8. fs.read              ok  {"path": "firmware/main.c", "offset": 71, "limit": 100}
+ 9. fs.read              ok  {"offset": 150, "limit": 70, "path": "firmware/otm8009a.c"}
+10. fs.grep              ok  {"pattern": "DSI_IO_WriteCmd"}
+11. fs.edit              ok  {"new_string": "static OTM8009A_Object_t g_otm8009a_obj;\nextern int32_t DSI_IO_WriteCmd(u
+12. fs.read              ok  {"path": "firmware/stm32469i_discovery_lcd.c", "limit": 25, "offset": 458}
+13. fs.read              ok  {"limit": 35, "offset": 100, "path": "firmware/stm32469i_discovery_lcd.c"}
+14. fs.edit              ok  {"path": "firmware/stm32469i_discovery_lcd.c", "new_string": "/** @defgroup STM32469I-Disc
+15. fs.edit              ok  {"path": "firmware/stm32469i_discovery_lcd.c", "explain": {"diff_prev": "Đặt g_otm8009a_in
+16. build.compile        ok  {"explain": {"confidence": "VANG", "why": "Tạo tệp nhị phân nạp cho bo mạch để đo đạc chẩn
+17. target.flash         ok  {"tep": ".eide/build/mach.bin", "dong_y_khong_doi_chieu_chip": true, "explain": {"summary"
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+fs.glob → fs.glob → fs.grep → fs.read → fs.grep → fs.read → fs.read → fs.read → fs.read → fs.grep → fs.edit → fs.read → fs.read → fs.edit → fs.edit → build.compile → target.flash
+
+✅ Đếm được số lệnh khởi tạo panel đã gửi
+
+```
+g_bright_after = 00
+g_bright_before = 00
+g_bright_read_ret = 00 00 00 00
+g_bright_val_written = 88
+g_bright_write_ret = 00 00 00 00
+g_dsi_write_ret = 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+g_otm8009a_cmd_count = 65 00 00 00
+g_otm8009a_first_err_idx = 00 00 00 00
+g_otm8009a_first_err_reg = 00 00
+g_otm8009a_first_err_ret = 00 00 00 00
+g_otm8009a_init_called = 01 00 00 00
+g_otm8009a_init_done = 01 00 00 00
+g_otm8009a_init_ret = 00 00 00 00
+g_panel_cmd_status = 40 9C 00 07 26 2C C0 00
+g_panel_dcs = AA BB CC DD EE FF 12 34
+g_panel_status = AA BB CC DD EE FF 12 34
+```
+
+**Tệp trong firmware/ (66)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, font12.c, font16.c, font20.c, font24.c, font8.c, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 261324 B ≥ logo 230400 B
+
+✅ Chip đang chứa ĐÚNG bản vừa dịch (261324 byte)
+
+```
+sha256 tệp  : 5aefbee9f3012905aad3aaad604268e8
+sha256 chip : 5aefbee9f3012905aad3aaad604268e8
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![dem-lenh-init](anh/97-dem-lenh-init.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 12:53:59)*
+
+## Bước 98. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+58 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/98-mo-du-an.png)
+
+
+## Bước 99. Gói DÀI dựng ngược bố cục — 101 lệnh “thành công” mà panel không nhận gì
+
+**Anh gõ:**
+
+> Số đếm của bạn trả lời dứt khoát, và nó loại cả hai khả năng lượt trước:
+> 
+> ```
+> g_otm8009a_init_called = 1   g_otm8009a_init_done = 1
+> g_otm8009a_cmd_count   = 101
+> g_otm8009a_first_err_idx = 0   first_err_ret = 0   ← không lệnh nào lỗi
+> ```
+> 
+> Chuỗi khởi tạo **chạy đủ**, HAL nhận hết. Nên mình soi tiếp **nội dung** gói, và thấy chỗ này:
+> 
+> ```c
+> /* DSI_IO_WriteCmd, nhánh gói DÀI: */
+> HAL_DSI_LongWrite(..., NbrParams, pParams[NbrParams], pParams);
+> /*                                ↑ byte LỆNH ở CUỐI  ↑ payload từ đầu */
+> ```
+> 
+> Bố cục mà `DSI_IO_WriteCmd` đòi là **`{dữ liệu…, LỆNH}`** — lệnh nằm ở phần tử thứ `NbrParams`. Còn lớp bọc dựng **`{LỆNH, dữ liệu…}`**, ngược lại.
+> 
+> Hệ quả với lệnh đầu tiên của cả chuỗi, `0xFF` + `{0x80,0x09,0x01}` — đúng lệnh **mở khoá CMD2**, thiếu nó thì panel bỏ qua toàn bộ cấu hình phía sau: gói thật sự gửi đi mang lệnh `0x01` với payload `{0xFF,0x80,0x09}`. Sai cả lệnh lẫn dữ liệu, mà HAL vẫn trả `OK` vì nó chỉ nhận gói vào hàng đợi.
+> 
+> Đó là lý do 101 lệnh “thành công” mà panel không nhận được gì. Bạn kiểm lại giúp mình xem mình đọc có đúng không, rồi sửa cho hai bên khớp bố cục. Dịch, nạp, và nhớ đọc lại `cmd_count` cùng mã lỗi đầu tiên sau khi sửa — nếu panel bắt đầu từ chối lệnh sai thì đó là tin tốt, không phải tin xấu.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> **[G-FLASH] Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa**
+> - Tác động lên phần cứng thật: flash.
+> - Chưa có bản ưng ý nào để quay về nếu việc này hỏng.
+> - **Thao tác này KHÔNG hoàn tác được.**
+> 
+> → Duyệt  ·  Từ chối
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. fs.grep              ok  {"pattern": "HAL_DSI_LongWrite"}
+ 2. fs.read              ok  {"offset": 1385, "limit": 50, "path": "firmware/stm32469i_discovery_lcd.c"}
+ 3. fs.read              ok  {"path": "firmware/stm32f4xx_hal_dsi.c", "limit": 30, "offset": 1660}
+ 4. fs.read              ok  {"limit": 50, "offset": 1690, "path": "firmware/stm32f4xx_hal_dsi.c"}
+ 5. fs.grep              ok  {"pattern": "DSI_IO_WriteCmd"}
+ 6. fs.read              ok  {"path": "firmware/otm8009a.c", "offset": 855, "limit": 50}
+ 7. fs.grep              ok  {"pattern": "DSI_IO_WriteCmd"}
+ 8. fs.glob              ok  {"pattern": "tai-lieu/**"}
+ 9. fs.grep              ok  {"pattern": "OTM8009A", "glob": "firmware/*.c"}
+10. fs.read              ok  {"limit": 30, "offset": 95, "path": "firmware/otm8009a.c"}
+11. fs.edit              ok  {"new_string": "int32_t DSI_IO_WriteCmd(uint32_t NbrParams, uint8_t *pParams)\n{\n  if(Nbr
+12. build.compile        ok  {"explain": {"summary": "Biên dịch lại firmware sau khi sửa DSI_IO_WriteCmd", "sources": [
+13. target.flash         ok  {"tep": ".eide/build/mach.bin", "cach": "tu_chon", "explain": {"confidence": "VANG", "sour
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+fs.grep → fs.read → fs.read → fs.read → fs.grep → fs.read → fs.grep → fs.glob → fs.grep → fs.read → fs.edit → build.compile → target.flash
+
+✅ Đếm được số lệnh khởi tạo panel đã gửi
+
+```
+g_bright_after = 00
+g_bright_before = 00
+g_bright_read_ret = 00 00 00 00
+g_bright_val_written = 88
+g_bright_write_ret = 00 00 00 00
+g_dsi_write_ret = 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+g_otm8009a_cmd_count = 65 00 00 00
+g_otm8009a_first_err_idx = 00 00 00 00
+g_otm8009a_first_err_reg = 00 00
+g_otm8009a_first_err_ret = 00 00 00 00
+g_otm8009a_init_called = 01 00 00 00
+g_otm8009a_init_done = 01 00 00 00
+g_otm8009a_init_ret = 00 00 00 00
+g_panel_cmd_status = 40 9C 00 07 26 2C C0 00
+g_panel_dcs = AA BB CC DD EE FF 12 34
+g_panel_status = AA BB CC DD EE FF 12 34
+```
+
+**Tệp trong firmware/ (66)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, font12.c, font16.c, font20.c, font24.c, font8.c, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 261316 B ≥ logo 230400 B
+
+✅ Chip đang chứa ĐÚNG bản vừa dịch (261316 byte)
+
+```
+sha256 tệp  : ebbb02a43e8d2f7535fec2ae86f120b3
+sha256 chip : ebbb02a43e8d2f7535fec2ae86f120b3
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![goi-dai-nguoc](anh/99-goi-dai-nguoc.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 12:56:38)*
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 12:56:44)*
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 12:56:53)*
+
+## Bước 100. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+58 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/100-mo-du-an.png)
+
+
+## Bước 101. Nhánh gói DÀI đã đúng, nhưng nhánh gói NGẮN vừa hỏng lại
+
+**Anh gõ:**
+
+> Bạn đọc đúng, và cách bạn chọn sửa ở `DSI_IO_WriteCmd` thay vì ở lớp bọc thì hợp lý hơn cách mình nghĩ — nhánh gói **dài** giờ khớp: `pParams[0]` làm lệnh, `&pParams[1]` làm payload.
+> 
+> Nhưng cùng lúc, nhánh gói **ngắn** vừa hỏng lại:
+> 
+> ```c
+> (NbrParams == 0) ? DSI_DCS_SHORT_PKT_WRITE_P0 : DSI_DCS_SHORT_PKT_WRITE_P1
+> ```
+> 
+> Với driver OTM8009A, `Length == 0` **không** có nghĩa “không có dữ liệu” — nó là “gói ngắn có MỘT byte dữ liệu, dữ liệu nằm ở `pData`”. Đó chính là quy ước bạn đã tìm ra và sửa ở lượt trước. Bản gốc của ST luôn dùng `P1` ở nhánh này, không phân nhánh theo `NbrParams`. Dùng `P0` thì byte dữ liệu bị bỏ — đúng cái lỗi cũ, sống lại ở một chỗ khác.
+> 
+> Bằng chứng nó chưa chạy: mình đọc lại từ chip, `cmd_count = 101`, `first_err_*` vẫn bằng 0 — và anh Công nhìn bo vẫn đen.
+> 
+> Sửa nốt nhánh ngắn. Và nhân thể: quy ước “`Length == 0` nghĩa là một byte dữ liệu” là thứ đã làm ta mất mấy lượt và vừa suýt mất thêm một lượt nữa — ghi nó vào `EIDE.md` (mục Quy ước) bằng `memory.note`, để lần sau không ai phải tìm lại.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] > **Lưu ý về toàn vẹn dự án:** Sổ cái ghi nhận bị lệch thứ tự ở dòng 9174 (seq ghi 9156 thay vì 9174, dấu hiệu của việc có hai tiến trình cùng mở và ghi đồng thời vào dự án). Dữ liệu từng bản ghi vẫn toàn vẹn theo mã băm (hash), nhưng bạn nên đóng bớt tiến trình trùng lặp.
+> 
+> ---
+> 
+> ### Kết quả xử lý
+> 
+> 1. **Sửa nhánh gói ngắn trong `DSI_IO_WriteCmd` (`firmware/stm32469i_discovery_lcd.c`):**
+>    - Loại bỏ toán tử ba ngôi `(NbrParams == 0) ? P0 : P1`.
+>    - Luôn sử dụng `DSI_DCS_SHORT_PKT_WRITE_P1` cho nhánh gói ngắn (`NbrParams <= 1`):
+>      ```c
+>      int32_t DSI_IO_WriteCmd(uint32_t NbrParams, uint8_t *pParams)
+>      {
+>        if(NbrParams <= 1)
+>        {
+>          return (int32_t)HAL_DSI_ShortWrite(&hdsi_eval, LCD_Driver_ID, DSI_DCS_SHORT_PKT_WRITE_P1, pParams[0], pParams[1]);
+>        }
+>        else
+>        {
+>          return (int32_t)HAL_DSI_LongWrite(&hdsi_eval,  LCD_Driver_ID, DSI_DCS_LONG_PKT_WRITE, NbrParams, pParams[0], &pParams[1]);
+>        }
+>      }
+>      ```
+>    - Nhờ vậy, lệnh DCS ngắn kèm tham số 1 byte tại `pParams[1]` (khi `Length == 0` từ driver OTM8009A) sẽ không bị nuốt mất dữ liệu.
+> 
+> 2. **Ghi nhận vào bộ nhớ dài hạn (`EIDE.md`):**
+>    - Đã thêm dòng quy ước vào mục **Quy ước**:
+>      > *Driver OTM8009A quy ước Length == 0 nghĩa là gói ngắn mang 1 byte dữ liệu (nằm ở pData/pParams[1]), DSI luôn dùng gói P1 (DSI_DCS_SHORT_PKT_WRITE_P1).*
+> 
+> 3. **Biên dịch kiểm tra:**
+>    - Biên dịch thành công: Flash chiếm 261.308 B / 2.097.152 B (12,5 %), SRAM chiếm 896 B / 327.680 B (0,3 %).
+>    - Tệp nhị phân nạp bo `.eide/build/mach.bin` đã được tạo mới.
+> 
+> ---
+> 
+> ### Báo cáo 5 dòng
+> - **Đã làm gì:** Sửa `DSI_IO_WriteCmd` dùng `P1` cho gói ngắn, ghi quy ước OTM8009A vào `EIDE.md`, và biên dịch lại firmware ra `.eide/build/mach.bin`.
+> - **Bỏ gì và vì sao:** Không đổi logic nhánh gói dài `HAL_DSI_LongWrite` vì nhánh này đã khớp đúng định dạng payload.
+> - **Giả định đang dùng:** Giả định phần cứng DSI và đường xung clock video của bo đã khớp cấu hình chuẩn BSP STM32469I-Discovery.
+> - **Hoàn tác được tới đâu:** Hoàn tác được từng bước qua các changeset `cs-0078` (sửa mã) và `cs-0079` (bộ nhớ).
+> - **Hết bao nhiêu:** 3 lượt gọi công cụ (`fs.edit`, `memory.note`, `build.compile`).
+> 
+> ---
+> 
+> **Đề xuất bước tiếp theo:** Anh tiến hành nạp tệp `.eide/build/mach.bin` xuống bo mạch để kiểm tra xem màn hình OTM8009A đã hiển thị được nội dung hay chưa.
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. fs.grep              ok  {"pattern": "DSI_IO_WriteCmd"}
+ 2. fs.read              ok  {"path": "firmware/stm32469i_discovery_lcd.c", "offset": 1390, "limit": 50}
+ 3. fs.read              ok  {"offset": 855, "limit": 50, "path": "firmware/otm8009a.c"}
+ 4. fs.edit              ok  {"path": "firmware/stm32469i_discovery_lcd.c", "explain": {"summary": "Sửa nhánh gói ngắn 
+ 5. memory.note          ok  {"line": "Driver OTM8009A quy ước Length == 0 nghĩa là gói ngắn mang 1 byte dữ liệu (nằm ở
+ 6. build.compile        ok  {"explain": {"next": "Báo cáo kết quả sửa mã và chuẩn bị cho người dùng nạp thử lên bo mạc
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+fs.grep → fs.read → fs.read → fs.edit → memory.note → build.compile
+
+✅ Gói ngắn gửi P1 (mang theo byte dữ liệu), không phải P0
+
+```
+nhánh ngắn luôn dùng P1, byte dữ liệu được mang theo
+```
+
+❌ Đếm được số lệnh khởi tạo panel đã gửi
+
+```
+chip không chứa bản vừa dịch — số đọc từ RAM vẫn do bản cũ sinh ra
+```
+
+**Tệp trong firmware/ (66)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, font12.c, font16.c, font20.c, font24.c, font8.c, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 261308 B ≥ logo 230400 B
+
+❌ Chip đang chứa ĐÚNG bản vừa dịch (261308 byte)
+
+```
+sha256 tệp  : 67cdf4369f68d3dccaa1c12616329d4e
+sha256 chip : 7ad2e881304c44aac6ce6b4ed2d2638d
+khác ở 49696 byte
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![goi-ngan-P1](anh/101-goi-ngan-P1.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 12:58:07)*
+
+## Bước 102. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+59 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/102-mo-du-an.png)
+
+
+## Bước 103. Làm tiếp cho xong việc đang dở
+
+**Anh gõ:**
+
+> Làm tiếp đi bạn. Xong việc đang dở thì dịch lại, nạp, rồi gọi `target.screen` để tự kiểm khung ảnh. Nếu còn thiếu gì thì cứ nói.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] ⚠️ **Cảnh báo toàn vẹn hệ thống & trạng thái phiên làm việc**
+> 
+> Trước khi tiến hành các bước biên dịch, nạp và kiểm tra theo yêu cầu của anh, có các vấn đề ảnh hưởng trực tiếp cần báo cáo trước:
+> 
+> 1. **Sổ cái bị lệch thứ tự (chuyển sang chỉ đọc):**
+>    - Tại dòng 9174, số thứ tự `seq` ghi là 9156 (thay vì 9174). Nội dung từng bản ghi vẫn khớp hash (không có dữ liệu bị sửa đổi ác ý), đây là dấu hiệu của việc có **hai tiến trình cùng mở dự án và cùng ghi**.
+>    - Hệ thống hiện tạm chuyển sang trạng thái **chỉ đọc** để bảo vệ dữ liệu. Anh vui lòng kiểm tra và đóng bớt tiến trình/cửa sổ EIDE đang mở song song.
+> 
+> 2. **Các thẻ cổng an toàn đang chờ phản hồi:**
+>    - 1 thẻ **G-DATA** (`gate-0015`) và 4 thẻ **G-FLASH** (`gate-0025`, `gate-0027`, `gate-0032`, `gate-0038`) từ các phiên trước đang dở dang.
+> 
+> ---
+> 
+> ### Tình trạng công việc dở dang
+> - **Phần mã nguồn**: Thay đổi ở [cs-0078] đã hoàn thành — hàm `DSI_IO_WriteCmd` trong `firmware/stm32469i_discovery_lcd.c` đã được chuyển hẳn sang dùng gói ngắn `DSI_DCS_SHORT_PKT_WRITE_P1` cho driver OTM8009A. Quy ước `Length == 0` mang 1 byte dữ liệu cũng đã được ghi nhận vào `EIDE.md` [cs-0079].
+> - **Thực thi tiếp theo**: Ngay khi anh xử lý xong tiến trình trùng lặp để sổ cái hoạt động bình thường trở lại, em sẽ lập tức chạy chuỗi hành động:
+>   1. Biên dịch lại (`build.compile`) để tạo file thực thi mới và kiểm tra dung lượng Flash/SRAM.
+>   2. Nạp bo thật (`target.flash`) qua cổng an toàn G-FLASH.
+>   3. Gọi `target.screen` để đọc trực tiếp bộ nhớ khung ảnh từ thanh ghi LTDC nhằm kiểm tra kết quả hiển thị.
+> 
+> ---
+> 
+> **Báo cáo 5 dòng:**
+> - **Đã làm gì:** Kiểm tra toàn vẹn sổ cái, rà soát diff của cs-0078/cs-0079 và các thẻ cổng đang chờ.
+> - **Bỏ gì và vì sao:** Chưa thể ghi bản build mới hay kích hoạt nạp bo do sổ cái bị lệch (chế độ chỉ đọc) để bảo toàn dữ liệu.
+> - **Giả định đang dùng:** Mã nguồn sau cs-0078 đã sẵn sàng và khớp hoàn toàn với cấu hình phần cứng STM32F469I-Discovery.
+> - **Hoàn tác được tới đâu:** Trạng thái mã nguồn toàn vẹn ở cs-0079 (79 changesets).
+> - **Hết bao nhiêu:** 0 thay đổi mới phát sinh trong lượt này.
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. ledger.query         ok  {"run_id": "run-387", "limit": 10}
+ 2. ledger.query         ok  {"limit": 5, "chua": "cs-0078"}
+ 3. history.diff         ok  {"changeset": "cs-0078"}
+ 4. history.diff         ok  {"changeset": "cs-0079"}
+ 5. tool.search          ok  {"query": "target.screen"}
+ 6. fs.stat              ok  {"path": "firmware/stm32469i_discovery_lcd.c"}
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+ledger.query → ledger.query → history.diff → history.diff → tool.search → fs.stat
+
+❌ Tác tử ĐỌC khung ảnh của bo để xem mình vẽ được gì
+
+```
+— không gọi target.screen lần nào, nên câu “vẽ sai hay panel không hiện” vẫn đang bỏ ngỏ —
+```
+
+**Tệp trong firmware/ (66)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, font12.c, font16.c, font20.c, font24.c, font8.c, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 261308 B ≥ logo 230400 B
+
+❌ Chip đang chứa ĐÚNG bản vừa dịch (261308 byte)
+
+```
+sha256 tệp  : 67cdf4369f68d3dccaa1c12616329d4e
+sha256 chip : 7ad2e881304c44aac6ce6b4ed2d2638d
+khác ở 49696 byte
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![lam-tiep](anh/103-lam-tiep.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 12:59:23)*
+
+## Bước 104. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+59 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/104-mo-du-an.png)
+
+
+## Bước 105. Nạp bản đã sửa cả nhánh gói dài lẫn gói ngắn
+
+**Anh gõ:**
+
+> Bạn sửa xong nhánh gói ngắn rồi (mình kiểm: không còn `P0`), và đã ghi quy ước vào `EIDE.md` — cảm ơn, đó là lần đầu trong cả phiên bộ nhớ dài hạn được dùng đúng việc.
+> 
+> Nhưng chip vẫn giữ bản cũ: hash ảnh nạp lệch với tệp bạn vừa dịch. **Nạp đi**, rồi đọc lại `g_otm8009a_cmd_count` và `first_err_*` bằng `target.debug` với `bien`. Báo mình ba con số đó.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> **[G-FLASH] Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa**
+> - Tác động lên phần cứng thật: flash.
+> - Chưa có bản ưng ý nào để quay về nếu việc này hỏng.
+> - **Thao tác này KHÔNG hoàn tác được.**
+> 
+> → Duyệt  ·  Từ chối
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. tool.search          ok  {"query": "debug doc bien"}
+ 2. fs.glob              ok  {"pattern": "**/*.bin"}
+ 3. fs.grep              ok  {"pattern": "first_err"}
+ 4. target.flash         ok  {"explain": {"sources": [{"kind": "human_act", "ref": "yêu cầu của người dùng tại lượt này
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+tool.search → fs.glob → fs.grep → target.flash
+
+✅ Đếm được số lệnh khởi tạo panel đã gửi
+
+```
+g_bright_after = 00
+g_bright_before = 00
+g_bright_read_ret = 00 00 00 00
+g_bright_val_written = 88
+g_bright_write_ret = 00 00 00 00
+g_dsi_write_ret = 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+g_otm8009a_cmd_count = 65 00 00 00
+g_otm8009a_first_err_idx = 00 00 00 00
+g_otm8009a_first_err_reg = 00 00
+g_otm8009a_first_err_ret = 00 00 00 00
+g_otm8009a_init_called = 01 00 00 00
+g_otm8009a_init_done = 01 00 00 00
+g_otm8009a_init_ret = 00 00 00 00
+g_panel_cmd_status = 40 9C 00 07 2A 2C C0 00
+g_panel_dcs = AA BB CC DD EE FF 12 34
+g_panel_status = AA BB CC DD EE FF 12 34
+```
+
+**Tệp trong firmware/ (66)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, font12.c, font16.c, font20.c, font24.c, font8.c, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 261308 B ≥ logo 230400 B
+
+✅ Chip đang chứa ĐÚNG bản vừa dịch (261308 byte)
+
+```
+sha256 tệp  : 67cdf4369f68d3dccaa1c12616329d4e
+sha256 chip : 67cdf4369f68d3dccaa1c12616329d4e
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![nap-ban-sua-ca-hai](anh/105-nap-ban-sua-ca-hai.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+
