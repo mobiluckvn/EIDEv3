@@ -3001,8 +3001,52 @@ Và một chi tiết về giá của phép đo: đọc ngăn xếp tốn **thêm
 chỉ biết được *sau* khi dừng. `lay_mau_pc()` vì thế tắt nó đi (`doc_ngan_xep=False`) — lấy tám
 mẫu mà dừng mười sáu lần thì phép đo bắt đầu can thiệp vào chính thứ nó đang đo.
 
+#### Lần 9 — mắt đứt cuối cùng cũng là lỗi của phép đo, và tác tử là người tìm ra
+
+Tác tử được giao việc "truy xem ai bật lại bit SHTDN". Nó không đi tìm thủ phạm — nó đi **đọc
+cả hai địa chỉ** rồi báo lại:
+
+> Địa chỉ `0x40017000`: `0x0000000A` (đây là thanh ghi cấu hình **`DSI_WCFGR`**, offset `0x400`).
+> Địa chỉ `0x40017004`: **`0x00000008`** (đây mới là thanh ghi điều khiển **`DSI_WCR`**, offset `0x404`).
+> Như vậy phép đo chuỗi hiển thị của `target.screen` đang đọc nhầm offset `0x400`.
+
+Đúng. `stm32f469xx.h` ghi sẵn offset vào ngay dòng chú thích:
+
+```c
+__IO uint32_t WCFGR;   /*!< DSI Wrapper Configuration Register,  Address offset: 0x400 */
+__IO uint32_t WCR;     /*!< DSI Wrapper Control Register,        Address offset: 0x404 */
+```
+
+Phép đo đọc thanh ghi **cấu hình** rồi giải nghĩa nó như thanh ghi **điều khiển**: `0x0A` ra
+thành *"SHTDN = 1, màn đang tắt"*, trong khi `WCR` thật bằng `0x08` — SHTDN = 0.
+
+Chỗ đáng ghi nhất không phải cái lỗi, mà là **cách nó lộ ra**. Lần 7 tôi tự kiểm lại và tìm ra
+hai lỗi; lần này tôi đã tin bản vừa sửa, và người đọc ra là tác tử — vì nó có đủ công cụ để
+đọc thẳng bộ nhớ và **không mặc định rằng công cụ nói đúng**. Đó chính là tầng mà MDD-40 muốn:
+không ai, kể cả EIDE, được miễn đối chiếu.
+
+Một ghi chú về nguyên nhân gốc, vì nó lặp lại ba lần liên tiếp trong đúng một hàm: cả ba hằng
+số sai đều là số **tôi tự dựng lại** — hai lần theo trí nhớ, lần thứ ba bằng một bộ phân tích
+header viết vội (nó đếm lệch một trường `RESERVED` nên mọi offset sau đó lùi 4 byte). Trong
+khi ST đã ghi sẵn từng offset vào chú thích, ở dạng đọc được bằng mắt. **Suy ra một con số
+luôn rẻ hơn đi tra nó, và luôn đắt hơn về sau.**
+
+Sau khi sửa, cả sáu mắt đều thông:
+
+```
+✓ LTDC bật              LTDC_GCR = 0xC0002221
+✓ Lớp 1 bật             LTDC_L1CR = 0x00000001
+✓ Host DSI bật          DSI_CR = 0x00000001
+✓ Bọc DSI bật (DSIEN)   DSI_WCR(0x40017004) = 0x00000008 → SHTDN=0 DSIEN=1
+✓ Hiển thị không bị tắt DSI_WCR(0x40017004) = 0x00000008
+✓ Panel ra khỏi reset   ODR(0x40021C14) bit 7 = 1, IDR(0x40021C10) bit 7 = 1
+```
+
+Và khung ảnh đọc từ chip (`docs/stm32f469/ket-qua/anh/khung-anh-doc-tu-chip.png`, 1301 màu) hiện
+đúng logo PTIT cùng bốn dòng chữ, sắc nét, nền trắng sạch.
+
 ### Còn lại
 
-- Màn hình: còn đúng một mắt đứt (`SHTDN = 1`); tác tử đang truy xem ai bật lại bit đó. Phần vẽ đã chứng minh là đúng bằng số.
+- Màn hình: mọi phép đo bằng máy đều xanh. Phần còn lại chỉ mắt anh Công trả lời được. Phần vẽ đã chứng minh là đúng bằng số.
 - Chữ vỡ (dựng phông) và hộp nền đen của logo (alpha) — hai lỗi do `target.screen` lộ ra.
 - `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.

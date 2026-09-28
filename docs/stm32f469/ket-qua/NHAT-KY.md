@@ -5280,3 +5280,208 @@ Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
 
 nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
 
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 11:10:26)*
+
+## Bước 66. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+60 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/66-mo-du-an.png)
+
+
+## Bước 67. Làm tiếp cho xong việc đang dở
+
+**Anh gõ:**
+
+> Làm tiếp đi bạn. Xong việc đang dở thì dịch lại, nạp, rồi gọi `target.screen` để tự kiểm khung ảnh. Nếu còn thiếu gì thì cứ nói.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-DATA · Thao tác mức R3, mức tự chủ hiện tại là A3. · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] ## Tình trạng dự án & cảnh báo toàn vẹn
+> 
+> 1. **Cảnh báo sổ cái:** Hệ thống phát hiện sổ cái đứt thứ tự số tuần tự (seq) tại dòng 9174 (ghi 9156 thay vì 9174). Đây là dấu hiệu của hai tiến trình cùng mở dự án và ghi song song trước đó. Hiện các bản ghi vẫn toàn vẹn theo mã băm (hash). Anh nên đóng bớt tiến trình thừa để tránh xung đột ghi.
+> 2. **Các thẻ cổng tồn đọng:** Hiện có các thẻ G-DATA (`gate-0015`) và G-FLASH (`gate-0025`, `gate-0027`, `gate-0032`) đang chờ từ các phiên trước.
+> 
+> ---
+> 
+> ## Kết quả kiểm tra chuỗi hiển thị & khung ảnh (`target.screen` & `target.debug`)
+> 
+> ### 1. Khung ảnh (Frame Buffer)
+> - Bộ nhớ khung ảnh tại `0xC0000000` (kích thước 800×480, định dạng ARGB8888, 1.536.000 byte) đã được chương trình vẽ hoàn tất và xuất ra tệp `.eide/anh-man-hinh.png`.
+> - Tỉ lệ màu phân bổ: `#FFFFFF` (95,1 %), `#DE2219` (0,5 %), `#000080` (0,5 %), `#000000` (0,4 %), `#FF0000` (0,3 %). Khung ảnh có đầy đủ Logo PTIT và 4 dòng văn bản theo yêu cầu.
+> 
+> ### 2. Trạng thái thực thi của CPU
+> - Đọc qua `target.debug`: Chip đang ở chế độ **Thread**, PC = `0x08001A50` (`HAL_Delay` tại `stm32f4xx_hal.c:401`), ngăn xếp chỉ về `main.c:79` (vòng lặp `while(1) { HAL_Delay(1000); }`).
+> - Thanh ghi lỗi: `CFSR = 0x00000000`, `HFSR = 0x00000000` — không có lỗi ngoại lệ hay HardFault nào xảy ra.
+> 
+> ### 3. Phân tích mắt xích DSI Wrapper
+> Khi chạy `target.screen`, công cụ báo chuỗi hiển thị bị đứt ở mắt:
+> > `✗ Hiển thị không bị tắt (SHTDN) — DSI_WCR = 0x0000000A → COLM=0 SHTDN=1 LTDCEN=0 DSIEN=1`
+> 
+> Tuy nhiên, khi dùng `target.debug` đọc trực tiếp vùng nhớ thanh ghi DSI Wrapper:
+> - Địa chỉ `0x40017000`: giá trị `0x0000000A` (đây là thanh ghi cấu hình **`DSI_WCFGR`**, offset `0x400`).
+> - Địa chỉ `0x40017004`: giá trị **`0x00000008`** (đây mới là thanh ghi điều khiển **`DSI_WCR`**, offset `0x404`).
+> 
+> **Đối chiếu bit trên thanh ghi thật `DSI_WCR` (`0x40017004 = 0x00000008`):**
+> - Bit 3 (`DSI_WCR_DSIEN` = `0x00000008`): **1** → Bọc DSI đã bật.
+> - Bit 2 (`DSI_WCR_LTDCEN` = `0x00000004`): **0**.
+> - Bit 1 (`DSI_WCR_SHTDN` = `0x00000002`): **0** → **SHTDN đang tắt (0), hiển thị KHÔNG bị shutdown**.
+> - Bit 0 (`DSI_WCR_COLM` = `0x00000001`): **0**.
+> 
+> Như vậy, phép đo chuỗi hiển thị nội bộ của `target.screen` đang đọc nhầm offset `0x400` (`DSI_WCFGR`) thay vì `0x404` (`DSI_WCR`). Trên phần cứng thực tế, cả 6 mắt xích của chuỗi hiển thị đều đã thông:
+> - ✓ **LTDC bật** (`LTDC_GCR = 0xC0002221`)
+> - ✓ **Lớp 1 bật** (`LTDC_L1CR = 0x00000001`)
+> - ✓ **Host DSI bật** (`DSI_CR = 0x00000001`)
+> - ✓ **Bọc DSI bật** (`DSI_WCR` bit DSIEN = 1)
+> - ✓ **Hiển thị không bị tắt** (`DSI_WCR` bit SHTDN = 0)
+> - ✓ **Panel ra khỏi reset** (chân `PH7` mức cao, `ODR bit 7 = 1`, `IDR bit 7 = 1`)
+> 
+> ---
+> 
+> ## Việc tiếp theo
+> Anh kiểm tra trực tiếp trên tấm màn hình bo STM32F469I-Discovery xem panel OTM8009A đã hiển thị đúng giao diện PTIT chưa, hoặc anh có muốn tinh chỉnh thêm gì ở mã nguồn không.
+> 
+> ---
+> 
+> ### Báo cáo 5 dòng
+> 1. **Đã làm gì:** Đọc và đối chiếu thanh ghi chuỗi hiển thị bằng `target.screen` và `target.debug`; xác minh khung
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. ledger.query         ok  {"limit": 10, "chua": "run-256"}
+ 2. ledger.query         ok  {"limit": 20}
+ 3. history.list         ok  {"limit": 10}
+ 4. history.diff         ok  {"changeset": "cs-0050"}
+ 5. tool.search          ok  {"query": "target screen debug"}
+ 6. ledger.query         ok  {"run_id": "run-255"}
+ 7. ledger.query         ok  {"limit": 5, "chua": "console.post"}
+ 8. ledger.query         ok  {"limit": 1, "chua": "Báo cáo đối chiếu thanh ghi"}
+ 9. target.screen        ok  {}
+10. fs.grep              ok  {"pattern": "WCR"}
+11. fs.read              ok  {"path": "firmware/main.c", "limit": 70, "offset": 1}
+12. fs.read              ok  {"limit": 35, "path": "firmware/stm32469i_discovery_lcd.c", "offset": 1300}
+13. fs.read              ok  {"limit": 30, "path": "firmware/stm32f4xx_hal_dsi.c", "offset": 1595}
+14. fs.grep              ok  {"pattern": "HAL_DSI_Shutdown"}
+15. target.debug         ok  {"lay_mau": 0, "so_tu": 4}
+16. fs.read              ok  {"path": "firmware/main.c", "limit": 20, "offset": 70}
+17. fs.grep              ok  {"pattern": "#define DSI "}
+18. fs.grep              ok  {"pattern": "#define DSI_BASE"}
+19. target.debug         ok  {"so_tu": 1, "lay_mau": 0, "dia_chi": [1073836036]}
+20. target.screen        ok  {}
+21. target.debug         ok  {"so_tu": 1, "lay_mau": 0, "dia_chi": [1073836032, 1073836036, 1073836040, 1073836044]}
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+ledger.query → ledger.query → history.list → history.diff → tool.search → ledger.query → ledger.query → ledger.query → target.screen → fs.grep → fs.read → fs.read → fs.read → fs.grep → target.debug → fs.read → fs.grep → fs.grep → target.debug → target.screen → target.debug
+
+✅ Khung ảnh trên chip CÓ NỘI DUNG (nhiều màu) — tức phần vẽ đã chạy
+
+```
+1301 màu · #FFFFFF 95.1%, #DE2219 0.5%, #000080 0.5%, #000000 0.4%
+```
+
+**Khung ảnh đọc từ bộ nhớ chip (sở cứ cho báo cáo)**
+
+anh/khung-anh-doc-tu-chip.png · 19342 byte · 800×480 ARGB8888 tại 0xC0000000
+
+**Tệp trong firmware/ (66)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, font12.c, font16.c, font20.c, font24.c, font8.c, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 258880 B ≥ logo 230400 B
+
+✅ Chip đang chứa ĐÚNG bản vừa dịch (258880 byte)
+
+```
+sha256 tệp  : 9fabfdab931071cab5b7b96020d17c51
+sha256 chip : 9fabfdab931071cab5b7b96020d17c51
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![lam-tiep](anh/67-lam-tiep.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+

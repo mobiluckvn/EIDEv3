@@ -1140,11 +1140,13 @@ def _openocd_reg(monkeypatch, gia_tri: dict[int, int]):
     monkeypatch.setattr(MT.subprocess, "run", _run)
 
 
-# Số đo THẬT lấy từ bo ngày 28/09/2026. `DSI_WCR = 0x0A` = bit 1 (SHTDN) + bit 3 (DSIEN):
-# màn đang ở trạng thái TẮT, còn bọc DSI thì ĐANG BẬT.
+# `0x40017000` là WCFGR (cấu hình), `0x40017004` mới là WCR (điều khiển). Trên bo thật hai
+# thanh ghi cạnh nhau này mang hai giá trị khác nhau — 0x0A và 0x08 — và chính cái đó làm
+# lộ ra lỗi: đọc nhầm sang WCFGR thì `0x0A` giải nghĩa thành "SHTDN = 1, màn đang tắt".
 _DUONG_HONG = {0x40016818: 0xC0002221, 0x40016884: 1,     # LTDC bật, lớp 1 bật
                0x40016C04: 1,                             # host DSI bật
-               0x40017000: 0x0000000A,                    # SHTDN=1, DSIEN=1
+               0x40017000: 0x0000000A,                    # WCFGR — KHÔNG phải WCR
+               0x40017004: 0x0000000A,                    # WCR: SHTDN=1, DSIEN=1
                0x40021C14: 1 << 7, 0x40021C10: 1 << 7}    # XRES cao → panel đã ra khỏi reset
 
 
@@ -1165,6 +1167,24 @@ def test_dia_chi_va_bit_lay_tu_HEADER_cua_ST_khong_tu_tri_nho():
     # stm32f469xx.h: COLM_Pos 0, SHTDN_Pos 1, LTDCEN_Pos 2, DSIEN_Pos 3
     assert (MT._WCR_COLM, MT._WCR_SHTDN, MT._WCR_LTDCEN, MT._WCR_DSIEN) == (0, 1, 2, 3)
     assert MT.DSI_GOC == 0x40016C00 and MT.LTDC_GOC == 0x40016800
+    # Lỗi thứ BA trong cùng một hàm, và lần này do tác tử tìm ra chứ không phải tôi:
+    #   __IO uint32_t WCFGR;  /*!< DSI Wrapper Configuration Register,  Address offset: 0x400 */
+    #   __IO uint32_t WCR;    /*!< DSI Wrapper Control Register,        Address offset: 0x404 */
+    # Bản trước để WCR = 0x400 — đó là WCFGR. Phép đo đọc thanh ghi CẤU HÌNH rồi giải nghĩa
+    # nó như thanh ghi ĐIỀU KHIỂN.
+    assert (MT.DSI_WCFGR, MT.DSI_WCR) == (0x400, 0x404)
+
+
+def test_doc_duong_hien_thi_doc_WCR_chu_khong_phai_WCFGR_canh_no(monkeypatch):
+    """Hai thanh ghi cạnh nhau, tên gần giống nhau, và trên bo thật mang hai giá trị khác
+    nhau. Đọc nhầm cái nào cũng ra một con số trông hoàn toàn hợp lý."""
+    _openocd_reg(monkeypatch, {**_DUONG_HONG,
+                               0x40017000: 0x0000000A,     # WCFGR: nếu đọc nhầm → "SHTDN=1"
+                               0x40017004: 0x00000008})    # WCR thật: SHTDN=0, DSIEN=1
+    d = MT.doc_duong_hien_thi()
+    assert d["thong_suot"], d["dut_o"]
+    assert "0x40017004" in next(m["so_do"] for m in d["mat_xich"] if "SHTDN" in m["ten"])
+    assert d["wcfgr"] == "0x0000000A"
 
 
 def test_doc_duong_hien_thi_chi_dung_mat_xich_bi_dut(monkeypatch):
@@ -1195,7 +1215,7 @@ def test_doc_duong_hien_thi_doc_ca_ODR_lan_IDR_cua_chan_XRES(monkeypatch):
 
 
 def test_doc_duong_hien_thi_thong_suot_thi_chi_sang_den_nen(monkeypatch):
-    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40017000: 0x00000008})   # SHTDN=0, DSIEN=1
+    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40017004: 0x00000008})   # SHTDN=0, DSIEN=1
     d = MT.doc_duong_hien_thi()
     assert d["thong_suot"] and d["dut_o"] == []
 
@@ -1230,7 +1250,7 @@ def test_target_screen_noi_thang_DUT_O_DAU(make_agent, monkeypatch):
     khung = (bytes([0x19, 0x20, 0xDE, 0xFF]) * 4 + bytes([0xFF]) * 16) * 4
     tt = {0x40016818: 0x00002221, 0x40016884: 1, 0x40016894: 0, 0x400168AC: 0xC0000000,
           0x400168B0: 0x0C800C83, 0x400168B4: 0x000001E0, 0x40016888: 0x03430024,
-          0x4001688C: 0x01EF0010, **_DUONG_HONG}
+          0x4001688C: 0x01EF0010, **_DUONG_HONG, 0x40017004: 0x0000000A}
 
     def _run(cl, **k):
         ra = ""

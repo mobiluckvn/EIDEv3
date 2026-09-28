@@ -718,6 +718,22 @@ CHAN_XRES_MAC_DINH = 7
 # Bit của DSI_WCR, từ `stm32f469xx.h`: COLM=0, SHTDN=1, LTDCEN=2, DSIEN=3.
 _WCR_COLM, _WCR_SHTDN, _WCR_LTDCEN, _WCR_DSIEN = 0, 1, 2, 3
 
+# Offset thanh ghi bọc DSI, chép từ chính dòng chú thích trong `stm32f469xx.h`:
+#
+#     __IO uint32_t WCFGR;   /*!< DSI Wrapper Configuration Register,  Address offset: 0x400 */
+#     __IO uint32_t WCR;     /*!< DSI Wrapper Control Register,        Address offset: 0x404 */
+#
+# Bản trước để `WCR = 0x400` — đó là `WCFGR`. Phép đo đọc thanh ghi CẤU HÌNH rồi giải nghĩa
+# nó như thanh ghi ĐIỀU KHIỂN: `0x0A` đọc thành "SHTDN = 1, màn đang tắt", trong khi `WCR`
+# thật ở `0x404` bằng `0x08` — SHTDN = 0, màn KHÔNG tắt.
+#
+# Lỗi này lộ ra không phải vì tôi kiểm lại, mà vì **tác tử tự đi đọc cả hai địa chỉ rồi nói
+# ra**. Và nó là lần thứ ba liên tiếp trong cùng một hàm một hằng số sai sinh ra một kết luận
+# sai — hai lần đầu vì viết theo trí nhớ, lần này vì tin một bộ phân tích header tự viết vội
+# thay vì đọc chính dòng chú thích mà ST đã ghi sẵn offset vào.
+DSI_WCFGR = 0x400
+DSI_WCR = 0x404
+
 
 # RCC_CSR — con chip tự khai lần khởi động vừa rồi là do đâu. Bit 24 (RMVF) để xoá cờ.
 RCC_CSR = 0x40023874
@@ -908,7 +924,8 @@ def doc_duong_hien_thi(*, chan_xres: int = CHAN_XRES_MAC_DINH,
         return ra
     idr_xres = odr_xres - GPIO_ODR + GPIO_IDR
     o = _doc_o_nho(oo, [(LTDC_GOC + 0x18, 1), (LTDC_GOC + 0x84, 1),
-                        (DSI_GOC + 0x04, 1), (DSI_GOC + 0x400, 1),
+                        (DSI_GOC + 0x04, 1), (DSI_GOC + DSI_WCR, 1),
+                        (DSI_GOC + DSI_WCFGR, 1),
                         (odr_xres, 1), (idr_xres, 1)],
                    timeout=timeout)
 
@@ -920,7 +937,8 @@ def doc_duong_hien_thi(*, chan_xres: int = CHAN_XRES_MAC_DINH,
             return None
 
     gcr, l1cr = _lay(LTDC_GOC + 0x18), _lay(LTDC_GOC + 0x84)
-    dsi_cr, wcr, odr = _lay(DSI_GOC + 0x04), _lay(DSI_GOC + 0x400), _lay(odr_xres)
+    dsi_cr, wcr, odr = _lay(DSI_GOC + 0x04), _lay(DSI_GOC + DSI_WCR), _lay(odr_xres)
+    wcfgr = _lay(DSI_GOC + DSI_WCFGR)
     idr = _lay(idr_xres)
     if gcr is None and wcr is None:
         ra["vi_sao_khong_dat"] = "không đọc được thanh ghi nào — cáp SWD, hay chip đang bị giữ?"
@@ -950,7 +968,8 @@ def doc_duong_hien_thi(*, chan_xres: int = CHAN_XRES_MAC_DINH,
         _mat("Bọc DSI bật (DSIEN)", None, "chưa đọc được", "", "")
         _mat("Hiển thị không bị tắt (SHTDN)", None, "chưa đọc được", "", "")
     else:
-        bit = (f"DSI_WCR = 0x{wcr:08X} → COLM={(wcr >> _WCR_COLM) & 1} "
+        bit = (f"DSI_WCR(0x{DSI_GOC + DSI_WCR:08X}) = 0x{wcr:08X} → "
+               f"COLM={(wcr >> _WCR_COLM) & 1} "
                f"SHTDN={(wcr >> _WCR_SHTDN) & 1} LTDCEN={(wcr >> _WCR_LTDCEN) & 1} "
                f"DSIEN={(wcr >> _WCR_DSIEN) & 1}")
         _mat("Bọc DSI bật (DSIEN)", bool(wcr & (1 << _WCR_DSIEN)), bit,
@@ -974,6 +993,8 @@ def doc_duong_hien_thi(*, chan_xres: int = CHAN_XRES_MAC_DINH,
          "hiện gì, dù mọi thứ phía trước đều đúng. Đọc cả IDR vì chân này thường là "
          "open-drain — ODR nói ý định, IDR nói thực tế",
          "BSP_LCD_Reset() phải kết thúc bằng việc kéo chân này LÊN (GPIO_PIN_SET)")
+    # WCFGR đi kèm để người đọc thấy ngay mình KHÔNG nhầm hai thanh ghi cạnh nhau nữa.
+    ra["wcfgr"] = f"0x{wcfgr:08X}" if wcfgr is not None else ""
     ra["chan_xres"] = f"PH{chan_xres}"
     ra["ghi_chu_chan"] = ("Chân XRES là của RIÊNG từng bo; mặc định ở đây lấy theo "
                           "32F469IDISCOVERY (BSP_LCD_Reset trong stm32469i_discovery_lcd.c). "
