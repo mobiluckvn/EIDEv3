@@ -4,6 +4,7 @@ Môi trường phát triển nhúng có một tác tử làm việc **cùng** k�
 hai tác giả bình đẳng trên cùng một bộ hiện vật; mọi con số dùng để quyết định phải
 truy vết được tới datasheet; mọi thay đổi là một changeset hoàn tác được.
 
+- **Kiến trúc theo mô hình C4 (mã đang thế nào):** [`docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md`](docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md)
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
 - **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1231 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
@@ -12,7 +13,7 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 
 ## Tác tử làm được những gì
 
-**108 công cụ** trong 9 nhóm, **6 tác tử con**, **6 skill**, **10 cổng duyệt**. Dưới đây là
+**117 công cụ** trong 10 nhóm (108 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ `EIDE_FEATURE_SCHEMATIC`), **6 tác tử con**, **6 skill**, **10 cổng duyệt**. Dưới đây là
 năng lực theo *việc người dùng cần*, không theo cây mã.
 
 Ba điều xuyên suốt, và chúng quan trọng hơn danh sách công cụ:
@@ -239,7 +240,8 @@ ui/EIDEApp/Sources/EIDE/
 ## Kiểm thử
 
 ```bash
-.venv/bin/python -m pytest -q                        # 1231 test: hook, policy, công cụ, sổ cái, cây khối, sơ đồ, bo thật
+.venv/bin/python tools/kiem_tai_lieu.py              # tài liệu có nói khác mã không (0 token)
+.venv/bin/python -m pytest -q                        # 1232 test: hook, policy, công cụ, sổ cái, cây khối, sơ đồ, bo thật
 .venv/bin/python tools/kiem_tra_day_du.py --nhanh    # an toàn qua cầu giao thức, 0 token
 .venv/bin/python tools/kiem_tra_day_du.py            # một mạch công việc thật, lõi + Gemini
 .venv/bin/python tools/thu_giao_dien.py              # 24 ca qua GIAO DIỆN THẬT

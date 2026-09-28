@@ -4442,3 +4442,93 @@ vào tệp không có là một lời hứa sai, và nó hỏng lặng lẽ. Ch�
 ### Số đo
 
 `1231 ca đơn vị` (không đổi — chặng này là tài liệu và bộ xuất, không đụng vào lõi).
+
+### [DEV-293] 29/09/2026 · Tài liệu thiết kế khớp lại với mã — và một bộ dò để nó không trôi nữa
+
+**Việc người dùng giao:** *"cập nhật tất cả các tài liệu quan trọng như thiết kế 4C, các tài
+liệu khác thật chi tiết đảm bảo tài liệu thiết kế đúng với code"*.
+
+#### Đo trước, sửa sau
+
+Sửa tài liệu theo cảm giác thì lệch mới thay lệch cũ. Nên việc đầu tiên là
+`tools/kiem_tai_lieu.py` — dò bốn thứ **kiểm được bằng máy** giữa 14 tệp tài liệu và mã đang
+chạy: tên công cụ có trong kho đăng ký không · đường dẫn có tồn tại không · mã lỗi `E1234` có
+còn được sinh ra không · con số đếm được (công cụ, UICommand, HumanAct, bề mặt, subagent,
+skill, cổng) tài liệu ghi bao nhiêu so với mã.
+
+Nó nói thẳng chỗ nó **không** làm được: không đọc hiểu nội dung. Phần *"tài liệu mô tả đúng
+cách hệ thống hoạt động không"* vẫn phải đọc.
+
+**Bộ dò tự sửa mình ba lần trước khi dùng được** — và ba lần ấy đều là báo động giả, đúng loại
+lỗi đã ghi ở L4/L6 của DEV-291:
+
+1. `history.py` bị bắt là "công cụ không tồn tại" — nó là một đường dẫn trong dấu nháy ngược.
+2. Chín công cụ `sch.*` bị báo mất, vì chúng nằm sau cờ `EIDE_FEATURE_SCHEMATIC` và kho đăng
+   ký mặc định không có. Nay bộ dò bật cờ lên trước khi đếm.
+3. `"14 công cụ"` trong README bị chấm sai — đó là số công cụ của **một tác tử con**, không
+   phải tổng. Một mẫu regex không đọc được ngữ cảnh ấy, nên phép này thôi tự phán: nó
+   **liệt kê** mọi chỗ nêu con số kèm con số mã thật có, rồi để người đọc quyết.
+
+Và hai lần nữa khi tài liệu cần nhắc tên cũ để nói nó đã đổi thành gì — đó là **giá trị** của
+một bảng ánh xạ, không phải lỗi. Giải bằng hai dấu vùng rõ ràng (`<!-- lich-su -->` cho bảng
+lúc thiết kế, `<!-- ten-cu -->` cho cột trái bảng ánh xạ) thay vì đuổi theo cách diễn đạt —
+đuổi theo từ ngữ là cách chắc chắn để bỏ sót một cách nói mới.
+
+#### Tài liệu mới: EIDE-C4-46 — kiến trúc theo mô hình C4
+
+`docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md`. Bốn độ phóng, mỗi cái trả một câu:
+
+* **C1 Bối cảnh** — EIDE nằm giữa kỹ sư · Gemini · GitHub của hãng · SearXNG · bo thật ·
+  chuỗi công cụ trên máy · LibreOffice/Tesseract/KiCad. Bốn điều định hình mọi thứ bên dưới:
+  một người một máy (nên lõi **không mở cổng mạng nào**) · chỉ một mô hình · phần cứng là tác
+  nhân ngoài chứ không phải một mô hình · tác tử không tự cài gì.
+* **C2 Khối chạy được** — EIDE.app (Swift, 15 tệp / 5 030 dòng) ↔ lõi Python (85 tệp /
+  33 357 dòng) qua JSON-RPC trên stdio ↔ thư mục dự án. Kèm lý do tách hai tiến trình: lõi
+  chạy được **không cần giao diện**, nên mọi phép đo tự động chạy được mà không dựng app; và
+  app không có logic nghiệp vụ nào để mà sai.
+* **C3 Thành phần** — bảng trách nhiệm từng mô-đun, mỗi dòng có thêm cột **"điều nó TỪ CHỐI
+  làm"**. Đó mới là phần khó tin nhất nếu chỉ đọc tên mô-đun.
+* **C4 Mã** — bốn chỗ mà hiểu sai sẽ hiểu sai cả hệ thống: ba lớp chặn quanh mỗi lời gọi ·
+  `history.py` là đường ghi duy nhất · tầng tin cậy là thứ kiểm được chứ không phải nhãn dán ·
+  ba cơ chế xếp chồng canh "đạt giả", và cả ba đều trả **ba trạng thái** chứ không hai.
+
+#### MDD-40 lên v3.1
+
+`≈40 công cụ` → **117 công cụ / 10 nhóm** (108 mặc định + 9 sau cờ sơ đồ). Đối chiếu từng tên
+lúc thiết kế bằng máy: **44/67 giữ nguyên**, 23 đổi hoặc không làm — mỗi cái một dòng nói **vì
+sao**, không chỉ nói *đã đổi*:
+
+* `rag.ask` bỏ vì nó là lối "hỏi một hộp đen rồi tin"; nay tác tử **chọn đoạn** và mã kiểm
+  trích dẫn — N1 đòi truy vết tới **trang**, không tới một điểm tương đồng.
+* `bash` **cố ý không làm**: một công cụ chạy lệnh tuỳ ý phá vỡ mọi bảo chứng — không kiểm
+  được hộp cát, không sinh changeset, không hoàn tác được.
+* `analyze.hardfault` bỏ vì phân tích HardFault cần **đọc thanh ghi thật** (CFSR/HFSR/MMFAR/
+  BFAR), không phải một công cụ đoán từ văn bản.
+* `target.dangerous` chưa làm — thao tác khoá vĩnh viễn vẫn bị chặn ở hook S0 và nói rõ hậu
+  quả, nhưng chưa có công cụ thực thi, và tác tử **nói thẳng điều đó** thay vì hứa một việc
+  không có thật (TC035).
+
+Bảng gốc lúc thiết kế **giữ nguyên làm hồ sơ**, chỉ đánh dấu là vùng lịch sử. Thêm mục **A5 —
+trạng thái hiện thực**: chín nguyên tắc N1–N9, mỗi cái chỉ rõ sống ở đâu trong mã, đo bằng ca
+kiểm nào, trạng thái ra sao. Và nói rõ phần **ngoài phạm vi vẫn là ngoài phạm vi** — gọi nó là
+"chưa làm" thì bảng nói sai.
+
+#### Hai chỗ tài liệu nói sai tên, đã sửa
+
+`EIDE-NOTE-42` gọi `history.doan_loai` như một công cụ của tác tử — nó là một **hàm trong mã**
+(`history.py::doan_loai()`). Và nó ghi phép quét lệnh phá hoại là "chưa có", trong khi đã có
+và đã đo được ở TC070 ngày 29/09.
+
+#### Bộ dò vào hồi quy
+
+`tests/test_tai_lieu_khop_ma.py` gọi bộ dò trong mỗi lượt `pytest`. Đã chứng minh nó **đỏ
+được**: bịa một tên công cụ và một đường dẫn vào tài liệu C4 thì nó bắt cả hai.
+
+Vì sao đáng một ca kiểm chứ không phải một việc nhớ làm định kỳ: tài liệu dài hơn 8000 dòng,
+đọc tay thì mỗi lần sửa mã phải đọc lại tất cả, nên thực tế là **không ai đọc lại**. README
+từng ghi `836 test` khi thực tế đã 1231 (DEV-292) — một con số nghe hợp lý, không ai kiểm, và
+nó làm mọi con số khác cùng trang mất giá.
+
+### Số đo
+
+`1232 ca đơn vị` (+1). Sau khi sửa: **0 chỗ lệch chắc chắn** giữa 14 tệp tài liệu và mã.

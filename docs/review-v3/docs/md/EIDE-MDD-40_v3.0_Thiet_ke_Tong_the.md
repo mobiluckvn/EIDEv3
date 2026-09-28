@@ -24,6 +24,7 @@ Nguyên tắc · Kiến trúc vòng lặp · Nền tri thức · Giao thức gia
 |---------------|------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
 | v1.x          | 24/09/2026 | AGD-32 (thiết kế sản phẩm, máy trạng thái S0–S6), AAD-33 v1.0 (kiến trúc nhiều tầng NLU), UIP-34 (giao thức UI một cửa).                                                                                                                                                                                                                                    | VTC           |
 | v2.0          | 25/09/2026 | AAD-33 v2.0: kiến trúc vòng lặp kiểu Claude Code.                                                                                                                                                                                                                                                                                                           | VTC           |
+| v3.1          | 29/09/2026 | **Đối chiếu tài liệu với mã đang chạy.** §B3 cập nhật số công cụ thật (117/10 nhóm) và bảng ánh xạ 23 tên đổi/không làm. Thêm §A5 — trạng thái hiện thực. Tài liệu mới [EIDE-C4-46](../../../md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md) mô tả mã theo mô hình C4. Bộ dò `tools/kiem_tai_lieu.py` kiểm tên công cụ · đường dẫn · mã lỗi · con số bằng máy. | VTC |
 | v3.0          | 25/09/2026 | Hợp nhất toàn bộ thành một tài liệu; thêm Phần E — UX cộng tác người–tác tử: hiện vật hai dạng + lớp giải thích, hợp đồng trình bày cho 22 loại hiện vật, đường ống đồng bộ khi người sửa, mô hình Changeset/rollback ba mức, Snapshot "bản ưng ý", rẽ nhánh phương án, đồ thị phụ thuộc và STALE; thêm 2 nguyên tắc N8, N9; bộ ca kiểm cộng tác CX01–CX16. | VTC           |
 
 **PHẦN A — MỤC TIÊU, PHẠM VI, NGUYÊN TẮC**
@@ -55,6 +56,36 @@ Bảy nguyên tắc từ v1.4 và hai nguyên tắc mới cho cộng tác. Mỗi
 | N7       | Chỉ thị cho tác tử ≠ yêu cầu sản phẩm; rủi ro tác tử phát hiện vào risk, không vào FR                                                                                                                                                                               | Hiến pháp §5; store.req_create bắt buộc trích lời người                                                      | TC003, 017, 024, 028      |
 | N8 (mới) | Mọi thứ tác tử làm ra đều có dạng người hiểu được: tóm tắt một câu, vì sao, nguồn, tầng tin cậy, khác gì bản trước, việc tiếp theo — theo hợp đồng trình bày của loại hiện vật đó                                                                                   | Lớp giải thích bắt buộc trong lược đồ hiện vật; hook PostToolUse từ chối ghi hiện vật thiếu explain; bảng E2 | CX01–CX04                 |
 | N9 (mới) | Mọi thay đổi — của người hay tác tử — là một changeset hoàn tác được; lịch sử không bị xoá; sửa của người được tác tử biết và nhắc tới ở lượt sau; snapshot do người đặt tên là bất biến                                                                            | Store event-sourced + git; hook Stop kiểm "đã nhắc thay đổi của người?"; snapshot = tag + export bất biến    | CX05–CX16                 |
+
+**A5. Trạng thái hiện thực — đo ngày 29/09/2026**
+
+Mục này thêm ở v3.1. Nó trả lời câu mà một tài liệu thiết kế thường không trả lời: *cái đã
+viết trên giấy, mã làm tới đâu rồi?*
+
+| Nguyên tắc | Sống ở đâu trong mã | Đo bằng gì | Trạng thái |
+|---|---|---|---|
+| N1 truy vết | `fact.from_doc` chỉ ghi khi chỉ ra đoạn; `store.req_create` đòi `source_quote`; constant-guard ở `PreToolUse` | TC008 · TC042 · TC075 | ✅ |
+| N2 bốn tầng | `fact.compare` **từ chối** kết luận khi một vế là tầng ĐỒNG | TC013 · TC031 | ✅ |
+| N3 kiểm kê xác định | `<inventory>` do `store/inventory.py` dựng, tiêm mỗi lượt | TC065 · TC073 | ✅ |
+| N4 hỏi một cụm | `ask_user` nhiều mục, mỗi mục kèm *vì sao hỏi* + giả định nếu bỏ qua | TC004 · TC057 | ✅ |
+| N5 cổng trước phép đoán | `hooks/s0.py` chặn **trước khi gọi mô hình** | TC007 (8 s) · TC035 · TC036 · TC068 · TC069 | ✅ |
+| N6 không đạt giả | `sim.criteria` nêu trước · verifier độc lập · `test.sensitivity` đo độ nhạy bộ kiểm | TC019 · TC022 · TC076 | ✅ |
+| N7 chỉ thị ≠ yêu cầu | Hiến pháp §5 + `store.req_create` bắt buộc trích lời người | TC003 · TC017 · TC028 | ✅ |
+| N8 dạng người hiểu được | `explain` sáu trường bắt buộc; `PostToolUse` từ chối hiện vật thiếu | 124/124 ô quét giao diện | ✅ |
+| N9 hoàn tác được | `history.py` là **đường ghi duy nhất** | CX05–CX16 | ✅ |
+
+**Phạm vi đã chốt là ngoài, và vẫn ngoài:** bố trí mạch in / Gerber / DRC (UC15, TC061) ·
+tài khoản và phân quyền (TC071). Gọi chúng là "chưa làm" thì bảng nói sai — đó là thứ **không
+định làm**.
+
+**Ba việc cần người hoặc thiết bị mới đo được**, không phải lỗi: TC032 (cần rút bo khỏi máy) ·
+TC033 (cần rút cáp đúng lúc đang ghi Flash) · TC034 (cần một bo thứ hai mang MCU khác) ·
+TC044 (cần một bản scan datasheet mờ thật) · TC053 (cần bàn thử HIL) · TC067 (cần hai phiên
+song song).
+
+**Kết quả đo gần nhất:** 65/68 ca đo được đạt (96 %) · 124/124 ô giao diện · 1 231 ca đơn vị.
+Chi tiết ở `docs/review-v3/test/BAO-CAO-TONG.md`; chín lỗi tìm được trong đợt đo ghi ở
+`docs/review-v3/test/LOI-TIM-DUOC.md`, **tách rõ lỗi sản phẩm khỏi lỗi của chính bộ đo**.
 
 **A4. Bảy chặng làm việc theo ý định**
 
@@ -127,6 +158,45 @@ Một vòng lặp, LLM là bộ điều phối duy nhất; mọi năng lực là
 
 **B3. Công cụ**
 
+> **Cập nhật 29/09/2026 — đã hiện thực.** Bảng dưới là danh sách **lúc thiết kế** (≈40 công
+> cụ). Mã hiện có **117 công cụ trong 10 nhóm** (108 đăng ký mặc định + 9 công cụ `sch.*` nằm
+> sau cờ `EIDE_FEATURE_SCHEMATIC`). Danh sách đầy đủ kèm rủi ro và cổng lấy từ chính kho đăng
+> ký, xem [EIDE-C4-46](../../../md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md) §C3 và
+> `README.md` §"Tác tử làm được những gì".
+>
+> **44/67 tên lúc thiết kế giữ nguyên.** 23 tên còn lại đổi hoặc không làm — đối chiếu từng
+> cái bằng máy (`tools/kiem_tai_lieu.py`), không bằng trí nhớ:
+>
+> <!-- ten-cu -->
+> | Tên lúc thiết kế | Thực tế | Vì sao |
+> |---|---|---|
+> | `arch.decompose`, `store.module_*` | `ckm.module_set`, `ckm.port_set`, `ckm.build` | Gộp vào Bản đồ tri thức mạch (§C2). Khối không còn là một hiện vật rời mà là một nút của cây khối phân cấp — xem EIDE-HIER-45 |
+> | `board.schematic`, `board.pinout`, `bom.build` | `ckm.from_pinout`, `ckm.pinout_set`, `store.bom_set`, `eda.netlist`, `eda.bom_check` | Tách theo **nguồn dữ liệu** thay vì theo đầu ra: chân đến từ Fact đã trích, netlist đến từ tệp KiCad có thật |
+> | `rag.ask` | `doc.read` + `fact.from_doc` | Bỏ lối "hỏi một hộp đen rồi tin". Nay tác tử **chọn đoạn** và mã kiểm trích dẫn có khớp không — N1 đòi truy vết tới trang, không tới một điểm tương đồng |
+> | `analyze.capture/hardfault/log`, `calc.eval` | `fs.read` + `target.debug` + mã trong `src/eide/build/mach_that.py` | Phân tích HardFault cần **đọc thanh ghi thật** (CFSR/HFSR/MMFAR/BFAR) chứ không phải một công cụ đoán từ văn bản |
+> | `target.dangerous` | chưa làm | Thao tác khoá vĩnh viễn (RDP, eFuse) vẫn **bị chặn ở hook S0** và nói rõ hậu quả, nhưng chưa có công cụ thực thi. Tác tử nói thẳng điều đó thay vì hứa một việc không có thật (TC035) |
+> | `ui.surface_set/patch/focus/highlight` | `surfaces.py` dựng toàn bộ `SurfaceModel`, gửi qua `surface.set` | Giao diện không quyết gì (I3): lõi **dựng cả bề mặt** rồi gửi, không vá từng mảnh |
+> | `branch.merge` | chưa làm | `branch.create/switch` đủ cho việc thử phương án song song. Gộp nhánh cần một mô hình hoà giải xung đột hiện vật mà chưa ai cần tới |
+> | `bash` | **cố ý không làm** | Một công cụ chạy lệnh tuỳ ý phá vỡ mọi bảo chứng: không kiểm được hộp cát, không sinh changeset, không hoàn tác được. Việc cần lệnh thì đi qua công cụ có hợp đồng (`tool.install` qua cổng G-TOOL, `build.compile`, `target.flash`) |
+> | `Task` | `task.run` | Đổi tên cho đúng lệ đặt tên `nhóm.việc` |
+> | `fact.review_queue` | `fact.review` | Hàng đợi là một bề mặt (A4), không phải một công cụ |
+> | `passport.get/propose` | `passport.pin`, `passport.isa`, `store.get` | Đọc hộ chiếu là `store.get`; đề xuất thì bỏ — ghim phải có tài liệu, không có gì để "đề xuất" |
+> | `doc.approve_request` | duyệt qua **cổng G-DATA**, không qua công cụ | Xin duyệt là việc của lớp chính sách, không phải một công cụ tác tử tự gọi |
+> | `store.spec_version` | bỏ | Phiên bản hiện vật do kho event-sourced tự giữ |
+> <!-- /ten-cu -->
+>
+> **Công cụ MỚI, không có trong thiết kế gốc** — mỗi cái ra đời từ một chỗ đo được là thiếu:
+> `plan.step_done`/`plan.cancel` · `tool.propose`/`tool.reload` (tác tử tự viết công cụ cho
+> chính nó) · `test.sensitivity` (đo xem bộ kiểm có đo gì không) · `target.screen` (đọc bộ nhớ
+> khung ảnh ra PNG) · `code.vendor_list`/`vendor_fetch` · `asset.image_to_c` ·
+> `doc.figures`/`doc.language`/`doc.to_pdf` · `config.load` · `fact.cross_check` ·
+> `khoi.*` (thư viện khối) · `memory.*` (9 công cụ bộ nhớ) · `sch.*` (9 công cụ sơ đồ) ·
+> `stale.accept` · `snapshot.propose`/`release` · `ledger.query`/`verify` · `blob.read` ·
+> `history.undo_30s` · `inventory.get` · `board.check`.
+
+<!-- lich-su -->
+*Bảng dưới đây là danh sách **lúc thiết kế** (25/09/2026), giữ nguyên làm hồ sơ. Danh sách thật xem khung cập nhật ở trên.*
+
 ≈40 công cụ có lược đồ JSON, nạp trễ (tool.search). Mỗi công cụ kiểm tiền đề bên trong và trả lỗi có hướng dẫn {code, message_vi, hint_for_agent, alternatives\[\]} — lỗi là dữ liệu để mô hình đổi hướng. Mọi công cụ ghi hiện vật đều phải nhận trường explain (E3) và sinh changeset (E5).
 
 | **Nhóm**         | **Công cụ**                                                                                                                    | **Hợp đồng đáng chú ý**                                                                      |
@@ -140,6 +210,8 @@ Một vòng lặp, LLM là bộ điều phối duy nhất; mọi năng lực là
 | Người & UI       | ask_user, ui.surface_set/patch/focus/highlight, ui.notice, ui.explain                                                          | ask_user không dùng cho cổng; ui.explain = tác tử giải thích một hiện vật theo yêu cầu người |
 | Lịch sử          | history.list, history.diff, history.undo(changeset\|run), snapshot.create/list/compare/restore, branch.create/switch/merge     | E5–E6; undo tạo changeset mới; restore tạo nhánh mới                                         |
 | Điều phối        | Task(subagent), skill.load, tool.search, memory.note, plan.enter/exit                                                          | plan.enter khoá tool ghi                                                                     |
+
+<!-- /lich-su -->
 
 **B4. Cấp quyền và hook**
 

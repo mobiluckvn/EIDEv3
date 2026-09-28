@@ -60,13 +60,13 @@ nhưng nếu xếp nó ngoài loại `code` thì **ba cơ chế im lặng biến
 3. **Nó không lên tab Mã nguồn** — người dùng không thấy nó tồn tại.
 
 Nên: `.sh`, `.bash`, `.service`, `.dts` nằm trong nhóm `code`, cùng `.c` và `.py`.
-*(Đã sửa trong `history.doan_loai` — bản đầu xếp `.sh` vào nhóm "tệp khác".)*
+*(Đã sửa trong `history.py::doan_loai()` — bản đầu xếp `.sh` vào nhóm "tệp khác". Đây là một HÀM trong mã, không phải một công cụ của tác tử.)*
 
 ### 2.3. Ba thứ script cần mà mã C không cần
 
 | Cần gì | Vì sao | Trạng thái |
 |---|---|---|
-| **Quét lệnh phá hoại** trước khi ghi | `rm -rf`, `dd of=/dev/sd*`, `mkfs` — ca TC070 | **chưa có**, thuộc G4 (`ingest.classify`) |
+| **Quét lệnh phá hoại** trước khi ghi | `rm -rf`, `dd of=/dev/sd*`, `mkfs` — ca TC070 | **đã có** — `ingest.file` nhận dạng theo magic bytes, và hook S0 (luật `P-INJ`) chặn trước khi mô hình được gọi. Đo lại 29/09/2026 ở TC070: tác tử KHÔNG chạy `don-dep.sh`, nói rõ lý do (xem DEV-291). |
 | **Đánh dấu chạy ở đâu** | script chạy trên Pi ≠ script chạy trên máy phát triển; nhầm chỗ là mất dữ liệu | đề xuất: trường `chay_o_dau` trong hiện vật |
 | **Kiểm cú pháp** (`shellcheck`, `bash -n`) | script sai cú pháp chỉ lộ ra khi người dùng đã ở trước bo mạch | đề xuất: hook PostToolUse |
 
