@@ -6,8 +6,151 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
-- **Bộ đo:** 76 TC + 16 CX — [`docs/review-v3/test/`](docs/review-v3/test/)
+- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1231 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
+- **Kết quả đo mới nhất (29/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
 - Đề án tốt nghiệp ThS Kỹ thuật Điện tử — PTIT · Vũ Trí Công · GVHD: TS. Nguyễn Trung Hiếu
+
+## Tác tử làm được những gì
+
+**108 công cụ** trong 9 nhóm, **6 tác tử con**, **6 skill**, **10 cổng duyệt**. Dưới đây là
+năng lực theo *việc người dùng cần*, không theo cây mã.
+
+Ba điều xuyên suốt, và chúng quan trọng hơn danh sách công cụ:
+
+- **Mọi con số phải truy được về nguồn** (N1). Tác tử không có đường nào đặt một thông số vào
+  kho mà không kèm chỗ nó lấy ra — trang datasheet, dòng tệp cấu hình, hay nguyên văn câu
+  người dùng nói.
+- **Không có "đạt" nào không có bằng chứng** (N6). Tiêu chí phải nêu **trước** khi chạy;
+  đổi ngưỡng sau khi đã có kết quả thì đi qua cổng người duyệt.
+- **Mọi thay đổi hoàn tác được** (N9), kể cả sửa của người. Việc không đảo ngược được (nạp
+  chip, ghi eFuse) vẫn là một changeset, mang `reversible=false` kèm lý do.
+
+### 1 · Làm rõ ý tưởng và chốt phương án
+
+`ask_user` hỏi **một cụm** câu thay vì tra tấn từng câu, mỗi câu kèm *vì sao hỏi* và một giả
+định sẽ dùng nếu người bỏ qua · `store.req_create` bắt buộc trích **nguyên văn** lời người
+dùng vào `source_quote` · `store.option_create` 2–4 phương án rồi `store.option_choose` chốt,
+sinh kèm ADR.
+
+Chỗ đáng nói: `store.option_choose` với `quyet_boi="nguoi"` phải **chứng minh được** — câu
+trích phải có thật trong sổ cái, phải mang nghĩa lựa chọn, và phải nhắc đúng phương án. Gán
+"người quyết" cho một câu họ không hề chọn là giả mạo xuất xứ, và `NGUOI` là tầng tin cậy cao
+nhất (xem DEV-291, lỗi L1).
+
+### 2 · Tri thức: datasheet, Fact, hộ chiếu chip
+
+`doc.fetch`/`doc.load` nạp PDF · Office · văn bản · mã nguồn, nhận dạng theo **magic bytes**
+chứ không theo đuôi tệp · `doc.read` đọc theo từ khoá/mục/trang · `doc.figures` rút hình kèm
+OCR có **điểm tin cậy từng từ** · `doc.language` kiểm máy có gói OCR cho ngôn ngữ ấy chưa.
+
+`fact.extract` đọc số **bằng mã** từ trang PDF (không để mô hình đọc hộ), `fact.review` cho
+người nâng BẠC → VÀNG, `fact.assert_human` ghi số người nói thành tầng NGƯỜI,
+`fact.cross_check` tìm thông số mà nhiều nguồn cho số khác nhau, `fact.compare` so hai Fact
+theo một luật kỹ thuật và **từ chối kết luận** khi thiếu dữ kiện.
+
+`passport.pin` chỉ ghim được hộ chiếu chip khi đã có tài liệu cho chip đó — ghim khan thì mọi
+thứ dựng trên nó đều không truy vết được. `config.load` đọc `.ioc`/`sdkconfig`/`.dts`/`.ld`/
+`.map` thành Fact tầng CẤU HÌNH và nói ra chỗ lệch với datasheet.
+
+### 3 · Thiết kế mạch
+
+`ckm.*` dựng **Bản đồ tri thức mạch**: chip, chân, net, khối, port. `ckm.pinout_set` **từ chối
+gán** một chân không có trong Fact đã nạp — không bịa chân. `eda.netlist` đọc netlist KiCad,
+`eda.bom_check` đối chiếu BOM với netlist. `board.check` kiểm bốn ràng buộc tính được từ Fact
+(ngân sách dòng theo cây, mức logic hai đầu, trở kéo, reset). `khoi.*` thư viện khối tái dùng
+ba tầng, mỗi giá trị dẫn xuất có **công thức và nguồn** — thiếu nguồn thì không đặt.
+
+### 4 · Viết mã, biên dịch, mô phỏng, kiểm thử
+
+`build.compile` chọn chuỗi công cụ theo **dự án là gì**, không theo máy có gì — AVR
+(`arduino-cli` khi có `.ino`, không thì `avr-gcc`) và ARM bare-metal (`armv6-m`/`armv7-m`/
+`armv7e-m`, sinh `.bin` cho bo nạp kiểu ổ đĩa). Lỗi trả về **có toạ độ** tệp:dòng:cột.
+`build.map` cho biết symbol nào chiếm chỗ.
+
+**Criteria-first**: `sim.criteria` nêu tiêu chí **trước**, và chính tiêu chí phán xử kết quả
+chứ không phải chương trình mô phỏng. `test.run` chạy unit test trên máy chủ kèm độ phủ.
+
+`test.sensitivity` trả lời câu hỏi mà ô xanh không trả lời được: **bộ kiểm có đo gì không?**
+Nó phá mã sản phẩm rồi chạy lại — không ca nào đỏ nghĩa là bộ kiểm không nhìn thấy tệp ấy.
+Ra đời vì một bộ kiểm sáu ca đầy đủ tên/ngưỡng/báo cáo JSON đã **xanh mãi mãi** do tệp test
+tự định nghĩa lại hàm của sản phẩm (DEV-288).
+
+### 5 · Mạch thật
+
+`target.detect` dò bo qua ổ đĩa bộ nạp, cổng nối tiếp, và **ID chip đọc qua SWD** — đối chiếu
+ba giá trị `khớp`/`lệch`/`chưa sờ được`, không gộp ba thành hai. `target.flash` (R4, cổng
+G-FLASH) nạp. `target.verify` **đọc ngược Flash từ chip** rồi so từng byte — bằng chứng độc
+lập, không tin lời công cụ nạp. `target.log` đọc cổng nối tiếp và **nói là im lặng** khi nó
+im lặng. `target.screen` đọc bộ nhớ khung ảnh ra PNG để xem chip đã vẽ được gì, kèm đi dọc
+11 mắt xích LTDC → DSI → panel. `target.debug` dừng chip, giải mã CFSR/HFSR, đọc khung ngắt,
+lấy dấu vết ngăn xếp, lấy mẫu PC, và đọc nguyên nhân reset.
+
+### 6 · Bộ nhớ và ngữ cảnh
+
+`EIDE.md` là bộ nhớ dài hạn của dự án — người và tác tử cùng sửa, tác tử đọc mỗi lượt. Nén
+ngữ cảnh bốn mức: `C1` thu gọn cơ học **0 token**, `C2` tóm tắt có kiểm ngược ba câu, `C3`
+bậc thang, `C4` khẩn cấp. `memory.undo_compact` huỷ lần nén trong 24 giờ. `memory.forget` xoá
+một dòng nhưng **để lại dấu đã quên**. `ledger.query` tra sổ cái để trả lời "ban đầu anh nói
+gì", "vì sao chọn MTP".
+
+### 7 · Lịch sử, nhánh, bản ưng ý
+
+Mọi thứ ghi đều là changeset có phép nghịch đảo. `history.undo_30s` lùi ngay không cần cổng.
+`snapshot.create` chỉ ghi bản ưng ý với **cái tên người dùng đã nói ra** — tác tử không tự
+đặt tên; muốn đề xuất thì dùng `snapshot.propose` và người duyệt. `snapshot.restore` **không
+xoá lịch sử**, nó tạo một changeset mới. `branch.*` thử phương án song song.
+
+### 8 · Chế độ kế hoạch
+
+Việc lớn (≥5 bước, hoặc chạm cổng, hoặc R3+) thì `plan.enter` **khoá mọi công cụ ghi**: từ
+lúc đó tác tử chỉ đọc và soạn. `plan.exit` nộp kế hoạch, mã kiểm trước khi người đọc (tên
+công cụ phải có thật, mỗi bước phải có hiện vật), rồi người duyệt qua cổng G-SCOPE. Kế hoạch
+là **hiện vật trên đĩa**, sống qua cả lúc app bị `kill -9`: mở lại, gõ "làm tiếp" là nó đi
+tiếp đúng bước, không bắt duyệt lại (DEV-289).
+
+### 9 · Tự kiểm chứng và tự bù năng lực
+
+`task.run` giao việc cho **6 tác tử con** ngữ cảnh sạch, tool giới hạn: `datasheet-ingest`
+(14 công cụ) · `firmware` (13) · `design-review` (9) · `sim-runner` (9) · `verifier` (10) ·
+`hardware` (5). Hook `SubagentStop` **tự gọi verifier** khi một tác tử con tuyên "đạt" —
+verifier chỉ đọc, và nó kết luận `đạt` / `không đạt` / `chưa đủ dữ kiện`.
+
+`tool.propose` + `tool.reload`: khi tác tử thấy EIDE **thiếu một năng lực**, nó xin viết một
+công cụ mới cho chính mình (R3, cổng G-TOOL). `tool.reload` **chạy bộ kiểm của công cụ ấy**
+trước khi đăng ký — xanh mới nạp. Công cụ tự viết nằm ở `.eide/cong-cu/`, chỉ nạp cái nào có
+bộ kiểm đi kèm.
+
+`skill.load` nạp hướng dẫn viết sẵn theo ngữ cảnh: `sim-criteria-first` · `avr-bare-metal` ·
+`datasheet-onboarding` · `design-review-checklist` · `hardfault-analysis` ·
+`explain-for-humans`.
+
+### 10 · Ba lớp chặn quanh mỗi lời gọi
+
+**Hook S0** (0 token) chặn xác định trước khi tiêu một token nào: STOP, BACKREF, G-OPS,
+P-SAFE, P-LAW, P-QUAL, P-INJ. Nhờ nó, "thiết kế thiết bị phá sóng" bị từ chối trong 8 giây và
+"hạ tiêu chí xuống cho nó đạt" bị từ chối trong 2,6 giây — không gọi mô hình lần nào.
+
+**Policy** trả `allow` / `ask` (dựng thẻ cổng cho người quyết) / `deny`. Mười cổng: G-DATA ·
+G-DESIGN · G-FILE · G-FLASH · G-HIST · G-OPS · G-QUAL · G-SAFE · G-SCOPE · G-TOOL.
+
+**Hook Stop** kiểm trước khi kết thúc lượt: giả định đã nói ra chưa · người vừa sửa đã được
+nhắc tới chưa · lượt này có nói gì không · có việc nào chưa ai kiểm chứng không.
+
+### Đã đo được gì
+
+| Phép đo | Kết quả | Nguồn |
+|---|---|---|
+| 76 ca kiểm usecase qua app thật | **65/68 ca đo được đạt (96 %)** | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
+| Quét giao diện 11 bề mặt | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
+| Ca đơn vị | **1231** | `pytest tests/ -q` |
+| Bo thật STM32F469I-DISCO | LCD 800×480 + cảm ứng + FreeRTOS đa tác vụ, đã xác nhận bằng mắt | [`docs/stm32f469-freertos/`](docs/stm32f469-freertos/) |
+
+Mỗi ca kiểm có một tệp log riêng kèm **bảng từng lời gọi công cụ, tham số đầy đủ và mã lỗi**:
+[`ket-qua-chay-lai/nhat-ky/`](docs/review-v3/test/ket-qua-chay-lai/nhat-ky/).
+
+Chín lỗi tìm được trong đợt đo ghi ở [`LOI-TIM-DUOC.md`](docs/review-v3/test/LOI-TIM-DUOC.md),
+**tách rõ lỗi sản phẩm khỏi lỗi của chính bộ đo** — hai loại ấy dẫn tới hai việc khác hẳn
+nhau, và trộn chúng vào một cột là nói sai về sản phẩm.
 
 ## Trạng thái
 
@@ -40,7 +183,9 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **SCH-D** | Tiêu chí bố cục đo trên TỪNG sheet + đề nghị phân cấp bằng số (SCH07) · sổ `sch_sheets` + bản ưng ý gói cả nội dung tệp sơ đồ (SCH-16) · ký hiệu sinh từ Fact CHỜ người xác nhận, kiểu chân người sửa thành Fact NGƯỜI (SCH-14/15) · khối A5.8: ảnh bấm được, băng chất lượng từng trang, bảng ký hiệu sửa được | xong |
 | **G6** | `env.check`/`tool.install` (G-TOOL) · `build.compile`/`build.map` (lỗi có toạ độ, symbol nào chiếm chỗ) · **criteria-first**: `sim.criteria` nêu tiêu chí TRƯỚC, tiêu chí PHÁN XỬ kết quả chứ không phải chương trình mô phỏng, đổi ngưỡng khi đã có kết quả → G-QUAL · `test.run` + độ phủ · **6 subagent** ngữ cảnh sạch, tool giới hạn, hook SubagentStop tự gọi **verifier** chỉ-đọc · **6 skill** nạp theo ngữ cảnh | xong |
 | **G7-A** | Bo thật STM32F469I-DISCO: `doc.fetch` (tải tài liệu, magic byte, trần ép trong lúc đọc) · nạp tài liệu dạng **văn bản/mã nguồn** trích dẫn theo dòng · `doc.search_web` có backend GitHub của hãng khi `st.com` bị chặn · biên dịch **ARM bare-metal** (`armv6-m`/`armv7-m`/`armv7e-m`, `.bin` cho bo nạp kiểu ổ đĩa) · `target.detect`/`flash` (R4, G-FLASH, đối chiếu chip ba giá trị khop/lech/chua_so_duoc)/`verify` (đọc ngược Flash từ chip, so từng byte)/`log` · tab A9 hiện hash–đích–verify | xong |
-| G7-B | `target.debug`/`dangerous` (breakpoint, đọc thanh ghi ngoại vi, RDP/eFuse) · subagent hardware | chưa |
+| **G7-B** | `target.debug` (giải mã CFSR/HFSR 17 bit · khung ngắt · dấu vết ngăn xếp · lấy mẫu PC theo span · nguyên nhân reset · tra ký hiệu ba trạng thái) · `target.screen` (khung ảnh → PNG + 11 mắt xích LTDC→DSI→panel) · subagent `hardware` | xong |
+| **Plan mode** | `plan.enter` khoá mọi công cụ ghi · `plan.exit` kiểm bằng mã rồi người duyệt qua G-SCOPE · kế hoạch là hiện vật, sống qua `kill -9` | xong |
+| **Tự bù năng lực** | `tool.propose`/`tool.reload` — tác tử tự viết công cụ cho chính nó, chỉ nạp khi bộ kiểm của nó xanh · `test.sensitivity` đo xem bộ kiểm có đo gì không | xong |
 
 ## Cài và chạy
 
@@ -94,7 +239,7 @@ ui/EIDEApp/Sources/EIDE/
 ## Kiểm thử
 
 ```bash
-.venv/bin/python -m pytest -q                        # 836 test: hook, policy, công cụ, sổ cái, cây khối, sơ đồ
+.venv/bin/python -m pytest -q                        # 1231 test: hook, policy, công cụ, sổ cái, cây khối, sơ đồ, bo thật
 .venv/bin/python tools/kiem_tra_day_du.py --nhanh    # an toàn qua cầu giao thức, 0 token
 .venv/bin/python tools/kiem_tra_day_du.py            # một mạch công việc thật, lõi + Gemini
 .venv/bin/python tools/thu_giao_dien.py              # 24 ca qua GIAO DIỆN THẬT

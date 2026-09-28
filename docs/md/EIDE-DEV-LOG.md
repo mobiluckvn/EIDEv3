@@ -4382,3 +4382,63 @@ chặn nhầm đường đúng), `test_chon_chuoi_cong_cu.py` (4), `test_loi_tac
 trên `PATH` còn mã thật tìm nó trong `~/Library/Arduino15/…` — một ca bị bỏ qua không chứng
 minh gì mà bảng vẫn xanh. Đã sửa để hỏi đúng cái mã thật hỏi, rồi phá lại bản vá để chắc
 chúng đỏ được.
+
+### [DEV-292] 29/09/2026 · Kết quả đo ra Excel, và README giới thiệu năng lực tác tử
+
+**Việc người dùng giao:** *"cập nhật lại toàn bộ kết quả vào file excel … cập nhật lại readme
+ở git chi tiết giới thiệu toàn bộ các năng lực của Agent"*.
+
+#### Excel — một tệp MỚI, không đè lên tệp gốc
+
+`docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx`, sinh bằng
+`tools/xuat_excel.py` từ chính các tệp kết quả (không gõ tay con số nào).
+
+Bảng 23/09/2026 là một phép đo **thật** trên kiến trúc cũ. Đè lên nó là xoá mất mốc so sánh —
+và một bảng chỉ còn cột "hôm nay" thì không ai biết sản phẩm đã đi được bao xa, cũng không ai
+kiểm lại được lời tuyên "đã tốt lên". Tệp mới giữ **cả hai cột** cạnh nhau.
+
+Sáu sheet. `Test case` có **ba cột kết quả**, và cần cả ba:
+
+* **23/09/2026** — kiến trúc cũ. Giữ để so, không phải để trách.
+* **29/09 máy chấm** — tự động bằng từ khoá + chuỗi công cụ. Đây là lượt **sàng**.
+* **29/09 sau khi đọc tay** — đọc nguyên văn từng lời đáp. **Đây mới là kết luận.**
+
+Vì sao không tin thẳng máy chấm: trong chính đợt này nó đã cho cả ô xanh giả (TC004 chấm bằng
+dấu `?` nên bật xanh cho đúng cái lỗi nó canh) lẫn ô đỏ giả (TC014 trượt vì cụm cấm là
+`rm -rf` — chuỗi mà chính câu cảnh báo phải chứa). Sheet đầu tiên `Doc the nao` nói thẳng điều
+đó trước khi người đọc nhìn thấy bất kỳ con số nào, thay vì để họ tự suy ra.
+
+Sheet `Loi tim duoc` tách rõ **lỗi SẢN PHẨM** khỏi **lỗi BỘ ĐO** (tô màu khác nhau): hai loại
+ấy dẫn tới hai việc khác hẳn nhau. Sheet `Thong ke` dùng **công thức** chứ không số cứng — mở
+ra là thấy nó cộng từ đâu.
+
+Tự kiểm sau khi ghi: đủ 76 mã, không trùng, không thiếu.
+
+#### README — phần "Tác tử làm được những gì"
+
+Mười mục theo **việc người dùng cần**, không theo cây mã: làm rõ ý tưởng · tri thức · thiết kế
+mạch · viết mã và kiểm thử · mạch thật · bộ nhớ · lịch sử · chế độ kế hoạch · tự kiểm chứng và
+tự bù năng lực · ba lớp chặn. Số liệu lấy từ **chính kho đăng ký** (108 công cụ / 9 nhóm,
+6 tác tử con, 6 skill, 10 cổng), không viết theo trí nhớ.
+
+Mỗi mục nói cả chỗ công cụ **từ chối làm**, vì đó mới là phần khó tin nhất nếu chỉ đọc tên
+công cụ: `ckm.pinout_set` từ chối gán chân không có trong Fact · `passport.pin` từ chối ghim
+hộ chiếu khi chưa có tài liệu · `snapshot.create` từ chối tự đặt tên bản ưng ý ·
+`fact.compare` từ chối kết luận khi thiếu dữ kiện · `target.log` nói là im lặng khi cổng im
+lặng.
+
+#### Ba con số cũ trong README, đã sửa
+
+`836 test` → **1231**. `76 TC + 16 CX` → **76 TC + 124 ô giao diện + 1231 ca đơn vị**. Dòng
+G7-B ghi **"chưa"** trong khi `target.debug`/`target.screen` và subagent `hardware` đã chạy
+trên bo thật từ nhiều chặng trước — thêm luôn hai dòng **Plan mode** và **Tự bù năng lực**.
+
+Một README nói `836 test` khi thực tế có `1231` là đúng loại sai nguy hiểm nhất của cả dự án
+này: **nghe hợp lý, không ai kiểm, và nó làm mọi con số khác trong cùng tài liệu mất giá**.
+
+Thêm một phép tự kiểm: mọi đường dẫn nội bộ trong README phải **tồn tại thật**. Một README trỏ
+vào tệp không có là một lời hứa sai, và nó hỏng lặng lẽ. Chạy: 0 đường dẫn hỏng.
+
+### Số đo
+
+`1231 ca đơn vị` (không đổi — chặng này là tài liệu và bộ xuất, không đụng vào lõi).
