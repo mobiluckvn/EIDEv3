@@ -1241,6 +1241,48 @@ def register(r: Registry) -> Registry:
               "từ repo nào, và nhắc rằng mã ấy có giấy phép riêng của hãng.")
         return ra
 
+    @r.tool("code.vendor_list", "Mã nguồn",
+            "Liệt kê tệp có THẬT trong một repo của hãng, lọc theo mẫu. Dùng TRƯỚC "
+            "code.vendor_fetch để biết đường dẫn thật thay vì đoán — nhiều SDK tách thành "
+            "nhiều repo (submodule) nên bố cục quen thuộc có thể không còn đúng.",
+            {"type": "object",
+             "properties": {
+                 "repo": {"type": "string", "description": "owner/name"},
+                 "mau": {"type": "string",
+                         "description": "lọc, ví dụ `*hal_dsi*` hoặc `otm8009a`"},
+                 "nhanh": {"type": "string", "description": "mặc định main"},
+                 "gioi_han": {"type": "integer", "description": "mặc định 200"}},
+             "required": ["repo"]},
+            risk="R2", core=False,
+            keywords=["liệt kê", "repo có gì", "đường dẫn", "tìm tệp", "sdk", "hal",
+                      "bsp", "driver", "vendor list"])
+    def code_vendor_list(ctx: Any, repo: str, mau: str = "", nhanh: str = "main",
+                         gioi_han: int = 200):
+        import os
+
+        from ..knowledge import sdk_hang
+
+        cache = Path(os.environ.get("EIDE_CACHE_DIR")
+                     or (Path.home() / ".cache" / "eide")) / "tim-kiem"
+        d = sdk_hang.liet_ke(repo, nhanh=nhanh, mau=mau, gioi_han=gioi_han, cache=cache)
+        if d["vi_sao_khong_dat"]:
+            return ToolResult(False, error=EideError(
+                "E3005", d["vi_sao_khong_dat"],
+                hint_for_agent=("Đừng đoán đường dẫn. Thử mẫu rộng hơn, hoặc thử repo khác — "
+                                "ví dụ HAL của ST nằm ở `stm32f4xx-hal-driver`, BSP của bo "
+                                "nằm ở repo riêng của bo, driver panel nằm ở repo riêng của "
+                                "panel."),
+                details=d, alternatives=["code.vendor_list", "doc.search_web"],
+                blame="agent"))
+        d["note_vi"] = (
+            f"{d['so_khop']} tệp khớp “{mau or '*'}” trong {repo}@{nhanh}"
+            + (f" (chỉ hiện {len(d['tep'])} tệp đầu)" if d.get("bi_cat_ket_qua") else "")
+            + ". Dùng ĐÚNG những đường dẫn này cho code.vendor_fetch — đường dẫn đoán ra sẽ "
+              "trả 404 và bạn chỉ biết sau khi đã xin cả chục tệp."
+            + (" LƯU Ý: GitHub CẮT BỚT danh sách tệp của repo này, nên có thể còn tệp không "
+               "hiện ra." if d.get("bi_cat") else ""))
+        return d
+
     @r.tool("asset.image_to_c", "Mã nguồn",
             "Đổi một tệp ảnh thành cặp .c/.h chứa mảng điểm ảnh để firmware vẽ thẳng lên màn. "
             "Chip không có trình đọc PNG — muốn hiện ảnh thì nó phải nằm trong Flash dưới "

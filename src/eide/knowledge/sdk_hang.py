@@ -72,6 +72,48 @@ class KetQuaSdk:
                 "vi_sao_khong_dat": self.vi_sao_khong_dat}
 
 
+def liet_ke(repo: str, *, nhanh: str = "main", mau: str = "", gioi_han: int = 200,
+            cache: Path | None = None, timeout: float = 60.0) -> dict[str, Any]:
+    """Liệt kê tệp trong một repo của hãng, lọc theo mẫu. Để tác tử NHÌN thay vì ĐOÁN.
+
+    Vì sao cần: đo trên bo STM32F469, tác tử xin 49 tệp từ `STM32CubeF4` theo bố cục quen
+    thuộc (`Drivers/STM32F4xx_HAL_Driver/Src/...`) và **44 tệp trả 404** — vì ST đã tách HAL,
+    CMSIS device, BSP và driver panel ra thành **submodule**, tức là repo riêng. Đoán đường
+    dẫn là một phép đoán; bảng danh sách tệp là một phép đo.
+    """
+    import fnmatch
+
+    from .tim_kiem import _cay_repo
+
+    ra: dict[str, Any] = {"repo": repo, "nhanh": nhanh, "mau": mau,
+                          "tep": [], "so_khop": 0, "bi_cat": False, "vi_sao_khong_dat": ""}
+    if not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", repo or ""):
+        ra["vi_sao_khong_dat"] = f"“{repo}” không phải dạng `owner/name`."
+        return ra
+    org, ten = repo.split("/", 1)
+    try:
+        duong = _cay_repo(org, ten, nhanh, cache, timeout=timeout)
+    except Exception as e:                                    # noqa: BLE001
+        ra["vi_sao_khong_dat"] = f"Không đọc được cây tệp: {type(e).__name__}: {e}"
+        return ra
+    if "__CAT_BOT__" in duong:
+        duong.remove("__CAT_BOT__")
+        ra["bi_cat"] = True
+
+    m = (mau or "").strip()
+    khop = [d for d in duong
+            if not m or fnmatch.fnmatch(d, m) or fnmatch.fnmatch(d.rsplit("/", 1)[-1], m)
+            or m.lower() in d.lower()]
+    ra["so_khop"] = len(khop)
+    ra["tep"] = sorted(khop)[:gioi_han]
+    ra["bi_cat_ket_qua"] = len(khop) > gioi_han
+    if not khop:
+        ra["vi_sao_khong_dat"] = (
+            f"Repo có {len(duong)} tệp nhưng không tệp nào khớp “{m}”. Thử mẫu rộng hơn, "
+            "hoặc repo này không chứa thứ bạn tìm — nhiều SDK tách thành nhiều repo.")
+    return ra
+
+
 def _ten_an_toan(duong: str, *, phang: bool) -> str:
     """Tên tệp sẽ ghi ra. Không bao giờ chứa `..` hay đường dẫn tuyệt đối."""
     if phang:

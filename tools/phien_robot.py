@@ -274,13 +274,27 @@ def hoi(g: GiaoDien, nk: NhatKy, du_an: pathlib.Path, cau: str, *,
     loi = (a.get("loi_tac_tu_cuoi", "")
            if a.get("so_loi_tac_tu", 0) > truoc_loi
            else "(lượt này tác tử không nói gì — chỉ gọi công cụ)")
+    # Đợi kết quả được ghi xuống sổ cái trước khi chép vào nhật ký.
+    #
+    # Một lời gọi bị cổng chặn sẽ CHẠY Ở LƯỢT SAU (`run-113` mở cổng, `run-121` chạy), và nếu
+    # đọc sổ cái ngay lúc lượt vừa nhàn rỗi thì dòng `tool_result` chưa kịp có. Bản trước chép
+    # thẳng thành `LỖI None` — nhật ký nói sai về chính thứ nó đang làm chứng, ở đây là nói
+    # một lời gọi THÀNH CÔNG (22 s, `ok: true`) là thất bại.
     cc = cong_cu_da_goi(du_an, truoc)
+    for _ in range(20):
+        if not any(c["ok"] is None for c in cc):
+            break
+        time.sleep(1.0)
+        cc = cong_cu_da_goi(du_an, truoc)
+
     nk.noi("tac_tu", loi or "(không nói gì)")
     if cc:
         nk.ghi("Công cụ tác tử đã gọi",
                "\n".join(
                    f"{i+1:2}. {c['tool']:20} "
-                   + ("ok  " if c["ok"] else f"LỖI {c['loi']} ")
+                   + ("ok  " if c["ok"] else
+                      "CHƯA RÕ (kết quả chưa ghi xong) " if c["ok"] is None else
+                      f"LỖI {c['loi']} ")
                    + json.dumps(c["args"], ensure_ascii=False)[:90]
                    for i, c in enumerate(cc)), ma=True)
     else:

@@ -211,3 +211,43 @@ def test_khong_co_tep_anh_thi_noi_ro(tmp_path):
 def test_dinh_dang_la_thi_liet_ke_cai_dang_co(tmp_path):
     kq = A.doi_anh(_anh(tmp_path), tmp_path / "ra", ten_bien="logo", dinh_dang="rgb332")
     assert not kq.dat and "rgb565" in kq.vi_sao_khong_dat
+
+
+# ===================================================================== liệt kê repo
+def test_liet_ke_loc_theo_mau(tmp_path, monkeypatch):
+    """Đoán đường dẫn là một phép đoán; bảng danh sách tệp là một phép đo."""
+    from eide.knowledge import tim_kiem as tk
+
+    monkeypatch.setattr(tk, "_cay_repo",
+                        lambda org, repo, nhanh, cache, *, timeout: [
+                            "Inc/stm32f4xx_hal_dsi.h", "Src/stm32f4xx_hal_dsi.c",
+                            "Src/stm32f4xx_hal_gpio.c", "README.md"])
+    d = S.liet_ke("STMicroelectronics/stm32f4xx-hal-driver", nhanh="master", mau="*hal_dsi*")
+    assert d["so_khop"] == 2
+    assert d["tep"] == ["Inc/stm32f4xx_hal_dsi.h", "Src/stm32f4xx_hal_dsi.c"]
+    assert not d["vi_sao_khong_dat"]
+
+
+def test_khong_khop_thi_goi_y_repo_khac(tmp_path, monkeypatch):
+    """Ca thật: ST tách HAL/BSP/panel thành submodule, nên bố cục quen thuộc trả 404."""
+    from eide.knowledge import tim_kiem as tk
+
+    monkeypatch.setattr(tk, "_cay_repo",
+                        lambda *a, **k: ["Drivers/CMSIS/Include/core_cm4.h", "README.md"])
+    d = S.liet_ke("STMicroelectronics/STM32CubeF4", nhanh="master", mau="*otm8009a*")
+    assert d["so_khop"] == 0
+    assert "tách thành nhiều repo" in d["vi_sao_khong_dat"]
+
+
+def test_cay_bi_cat_thi_noi_ra(monkeypatch):
+    """"Không thấy" khác "không có" — GitHub cắt cây lớn và phải nói điều đó."""
+    from eide.knowledge import tim_kiem as tk
+
+    monkeypatch.setattr(tk, "_cay_repo", lambda *a, **k: ["a/b.c", "__CAT_BOT__"])
+    d = S.liet_ke("o/r", mau="*.c")
+    assert d["bi_cat"] is True and d["tep"] == ["a/b.c"]
+
+
+def test_ten_repo_sai_thi_khong_goi_mang_khi_liet_ke():
+    d = S.liet_ke("khong-hop-le")
+    assert d["so_khop"] == 0 and "owner/name" in d["vi_sao_khong_dat"]

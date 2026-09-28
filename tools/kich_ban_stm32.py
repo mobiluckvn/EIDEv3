@@ -299,27 +299,59 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
         _kiem_ung_dung_test_duoc(nk, ctx, du_an)
         nk.anh(g, "ung-dung-test-duoc")
 
-    # ------------------------------------------- 12. logo PTIT + thông tin lên màn LCD
+    # ------------------------------------------- 12. logo PTIT: tìm và đổi sang mảng C
+    #
+    # Ba lượt chứ không một. Lần đầu tôi giao cả việc trong một câu và tác tử tiêu hết ngân
+    # sách 40 lời gọi vào việc đọc lại lịch sử của chính nó mà không làm được gì — việc quá
+    # lớn cho một lượt thì chia ra là việc của NGƯỜI GIAO, không phải lỗi của người làm.
     if lam(12):
-        nk.buoc("Hiện logo PTIT và thông tin luận văn lên màn LCD 800×480 của bo")
+        nk.buoc("Tìm logo PTIT, tải về, và đổi sang mảng C cho chip vẽ được")
         loi, cc = hoi(g, nk, du_an,
-                      "Việc tiếp theo, khó hơn: mình muốn bo hiện lên MÀN HÌNH của nó "
-                      "(màn cảm ứng 800×480 gắn sẵn trên bo) những thứ sau:\n"
-                      "- Logo của Học viện Công nghệ Bưu chính Viễn thông (PTIT). Bạn tự tìm "
-                      "logo trên mạng, tải về, rồi đổi sang dạng chip vẽ được.\n"
-                      "- Tên sản phẩm: EIDE v3 — IDE nhúng có tác tử đồng tác giả.\n"
-                      "- Học viên: Vũ Trí Công.\n"
-                      "- Giảng viên hướng dẫn: TS. Nguyễn Trung Hiếu.\n\n"
-                      "Màn này dùng giao tiếp MIPI DSI, nên bạn sẽ cần driver của hãng "
-                      "(LTDC, DSI, panel OTM8009A, và SDRAM ngoài để làm bộ đệm khung). "
-                      "Những thứ đó nằm trên GitHub của ST. Cứ lấy về rồi biên dịch; lỗi thì "
-                      "sửa cho tới khi xong, rồi nạp lên bo.\n"
+                      "Việc mới, mình chia nhỏ ra. Bước một: bo này có màn hình cảm ứng "
+                      "800×480 gắn sẵn, và mình muốn hiện logo trường mình lên đó. Bạn tìm "
+                      "giúp mình logo của Học viện Công nghệ Bưu chính Viễn thông (PTIT), "
+                      "tải về dự án, rồi đổi sang dạng mà chip vẽ thẳng lên màn được — chip "
+                      "không đọc được PNG. Logo để khoảng 240×240 điểm ảnh là vừa. Nói cho "
+                      "mình biết bạn lấy logo từ nguồn nào và nó ở tầng tin cậy nào.",
+                      giay=1200)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_logo(nk, ctx, du_an, cc)
+        nk.anh(g, "logo-tim-va-doi")
+
+    # ------------------------------------------- 13. lấy driver màn hình của ST
+    if lam(13):
+        nk.buoc("Lấy driver màn hình DSI của ST về dự án")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bước hai: màn này nối qua MIPI DSI nên cần driver của hãng. Bạn lấy "
+                      "về dự án những thứ cần để vẽ được lên nó — theo mình hiểu là LTDC, "
+                      "DSI, driver panel OTM8009A, và SDRAM ngoài làm bộ đệm khung, cộng HAL "
+                      "và CMSIS của STM32F4. Tất cả nằm trên GitHub của ST. Lấy xong thì nói "
+                      "cho mình biết đã thêm bao nhiêu tệp, từ repo nào, và có tệp nào hỏng "
+                      "không.\n"
+                      "LƯU Ý: lần trước bạn đoán đường dẫn theo bố cục quen thuộc của "
+                      "STM32CubeF4 và 44/49 tệp trả 404 — ST đã tách HAL, CMSIS device, BSP "
+                      "và driver panel thành các repo RIÊNG. Nên hãy NHÌN xem repo có gì "
+                      "trước khi xin tệp.",
+                      giay=2400)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_driver(nk, du_an, cc)
+        nk.anh(g, "driver-man-hinh")
+
+    # ------------------------------------------- 14. viết, biên dịch, nạp
+    if lam(14):
+        nk.buoc("Viết chương trình hiện logo + thông tin, biên dịch và nạp lên bo")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bước ba: viết chương trình hiện lên màn:\n"
+                      "- Logo PTIT vừa đổi.\n"
+                      "- EIDE v3 — IDE nhúng có tác tử đồng tác giả\n"
+                      "- Học viên: Vũ Trí Công\n"
+                      "- Giảng viên hướng dẫn: TS. Nguyễn Trung Hiếu\n\n"
+                      "Rồi biên dịch, sửa lỗi cho tới khi xong, và nạp lên bo.\n"
                       "LƯU Ý MÁY NÀY: `arm-none-eabi-gcc` KHÔNG kèm newlib, và bản cài newlib "
                       "cần quyền sudo nên bạn không cài được — nghĩa là không có memset/"
                       "memcpy/printf. Bạn tự viết những hàm tối thiểu đó nếu cần.",
                       giay=3600)
-        ten = [c["tool"] for c in cc]
-        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(ten) or "—")
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
         _kiem_man_hinh(nk, ctx, du_an, cc)
         nk.anh(g, "logo-ptit")
 
@@ -701,3 +733,58 @@ def _kiem_man_hinh(nk: Any, ctx: Any, du_an: pathlib.Path, cc: list[dict]) -> No
     nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
            "Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy "
            "nhất của bước này không đo được bằng mã.")
+
+
+def _kiem_logo(nk: Any, ctx: Any, du_an: pathlib.Path, cc: list[dict]) -> None:
+    """Logo có phải ẢNH THẬT tải về, và mảng có sinh ra BẰNG CÔNG CỤ từ chính ảnh đó không."""
+    anh = [p for p in du_an.rglob("*")
+           if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".bmp",
+                                                   ".svg", ".webp")
+           and ".eide" not in p.parts]
+    nk.ghi("Ảnh trong dự án",
+           "\n".join(f"  {p.relative_to(du_an)} · {p.stat().st_size} byte" for p in anh)
+           or "— không có —", ma=True)
+    nk.ket(bool(anh), "Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)", f"{len(anh)} ảnh")
+
+    tim = [c for c in cc if c["tool"] == "doc.search_web"]
+    nk.ghi("Tác tử tìm bằng gì",
+           "\n".join(f"  {json.dumps(c['args'], ensure_ascii=False)[:110]} → "
+                     + ("ok" if c["ok"] else f"LỖI {c['loi']}") for c in tim) or "—", ma=True)
+
+    doi = [c for c in cc if c["tool"] == "asset.image_to_c"]
+    nk.ket(bool(doi) and any(c["ok"] for c in doi),
+           "Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó",
+           "; ".join(json.dumps(c["args"], ensure_ascii=False)[:110] for c in doi) or "—")
+
+    # Mảng sinh ra phải khớp ảnh: đọc lại .h và so với kích thước ảnh thật.
+    hs = sorted(p for p in (du_an / "firmware").glob("*.h")) if (du_an / "firmware").is_dir() \
+        else []
+    khop = []
+    for h in hs:
+        chu = h.read_text("utf-8", errors="replace")
+        m_w = re.search(r"#define\s+\w+_WIDTH\s+(\d+)", chu)
+        m_h = re.search(r"#define\s+\w+_HEIGHT\s+(\d+)", chu)
+        if m_w and m_h:
+            khop.append(f"{h.name}: {m_w.group(1)}×{m_h.group(1)}")
+    nk.ket(bool(khop), "Có header khai kích thước mảng điểm ảnh", "; ".join(khop) or "—")
+
+
+def _kiem_driver(nk: Any, du_an: pathlib.Path, cc: list[dict]) -> None:
+    """Driver màn hình có phải mã CỦA HÃNG lấy về không, và có tệp nào hỏng không."""
+    lay = [c for c in cc if c["tool"] == "code.vendor_fetch"]
+    nk.ghi("Lấy mã hãng",
+           "\n".join(f"  {c['args'].get('repo')}@{c['args'].get('nhanh','main')} · "
+                     f"{len(c['args'].get('tep') or [])} tệp · "
+                     + ("ok" if c["ok"] else f"LỖI {c['loi']}") for c in lay) or "—", ma=True)
+    nk.ket(bool(lay), "Tác tử đã dùng code.vendor_fetch (mã của hãng, không tự nghĩ)",
+           f"{len(lay)} lượt")
+
+    fw = du_an / "firmware"
+    tep = sorted(p.name for p in fw.rglob("*") if p.is_file()) if fw.is_dir() else []
+    nk.ghi(f"Tệp trong firmware/ ({len(tep)})", ", ".join(tep[:60])
+           + (f" … và {len(tep) - 60} tệp nữa" if len(tep) > 60 else ""))
+    chu = "\n".join(p.read_text("utf-8", errors="replace")
+                    for p in sorted(fw.rglob("*"))
+                    if p.is_file() and p.suffix in (".c", ".h")) if fw.is_dir() else ""
+    for can in ("LTDC", "DSI", "OTM8009A", "SDRAM"):
+        nk.ket(can.lower() in chu.lower(), f"Mã có phần {can}", "")

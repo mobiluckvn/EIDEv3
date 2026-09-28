@@ -488,10 +488,14 @@ class Agent:
     # Bao nhiêu lần gọi cùng một công cụ ĐỌC mà chưa ghi gì thì coi là đang quay vòng.
     # 6 là con số đo được: trên một lượt thật, tác tử gọi `ledger.query` 21 lần liên tiếp để
     # tìm một tệp nó sắp phải tự viết, rồi hết ngân sách mà chưa viết dòng nào.
-    NGUONG_QUAY_VONG = 6
+    NGUONG_QUAY_VONG = 6          # cùng MỘT công cụ gọi bấy nhiêu lần
+    NGUONG_TONG_DOC = 10          # tổng lời gọi CHỈ-ĐỌC, rải trên bao nhiêu công cụ cũng tính
     _CONG_CU_DOC = ("fs.read", "fs.glob", "fs.grep", "fs.stat", "fact.query", "store.get",
                     "store.list", "ledger.query", "doc.read", "tool.search", "ckm.graph",
-                    "inventory.get", "memory.read", "blob.read")
+                    "inventory.get", "memory.read", "blob.read",
+                    # Ba công cụ tự-soi-mình này vắng mặt trong bản trước, nên một lượt trôi
+                    # hết vào việc đọc lại lịch sử của chính nó không bị tính là quay vòng.
+                    "history.list", "history.diff", "snapshot.list")
 
     def _nhac_neu_dang_quay_vong(self, ctx: TurnContext) -> str:
         """Nhắc khi tác tử TÌM mãi mà không LÀM. Nhắc một lần cho mỗi công cụ, không càm ràm.
@@ -511,19 +515,34 @@ class Agent:
         if da_nhac is None:
             da_nhac = set()
             ctx.da_nhac_quay_vong = da_nhac
-        dem = Counter(t for t in goi if t in self._CONG_CU_DOC)
-        for ten, n in dem.most_common(1):
-            if n < self.NGUONG_QUAY_VONG or ten in da_nhac:
-                return ""
+        chi_doc = [t for t in goi if t in self._CONG_CU_DOC]
+        dem = Counter(chi_doc)
+        ten, n = dem.most_common(1)[0] if dem else ("", 0)
+
+        # HAI cách nhận ra "tìm mãi mà không làm", vì một cách bỏ sót ca thật sau:
+        #
+        #   ledger.query → fs.glob ×5 → store.list → store.get → ledger.query
+        #                → history.list → ledger.query ×4
+        #
+        # Mười bốn lời gọi chỉ-đọc, không ghi gì, rõ ràng là đang quay vòng — nhưng phép đếm
+        # THEO TỪNG TÊN không chạm ngưỡng nào cho tới lời gọi thứ mười bốn, và tới lúc đó lượt
+        # đã hết. Trải việc tìm ra nhiều công cụ khác nhau không làm nó bớt là quay vòng.
+        if n >= self.NGUONG_QUAY_VONG and ten and ten not in da_nhac:
             da_nhac.add(ten)
-            return (
-                f"[EIDE] Lượt này bạn đã gọi `{ten}` {n} lần và chưa ghi được gì — "
-                f"{len(goi)}/{self.config.budget.max_tool_calls} lời gọi đã dùng. Dừng tìm "
-                "lại. Chọn một trong ba: (1) làm việc chính bằng dữ kiện đang có; (2) nói "
-                "thẳng với người dùng là bạn chưa tìm ra thứ gì và hỏi họ; (3) nếu việc quá "
-                "lớn cho một lượt thì làm phần đầu rồi báo lại. Đừng tìm tiếp bằng một truy "
-                "vấn khác cho cùng một câu hỏi.")
-        return ""
+            vi_sao = f"đã gọi `{ten}` {n} lần"
+        elif len(chi_doc) >= self.NGUONG_TONG_DOC and "_tong" not in da_nhac:
+            da_nhac.add("_tong")
+            vi_sao = (f"đã gọi {len(chi_doc)} lời gọi CHỈ-ĐỌC "
+                      f"({', '.join(f'{k}×{v}' for k, v in dem.most_common(4))})")
+        else:
+            return ""
+        return (
+            f"[EIDE] Lượt này bạn {vi_sao} và chưa ghi được gì — "
+            f"{len(goi)}/{self.config.budget.max_tool_calls} lời gọi đã dùng. Dừng tìm lại. "
+            "Chọn một trong ba: (1) làm việc chính bằng dữ kiện đang có; (2) nói thẳng với "
+            "người dùng là bạn chưa tìm ra thứ gì và hỏi họ; (3) nếu việc quá lớn cho một "
+            "lượt thì làm phần đầu rồi báo lại. Đừng tìm tiếp bằng một truy vấn khác cho "
+            "cùng một câu hỏi.")
 
     def _cau_im_lang(self, ctx: TurnContext) -> str:
         """Câu thay cho sự im lặng: nói đã làm gì và mời người dùng đẩy tiếp."""

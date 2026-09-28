@@ -471,3 +471,48 @@ def test_thao_tac_KHONG_HOAN_TAC_thi_hoi_lai_tung_lan(make_agent):
     the = _duyet_het(agent, core, seen)
     assert len(the) == 2, f"mỗi lần nạp một thẻ, đang có {len(the)}"
     assert all(c["irreversible"] for c in the)
+
+
+def test_tim_mai_khong_lam_thi_nhac_du_trai_tren_NHIEU_cong_cu(make_agent):
+    """Ca thật trên bo STM32F469, bước hiện logo lên màn.
+
+    Tác tử tiêu cả lượt vào `ledger.query → fs.glob ×5 → store.list → store.get →
+    ledger.query → history.list → ledger.query ×4`: mười bốn lời gọi chỉ-đọc, không ghi gì.
+    Phép đếm THEO TỪNG TÊN không chạm ngưỡng nào cho tới lời gọi thứ mười bốn, và tới lúc đó
+    lượt đã hết. Trải việc tìm ra nhiều công cụ khác nhau không làm nó bớt là quay vòng.
+    """
+    from eide.loop import TurnContext
+
+    agent = make_agent([])
+    ctx = TurnContext(config=agent.config, store=agent.store, ledger=agent.ledger,
+                      eide_md=agent.eide_md, ids=agent.ids, registry=agent.registry,
+                      emit=lambda c: None, history=agent.history, run_id="run-1")
+    ctx.cong_cu_da_goi = (["ledger.query"] + ["fs.glob"] * 5 + ["store.list", "store.get",
+                          "ledger.query", "history.list"] + ["ledger.query"] * 2)
+    ctx.da_ghi_gi_do = False
+    nhac = agent._nhac_neu_dang_quay_vong(ctx)
+    assert nhac, "14 lời gọi chỉ-đọc mà không ghi gì thì phải nhắc"
+    assert "CHỈ-ĐỌC" in nhac and "Dừng tìm lại" in nhac
+    # Nhắc MỘT lần, không càm ràm.
+    assert agent._nhac_neu_dang_quay_vong(ctx) == ""
+
+
+def test_history_list_duoc_tinh_la_cong_cu_doc(make_agent):
+    """Ba công cụ tự-soi-mình vắng mặt trong bản trước — đúng ba cái tác tử dùng để quay vòng."""
+    from eide.loop import Agent
+
+    for t in ("history.list", "history.diff", "snapshot.list"):
+        assert t in Agent._CONG_CU_DOC
+
+
+def test_da_ghi_duoc_gi_do_thi_KHONG_nhac(make_agent):
+    """Gọi nhiều công cụ đọc rồi GHI được gì đó thì không phải quay vòng — đó là làm việc."""
+    from eide.loop import TurnContext
+
+    agent = make_agent([])
+    ctx = TurnContext(config=agent.config, store=agent.store, ledger=agent.ledger,
+                      eide_md=agent.eide_md, ids=agent.ids, registry=agent.registry,
+                      emit=lambda c: None, history=agent.history, run_id="run-1")
+    ctx.cong_cu_da_goi = ["fs.read"] * 12
+    ctx.da_ghi_gi_do = True
+    assert agent._nhac_neu_dang_quay_vong(ctx) == ""
