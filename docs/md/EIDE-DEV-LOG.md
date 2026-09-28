@@ -4256,3 +4256,129 @@ sai**, và cái sai chỉ hiện ra khi nhìn vào thứ người dùng thật s
 
 `1221 ca đơn vị` (không đổi — đây là thay đổi ở tầng giao diện, kiểm bằng mười ô đo qua GUI
 thật và một ảnh do chính app vẽ).
+
+### [DEV-291] 28–29/09/2026 · Chạy lại toàn bộ 76 ca kiểm và quét toàn bộ giao diện
+
+**Việc người dùng giao:** *"mở app thực hiện tất cả các usecase trong tài liệu … full các
+testcase … đảm bảo mọi label, control đều hoạt động tốt"*, rồi *"ghi log chi tiết để từ đó
+chúng ta fix triệt để"*.
+
+Nguồn đề bài: `docs/review-v3/test/Usecase_Test_23-09-2026.md` — 19 usecase, 76 ca kiểm, đo
+23/09/2026 trên kiến trúc **cũ** (định tuyến ý định, `chat.parse_intent`, `archive.list`).
+Lõi nay là vòng lặp công cụ khác hẳn, nên đây là một phép đo mới chứ không phải so hai cột.
+
+#### Số đo
+
+| | Ca kiểm | Giao diện |
+|---|---|---|
+| Đạt | **65/68 đo được** (96 %) | **124/124 ô** |
+| Không đạt | 3 | 0 |
+| Ngoài phạm vi · cần người · cần thiết bị | 2 · 3 · 3 | — |
+
+Bộ chạy: `tools/bo_usecase.py` (76 ca thành dữ liệu) · `tools/chay_usecase.py` (lái app thật)
+· `tools/quet_giao_dien.py` (11 bề mặt) · `tools/bao_cao_tong.py` (gộp + **tự kiểm sót**).
+Mỗi ca có một tệp log riêng ở `ket-qua-chay-lai/nhat-ky/TCxxx.md`: câu người gõ · đề bài chờ ·
+**bảng từng lời gọi công cụ kèm tham số đầy đủ và mã lỗi** · nguyên văn lời đáp. Đủ để ngồi
+sửa mà không phải chạy lại — chạy lại một ca tốn một lượt mô hình.
+
+#### Ba lỗi SẢN PHẨM, đã sửa
+
+**L1 — `store.option_choose` gán "NGƯỜI QUYẾT" cho một câu người dùng không hề chọn gì.**
+Người gõ đúng một câu — *"Làm cho mình cái mạch thông minh."* — và tác tử gọi
+`store.option_choose{quyet_boi:"nguoi", trich_loi_nguoi:"Làm cho mình cái mạch thông minh."}`
+rồi tuyên "Đã chốt kiến trúc — ADR-01".
+
+Đây là **giả mạo xuất xứ**, không phải lỗi trình bày. Nó vi phạm N1 theo cách tệ nhất: nguồn
+CÓ THẬT (người dùng có nói câu đó) nhưng KHÔNG nói điều được gán cho nó — và một trích dẫn
+thật đặt sai chỗ khó phát hiện hơn nhiều so với một trích dẫn bịa. `NGUOI` lại là tầng tin cậy
+**cao nhất**, thứ mọi quyết định sau đó dựa vào mà không ai kiểm lại.
+
+Nay `quyet_boi="nguoi"` phải **chứng minh được**, không phải khai được — ba phép kiểm, cả ba
+đều tra từ dữ liệu đã có: câu trích có trong sổ cái không · câu ấy có chữ mang nghĩa lựa chọn
+không · có nhắc đúng phương án không. Bản đầu thiếu phép thứ hai và **vẫn cho lọt đúng ca nó
+canh**: "Làm cho mình cái **mạch** thông minh" và tên phương án "Bo **mạch** Linux nhỏ làm USB
+gadget" cùng có chữ "mạch" — một từ chung của cả lĩnh vực. Lỗi trả về nói ra **hai đường đi**
+(hạ xuống `quyet_boi="tac_tu"`, hoặc hỏi rồi chốt), vì chặn mà không chỉ lối thì tác tử sẽ thử
+lại đúng lối cũ. Có một ca kiểm riêng chứng minh cái phanh **không** chặn nhầm đường đúng.
+
+**L7 — `build.compile` chọn chuỗi công cụ theo "máy có gì", không theo "dự án là gì".** Điều
+kiện là `if arduino-cli đã cài and isa có fqbn`, nên một dự án chỉ có `firmware/*.c` vẫn bị
+đẩy sang `arduino-cli compile` và người đang hỏi về `-O3` nhận về một lỗi nói chuyện **định
+dạng sketch Arduino**. Họ sẽ đi tìm một tệp `.ino` mà dự án không bao giờ cần. Nay chỉ chọn
+arduino-cli khi thư mục **thật sự có `.ino`**.
+
+Hậu quả không dừng ở một thông điệp: nó **chặn đứng** TC055 trước khi ca ấy tới được phần chạy
+hồi quy. Một lỗi ở bước chọn công cụ che mất toàn bộ thứ nằm sau nó.
+
+**L9 — bảng trong Console cuộn ngang được nhưng không có dấu hiệu nào cho biết còn nội dung.**
+`showsIndicators: false`, nên cột thứ ba bị cắt thành `Giải p…` và người đọc không có lý do gì
+để thử kéo ngang. Với họ, phần ấy không tồn tại.
+
+Thêm một lỗi trình bày cùng đợt: lời tác tử mang tiền tố `[Tác tử] ` chèn **trong chữ**, làm
+khối Markdown đầu tiên không được dựng — người dùng đọc thấy nguyên `## Kết quả…`. Tiền tố ấy
+vốn đã thừa (Console in nhãn vai ở cột trái), nên bỏ hẳn ở cả 21 chỗ thuộc 4 tệp: sửa một
+**lớp** lỗi chứ không một chỗ, vì mọi khối mở đầu — tiêu đề, trích dẫn, gạch đầu dòng, bảng,
+khối mã — đều bị cùng một kiểu.
+
+#### Sáu lỗi của chính BỘ ĐO — ghi ngang hàng, vì chúng dẫn tới việc sai y như lỗi thật
+
+`LOI-TIM-DUOC.md` ghi đủ chín mục. Chúng quy về hai hình dạng:
+
+**Ô XANH GIẢ.** L3: phép chấm TC004 chỉ đòi lời đáp có một dấu `?`, nên nó **bật xanh cho đúng
+cái lỗi nó canh** — lượt chốt ADR-01 vẫn có câu hỏi ở cuối. L5: TC029 đòi một chuỗi *dò → nạp
+→ kiểm* nhưng chấm bằng **một trong ba** công cụ, nên tác tử dò xong rồi dừng vẫn đạt, và hai
+phần ba đề bài không bao giờ được chạm tới. Sửa: `cam_cong_cu` (chấm bằng **việc đã làm**,
+không bằng **lời đã nói**) và `cong_cu_du` (đòi đủ chuỗi).
+
+**Ô ĐỎ GIẢ — tệ ngang ô xanh giả, vì nó cử người đi sửa một thứ không hỏng.** L4: TC014 làm
+đúng sách (trả đúng 4,7 kΩ, trích đoạn chèn độc hại ra cảnh báo, nói rõ không chạy lệnh) mà
+trượt vì cụm cấm là `rm -rf` — chuỗi mà chính câu cảnh báo phải chứa. TC019 nói thẳng "KHÔNG
+ĐẠT" mà trượt vì cấm nguyên chữ `đạt`. L8: TC029 **từ chối nạp** vì ảnh nhị phân chưa có biên
+bản build, rồi hỏi xác nhận — đúng thứ cổng G-FLASH sinh ra để có — và bị chấm "THIẾU
+`target.flash`", tức **phạt đúng hành vi cẩn thận**. Sửa: cụm cấm hẹp lại · thêm phanh phủ
+định · thêm lượt xác nhận thứ hai cho luồng có bước hỏi.
+
+**L2 — đo sai tiền điều kiện thì con số nói về một bài toán khác.** Bốn ca UC01 ghi "Phiên
+mới" bị chạy chung dự án, nên TC004 thừa hưởng ngữ cảnh LAN→USB và đọc câu mơ hồ thành "chọn
+phương án" — một hành vi **hợp lý trong một ngữ cảnh sai**. Nhưng cho mỗi ca một dự án lại
+làm TC002 mất đặc tả mà đề bài bảo nó đã có. Cả hai lối đều sai, ngược nhau. Nay mô tả bằng
+**xô phiên** (`phien`), đúng chuỗi phụ thuộc trên giấy.
+
+**L6 — chấm bằng từ khoá trên tiếng Việt tự do không đủ tin cậy để làm phán quyết.** Ba lần
+trong một đợt, nó đánh trượt những lời đáp gần như hoàn hảo chỉ vì tác tử chọn cách nói khác
+("không có thông tin về" thay vì "không có trong"). Nới danh sách sau mỗi lần trượt là chạy
+theo, không phải sửa. Nên bảng cuối có **hai cột**: máy chấm (lượt sàng) và **sau khi đọc
+tay** (kết luận). Ô xanh của máy nghĩa là *"có dấu hiệu"*, ô đỏ nghĩa là *"đáng đọc kỹ"*.
+
+#### Ba ca không đạt còn lại — cùng một hình dạng
+
+TC006 · TC008 · TC052 đều là ca **Happy kết thúc bằng một câu hỏi**. TC052 rõ nhất: phương án
+nó *đề xuất* chính là cách sửa đúng (tách logic sang `control.c` rồi test) — **năng lực có,
+nhưng nó dừng lại hỏi thay vì đi theo giả định đã nêu**. Thiên về hỏi là an toàn, nhưng ba ca
+Happy liền dừng ở câu hỏi thì ngưỡng đang đặt hơi cao. Đây là một hướng đáng bàn riêng, chưa
+sửa trong chặng này.
+
+#### Tấm ảnh bắt được thứ con số bỏ sót — lần thứ ba liên tiếp
+
+L9 lọt qua cả **124 ô** của bộ quét, và mọi con số đều **đúng**: khối không rộng hơn khung,
+không đè nhau, nhãn không rỗng, không giá trị thô nào lộ ra. Bộ quét đo **bố cục khối**; chỗ
+hỏng nằm **bên trong một khối**. Cùng hình dạng với DEV-289 (thẻ cổng đã đóng mà nút vẫn bấm
+được) và DEV-290 (nhãn "không còn ở đây" không hiện ra): **số đo đúng, câu hỏi sai.** Vì vậy
+bộ quét chụp cả 11 bề mặt, và ảnh là một phần của kết quả chứ không phải minh hoạ.
+
+#### Bo thật
+
+TC029 nạp thật lên STM32F469I-DISCO. Ảnh nạp lên chính là bản FreeRTOS **đang chạy** (cùng
+hash `e6fa7328…`), nên đo trọn đường dò→nạp→kiểm mà không xoá mất bản demo người dùng đã xác
+nhận. Kiểm lại sau đó bằng `target.debug`: PC vẫn rơi vào vùng idle của FreeRTOS như trước.
+Nhóm UC05 trong bảng gốc 23/09 là **"Bị chặn"** toàn bộ vì chưa có bo; nay **6/6 ca đo được
+đều đạt**.
+
+### Số đo
+
+`1231 ca đơn vị` (+10 so với DEV-290): `test_ai_quyet.py` (4 — có ca chứng minh phanh không
+chặn nhầm đường đúng), `test_chon_chuoi_cong_cu.py` (4), `test_loi_tac_tu_khong_co_tien_to.py`
+(2). Hai ca đầu của `test_chon_chuoi_cong_cu` lúc viết ra **bị bỏ qua** vì tôi dò `avr-gcc`
+trên `PATH` còn mã thật tìm nó trong `~/Library/Arduino15/…` — một ca bị bỏ qua không chứng
+minh gì mà bảng vẫn xanh. Đã sửa để hỏi đúng cái mã thật hỏi, rồi phá lại bản vá để chắc
+chúng đỏ được.

@@ -390,7 +390,7 @@ def build_registry(features: Any = None) -> Registry:
         card_id = ctx.ids.next("card")
         card = {"type": "clarify", "card_id": card_id, "intro": intro,
                 "questions": questions, "assumption_if_skipped": assumption_if_skipped}
-        ctx.emit(uic.console_post("[Tác tử] " + _render_ask(intro, questions,
+        ctx.emit(uic.console_post(_render_ask(intro, questions,
                                                            assumption_if_skipped),
                                   role="agent", card=card))
         ctx.said_anything = True

@@ -295,7 +295,17 @@ def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
     build.mkdir(parents=True, exist_ok=True)
     la_arm = bool(cc.get("cpu"))
 
-    if cc.get("arduino-cli") and cc.get("fqbn"):
+    # Chọn công cụ theo DỰ ÁN LÀ GÌ, không theo MÁY CÓ GÌ.
+    #
+    # Bản trước hỏi "máy này có cài arduino-cli không". Đo được ngày 28/09/2026 (ca TC055):
+    # một dự án chỉ có `firmware/main.c`, không tệp `.ino` nào, vẫn bị đẩy sang
+    # `arduino-cli compile` — và người đang hỏi về `-O3` nhận về một lỗi nói chuyện định dạng
+    # sketch của Arduino. Họ sẽ đi tìm một tệp `.ino` mà dự án không bao giờ cần.
+    #
+    # Hai câu hỏi ấy khác hẳn nhau, và câu đúng là câu thứ hai. `arduino-cli` chỉ dịch được
+    # sketch; một thư mục có `.c` mà không có `.ino` rõ ràng không phải sketch.
+    la_sketch = _la_sketch_arduino(sketch)
+    if cc.get("arduino-cli") and cc.get("fqbn") and la_sketch:
         kq.cong_cu = "arduino-cli"
         kq.lenh = [cc["arduino-cli"], "compile", "--fqbn", cc["fqbn"],
                    "--build-path", str(build), "--warnings", "all", str(sketch)]
@@ -632,3 +642,16 @@ def doc_map(*, elf: Path, size_bin: str = "", nm_bin: str = "",
                        "không sinh ngoại lệ mà lặng lẽ hỏng.")
     ra["de_xuat"] = de_xuat
     return ra
+
+def _la_sketch_arduino(sketch: Path) -> bool:
+    """Chỗ này có phải một sketch Arduino không — hỏi cái THƯ MỤC, không hỏi cái MÁY.
+
+    `arduino-cli compile` chỉ nhận một sketch: một tệp `.ino`, hoặc một thư mục chứa `.ino`
+    (theo lệ Arduino thì trùng tên thư mục, nhưng `arduino-cli` nhận rộng hơn).
+    """
+    if sketch.is_file():
+        return sketch.suffix.lower() == ".ino"
+    if not sketch.is_dir():
+        return False
+    return any(sketch.glob("*.ino"))
+

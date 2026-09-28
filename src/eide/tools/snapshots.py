@@ -73,7 +73,7 @@ def register(r: Registry) -> Registry:
             "tra_loi_thanh": "snapshot",
         }
         ctx.emit(uic.console_post(
-            f"[Tác tử] {ly_do}\n\nAnh muốn ghi lại làm **bản ưng ý** không? "
+            f"{ly_do}\n\nAnh muốn ghi lại làm **bản ưng ý** không? "
             "Nếu có, anh đặt tên giúp — tôi không đặt hộ vì tên là thứ anh sẽ đọc lại "
             "sau này.", role="agent", card=card))
         ctx.pending_cards.append(card)

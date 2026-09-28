@@ -100,6 +100,12 @@ def register(r: Registry) -> Registry:
                 hint_for_agent="Ghi phương án bằng store.option_create trước khi chốt.",
                 alternatives=["store.option_create", "store.list"], blame="agent"))
 
+        # "Người quyết" là tầng tin cậy CAO NHẤT. Phải chứng minh được, không phải khai được.
+        if quyet_boi == "nguoi":
+            loi_chan = _kiem_nguoi_that_su_chon(ctx, pa, id, trich_loi_nguoi)
+            if loi_chan is not None:
+                return loi_chan
+
         # Bỏ dấu chọn ở các phương án khác — chỉ một phương án được chọn tại một thời điểm.
         for k in ctx.store.list("option", limit=20):
             if k["id"] != id and k["canonical"].get("da_chon"):
@@ -343,3 +349,101 @@ def register(r: Registry) -> Registry:
                            "tài liệu)', và nên đề nghị tìm tài liệu để nâng lên VÀNG."}
 
     return r
+
+# ---------------------------------------------------------------- ai quyết, và dựa vào đâu
+
+def _go_dau(s: str) -> str:
+    import unicodedata
+    s = unicodedata.normalize("NFD", (s or "").lower())
+    return "".join(c for c in s if unicodedata.category(c) != "Mn").replace("d", "d")
+
+
+def _kiem_nguoi_that_su_chon(ctx: Any, pa: dict[str, Any], ma: str, trich: str):
+    """`quyet_boi="nguoi"` phải chứng minh được bằng sổ cái, không phải khai được bằng lời.
+
+    Đo được ngày 28/09/2026 (ca TC004 của bộ usecase). Người dùng gõ đúng một câu:
+
+        Làm cho mình cái mạch thông minh.
+
+    Tác tử gọi `store.option_choose` với `quyet_boi="nguoi"` và đặt chính câu ấy vào
+    `trich_loi_nguoi`, rồi tuyên "Đã chốt kiến trúc — ADR-01". Câu ấy **không chọn gì cả**:
+    không nhắc phương án nào, không có chữ nào mang nghĩa lựa chọn. Nhưng ADR sinh ra sẽ
+    vĩnh viễn nói rằng NGƯỜI DÙNG đã quyết, kèm trích dẫn.
+
+    Đây là **giả mạo xuất xứ**, không phải lỗi trình bày. Nó vi phạm N1 theo cách tệ nhất:
+    nguồn CÓ THẬT (người dùng có nói câu đó) nhưng KHÔNG nói điều được gán cho nó — và một
+    trích dẫn thật đặt sai chỗ khó phát hiện hơn nhiều so với một trích dẫn bịa. `NGUOI` lại
+    là tầng cao nhất, thứ mọi quyết định sau đó dựa vào mà không ai kiểm lại.
+
+    Hai câu hỏi, cả hai đều tra được từ dữ liệu đã có — không phải tin lời tác tử:
+
+    1. Câu trích có THẬT là lời người dùng không? Sổ cái ghi mọi `human_act`.
+    2. Câu ấy có NHẮC TỚI phương án đang chốt không, theo mã hay theo tên? Không nhắc thì nó
+       không thể là câu chọn *phương án đó*.
+
+    Trả `None` nếu qua; trả `ToolResult` lỗi nếu không. Lỗi luôn nói ra HAI đường đi — chặn
+    mà không chỉ lối thì tác tử sẽ thử lại đúng lối cũ.
+    """
+    def _chan(ma_loi: str, vi: str) -> ToolResult:
+        return ToolResult(False, error=EideError(
+            ma_loi, vi,
+            hint_for_agent=(
+                "Hai đường đi:\n"
+                "1. `quyet_boi=\"tac_tu\"` — bạn đề xuất, người dùng chưa phản đối. Đây là "
+                "lời khai trung thực và nó vẫn ghi được quyết định; tầng tin cậy thấp hơn, "
+                "đúng với thực tế.\n"
+                "2. Hỏi người dùng chọn phương án nào, đợi họ trả lời, rồi chốt bằng chính "
+                "câu họ vừa nói.\n"
+                "Đừng đặt một câu người dùng có nói vào chỗ một quyết định họ chưa ra: ADR "
+                "sinh ra sẽ mang tầng NGUOI — tầng cao nhất — và mọi việc sau đó dựa vào nó "
+                "mà không ai kiểm lại."),
+            alternatives=["ask_user", "store.option_choose"], blame="agent"))
+
+    if not (trich or "").strip():
+        return _chan("E5006",
+                     "Khai là NGƯỜI quyết thì phải kèm `trich_loi_nguoi` — nguyên văn câu họ "
+                     "đã chọn.")
+
+    # 1. Câu ấy có trong sổ cái không.
+    noi_nguoi = [_go_dau(e.data.get("text", ""))
+                 for e in ctx.ledger.read() if e.kind == "human_act"]
+    t = _go_dau(trich)
+    if not any(t in x for x in noi_nguoi):
+        return _chan("E5007",
+                     f"Câu trích {trich[:60]!r} không khớp lời nào của người dùng trong sổ "
+                     "cái. Sổ cái ghi mọi câu họ gõ, nên đây không phải chuyện thiếu dữ "
+                     "liệu.")
+
+    # 2. Câu ấy có phải một câu CHỌN không.
+    #
+    # Chỉ đối chiếu từ ngữ với tên phương án là chưa đủ: bản đầu của phép kiểm này cho lọt
+    # đúng ca nó canh, vì "Làm cho mình cái **mạch** thông minh" và tên phương án "Bo **mạch**
+    # Linux nhỏ làm USB gadget" cùng có chữ "mạch" — một từ chung của cả lĩnh vực. Nên phải
+    # có thêm một DẤU HIỆU CHỌN: người dùng nói chọn/dùng/lấy/đồng ý, chứ không chỉ nhắc tới
+    # một danh từ trùng.
+    if not any(k in t for k in _DAU_HIEU_CHON):
+        return _chan("E5008",
+                     f"Câu trích {trich[:60]!r} không có chữ nào mang nghĩa lựa chọn "
+                     "(chọn · dùng · lấy · theo · đồng ý · duyệt), nên nó không phải một câu "
+                     "quyết định.")
+
+    # 3. Và câu ấy phải nhắc tới ĐÚNG phương án đang chốt.
+    ten = str(pa.get("canonical", {}).get("ten") or "")
+    tu_ten = [w for w in _go_dau(ten).split()
+              if len(w) >= 4 and w not in _TU_CHUNG]
+    nhac = _go_dau(ma) in t or any(w in t for w in tu_ten)
+    if not nhac:
+        return _chan("E5009",
+                     f"Câu trích {trich[:60]!r} có ý lựa chọn nhưng không nhắc tới {ma} "
+                     f"({ten!r}) — chưa đủ để biết họ chọn phương án NÀO.")
+    return None
+
+
+# Chữ mang nghĩa lựa chọn. Thiếu chúng thì câu ấy không phải một quyết định.
+_DAU_HIEU_CHON = ("chon", "dung ", "lay ", "theo ", "dong y", "duyet", "ok ", "chot",
+                  "quyet dinh", "di voi", "uu tien")
+
+# Từ chung của cả lĩnh vực — trùng nhau không nói lên điều gì.
+_TU_CHUNG = {"mach", "board", "bo", "chip", "thiet", "phuong", "an", "he", "thong", "cho",
+             "minh", "lam", "cai", "thong minh", "duoc", "voi", "cua", "tren"}
+

@@ -388,7 +388,16 @@ private struct BangMd: View {
     let co: CGFloat
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        // Hiện thanh cuộn.
+        //
+        // Bảng rộng hơn khung Console thì vẫn cuộn ngang được — nội dung không mất. Nhưng
+        // với `showsIndicators: false` thì KHÔNG CÓ DẤU HIỆU NÀO cho biết còn cột bên phải:
+        // ảnh chụp ngày 28/09/2026 cho thấy cột "Giải pháp" bị cắt thành "Giải p…", và người
+        // đọc không có lý do gì để thử kéo ngang. Với họ, thông tin ấy không tồn tại.
+        //
+        // Đây là loại lỗi bộ đo bằng số không thấy: khối không tràn khung, không đè nhau,
+        // nhãn không rỗng — mọi con số đều xanh. Chỉ tấm ảnh mới cho thấy chữ bị cụt.
+        ScrollView(.horizontal, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 0) {
                     ForEach(Array(cot.enumerated()), id: \.offset) { j, c in

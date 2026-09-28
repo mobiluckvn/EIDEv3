@@ -1,0 +1,746 @@
+[
+ {
+  "phan": "Khung chung",
+  "dat": true,
+  "cau": "Đủ 11 tab, đúng thứ tự tài liệu",
+  "bang_chung": "['requirements', 'documents', 'knowledge', 'design', 'tools', 'code', 'simulation', 'hardware', 'journal', 'history', 'project']"
+ },
+ {
+  "phan": "Khung chung",
+  "dat": true,
+  "cau": "Đọc được khung cửa sổ để đo tràn",
+  "bang_chung": "{'cao': 1018, 'rong': 1700, 'so': 24585, 'x': 28, 'y': 33}"
+ },
+ {
+  "phan": "Khung chung",
+  "dat": true,
+  "cau": "Ba nút Hẹp / Vừa / Rộng của Console cho ba bề rộng KHÁC nhau",
+  "bang_chung": "{'Hẹp': 320, 'Vừa': 460, 'Rộng': 640}"
+ },
+ {
+  "phan": "Khung chung",
+  "dat": true,
+  "cau": "Bấm nút bề rộng thì trạng thái đổi theo",
+  "bang_chung": "Vừa"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: requirements"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "3 khối"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "3 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: documents"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "1 khối"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "1 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt documents — Tài liệu & Nguồn",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: knowledge"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "2 khối"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "2 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt knowledge — Tri thức mạch",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: design"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "2 khối"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "2 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt design — Thiết kế",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: tools"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "1 khối"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "1 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt tools — Công cụ",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: code"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "3 khối"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "1 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt code — Mã nguồn",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: simulation"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "3 khối"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "0 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt simulation — Mô phỏng",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: hardware"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "1 khối"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "1 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt hardware — Mạch thật",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: journal"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "2 khối"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "0 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt journal — Nhật ký",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: history"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "3 khối"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "1 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt history — Lịch sử",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Bấm tab thì đúng bề mặt ấy hiện ra",
+  "bang_chung": "đang xem: project"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Bề mặt có khối để hiện",
+  "bang_chung": "6 khối"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Mọi khối đều có TIÊU ĐỀ",
+  "bang_chung": "thiếu: —"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Giao diện biết vẽ mọi kiểu khối lõi gửi sang",
+  "bang_chung": "không vẽ được: — · kiểu lạ toàn app: []"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
+  "bang_chung": "2 khối trống, câm: —"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Khối nào có nút \"Vì sao?\" thì lớp giải thích đủ SÁU trường (N8)",
+  "bang_chung": "thiếu trường: —"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Không nhãn nào lộ giá trị thô (None / dict / traceback)",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Không khối nào đè lên khối khác",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
+  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+ },
+ {
+  "phan": "Bề mặt project — Dự án & Bộ nhớ",
+  "dat": true,
+  "cau": "Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết)",
+  "bang_chung": "khung cao 1018 · —"
+ },
+ {
+  "phan": "Tổng các bề mặt",
+  "dat": true,
+  "cau": "Tổng số khối đã soi qua 11 bề mặt",
+  "bang_chung": "27 khối"
+ },
+ {
+  "phan": "Bảng Giới thiệu",
+  "dat": true,
+  "cau": "Mở được bảng Giới thiệu từ menu và chụp lại được",
+  "bang_chung": "/Users/congvt/Documents/EIDE_v3/docs/review-v3/test/ket-qua-giao-dien/anh/gioi-thieu.png"
+ },
+ {
+  "phan": "Cửa sổ nhỏ nhất",
+  "dat": true,
+  "cau": "Ở khổ nhỏ nhất (1100×720) vẫn không khối nào tràn ngang",
+  "bang_chung": "khung {'cao': 752, 'rong': 1100, 'so': 24585, 'x': 28, 'y': 331} · tràn: —"
+ },
+ {
+  "phan": "Thanh trạng thái",
+  "dat": true,
+  "cau": "Thanh trạng thái có dữ liệu",
+  "bang_chung": "{'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3598, 'tran': 3600, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 202, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 204841, 'ty_le': 0.205}, 'stale': 0}"
+ },
+ {
+  "phan": "Thanh trạng thái",
+  "dat": true,
+  "cau": "Không ô nào trên thanh trạng thái bỏ trống câm",
+  "bang_chung": "ô rỗng: — · đủ: ['chang', 'chip', 'du_an', 'fact', 'mo_hinh', 'ngu_canh', 'stale']"
+ },
+ {
+  "phan": "Thanh trạng thái",
+  "dat": true,
+  "cau": "Thanh trạng thái không lộ giá trị thô",
+  "bang_chung": "—"
+ },
+ {
+  "phan": "Widget sửa tay (§E2 — người sửa được gì)",
+  "dat": true,
+  "cau": "Có ít nhất một khối cho người sửa trực tiếp bằng widget",
+  "bang_chung": "simulation/criteria:sim-01: Ngưỡng"
+ },
+ {
+  "phan": "Thông báo và hội thoại",
+  "dat": true,
+  "cau": "Không thẻ nào còn nút bấm được sau khi đã trả lời / hết hạn",
+  "bang_chung": "0 thẻ còn nút · 0 chờ"
+ },
+ {
+  "phan": "Thông báo và hội thoại",
+  "dat": true,
+  "cau": "Thông báo không lộ giá trị thô",
+  "bang_chung": "1 thông báo · —"
+ },
+ {
+  "phan": "Thông báo và hội thoại",
+  "dat": true,
+  "cau": "Lời tác tử đã được DỰNG thành chữ, không còn dấu Markdown thô trên màn",
+  "bang_chung": "còn: —"
+ }
+]

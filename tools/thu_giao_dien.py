@@ -75,6 +75,11 @@ class GiaoDien:
         self._gui({"ui": "dong_du_an"})
         return self._doi("da_dong_du_an", 20)
 
+    def be_rong(self, muc: str) -> dict:
+        """Bấm một trong ba nút Hẹp / Vừa / Rộng trên đầu Console."""
+        self._gui({"ui": "be_rong", "muc": muc})
+        return self._doi_mot_trong(("da_doi_be_rong", "loi"), 20)
+
     def mo_tab(self, surface: str) -> None:
         self._gui({"ui": "tab", "surface": surface})
 

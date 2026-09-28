@@ -329,7 +329,7 @@ def register(r: Registry) -> Registry:
             "du_lieu": {"chu_de": chu_de, "noi_dung": noi_dung},
         }
         ctx.emit(uic.console_post(
-            f"[Tác tử] {card['intro']}", role="agent", card=card))
+            f"{card['intro']}", role="agent", card=card))
         ctx.pending_cards.append(card)
         ctx.awaiting_human = True
         return {"da_de_xuat": True, "card_id": card_id,

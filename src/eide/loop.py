@@ -306,7 +306,7 @@ class Agent:
             # tới. Im lặng không phải một câu trả lời, kể cả khi không có gì để nói.
             if not im_lang and not ctx.said_anything and act.kind not in ("attend", "set"):
                 ctx.emit(uic.console_post(
-                    "[Tác tử] " + self._cau_im_lang(ctx), role="agent"))
+                    self._cau_im_lang(ctx), role="agent"))
         finally:
             self._ghi_nhan_da_nhac(ctx)
             self._tha_khoa(ctx)
@@ -383,7 +383,7 @@ class Agent:
         if act.kind == "decide":
             return self._resolve_gate(act, ctx)
         if act.kind == "stop":
-            ctx.emit(uic.console_post("[Tác tử] Đã dừng.", role="agent"))
+            ctx.emit(uic.console_post("Đã dừng.", role="agent"))
             ctx.said_anything = True
             return
         if act.kind in ("attend", "set"):
@@ -418,11 +418,11 @@ class Agent:
                 if "đồng ý" in str(tl.get("dong_y", "")).lower():
                     k = self.bo_nho_nguoi.ghi(dl.get("chu_de", ""), dl.get("noi_dung", ""))
                     ctx.emit(uic.console_post(
-                        f"[Tác tử] Đã nhớ: {dl.get('noi_dung')}" if k.ok
-                        else f"[Tác tử] Không ghi được: {k.ly_do}", role="agent"))
+                        f"Đã nhớ: {dl.get('noi_dung')}" if k.ok
+                        else f"Không ghi được: {k.ly_do}", role="agent"))
                 else:
                     ctx.emit(uic.console_post(
-                        "[Tác tử] Không nhớ gì cả — tôi chỉ dùng trong phiên này.",
+                        "Không nhớ gì cả — tôi chỉ dùng trong phiên này.",
                         role="agent"))
                 ctx.said_anything = True
                 return
@@ -443,7 +443,7 @@ class Agent:
         self.ledger.append("hook", {"run_id": ctx.run_id, **s0.to_ledger()})
 
         if s0.reply_vi:
-            ctx.emit(uic.console_post(f"[Tác tử] {s0.reply_vi}", role="agent"))
+            ctx.emit(uic.console_post(f"{s0.reply_vi}", role="agent"))
             ctx.said_anything = True
         for n in s0.notices:
             ctx.emit(uic.notice(n["text"], level=n["level"], code=n["code"]))
@@ -619,7 +619,7 @@ class Agent:
                 # không bao giờ tới và không có cách nào biết vì sao. Một băng cảnh báo ở góc
                 # không phải một câu trả lời cho câu hỏi "nó đang làm gì vậy".
                 ctx.emit(uic.console_post(
-                    "[Tác tử] " + self._cau_het_ngan_sach(ctx, kind, lim), role="agent"))
+                    self._cau_het_ngan_sach(ctx, kind, lim), role="agent"))
                 ctx.said_anything = True
                 return
 
@@ -634,7 +634,7 @@ class Agent:
                 # UC19: hỏng thì dừng an toàn, nói thật, không mất việc đã làm.
                 self.ledger.append("incident", {"run_id": ctx.run_id, **e.to_tool_result()})
                 ctx.emit(uic.console_stream("", stream_id=stream_id, done=True))
-                ctx.emit(uic.console_post(f"[Tác tử] {e.message_vi}", role="agent"))
+                ctx.emit(uic.console_post(f"{e.message_vi}", role="agent"))
                 ctx.said_anything = True
                 return
 
@@ -646,7 +646,7 @@ class Agent:
             self._usage_add(rsp.usage, ctx)
 
             if rsp.text.strip():
-                ctx.emit(uic.console_post(f"[Tác tử] {rsp.text.strip()}", role="agent"))
+                ctx.emit(uic.console_post(f"{rsp.text.strip()}", role="agent"))
                 ctx.said_anything = True
                 self._note_stated_assumptions(ctx, rsp.text)
 
@@ -895,7 +895,7 @@ class Agent:
         self.eide_md.save()
 
         pl = getattr(ctx, "phan_loai_sua", None)
-        loi = [f"[Tác tử] Đã ghi thay đổi của anh vào {t} ({cs.id})."]
+        loi = [f"Đã ghi thay đổi của anh vào {t} ({cs.id})."]
 
         if cs.stale_marked:
             loi.append("Những thứ dựng trên nó giờ cần xem lại: "
@@ -985,7 +985,7 @@ class Agent:
                                      why=act.note)
         self.eide_md.save()
         ctx.emit(uic.console_post(
-            f"[Tác tử] Đã ghi: ngưỡng {ma_assert} đổi từ {cu} sang {gt} ({cs.id}). "
+            f"Đã ghi: ngưỡng {ma_assert} đổi từ {cu} sang {gt} ({cs.id}). "
             + (f"Kết quả mô phỏng cũ ({', '.join(het_han)}) nay là LỖI THỜI — nó được đo "
                "bằng một thước đã khác, nên tôi không dùng nó để kết luận nữa. Chạy lại "
                "sim.run khi anh muốn."
@@ -1041,7 +1041,7 @@ class Agent:
                                 code=getattr(kq.error, "code", None)))
             ctx.said_anything = True
             return
-        ctx.emit(uic.console_post(f"[Tác tử] {kq.data['note_vi']}", role="agent"))
+        ctx.emit(uic.console_post(f"{kq.data['note_vi']}", role="agent"))
         ctx.said_anything = True
 
     def _sua_tep(self, act: HumanAct, ctx: TurnContext, pha_khoa: bool):
@@ -1176,7 +1176,7 @@ class Agent:
             "hai_ban": {"cua_nguoi": e.cua_nguoi[:4000], "cua_tac_tu": e.cua_tac_tu[:4000]},
         }
         ctx.emit(uic.console_post(
-            f"[Tác tử] Bản của anh và bản hiện tại của **{e.hien_vat}** đụng nhau: "
+            f"Bản của anh và bản hiện tại của **{e.hien_vat}** đụng nhau: "
             f"{e.vi_sao}. Anh chọn giữ bản nào?", role="agent", card=card))
         self.pending_cards.append(card)
         ctx.awaiting_human = True
@@ -1194,7 +1194,7 @@ class Agent:
         kq = (self.history.hoan_tac_luot(t.id, by="human") if t.type == "run"
               else self.history.hoan_tac_changeset(t.id, by="human"))
 
-        ctx.emit(uic.console_post(f"[Tác tử] {kq.message_vi}", role="agent"))
+        ctx.emit(uic.console_post(f"{kq.message_vi}", role="agent"))
         for c in kq.canh_bao:
             ctx.emit(uic.notice(c, level="warn"))
         ctx.said_anything = True
@@ -1226,11 +1226,11 @@ class Agent:
             s = self.history.tao_snapshot(
                 ten=ten, ghi_chu=str(act.data.get("note") or act.note or ""), boi="human")
         except ValueError as e:
-            ctx.emit(uic.console_post(f"[Tác tử] {e}", role="agent"))
+            ctx.emit(uic.console_post(f"{e}", role="agent"))
             ctx.said_anything = True
             return
         ctx.emit(uic.console_post(
-            f"[Tác tử] Đã ghi bản ưng ý **{s.name}** (`{s.id}`) — {s.tom_tat()}.\n\n"
+            f"Đã ghi bản ưng ý **{s.name}** (`{s.id}`) — {s.tom_tat()}.\n\n"
             "Quay về bản này bất cứ lúc nào; nội dung của nó không đổi nữa.",
             role="agent"))
         ctx.said_anything = True
@@ -1249,7 +1249,7 @@ class Agent:
         else:
             kq = {"ok": True, "message_vi": "Các nhánh: "
                   + ", ".join(self.history.danh_sach_nhanh())}
-        ctx.emit(uic.console_post(f"[Tác tử] {kq['message_vi']}", role="agent"))
+        ctx.emit(uic.console_post(f"{kq['message_vi']}", role="agent"))
         ctx.said_anything = True
         if kq.get("ok"):
             self.paint(ctx.emit, only=["history"])
@@ -1287,7 +1287,7 @@ class Agent:
                                     "act_id": act.id, "note": act.note})
 
         if not approved:
-            ctx.emit(uic.console_post("[Tác tử] Đã huỷ, tôi không làm thao tác đó.", role="agent"))
+            ctx.emit(uic.console_post("Đã huỷ, tôi không làm thao tác đó.", role="agent"))
             ctx.said_anything = True
             self.messages.append({"role": "user",
                                   "text": f"<system-reminder>Người dùng TỪ CHỐI cổng {gid}"

@@ -182,6 +182,19 @@ final class UITestChannel {
                     GioiThieuCuaSo.hien()
                     self.ghi(["su_kien": "da_mo_gioi_thieu"])
                 }
+            case "be_rong":
+                // Ba nút Hẹp/Vừa/Rộng trên đầu Console. Đo được bề rộng THẬT sau khi bấm,
+                // vì `RootView` còn kẹp nó theo 38 % chiều ngang cửa sổ — một nút đổi biến
+                // mà khung không nhúc nhích thì vẫn là một nút không làm gì.
+                if let x = v["muc"]?.stringValue,
+                   let w = AppState.ConsoleWidth.allCases.first(where: { $0.nhan.lowercased()
+                       == x.lowercased() || "\($0)" == x }) {
+                    s.consoleWidth = w
+                    ghi(["su_kien": "da_doi_be_rong", "muc": w.nhan,
+                         "rong_dat": Int(w.rawValue)])
+                } else {
+                    ghi(["su_kien": "loi", "ghi_chu": "bề rộng lạ: \(v["muc"] ?? .null)"])
+                }
             case "co_cua_so":
                 // Đổi khổ cửa sổ để đo giao diện ở nhiều kích thước màn hình.
                 Task { @MainActor in
@@ -379,6 +392,13 @@ final class UITestChannel {
             // Đang ở màn NÀO. Không có trường này thì không phân biệt được "đã đóng dự án"
             // với "lệnh đóng chẳng làm gì" — hai thứ trông giống hệt nhau qua các số khác.
             "man_hinh": s.connection.ok ? "lam-viec" : "mo-du-an",
+            "tab_dang_xem": s.selectedSurface,
+            "tab_co_the_chon": s.surfaceOrder.map { $0.key },
+            "be_rong_console": s.consoleWidth.nhan,
+            "be_rong_console_px": Int(s.consoleWidth.rawValue),
+            // Kiểu khối mà giao diện KHÔNG biết vẽ. Lõi sinh ra chúng thì người dùng nhận
+            // một ô trống không lời giải thích, nên đây phải là một con số đọc được.
+            "khoi_chua_biet_ve": Array(s.khoiChuaBietVe),
             "du_an_gan_day": s.duAnGanDay?() ?? [],
             "so_dong_hoi_thoai": s.transcript.count,
             // Số thẻ CÒN NÚT bấm được trong dòng hội thoại — đúng thứ `ConsoleView` vẽ

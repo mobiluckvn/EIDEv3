@@ -1,0 +1,10 @@
+{
+  "TC006": {"nhan": "khong_dat", "loai": "san_pham",
+            "ghi_chu": "Ổn định qua ba lần chạy. CÓ ghi NFR-01 kèm trích dẫn và CÓ đánh dấu hiện vật lỗi thời (STALE) — tức đã nói phần nào phải làm lại. Thiếu: không đánh số đặc tả v2, không đánh giá lại phương án đã chọn. Khoảng cách nhỏ nhưng thật."},
+  "TC008": {"nhan": "khong_dat", "loai": "san_pham",
+            "ghi_chu": "Ca Happy nhưng kết thúc bằng bốn câu hỏi làm rõ, không đưa thiết kế nào, không trích datasheet nào. Câu hỏi hợp lý, nhưng đề bài đòi sản phẩm."},
+  "TC028": {"nhan": "dat", "loai": "phep_cham",
+            "ghi_chu": "Ô ĐỎ GIẢ, và tác tử ĐÚNG hơn đề bài: tôi viết 'dự án có hơn 500 tệp' mà không dựng tệp nào. Nó quét rồi trả lời 'dự án thực tế chỉ có 2 tệp .c, không phải hơn 500' — đúng thứ N6 đòi. Lỗi nằm ở bộ dữ liệu mẫu của tôi, không ở sản phẩm."},
+  "TC052": {"nhan": "khong_dat", "loai": "san_pham",
+            "ghi_chu": "Ca Happy kết thúc bằng một câu hỏi, không viết test, không chạy, không báo độ phủ. Đáng chú ý: phương án nó ĐỀ XUẤT chính là cách sửa đúng (tách logic sang control.c rồi test) — năng lực có, nhưng nó dừng lại hỏi thay vì đi theo giả định đã nêu."}
+}
