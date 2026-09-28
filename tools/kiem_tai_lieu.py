@@ -179,15 +179,32 @@ def main() -> int:
                                        "inventory", "stale", "sch"}:
                     lech.append((ngan, "công cụ không có trong kho đăng ký", m))
 
-            # 2. Đường dẫn mã.
+            # 2. Đường dẫn mã — cả dạng đầy đủ lẫn dạng viết tắt trong tài liệu.
+            #
+            # `hooks/s0.py` không bắt đầu bằng `src/` nên bản đầu bỏ qua nó. Mà đó chính là
+            # cách tài liệu thiết kế hay viết, và cũng là chỗ dễ sai nhất: một đường dẫn
+            # thiếu tiền tố thì người đọc gõ vào không ra gì.
             for m in set(re.findall(r"`((?:src|ui|tools|tests|docs)/[\w./-]+)`", t)):
                 if not (REPO / m).exists():
                     lech.append((ngan, "đường dẫn không tồn tại", m))
+            for m in set(re.findall(r"`([\w][\w/-]*/[\w.-]+\.(?:py|swift|yaml|md))`", t)):
+                if (REPO / m).exists() or m.startswith(("src/", "ui/", "tools/", "tests/",
+                                                        "docs/")):
+                    continue
+                if (REPO / "src/eide" / m).exists():
+                    lech.append((ngan, "đường dẫn THIẾU tiền tố src/eide/", m))
+                elif not any((REPO / g / m).exists() for g in ("src", "ui", "tools", "tests")):
+                    lech.append((ngan, "đường dẫn không tồn tại", m))
 
         # 3. Mã lỗi — dò cả tài liệu lịch sử, vì một mã lỗi biến mất là tin đáng biết.
-        for m in set(re.findall(r"`(E\d{4})`", t)):
-            if m not in ma_loi:
-                lech.append((ngan, "mã lỗi không còn trong mã", m))
+        #
+        # TRỪ nhật ký phát triển: ghi lại mã cũ chính là việc của nó. Một mục DEV nói
+        # "E1007 → E1014" là đang làm đúng chức năng; bắt nó là bắt nhầm một bản ghi lịch sử.
+        # Mã lỗi biến mất vẫn bị bắt ở mọi tài liệu THIẾT KẾ — đó mới là chỗ nó gây hại.
+        if ten != "EIDE-DEV-LOG.md":
+            for m in set(re.findall(r"`(E\d{4})`", t)):
+                if m not in ma_loi:
+                    lech.append((ngan, "mã lỗi không còn trong mã", m))
 
     # 4. Con số đếm được — LIỆT KÊ chỗ nói, không tự phán đúng/sai.
     #
@@ -199,7 +216,9 @@ def main() -> int:
     MAU = {"công cụ": r"(\d+)\s*công cụ", "UICommand": r"(\d+)\s*UICommand",
            "HumanAct": r"(\d+)\s*(?:loại\s*)?HumanAct", "bề mặt": r"(\d+)\s*bề mặt",
            "subagent": r"(\d+)\s*(?:subagent|tác tử con)", "skill": r"(\d+)\s*skill",
-           "cổng": r"(\d+)\s*cổng(?:\s*duyệt)?"}
+           # `(?<![A-Za-z])` để "N5 cổng trước phép đoán" không bị đọc thành "5 cổng" —
+           # `N5` là mã nguyên tắc, không phải một con số đếm.
+           "cổng": r"(?<![A-Za-z])(\d+)\s*cổng(?:\s*duyệt)?"}
     for ten, mau in MAU.items():
         n = dem[ten]
         for p in TAI_LIEU:

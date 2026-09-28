@@ -66,9 +66,9 @@ viết trên giấy, mã làm tới đâu rồi?*
 |---|---|---|---|
 | N1 truy vết | `fact.from_doc` chỉ ghi khi chỉ ra đoạn; `store.req_create` đòi `source_quote`; constant-guard ở `PreToolUse` | TC008 · TC042 · TC075 | ✅ |
 | N2 bốn tầng | `fact.compare` **từ chối** kết luận khi một vế là tầng ĐỒNG | TC013 · TC031 | ✅ |
-| N3 kiểm kê xác định | `<inventory>` do `store/inventory.py` dựng, tiêm mỗi lượt | TC065 · TC073 | ✅ |
+| N3 kiểm kê xác định | `<inventory>` do `src/eide/store/inventory.py` dựng, tiêm mỗi lượt | TC065 · TC073 | ✅ |
 | N4 hỏi một cụm | `ask_user` nhiều mục, mỗi mục kèm *vì sao hỏi* + giả định nếu bỏ qua | TC004 · TC057 | ✅ |
-| N5 cổng trước phép đoán | `hooks/s0.py` chặn **trước khi gọi mô hình** | TC007 (8 s) · TC035 · TC036 · TC068 · TC069 | ✅ |
+| N5 cổng trước phép đoán | `src/eide/hooks/s0.py` chặn **trước khi gọi mô hình** | TC007 (8 s) · TC035 · TC036 · TC068 · TC069 | ✅ |
 | N6 không đạt giả | `sim.criteria` nêu trước · verifier độc lập · `test.sensitivity` đo độ nhạy bộ kiểm | TC019 · TC022 · TC076 | ✅ |
 | N7 chỉ thị ≠ yêu cầu | Hiến pháp §5 + `store.req_create` bắt buộc trích lời người | TC003 · TC017 · TC028 | ✅ |
 | N8 dạng người hiểu được | `explain` sáu trường bắt buộc; `PostToolUse` từ chối hiện vật thiếu | 124/124 ô quét giao diện | ✅ |

@@ -174,7 +174,7 @@ nhau, và trộn chúng vào một cột là nói sai về sản phẩm.
 | **ING-E** | Hình → figure · OCR có điểm tin cậy từng từ · nhận ngôn ngữ và kiểm gói OCR · bí danh đa ngữ | xong |
 | **MEM-D** | C3 bậc thang · C4 khẩn cấp 0 token · dọn theo tham chiếu · sáu chỉ số §13 | xong |
 | **CKM** | Bản đồ tri thức mạch §C2: KG nodes/edges · khối + luồng tín hiệu suy từ tên · pinout không bịa chân, ĐƯỢC_GÁN duy nhất do chỉ mục kho · net/netlist · gộp `ckm.build` | xong |
-| **HIER-A** | Cây khối phân cấp §2–3: lược đồ v3 có `down()` · Port ở biên khối · net theo phạm vi · `flatten(cây)` = netlist cũ 100 % · sáu bất biến E9001–E9006 | xong |
+| **HIER-A** | Cây khối phân cấp §2–3: lược đồ v3 có `down()` · Port ở biên khối · net theo phạm vi · `flatten(cây)` = netlist cũ 100 % · sáu bất biến `E8001`–`E8006` | xong |
 | **HIER-B** | Fact theo cấp · ERC bốn ràng buộc §4.2 báo theo path (`board.check`) · STALE theo NÚT, nội bộ không lan sang anh em · cây gập/mở A5.9 · giải thích khối 7 câu | xong |
 | **HIER-C** | Thư viện khối `block@semver` ba tầng · `instantiate` mọi số có công thức và NGUỒN, thiếu nguồn thì không đặt · trích khối có kiểm khép kín · snapshot ghi `block@semver` | xong |
 | **HIER-D** | Sheet phân cấp: mỗi khối một `.kicad_sch`, Port → sheet pin/hierarchical label · đọc lại gói dựng lại ĐÚNG cây (`so_cay`) · `depth > 4` tự chuyển phân cấp | xong |

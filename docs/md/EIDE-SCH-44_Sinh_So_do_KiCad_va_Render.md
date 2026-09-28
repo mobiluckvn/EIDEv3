@@ -4,6 +4,8 @@ Tích hợp cộng thêm vào v3: CKM → SKiDL → netlist/ERC → bố cục �
 
 *Mã tài liệu EIDE-SCH-44 · v1.0 · 25/09/2026 · bổ sung MDD-40 v3.0 (C2, B3, E2) và ING-43 (§4.4)*
 
+> **Cập nhật 29/09/2026 — đối chiếu với mã đang chạy.** Chín công cụ `sch.*` (không phải tám): bản v1.0 thiếu `sch.symbol_confirm`. Tên `sch.open` ở bảng lộ trình **chưa làm** và không định làm — việc mở tệp do `sch.import` đảm nhiệm. Kiểm bằng `tools/kiem_tai_lieu.py`.
+
 |                         |                                                                                                                                                                                                                                                                                                                                                                                                   |
 |-------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Mã tài liệu**         | EIDE-SCH-44 (Schematic Generation & Rendering) v1.0                                                                                                                                                                                                                                                                                                                                               |
@@ -54,7 +56,7 @@ Tính năng: từ Bản đồ tri thức mạch (CKM) đã có, tác tử sinh s
 
 | **Điểm chạm**                | **Loại thay đổi**                                            | **Rủi ro**                                                                                                | **Kiểm**                                |
 |------------------------------|--------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|-----------------------------------------|
-| Đăng ký tool (tool registry) | Cộng thêm 8 tool khi cờ bật                                  | Prompt tool tăng ~1,2 k token → nạp trễ (chỉ sch.compose và sch.render hiển thị, còn lại qua tool.search) | Đo token khối 2 (MEM-42 §4.1) trước/sau |
+| Đăng ký tool (tool registry) | Cộng thêm **9** tool khi cờ bật                                  | Prompt tool tăng ~1,2 k token → nạp trễ (chỉ sch.compose và sch.render hiển thị, còn lại qua tool.search) | Đo token khối 2 (MEM-42 §4.1) trước/sau |
 | Hợp đồng AR09 (E2)           | Thêm view_hint kicad (SVG) bên cạnh code view netlist        | Không                                                                                                     | CX01–04 giữ nguyên                      |
 | PostToolUse hook             | Thêm ánh xạ tool_result sch.\* → Surface design.sch          | Hook cũ không đổi; nhánh mới chỉ chạy với tool sch.\*                                                     | Unit test hook với tool giả             |
 | ING-43 classify              | Đã có KICAD → dùng lại; thêm .kicad_sym                      | Không                                                                                                     | ING06–07                                |
@@ -90,6 +92,10 @@ Tính năng: từ Bản đồ tri thức mạch (CKM) đã có, tác tử sinh s
 > sch.import { path } requires: — → diff + changeset human (qua ING KICAD) risk R1
 >
 > sch.export { } xuất gói .kicad_sch/.kicad_sym/.net/SVG để người mở ở máy khác có KiCad (máy này KHÔNG cài) risk R0
+>
+> sch.symbol_confirm { ref, kieu_chan?, trich_loi_nguoi } requires: symbol_map → Fact tầng NGƯỜI risk R2
+>
+> *Công cụ thứ chín, thêm khi hiện thực SCH-D (không có trong bản v1.0 của tài liệu này).* Ký hiệu sinh từ Fact là suy ra, không phải tra được — nên nó **chờ người xác nhận** rồi mới lên tầng NGƯỜI. Công cụ đòi `trich_loi_nguoi`: tác tử không xác nhận hộ người dùng được, vì như thế thì cái chờ ấy chẳng chờ ai.
 >
 > Mọi tool: trả lỗi {code E7xxx, message_vi, hint_for_agent, alternatives}; explain bắt buộc (N8) cho hiện vật sinh ra.
 
@@ -218,7 +224,7 @@ SVG được gắn id theo ref/net để tab Thiết kế (khối A5.8) làm tư
 |----------|---------------------------------------------------------------------------------------------|-------------------------------|------------------------------|
 | SCH-A    | Cờ + module sch/ + sch.compose/netlist/symbols (lib) + E7001/E7002 + R3; hồi quy hai chế độ | SCH01, 02, 03, 04, 14, 16, 18 | Sau G4 (CKM/Fact) của MDD-40 |
 | SCH-B    | sch.place + sch.write + sch.render (R1/R2) + A5.8 SVG tương tác                             | SCH05–09, 15, 17              | SCH-A                        |
-| SCH-C    | Round-trip: sch.open/import, phân loại thay đổi, uuid ổn định, G-FILE                       | SCH10–13                      | ING-D                        |
+| SCH-C    | Round-trip: `sch.import`, phân loại thay đổi, uuid ổn định, G-FILE                       | SCH10–13                      | ING-D                        |
 | SCH-D    | Hierarchical sheets; symbol sinh từ Fact có giao diện xác nhận; gói vào snapshot            | SCH07, SCH-16                 | SCH-C                        |
 
 Thư viện (Python thuần, pip trong sandbox dự án): skidl, kiutils (đọc/ghi S-expression KiCad 8/9), networkx (bố cục), cairosvg hoặc resvg (PDF/PNG), sexpdata. Dữ liệu: kicad-symbols (.kicad_sym) tải theo git tag có hash, cache ở M4. KHÔNG cài KiCad, KHÔNG dùng kicad-cli.

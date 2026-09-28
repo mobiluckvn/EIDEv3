@@ -236,7 +236,28 @@ Các tệp .ioc/sdkconfig/.dts/.ld/map chứa những gì dự án ĐANG cấu h
 
 - Giới hạn: tệp ≤ 200 MB; PDF ≤ 2 000 trang (hơn → hỏi phạm vi trang); OCR ≤ 300 trang/lượt (hơn → nền + báo tiến trình); archive §4.1.
 
-- Mã lỗi: E1001 định dạng không hỗ trợ (kèm gợi ý xuất); E1002 tệp cụt/hỏng; E1003 mật khẩu; E1004 quá giới hạn; E1005 zip bomb; E1006 macro bị bỏ qua (cảnh báo); E1007 OCR thất bại; E1008 chuyển đổi LibreOffice thất bại. Mỗi lỗi có message_vi + hint_for_agent + alternatives.
+- **Mã lỗi — cập nhật 29/09/2026 theo mã đang chạy.** Bản v1.0 của tài liệu này đánh số
+  E1001–E1008 liền mạch (đánh số lúc thiết kế). Khi hiện thực, dải `E1004`–`E1006` đã bị các công cụ khác lấy
+  trước (`fs.read` trên thư mục, `fs.edit` không tìm thấy đoạn / đoạn trùng nhiều lần), nên
+  nhóm nạp tài liệu chuyển sang dải `E1010`–`E1015`. Bảng đúng:
+
+  | Mã | Nghĩa | Sinh ở |
+  |---|---|---|
+  | `E1001` | Định dạng chưa đọc được — kèm danh sách định dạng đọc được | `src/eide/errors.py` · `src/eide/tools/knowledge.py` |
+  | `E1002` | Tệp hỏng hoặc cụt. *"Nói thật là tệp hỏng. KHÔNG suy đoán phần thiếu chứa gì."* | `src/eide/errors.py` · `src/eide/tools/knowledge.py` |
+  | `E1003` | Đường dẫn không tồn tại | `src/eide/errors.py` |
+  | `E1010` | Tệp có mật khẩu — *"KHÔNG thử đoán mật khẩu"* | `src/eide/errors.py` |
+  | `E1011` | Vượt trần xử lý an toàn (số trang, kích thước…) — dừng để không treo máy giữa chừng | `src/eide/errors.py` |
+  | `E1012` | Tỉ lệ giải nén bất thường (zip bomb) | `src/eide/errors.py` |
+  | `E1013` | Tệp có macro — EIDE đọc dữ liệu và **không chạy macro** | `src/eide/errors.py` |
+  | `E1014` | Không đọc được chữ từ ảnh (OCR) — *"Đừng đoán nội dung ảnh"* | `src/eide/errors.py` · `src/eide/tools/knowledge.py` |
+  | `E1015` | Không chuyển đổi được định dạng cũ (cần LibreOffice) | `src/eide/errors.py` |
+
+  Mỗi lỗi có `message_vi` + `hint_for_agent` + `alternatives`.
+
+  *Ba mã `E1004`–`E1006` KHÔNG thuộc nhóm nạp tài liệu:* `E1004` là `fs.read` gọi vào một thư
+  mục; `E1005`/`E1006` là `fs.edit` không tìm thấy đoạn cần thay, hoặc đoạn ấy xuất hiện nhiều
+  lần. Ghi rõ ở đây vì một mã lỗi dùng lại cho hai việc khác nhau là chỗ người đọc tra nhầm.
 
 - Không tìm thấy tài liệu/không trích được → nói thẳng (TC010), không bịa.
 
@@ -253,7 +274,7 @@ Các tệp .ioc/sdkconfig/.dts/.ld/map chứa những gì dự án ĐANG cấu h
 | Bảng khác biệt chéo nguồn (v1/v2, datasheet/.ld, BOM/netlist) + chọn bản                   | edit     | ING-13                 |
 | Chuẩn hoá đơn vị: hiện giá trị chuẩn + chuỗi gốc                                           | display  | ING-14                 |
 | Ngôn ngữ tài liệu + gói OCR; chọn lại                                                      | edit     | ING-15                 |
-| Lỗi E1001–E1008 với gợi ý định dạng thay thế                                               | display  | ING-16                 |
+| Lỗi `E1001`–`E1003` + `E1010`–`E1015` với gợi ý định dạng thay thế                                               | display  | ING-16                 |
 | Tiến trình OCR nền cho tài liệu lớn                                                        | display  | ING-17                 |
 | Chuyển .docx → PDF phái sinh để có số trang (cùng doc_id)                                  | action   | ING-06                 |
 
@@ -297,7 +318,7 @@ Các tệp .ioc/sdkconfig/.dts/.ld/map chứa những gì dự án ĐANG cấu h
 | ING-13 | Đối chiếu chéo nguồn cùng key; quy tắc ưu tiên errata \> DS mới \> DS cũ \> cấu hình \> mã                                     |
 | ING-14 | Chuẩn hoá đơn vị/ký hiệu bằng mã; giữ raw; condition có cấu trúc                                                               |
 | ING-15 | Đa ngôn ngữ: nhận diện, OCR đúng gói, key bí danh đa ngữ, embedding đa ngữ                                                     |
-| ING-16 | Mã lỗi E1001–E1008 có message_vi + hint + alternatives                                                                         |
+| ING-16 | Mã lỗi `E1001`–`E1003` + `E1010`–`E1015` có message_vi + hint + alternatives                                                                         |
 | ING-17 | Giới hạn kích thước/trang; OCR nền có tiến trình                                                                               |
 | ING-18 | Nội dung tài liệu là dữ liệu: bọc untrusted, quét P-INJ, không chạy macro                                                      |
 | ING-19 | Gán tầng theo nguồn (bảng §6); Office tự viết → NGƯỜI (chờ chốt)                                                               |
@@ -307,7 +328,7 @@ Các tệp .ioc/sdkconfig/.dts/.ld/map chứa những gì dự án ĐANG cấu h
 
 | **Bước** | **Nội dung**                                                                                        | **Ca kiểm**          | **Đi cùng**   |
 |----------|-----------------------------------------------------------------------------------------------------|----------------------|---------------|
-| ING-A    | classify v3 (Office trước archive); mã lỗi E1001–E1008; cây tệp UI                                  | ING01, 03–06, 14, 15 | G4 của MDD-40 |
+| ING-A    | classify v3 (Office trước archive); mã lỗi `E1001`–`E1003`, `E1010`–`E1015`; cây tệp UI                                  | ING01, 03–06, 14, 15 | G4 của MDD-40 |
 | ING-B    | Bộ đọc Office (python-docx, openpyxl, python-pptx, LibreOffice); trích dẫn theo loại; PDF phái sinh | ING01–03             | G4            |
 | ING-C    | Bảng → Fact ứng viên thống nhất (PDF/Office/MD/HTML); chuẩn hoá đơn vị; ô gộp/xoay; đối chiếu chéo  | ING09, 12, 16        | G4            |
 | ING-D    | EDA (.kicad_sch, Eagle, EasyEDA, BOM) + cấu hình vendor + tầng CẤU HÌNH                             | ING07, 08            | G4/G6         |

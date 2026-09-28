@@ -4452,7 +4452,7 @@ liệu khác thật chi tiết đảm bảo tài liệu thiết kế đúng vớ
 
 Sửa tài liệu theo cảm giác thì lệch mới thay lệch cũ. Nên việc đầu tiên là
 `tools/kiem_tai_lieu.py` — dò bốn thứ **kiểm được bằng máy** giữa 14 tệp tài liệu và mã đang
-chạy: tên công cụ có trong kho đăng ký không · đường dẫn có tồn tại không · mã lỗi `E1234` có
+chạy: tên công cụ có trong kho đăng ký không · đường dẫn có tồn tại không · mã lỗi (dạng Ennnn) có
 còn được sinh ra không · con số đếm được (công cụ, UICommand, HumanAct, bề mặt, subagent,
 skill, cổng) tài liệu ghi bao nhiêu so với mã.
 
@@ -4532,3 +4532,83 @@ nó làm mọi con số khác cùng trang mất giá.
 ### Số đo
 
 `1232 ca đơn vị` (+1). Sau khi sửa: **0 chỗ lệch chắc chắn** giữa 14 tệp tài liệu và mã.
+
+### [DEV-294] 29/09/2026 · Đối chiếu NỘI DUNG bốn tài liệu chuyên đề với mã
+
+DEV-293 để lại một câu chưa trả lời: bộ dò chỉ kiểm được tên, đường dẫn, mã lỗi và con số —
+*"tài liệu mô tả ĐÚNG cách hệ thống hoạt động không"* thì vẫn phải đọc. Chặng này đọc nốt bốn
+tài liệu chuyên đề.
+
+#### MEM-42 — khớp, không phải sửa gì
+
+Đây cũng là một kết quả, và nó đáng ghi ngang với những chỗ sai. Đối chiếu ba khẳng định cụ
+thể nhất:
+
+* **Lược đồ tóm tắt 10 mục** — `src/eide/memory/summary.py::MUC` có đúng 10: mục tiêu · trạng
+  thái theo chặng · quyết định · giả định đang dùng · sửa của người · việc còn lại · tệp đang
+  sửa · hiện vật STALE · câu hỏi mở · lỗi đã gặp.
+* **Bốn ngưỡng nén** — tài liệu ghi C0 < 60 % · C1 60–70 % · C2 70 % · C3 85 % · C4 95 %; mã
+  (`ContextBudget`) có `nguong_c1=0.6`, `nguong_c2=0.7`, `nguong_c3=0.85`, `nguong_c4=0.95`.
+* **Sáu chỉ số §13** — `memory.metrics` có thật.
+
+#### ING-43 — bảng mã lỗi sai 5/8, đã sửa
+
+Bản v1.0 đánh số `E1001`–`E1008` liền mạch. Khi hiện thực, dải `E1004`–`E1006` **đã bị công
+cụ khác lấy trước** — `fs.read` gọi vào thư mục, `fs.edit` không tìm thấy đoạn, `fs.edit` đoạn
+trùng nhiều lần — nên nhóm nạp tài liệu chuyển sang `E1010`–`E1015`. `E1007`/`E1008` **chưa làm**; việc chúng mô tả (OCR thất bại, LibreOffice thất bại) nay là `E1014`/`E1015`.
+
+Tệ hơn "sai số": `E1005` trong tài liệu là *zip bomb*, còn `E1005` trong mã là *`fs.edit`
+không tìm thấy đoạn cần thay*. **Một mã lỗi dùng lại cho hai việc khác nhau là chỗ người đọc
+tra nhầm mà không biết mình tra nhầm** — họ sẽ đọc được một câu trả lời, chỉ là câu trả lời
+cho câu hỏi khác. Bảng mới ghi đủ chín mã kèm nghĩa và chỗ sinh, và nói rõ ba mã `E1004`–
+`E1006` KHÔNG thuộc nhóm nạp tài liệu.
+
+#### SCH-44 — tám công cụ thành chín, và một cái tên chưa bao giờ có
+
+`sch.symbol_confirm` thiếu hẳn trong tài liệu: nó ghi lại việc **người** đã xem một ký hiệu
+sinh từ Fact rồi xác nhận, và nó đòi `trich_loi_nguoi` — tác tử không xác nhận hộ người dùng
+được, vì như thế thì cái chờ ấy chẳng chờ ai. Ngược lại, `sch.open` ở bảng lộ trình **chưa
+làm** và không định làm; việc mở tệp do `sch.import` đảm nhiệm.
+
+#### HIER-45 đúng — README sai
+
+Sáu bất biến của cây khối là `E8001`–`E8006` (không chu trình · Port của khối con chỉ nối
+trong cha trực tiếp · Port lên cha đúng một net mỗi phía · lá có Port = tập pin của Fact
+pinout · bus khớp members · `flatten` không đổi khi sửa nội bộ). README gọi chúng là
+`E9001`–`E9006` — một họ **khác**, dành cho lỗi bản đồ tri thức mạch và thư viện khối
+(`E9001` khối không thể là cha của chính nó · `E9002` khối chưa khép kín · `E9005` port bus
+chưa khai members).
+
+Cả hai dải đều tồn tại, nên bộ dò không bắt được: nó kiểm *mã lỗi có còn không*, không kiểm
+*có phải đúng mã lỗi ấy không*. Đây là giới hạn đã nói trước của phép dò, và lần này nó lộ ra
+đúng như dự đoán — phần ngữ nghĩa chỉ đọc mới thấy.
+
+#### Bộ dò mạnh thêm hai bậc, và tự bắt lỗi của tôi
+
+* **Đường dẫn thiếu tiền tố.** Bản trước chỉ dò đường dẫn bắt đầu bằng `src/`, `ui/`, `tools/`
+  … nên `hooks/s0.py` lọt. Mà đó chính là cách tài liệu thiết kế hay viết, và cũng là chỗ dễ
+  sai nhất — người đọc gõ vào thì không ra gì. Nay báo riêng: *"THIẾU tiền tố src/eide/"*. Nó
+  bắt ngay hai chỗ trong mục A5 tôi vừa viết ở DEV-293.
+* **`(?<![A-Za-z])` trước số cổng**, để `N5 cổng trước phép đoán` không bị đọc thành *"5
+  cổng"* — `N5` là mã nguyên tắc, không phải một con số đếm.
+
+Và một lần nữa tôi suýt rơi vào bẫy L6: khi bộ dò bắt `sch.open` trong chính câu nói rằng nó
+chưa làm, phản xạ đầu là **thêm một cụm từ** vào danh sách nhận dạng. Thay vì thế, sửa câu văn
+dùng đúng vốn từ đã có (`chưa làm`). Giữ danh sách nhỏ thì luật còn đọc được; nới nó sau mỗi
+lần vướng là cách chắc chắn để không ai còn hiểu luật ấy nói gì.
+
+#### Một chỗ nữa: nhật ký được miễn phép dò mã lỗi
+
+Chính mục DEV-294 này làm bộ dò đỏ — nó nhắc `E1007`/`E1008` để nói chúng không còn. Và một
+mục DEV cũ (704) có sẵn một bảng ánh xạ `E1007 → E1014`.
+
+Đó là **việc của một nhật ký**: ghi lại mã cũ. Bắt nó là bắt nhầm một bản ghi lịch sử. Nên
+`EIDE-DEV-LOG.md` được miễn phép dò mã lỗi — mã lỗi biến mất vẫn bị bắt ở mọi tài liệu
+**thiết kế**, và đó mới là chỗ nó gây hại: người đọc tài liệu thiết kế sẽ đi tra một mã không
+tồn tại.
+
+### Số đo
+
+`1232 ca đơn vị` (không đổi). **0 chỗ lệch chắc chắn** giữa 14 tệp tài liệu và mã. Bốn tài
+liệu chuyên đề đã đọc và đối chiếu nội dung: MEM-42 khớp · ING-43 sửa bảng mã lỗi · SCH-44 bổ
+sung công cụ thứ chín · HIER-45 đúng, README sai theo.
