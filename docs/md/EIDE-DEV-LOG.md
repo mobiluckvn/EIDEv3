@@ -3898,3 +3898,40 @@ sống ở `.eide/cong-cu/` của dự án và được nạp lại mỗi lần 
 
 - Khôi phục bản demo gốc của ST cho bo, nếu anh Công muốn.
 
+### [DEV-287] 28/09/2026 · Biểu tượng ứng dụng và bảng Giới thiệu
+
+Anh Công đưa `ui/eide_B_chip_code.png` làm biểu tượng, và yêu cầu bổ sung thông tin giới thiệu
+app kèm tác giả và thầy hướng dẫn.
+
+**Biểu tượng.** `lam-bieu-tuong.sh` dựng `Resources/EIDE.icns` từ ảnh gốc bằng `sips` +
+`iconutil` (sáu cỡ, mỗi cỡ hai bản 1×/2×), và `dong-goi.sh` chép nó vào gói kèm
+`CFBundleIconFile`. Việc dựng **không** nằm trong `dong-goi.sh`: nó tốn vài giây mỗi lần đóng
+gói mà kết quả không đổi, và một bước chậm không đổi gì là bước người ta sẽ tìm cách bỏ.
+
+**Bảng Giới thiệu.** Thay mục *About EIDE* mặc định của macOS — bảng mặc định chỉ đọc
+`Info.plist` nên không nói được ai hướng dẫn đề án, mà với một luận văn thì đó đúng là thông
+tin người xem tìm đầu tiên. Là một `NSWindow` phụ chứ không phải `WindowGroup` thứ hai: một
+scene nữa sẽ thêm mục trong menu Window và tự mở lại khi khôi phục phiên, cả hai đều không
+đúng với một bảng "về ứng dụng".
+
+Mọi thông tin trong bảng là **hằng số của mã**, không lấy từ kho và không lấy từ tác tử. Lý do
+nằm ngay trong chặng trước: tác tử đã **tự nghĩ ra** tên học viên và tên thầy hướng dẫn rồi vẽ
+chúng lên màn LCD (DEV-286). Tên người là thứ duy nhất trong cả hệ thống mà **không phép đo
+nào kiểm được**, nên nó phải nằm ở chỗ chỉ người sửa được.
+
+**Kiểm bằng GUI thật, không bằng lời.** Kênh kiểm giao diện thêm hai lệnh: `gioi_thieu` (mở
+bảng) và tham số `cua_so` cho lệnh `anh` (chụp đúng cửa sổ có tiêu đề ấy) — cần vì
+`NSApp.windows` không đảm bảo thứ tự trước–sau, nên không có cách nào chụp đúng một cửa sổ phụ
+mà không nói tên nó ra. Ảnh do **chính app tự vẽ**, không `screencapture`:
+`docs/anh/gioi-thieu-eide.png`.
+
+Một chi tiết nhỏ mà không có nó thì bảng trông như ứng dụng chưa có biểu tượng: bảng đọc
+`Resources/AppIcon.png` trước, chỉ lấy `NSApp.applicationIconImage` làm phương án dự phòng —
+khi chạy bằng `swift run` (chưa đóng gói `.app`) thì thuộc tính ấy trả biểu tượng **mặc định
+của macOS**.
+
+### Số đo
+
+`1202 ca đơn vị` (không đổi — đây là thay đổi ở tầng giao diện, và nó được kiểm bằng ảnh chụp
+qua GUI thật).
+

@@ -120,7 +120,17 @@ final class UITestChannel {
                 // cẩn thận để đừng lấy nhầm.
                 Task { @MainActor in
                     let tep = v["tep"]?.stringValue ?? ""
-                    guard let w = NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+                    // `cua_so`: chụp đúng cửa sổ có tiêu đề chứa chuỗi này. Không truyền thì
+                    // lấy cửa sổ chính như cũ.
+                    //
+                    // Cần vì bảng "Giới thiệu EIDE" là một `NSWindow` phụ: `NSApp.windows`
+                    // không đảm bảo thứ tự trước–sau, nên không có cách nào chụp đúng nó mà
+                    // không nói tên ra.
+                    let ten = v["cua_so"]?.stringValue ?? ""
+                    let chon: (NSWindow) -> Bool = ten.isEmpty
+                        ? { $0.isVisible && $0.canBecomeMain }
+                        : { $0.isVisible && $0.title.localizedCaseInsensitiveContains(ten) }
+                    guard let w = NSApp.windows.first(where: chon),
                           let view = w.contentView, !tep.isEmpty else {
                         self.ghi(["su_kien": "anh_loi", "ghi_chu": "không có cửa sổ"])
                         return
@@ -144,6 +154,13 @@ final class UITestChannel {
                     } catch {
                         self.ghi(["su_kien": "anh_loi", "ghi_chu": "\(error)"])
                     }
+                }
+            case "gioi_thieu":
+                // Mở bảng Giới thiệu. Có mặt ở đây để phép kiểm giao diện chạm được vào nó
+                // qua đúng một cửa như mọi thao tác khác, thay vì phải lái menu ở mức OS.
+                Task { @MainActor in
+                    GioiThieuCuaSo.hien()
+                    self.ghi(["su_kien": "da_mo_gioi_thieu"])
                 }
             case "co_cua_so":
                 // Đổi khổ cửa sổ để đo giao diện ở nhiều kích thước màn hình.

@@ -26,6 +26,13 @@ struct EIDEApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            // Thay mục "About EIDE" mặc định của macOS bằng bảng của mình.
+            //
+            // Bảng mặc định chỉ đọc `Info.plist`, nên nó không nói được ai hướng dẫn đề án —
+            // mà với một luận văn thì đó đúng là thông tin người xem tìm đầu tiên.
+            CommandGroup(replacing: .appInfo) {
+                Button("Giới thiệu EIDE") { GioiThieuCuaSo.hien() }
+            }
             CommandMenu("Tác tử") {
                 Button("Dừng khẩn") { state.gui(.stopNow()) }
                     .keyboardShortcut(".", modifiers: .command)
