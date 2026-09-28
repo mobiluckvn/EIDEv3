@@ -205,6 +205,14 @@ class Agent:
         self.messages: list[dict[str, Any]] = DanhSachGhiDia(self.transcript)
         self.dang_nhin: str = "project"          # bề mặt người đang mở (HumanAct attend)
         self.pending_cards: list[dict[str, Any]] = []
+        # Có việc đã GHI mà chưa ai kiểm chứng độc lập chưa? Cờ này sống qua nhiều lượt, và
+        # đó là điểm chính.
+        #
+        # Bản đầu của hook `tu_kiem_khi_tuyen_dat` chỉ nổ khi LƯỢT NÀY có ghi. Đo trên phiên
+        # FreeRTOS: nó không nổ lần nào — vì lời tuyên "xong" gần như luôn nằm ở một lượt
+        # BÁO CÁO, còn việc thì đã ghi ở các lượt trước. Điều kiện ấy giết đúng cái ca nó
+        # sinh ra để bắt.
+        self.ghi_chua_kiem = False
         self.pending_gates: dict[str, dict[str, Any]] = {}
         # (công cụ, cổng) đã được người duyệt trong LƯỢT VIỆC hiện tại. Xoá ở đầu mỗi câu mới.
         self._cong_cu_da_duyet: set[tuple[str, str]] = set()
@@ -770,6 +778,12 @@ class Agent:
         if res.ok and (getattr(spec, "writes_artefact", False)
                        or call.tool in ("fs.write", "fs.edit")):
             ctx.da_ghi_gi_do = True
+            self.ghi_chua_kiem = True
+        # Verifier vừa chạy → việc đã ghi coi như đã có người kiểm. Đọc `subagent` từ tham
+        # số chứ không từ tên công cụ: `task.run` còn chạy năm loại tác tử con khác.
+        if (res.ok and call.tool == "task.run"
+                and (call.args or {}).get("subagent") == "verifier"):
+            self.ghi_chua_kiem = False
 
         # `ok` nói về LỜI GỌI, không nói về KẾT QUẢ. Xem `eide/ket_qua.py` cho năm lần bài
         # học này xuất hiện trong một phiên duy nhất. Nhắc MỘT LẦN cho mỗi công cụ trong một

@@ -121,8 +121,13 @@ SUBAGENT: dict[str, DinhNghia] = {
     "verifier": DinhNghia(
         ma="verifier", ten="Kiểm chứng độc lập",
         muc_dich="Đọc báo cáo và bằng chứng của tác tử khác, nói nó có đứng vững không",
+        # `snapshot.list` có mặt ở đây vì một lý do đo được: verifier được giao kiểm một bản
+        # ưng ý vừa tạo, nó thử `store.get("snap-01")` và nhận `E5005` — snapshot nằm ở cây
+        # riêng, không nằm trong kho hiện vật chung. Nó kết luận `khong_dat` **vì không có
+        # công cụ để nhìn**, chứ không vì có gì sai. Một người kiểm chứng bị bịt mắt đúng chỗ
+        # cần nhìn thì mọi kết luận của họ đều nói về cái bịt mắt.
         cong_cu=("fs.read", "fs.glob", "fs.grep", "store.get", "store.list", "fact.query",
-                 "ledger.query", "history.diff", "blob.read"),
+                 "ledger.query", "history.diff", "blob.read", "snapshot.list"),
         doc_duoc_viec=False, toi_da_goi=10,
         system=_CHUNG + (
             "\nViệc của bạn: KIỂM CHỨNG một báo cáo mà tác tử khác vừa nộp.\n"

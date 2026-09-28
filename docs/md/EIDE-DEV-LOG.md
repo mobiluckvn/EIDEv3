@@ -3646,3 +3646,66 @@ hàng rào kiểm bằng mã trong `tools/phien_freertos.py`.
 - `tool.propose` chưa được tác tử dùng lần nào trong phiên này — chưa gặp việc nào bí tới mức
   cần. Ghi lại để biết cơ chế có được tìm tới hay không, không phải để ép.
 
+### [DEV-284] 28/09/2026 · Verifier lần đầu chạy thật — và bốn lý do nó đã không chạy
+
+Anh Công xác nhận bằng mắt: **LED nháy**, các tác vụ FreeRTOS chạy độc lập. Đây là lúc tác tử
+tuyên việc xong, tức là đúng lúc hook kiểm chứng độc lập phải nổ. Nó **không nổ**, và bốn lần
+truy liên tiếp mỗi lần lộ một lỗi khác nhau của tôi — cả bốn đều thuộc loại **hỏng im lặng**.
+
+#### 1. Điều kiện bắt đúng cái ca nó sinh ra để bắt
+
+Bản đầu chỉ nổ khi **lượt này** có ghi. Nhưng lời tuyên "xong" gần như luôn nằm ở một lượt
+**báo cáo** — lượt ấy chỉ đọc — còn việc thì đã ghi ở các lượt trước. Sửa lần một: dùng một cờ
+trên `Agent` sống qua nhiều lượt.
+
+#### 2. Cờ trong bộ nhớ không sống nổi qua khởi động lại
+
+App EIDE **khởi động lại giữa các bước làm việc**, nên cờ ấy reset về `False` mỗi lần và việc
+ghi ở tiến trình trước thành vô hình. Sửa lần hai: bỏ cờ, đọc từ **sổ cái** — *"kể từ lần
+`task.run(verifier)` gần nhất, có lời gọi GHI nào không"*. Sổ cái bền; bộ nhớ thì không.
+
+#### 3. Dò "lời tuyên đạt" bằng TỪ KHOÁ là chỗ mọi danh sách đều thua
+
+Tác tử viết: *"FreeRTOS Kernel chạy đa tác vụ thực tế trên phần cứng STM32F469I-DISCO."* Một
+lời tuyên đạt rõ ràng — và **không chứa từ nào** trong danh sách 14 từ khoá của tôi.
+
+Sửa lần ba, và đây là sửa đúng chỗ: **bỏ hẳn việc dò câu chữ.** Điều kiện thành *có việc đã
+ghi mà chưa ai kiểm* + *tác tử đang trả lượt về cho người*. Cách nó viết câu kết không liên
+quan gì tới việc có cần kiểm hay không. Chi phí có trần tự nhiên: cờ tắt khi verifier chạy,
+nên mỗi đợt việc tốn đúng một lần kiểm.
+
+#### 4. Bảo ai đó dùng một thứ họ không nhìn thấy thì không phải là bảo
+
+Hook nổ, `another_round=True`, hai lượt liền — và tác tử **không gọi verifier lần nào**.
+`task.run` là `core=False`: nó chỉ hiện ra sau `tool.search`. Lời nhắc bảo *"gọi
+`task.run(subagent=verifier)"* trong khi công cụ ấy không có trong danh sách tác tử nhìn thấy.
+Sửa: hook **mở khoá `task.run`** ngay trước khi nhắc.
+
+Và một chi tiết vui: cũng trong lúc truy, phát hiện hook plan mode bị **đăng ký hai lần** —
+`checks` in ra `['doi_chieu_ke_hoach_lech', 'doi_chieu_ke_hoach_lech']`. Một lỗi chép tệp của
+tôi, vô hại nhưng nói dối về số lần kiểm.
+
+#### Kết quả: chuỗi khép lại
+
+```
+snapshot.create → store.get → ui.notice → task.run(verifier) → task.run(verifier)
+```
+
+Verifier trả **`khong_dat`**, và tác tử **báo cáo thẳng điều đó** thay vì giữ kết luận cũ —
+đúng N6. Nhưng lý do `khong_dat` lại là **lỗi thứ năm của tôi**: verifier thử
+`store.get("snap-01")` và nhận `E5005`, vì snapshot nằm ở cây riêng chứ không trong kho hiện
+vật chung — và tập công cụ của verifier **không có `snapshot.list`**.
+
+*Một người kiểm chứng bị bịt mắt đúng chỗ cần nhìn thì mọi kết luận của họ đều nói về cái bịt
+mắt, không nói về thứ đang được kiểm.* → thêm `snapshot.list` vào tập công cụ của verifier,
+vẫn **chỉ công cụ đọc**: thêm mắt, không thêm tay.
+
+### Số đo
+
+`1189 ca đơn vị` (+7). Năm lỗi sửa trong một chặng, tất cả cùng một họ: **cơ chế có, nhưng
+đường dẫn tới nó bị đứt ở một chỗ không ai nhìn thấy.**
+
+### Còn lại
+
+- `tool.propose` vẫn chưa được tác tử dùng lần nào — chưa gặp việc nào bí tới mức cần.
+

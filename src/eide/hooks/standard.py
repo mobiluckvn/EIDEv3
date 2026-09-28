@@ -442,49 +442,57 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                          "hoạch thiếu. Khi báo cáo lượt, NÓI RA chỗ lệch và vì sao, để người "
                          "dùng quyết: sửa kế hoạch, hay quay lại đúng nó.\n</system-reminder>"))
 
-    # ============================================= tự kiểm chứng lời tuyên "đạt" (N6, §B5)
+    # ============================================= kiểm chứng VIỆC CHƯA AI KIỂM (N6, §B5)
     #
     # Đo được trên phiên bo STM32F469: `verifier` — tác tử con kiểm chứng độc lập, thiết kế
     # rất tốt (chỉ công cụ ĐỌC, và **cố ý không cho biết đề bài** để nó không suy ra kết luận
-    # mong đợi rồi đi biện minh) — chạy **0 lần trong 402 lượt**.
+    # mong đợi rồi đi biện minh) — chạy **0 lần trong 402 lượt**, vì `CAN_KIEM_CHUNG` chỉ nổ
+    # khi một *subagent* tuyên đạt, mà tác tử chính không sinh subagent lần nào.
     #
-    # Không phải vì nó hỏng. Vì `CAN_KIEM_CHUNG` chỉ nổ khi một **subagent** tuyên đạt, mà
-    # tác tử chính làm hết mọi việc trong lượt của nó và **không sinh subagent lần nào**. Cái
-    # van tồn tại, nhưng ống dẫn không đi qua nó. Lời tuyên "xong" của chính tác tử chính —
-    # thứ người dùng thật sự đọc — chưa bao giờ bị ai kiểm.
-    _TUYEN_DAT = ("đã xong", "da xong", "hoàn thành", "hoan thanh", "chạy được",
-                  "chay duoc", "đã chạy", "đạt yêu cầu", "thành công", "thanh cong",
-                  "đã sửa xong", "khớp hoàn toàn", "mọi thứ đều ổn", "tất cả đều xanh")
-
+    # Bản đầu của hook này dò "lời tuyên đạt" bằng **từ khoá** ("đã xong", "thành công"…).
+    # Đo trên phiên FreeRTOS: nó không nổ lần nào, vì tác tử viết *"FreeRTOS Kernel chạy đa
+    # tác vụ thực tế trên phần cứng"* — một lời tuyên đạt rõ ràng, không chứa từ nào trong
+    # danh sách. Dò cách DIỄN ĐẠT là chỗ mọi danh sách từ khoá đều thua, và thua im lặng.
+    #
+    # Nên bỏ hẳn: điều kiện là **có việc đã ghi mà chưa ai kiểm**, cộng với **tác tử đang trả
+    # lượt về cho người**. Đó mới là thứ ta quan tâm; cách nó viết câu kết không liên quan.
+    # Chi phí có trần tự nhiên: cờ tắt khi verifier chạy, nên mỗi đợt việc tốn đúng một lần
+    # kiểm, không phải mỗi lượt.
     @bus.on_stop
-    def tu_kiem_khi_tuyen_dat(ctx: Any) -> StopResult:
-        """Tuyên "đạt" + có GHI hiện vật trong lượt → bắt chạy verifier trước khi kết lượt.
-
-        Hai điều kiện, và điều kiện thứ hai quan trọng ngang điều kiện thứ nhất: chỉ nổ khi
-        lượt này **đã ghi được gì đó**. Một câu "xong rồi" sau một lượt thuần đọc thường là
-        trả lời một câu hỏi, không phải tuyên bố một việc đã làm — bắt nó kiểm chứng là dựng
-        thủ tục quanh một cuộc trò chuyện.
-
-        Chỉ nổ MỘT LẦN mỗi lượt (`ctx.da_tu_kiem`): vòng thứ hai là vòng tác tử đang trả lời
-        chính lời nhắc này, và bắt nó kiểm lại lần nữa sẽ thành vòng lặp.
-        """
+    def kiem_viec_chua_ai_kiem(ctx: Any) -> StopResult:
         if getattr(ctx, "da_tu_kiem", False):
             return StopResult()
-        if not getattr(ctx, "da_ghi_gi_do", False):
-            return StopResult()
+        if not getattr(ctx, "said_anything", False):
+            return StopResult()          # chưa trả lượt về thì chưa tới lúc
         if "task.run" in (getattr(ctx, "cong_cu_da_goi", []) or []):
             return StopResult(fired=["tu_kiem_da_chay"])
-        thay = [m for cau in (getattr(ctx, "loi_da_noi", []) or [])
-                for m in _TUYEN_DAT if m in (cau or "").lower()]
-        if not thay:
+        # Đọc từ SỔ CÁI, không từ một cờ trong bộ nhớ: app khởi động lại giữa các bước làm
+        # việc, nên cờ ấy reset về False và việc ghi ở tiến trình trước thành vô hình — đo
+        # được đúng thế trên phiên FreeRTOS, và hook im lặng suốt.
+        from ..kiem_chung import co_viec_chua_kiem
+
+        chua, dau_vet = co_viec_chua_kiem(getattr(ctx, "ledger", None),
+                                          getattr(ctx, "registry", None))
+        if not (chua or getattr(ctx, "da_ghi_gi_do", False)):
             return StopResult()
         ctx.da_tu_kiem = True
+        # MỞ KHOÁ `task.run` trước khi bảo nó gọi.
+        #
+        # `task.run` là `core=False`, tức tác tử chỉ thấy nó sau khi `tool.search`. Bản đầu
+        # của hook này bảo *"gọi task.run(subagent=verifier)"* mà không mở khoá — đo được
+        # trên phiên FreeRTOS: hook nổ hai lượt liền, `another_round=True` cả hai, và tác tử
+        # **không gọi lần nào**, vì công cụ ấy không có trong danh sách nó nhìn thấy. Bảo ai
+        # đó dùng một thứ họ không nhìn thấy thì không phải là bảo.
+        r_ = getattr(ctx, "registry", None)
+        if r_ is not None and hasattr(r_, "_unlocked"):
+            r_._unlocked.add("task.run")
         return StopResult(
-            another_round=True, reason_vi="tuyên đạt sau khi ghi hiện vật — cần kiểm chứng",
-            fired=["tu_kiem_khi_tuyen_dat"],
-            injection=("<system-reminder>\nBạn vừa nói việc đã xong (“"
-                       + thay[0] + "”) sau khi lượt này có ghi hiện vật.\n\n"
-                       "**N6 — không báo đạt giả.** Trước khi kết lượt, gọi "
+            another_round=True, reason_vi="có việc đã ghi mà chưa ai kiểm chứng",
+            fired=["kiem_viec_chua_ai_kiem"],
+            injection=("<system-reminder>\nBạn đang trả lượt về cho người dùng, mà có việc "
+                       "đã GHI chưa ai kiểm chứng độc lập"
+                       + (f" ({dau_vet})" if dau_vet else "") + ".\n\n"
+                       "**N6 — không báo đạt giả.** Gọi "
                        "`task.run(subagent=\"verifier\", …)` và đưa cho nó **bằng chứng**, "
                        "không đưa kết luận: tệp nào, hiện vật nào, con số nào, đọc ở đâu ra. "
                        "Verifier cố ý KHÔNG biết đề bài — nó chỉ mở từng bằng chứng ra xem "

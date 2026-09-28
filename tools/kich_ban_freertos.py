@@ -162,8 +162,67 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
         _kiem_tien_do_ke_hoach(nk, ctx)
         nk.anh(g, "lam-tiep")
 
+    # ------------------------------------------------------------------ 6. người xác nhận
+    #
+    # Anh Công nhìn bo: LED nháy. Đây là lúc tác tử sẽ tuyên "đạt" — và cũng là lúc hook
+    # `tu_kiem_khi_tuyen_dat` phải nổ, bắt nó kiểm chứng bằng verifier trước khi kết lượt.
+    # Chưa lần nào thấy cơ chế ấy chạy trên việc thật, nên bước này đo nó.
+    if lam(6):
+        nk.buoc("Người xác nhận LED nháy — làm nốt kế hoạch, và verifier phải nổ")
+        loi, cc = hoi(g, nk, du_an,
+                      "Mình vừa nhìn bo: **LED nháy rồi**, các tác vụ chạy độc lập thật.\n\n"
+                      "Mình cũng đo thêm bằng máy để bạn có số mà dùng: lấy mẫu PC sáu lần "
+                      "thì nó rơi vào `prvIdleTask` (`tasks.c:5934`) và "
+                      "`prvCheckTasksWaitingTermination` — tức nhân FreeRTOS đã khởi động và "
+                      "đang chạy thật. Chip khớp đúng tệp vừa dịch, 5 300 byte. Chân PG6 và "
+                      "PD4 có đổi trạng thái giữa các lần đọc.\n\n"
+                      "Làm nốt hai bước cuối của kế hoạch đi bạn.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_tien_do_ke_hoach(nk, ctx)
+        _kiem_tu_kiem_chung(nk, du_an, cc)
+        nk.ghi("XÁC NHẬN CỦA ANH CÔNG (tầng NGƯỜI)", "LED nháy — các tác vụ chạy độc lập.")
+        nk.anh(g, "hoan-tat")
+
+    # ------------------------------------------------------------------ 7. đặt tên bản ưng ý
+    if lam(7):
+        nk.buoc("Đặt tên bản ưng ý — và lượt này verifier phải chạy thật")
+        loi, cc = hoi(g, nk, du_an,
+                      "Đặt tên là **`freertos-da-tac-vu-chay-tren-bo`** nhé. Ghi bản ưng ý "
+                      "đi bạn, rồi làm nốt bước cuối.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_tien_do_ke_hoach(nk, ctx)
+        _kiem_tu_kiem_chung(nk, du_an, cc)
+        nk.anh(g, "ban-ung-y")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_tu_kiem_chung(nk: Any, du_an: pathlib.Path, cc: list[dict]) -> None:
+    """Hook `kiem_viec_chua_ai_kiem` có nổ không, và tác tử có chạy verifier không.
+
+    Đo trên sổ cái chứ không trên lời tác tử: hook ghi `fired` vào đó, nên "đã nổ" là một
+    sự kiện có thật chứ không phải một câu kể.
+    """
+    import json as _j
+
+    L = du_an / ".eide" / "ledger.jsonl"
+    no = False
+    if L.exists():
+        for l in L.read_text("utf-8", errors="replace").splitlines()[-400:]:
+            try:
+                o = _j.loads(l)
+            except ValueError:
+                continue
+            if "kiem_viec_chua_ai_kiem" in _j.dumps(o.get("data") or {}, ensure_ascii=False):
+                no = True
+    goi_vf = [c for c in cc if c["tool"] == "task.run"]
+    nk.ket(no and bool(goi_vf),
+           "Việc đã ghi bị bắt KIỂM CHỨNG ĐỘC LẬP, và tác tử đã chạy verifier",
+           ("hook đã nổ" if no else "hook chưa nổ")
+           + (f" · gọi task.run {len(goi_vf)} lần" if goi_vf else " · chưa gọi verifier"))
 
 
 def _kiem_tien_do_ke_hoach(nk: Any, ctx: Any) -> None:

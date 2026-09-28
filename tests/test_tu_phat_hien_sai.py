@@ -123,7 +123,7 @@ def _hook_tu_kiem():
     from eide.hooks.standard import register_standard_hooks
 
     bus = register_standard_hooks(HookBus())
-    fn = next(f for f in bus._stop if f.__name__ == "tu_kiem_khi_tuyen_dat")
+    fn = next(f for f in bus._stop if f.__name__ == "kiem_viec_chua_ai_kiem")
 
     class _Mot:
         @staticmethod
@@ -133,13 +133,33 @@ def _hook_tu_kiem():
     return _Mot()
 
 
+class _Ev:
+    def __init__(self, kind, data):
+        self.kind, self.data = kind, data
+
+
+class _So:
+    """Sổ cái giả — chỉ đủ để `co_viec_chua_kiem` đọc ngược."""
+
+    def __init__(self, goi):
+        self._ds = [_Ev("tool_use", {"tool": t, "args": a}) for t, a in goi]
+
+    def read(self):
+        return list(self._ds)
+
+
 class _Ctx:
-    def __init__(self, noi, cong_cu=(), da_ghi=True):
+    def __init__(self, noi, cong_cu=(), da_ghi=True, chua_kiem=False, so=None):
+        self.said_anything = bool(noi)
         self.loi_da_noi = list(noi)
         self.cong_cu_da_goi = list(cong_cu)
         self.da_ghi_gi_do = da_ghi
         self.da_tu_kiem = False
         self.store = None
+        self.registry = None
+        # `chua_kiem=True` ⇒ dựng một sổ cái có lời gọi GHI mà chưa có verifier sau nó.
+        self.ledger = so if so is not None else (
+            _So([("fs.write", {}), ("build.compile", {})]) if chua_kiem else _So([]))
 
 
 def test_tuyen_dat_sau_khi_GHI_thi_bi_bat_kiem_chung():
@@ -164,9 +184,18 @@ def test_da_goi_verifier_roi_thi_thoi():
     assert "tu_kiem_da_chay" in r.fired
 
 
-def test_khong_tuyen_dat_thi_khong_bat():
-    r = _hook_tu_kiem().stop(_Ctx(["Tôi đang đo tiếp, chưa kết luận được gì."]))
-    assert r.another_round is False
+def test_CACH_DIEN_DAT_khong_con_lach_duoc():
+    """Bản đầu dò "lời tuyên đạt" bằng từ khoá, và nó không nổ lần nào trên phiên FreeRTOS:
+    tác tử viết *"FreeRTOS Kernel chạy đa tác vụ thực tế trên phần cứng"* — một lời tuyên
+    đạt rõ ràng, không chứa từ nào trong danh sách 14 từ khoá.
+
+    Dò cách DIỄN ĐẠT là chỗ mọi danh sách từ khoá đều thua, và thua im lặng. Điều kiện giờ
+    là **có việc chưa ai kiểm**, không phải câu chữ."""
+    cau = "FreeRTOS Kernel chạy đa tác vụ thực tế trên phần cứng STM32F469I-DISCO"
+    assert _hook_tu_kiem().stop(_Ctx([cau], da_ghi=False, chua_kiem=True)).another_round
+    # Và ngược lại: không có việc nào chưa kiểm thì im, dù câu chữ nghe rất "đạt".
+    assert _hook_tu_kiem().stop(
+        _Ctx(["đã xong hoàn toàn"], da_ghi=False, chua_kiem=False)).another_round is False
 
 
 def test_chi_bat_MOT_LAN_moi_luot():
@@ -175,3 +204,94 @@ def test_chi_bat_MOT_LAN_moi_luot():
     assert bus.stop(ctx).another_round is True
     assert ctx.da_tu_kiem is True
     assert bus.stop(ctx).another_round is False
+
+
+def test_LUOT_BAO_CAO_sau_khi_viec_da_ghi_o_luot_TRUOC_van_phai_kiem():
+    """Chỗ bản đầu hỏng, và nó hỏng im lặng.
+
+    Đo trên phiên FreeRTOS: hook không nổ lần nào. Lời tuyên "xong" gần như luôn nằm ở một
+    lượt **báo cáo** — lượt ấy chỉ đọc, không ghi gì — còn việc thì đã ghi ở các lượt trước.
+    Điều kiện "lượt này có ghi" vì thế giết đúng cái ca nó sinh ra để bắt.
+    """
+    ctx = _Ctx(["FreeRTOS chạy đa tác vụ thành công trên phần cứng"],
+               da_ghi=False, chua_kiem=True)
+    r = _hook_tu_kiem().stop(ctx)
+    assert r.another_round is True
+
+
+def test_da_kiem_roi_thi_luot_bao_cao_KHONG_bi_bat_lai():
+    """Cờ tắt khi verifier chạy — nếu không, mọi lượt báo cáo về sau đều bị bắt lại."""
+    ctx = _Ctx(["đã xong"], da_ghi=False, chua_kiem=False)
+    assert _hook_tu_kiem().stop(ctx).another_round is False
+
+
+def test_LOI_bat_tat_co_khi_verifier_chay(make_agent):
+    """Cờ `ghi_chua_kiem` phải BẬT khi ghi và TẮT khi verifier chạy — đo trong lõi."""
+    from eide.llm import Response, ToolCall
+    from eide.protocol.humanact import HumanAct
+
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "fs.write",
+                                      {"path": "a.c", "content": "int x;",
+                                       "explain": {"summary": "tạo a.c", "why": "thử",
+                                                   "sources": [], "diff_prev": "mới",
+                                                   "next": "—", "confidence": "CAU_HINH"}})]),
+        Response(text="xong")])
+    assert agent.ghi_chua_kiem is False
+    agent.turn(HumanAct.from_dict({"kind": "say", "text": "tạo giúp a.c",
+                                   "origin": {"surface": "console"}}), lambda c: None)
+    assert agent.ghi_chua_kiem is True, "ghi xong mà cờ không bật"
+
+
+def test_verifier_da_chay_thi_viec_TRUOC_no_khong_tinh_la_chua_kiem():
+    """Đọc ngược tới lần verifier gần nhất rồi DỪNG. Không dừng thì mọi lời gọi ghi từ đầu
+    dự án đều tính là chưa kiểm, và hook sẽ nổ mãi mãi."""
+    from eide.kiem_chung import co_viec_chua_kiem
+
+    so = _So([("fs.write", {}),
+              ("task.run", {"subagent": "verifier"}),
+              ("fs.read", {})])
+    chua, _ = co_viec_chua_kiem(so, None)
+    assert chua is False
+
+    so = _So([("task.run", {"subagent": "verifier"}),
+              ("fs.write", {})])
+    chua, vet = co_viec_chua_kiem(so, None)
+    assert chua is True and "fs.write" in vet
+
+
+def test_task_run_voi_subagent_KHAC_khong_tinh_la_da_kiem():
+    """`task.run` còn chạy năm loại tác tử con khác — đọc `subagent` từ tham số, không từ
+    tên công cụ."""
+    from eide.kiem_chung import co_viec_chua_kiem
+
+    so = _So([("fs.write", {}), ("task.run", {"subagent": "firmware"})])
+    assert co_viec_chua_kiem(so, None)[0] is True
+
+
+def test_so_cai_BEN_qua_khoi_dong_lai(tmp_path):
+    """Chỗ bản trước hỏng: cờ nằm trong đối tượng `Agent`, mà app khởi động lại giữa các
+    bước làm việc — nên việc ghi ở tiến trình TRƯỚC thành vô hình, và hook im suốt."""
+    from eide.kiem_chung import co_viec_chua_kiem
+    from eide.protocol.ledger import Ledger
+
+    p = tmp_path / "ledger.jsonl"
+    Ledger(p).append("tool_use", {"tool": "fs.write", "args": {}})
+    # "Tiến trình mới": một đối tượng Ledger khác, đọc lại từ đĩa.
+    assert co_viec_chua_kiem(Ledger(p), None)[0] is True
+
+
+def test_verifier_NHIN_DUOC_ban_ung_y():
+    """Đo trên phiên FreeRTOS: verifier được giao kiểm bản ưng ý vừa tạo, thử
+    `store.get("snap-01")` và nhận `E5005` — snapshot nằm ở cây riêng, không trong kho hiện
+    vật chung. Nó kết luận `khong_dat` **vì không có công cụ để nhìn**, không vì có gì sai.
+
+    Một người kiểm chứng bị bịt mắt đúng chỗ cần nhìn thì mọi kết luận của họ đều nói về cái
+    bịt mắt, không nói về thứ đang được kiểm.
+    """
+    from eide.subagent import SUBAGENT
+
+    cc = SUBAGENT["verifier"].cong_cu
+    assert "snapshot.list" in cc
+    # Và vẫn CHỈ có công cụ đọc — thêm mắt, không thêm tay.
+    assert not any(t.startswith(("fs.write", "fs.edit", "target.", "build.")) for t in cc)
