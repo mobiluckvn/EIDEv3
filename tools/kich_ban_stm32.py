@@ -377,6 +377,31 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
         _kiem_man_hinh(nk, ctx, du_an, cc)
         nk.anh(g, "sua-tiep")
 
+    # ------------------------------------------- 16. viết ĐÚNG chương trình đang thiếu
+    #
+    # Lượt trước tác tử đưa được số lỗi về 0 và nạp xong — nhưng `main.c` vẫn là chương trình
+    # nháy đèn cũ, nên `--gc-sections` vứt sạch driver và ảnh nạp còn 492 byte. "Dịch sạch"
+    # đã thay chỗ cho "làm đúng việc". Người dùng thật sẽ nói thẳng điều đó.
+    if lam(16):
+        nk.buoc("Nói thẳng: dịch sạch rồi nhưng chương trình vẫn là bản nháy đèn")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn dịch sạch rồi, tốt. Nhưng mình vừa xem: `main.c` vẫn là chương "
+                      "trình nháy đèn cũ, và ảnh nạp chỉ 492 byte — nhỏ hơn cả cái logo "
+                      "115 KB. Nghĩa là trình liên kết đã vứt hết driver màn hình đi vì "
+                      "không ai gọi tới chúng.\n\n"
+                      "Giờ bạn viết ĐÚNG chương trình mình cần: bật màn hình lên, vẽ logo "
+                      "PTIT ra giữa, và in bốn dòng chữ:\n"
+                      "- EIDE v3 — IDE nhúng có tác tử đồng tác giả\n"
+                      "- Học viên: Vũ Trí Công\n"
+                      "- Giảng viên hướng dẫn: TS. Nguyễn Trung Hiếu\n"
+                      "- Học viện Công nghệ Bưu chính Viễn thông\n\n"
+                      "Dịch lại rồi nạp. Lần này ảnh nạp phải lớn hơn 115 KB — nếu vẫn nhỏ "
+                      "thì nghĩa là logo chưa được dùng.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.anh(g, "man-hinh-logo")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
 
@@ -749,7 +774,15 @@ def _kiem_man_hinh(nk: Any, ctx: Any, du_an: pathlib.Path, cc: list[dict]) -> No
     nk.ket(not thieu, f"Bốn thông tin bắt buộc có trong mã: {4 - len(thieu)}/4",
            ("THIẾU: " + ", ".join(thieu)) if thieu else ", ".join(phai_co))
 
-    # 4. chip đang chạy bản nào
+    # 4. LOGO có thật sự nằm trong ảnh nạp không
+    #
+    # Phép đo này bắt một kiểu "xanh vì lý do sai" rất khó thấy: mọi tệp driver có mặt, biên
+    # dịch 0 lỗi, nạp xong — nhưng `main.c` vẫn là chương trình cũ, nên `--gc-sections` vứt
+    # sạch driver và mảng logo vì không ai gọi tới. Đo được: 25 tệp nguồn trong lệnh dịch,
+    # `logo_ptit.c` có trong đó, mà ảnh nạp chỉ **492 byte** — nhỏ hơn cả cái logo 115 KB.
+    _kiem_logo_co_trong_anh_nap(nk, du_an)
+
+    # 5. chip đang chạy bản nào
     _kiem_chip_dung_ban_vua_dich(nk, du_an)
 
     nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
@@ -819,3 +852,39 @@ def _so_loi_dich(ctx: Any) -> int:
     if not a:
         return -1
     return 0 if c.get("dat") else int(c.get("so_loi") or 0)
+
+
+def _kiem_logo_co_trong_anh_nap(nk: Any, du_an: pathlib.Path) -> None:
+    """Mảng logo có nằm trong ảnh nạp không — đo bằng SỐ BYTE, không bằng sự có mặt của tệp.
+
+    `--gc-sections` vứt mọi thứ không ai gọi tới. Nên một dự án có đủ tệp, dịch sạch và nạp
+    xong vẫn có thể đang chạy một chương trình **không hề chạm tới logo**. Cách duy nhất thấy
+    được điều đó bằng mã: so kích thước ảnh nạp với kích thước mảng logo.
+    """
+    # Đòi ĐỦ BA macro. Chỉ tìm `_WIDTH` thì vớ phải `stm32469i_discovery_sdram.h`
+    # (`SDRAM_MEMORY_WIDTH`) và phép đo báo sai ngay ở bước chọn tệp.
+    def _la_header_anh(p: pathlib.Path) -> bool:
+        c = p.read_text("utf-8", errors="replace")
+        return all(re.search(rf"#define\s+\w+{k}\s+\d+", c)
+                   for k in ("_WIDTH", "_HEIGHT", "_BPP"))
+
+    h = next((p for p in sorted((du_an / "firmware").glob("*.h")) if _la_header_anh(p)), None)
+    binp = du_an / ".eide" / "build" / "mach.bin"
+    if h is None or not binp.exists():
+        nk.ket(False, "Logo có nằm trong ảnh nạp không",
+               "chưa có header logo" if h is None else "chưa có mach.bin")
+        return
+    chu = h.read_text("utf-8", errors="replace")
+    m_w = re.search(r"_WIDTH\s+(\d+)", chu)
+    m_h = re.search(r"_HEIGHT\s+(\d+)", chu)
+    m_b = re.search(r"_BPP\s+(\d+)", chu)
+    if not (m_w and m_h and m_b):
+        nk.ket(False, "Logo có nằm trong ảnh nạp không", f"{h.name} không khai đủ kích thước")
+        return
+    can = int(m_w.group(1)) * int(m_h.group(1)) * int(m_b.group(1))
+    co = binp.stat().st_size
+    nk.ket(co >= can,
+           f"Mảng logo NẰM TRONG ảnh nạp: ảnh {co} B ≥ logo {can} B",
+           f"Ảnh nạp {co} B nhỏ hơn riêng mảng logo ({can} B) — nghĩa là chương trình đang "
+           f"chạy KHÔNG hề chạm tới logo, và trình liên kết đã vứt nó đi. Dịch sạch và nạp "
+           f"xong KHÔNG có nghĩa là đã làm đúng việc." if co < can else "")
