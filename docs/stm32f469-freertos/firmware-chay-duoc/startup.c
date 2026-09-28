@@ -1,8 +1,8 @@
 #include <stdint.h>
 #include "stm32f469xx.h"
 
-/* HSI frequency = 16000000 Hz (anh cho, chưa có tài liệu) */
-uint32_t SystemCoreClock = 16000000UL;
+/* HSI frequency = 16000000 Hz (đã định nghĩa trong system_stm32f4xx.c) */
+extern uint32_t SystemCoreClock;
 
 /* Linker symbols */
 extern uint32_t _estack;
@@ -47,7 +47,7 @@ void (* const g_pfnVectors[])(void) = {
 void Reset_Handler(void)
 {
     /* Enable FPU coprocessors CP10 and CP11 (full access) */
-    SCB_CPACR |= ((3UL << 20) | (3UL << 22));
+    SCB->CPACR |= ((3UL << 20) | (3UL << 22));
 
     /* Copy initialized data from Flash to RAM */
     uint32_t *pSrc = &_sidata;

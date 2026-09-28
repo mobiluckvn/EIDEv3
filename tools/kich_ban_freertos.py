@@ -410,8 +410,206 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
         _kiem_noi_dung_dung(nk, du_an)
         nk.anh(g, "sua-ten")
 
+    # ------------------------------------------------------------------ 15. DSI chưa lên
+    #
+    # Ba việc còn lại, giao TỪNG CÁI. Giao cả cụm thì tác tử hết hạn mức giữa chừng — đo được
+    # hai lượt liền trước đó. DSI đi trước vì không có nó thì logo và cảm ứng đều vô hình.
+    if lam(15):
+        nk.buoc("Việc 1/3: DSI chưa lên — PLL chưa khoá, PHY đang tắt")
+        loi, cc = hoi(g, nk, du_an,
+                      "Tên đã đúng, cảm ơn bạn. Còn ba việc, mình giao **từng cái một** — hai "
+                      "lượt vừa rồi bạn hết hạn mức vì ôm cả cụm.\n\n"
+                      "**Việc 1/3, và nó chặn hai việc kia**: đường DSI chưa lên. Số đo mình "
+                      "vừa lấy trên chip đang chạy:\n\n"
+                      "```\n"
+                      "DSI_WISR  = 0x00003000 → PLLLS = 0      (PLL của DSI CHƯA khoá)\n"
+                      "DSI_PCTLR = 0x00000000 → DEN = 0, CKE = 0  (PHY đang TẮT)\n"
+                      "DSI_ISR1  = 0x00000080\n"
+                      "```\n\n"
+                      "Còn lại thì tốt: LTDC bật và **đang quét** thật, bọc DSI bật, SHTDN = "
+                      "0, panel đã ra khỏi reset, chế độ video. Và khung ảnh trong SDRAM có "
+                      "nội dung — bạn vẽ đúng, chỉ là panel không nhận được gì.\n\n"
+                      "Ở dự án G7, cùng bo này, DSI lên được — mã trong `tham-chieu-lcd/` là "
+                      "bản đã chạy. So xem chỗ khởi tạo DSI của bạn khác nó ở đâu.\n\n"
+                      "Chỉ làm việc này thôi. Logo và cảm ứng để lượt sau.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_duong_dsi(nk)
+        nk.anh(g, "dsi-len")
+
+    # ------------------------------------------------------------------ 16. đo thay vì đọc
+    #
+    # Hai lượt tác tử chỉ đọc mà không sửa. Và tôi cũng suýt gửi nó đi sai hướng: tôi nghi
+    # bản BSP của nó thiếu `BSP_LCD_MspInit` (chỗ bật xung nhịp DSI), nhưng so bằng mã thì
+    # bản của nó **có đủ**, không thiếu hàm nào. May là tôi kiểm trước khi nói.
+    #
+    # Nên đổi cách: đừng đọc thêm nữa, hãy ĐO — đúng cách đã gỡ được HardFault ở chặng G7.
+    if lam(16):
+        nk.buoc("Đừng đọc thêm — ĐO xem chuỗi khởi tạo DSI chạy tới đâu")
+        loi, cc = hoi(g, nk, du_an,
+                      "Hai lượt vừa rồi bạn đọc rất nhiều mà chưa sửa được gì. Mình cũng vừa "
+                      "đi sai một hướng: mình nghi bản BSP của bạn thiếu `BSP_LCD_MspInit` "
+                      "(chỗ gọi `__HAL_RCC_DSI_CLK_ENABLE`), nhưng so bằng mã thì bản của bạn "
+                      "**có đủ**, không thiếu hàm nào so với bản chạy được. Nên đừng mất thời "
+                      "gian ở đó.\n\n"
+                      "Đổi cách đi: **đừng đọc thêm, hãy ĐO**. Đây đúng là cách đã gỡ được "
+                      "HardFault ở chặng trước.\n\n"
+                      "Cụ thể: đặt vài biến toàn cục `volatile` ghi lại chuỗi khởi tạo chạy "
+                      "tới đâu và trả về gì — `BSP_LCD_Init()` trả mã nào, `HAL_DSI_Init()` "
+                      "trả mã nào, có tới `HAL_DSI_Start()` không, tới mấy lần. Mồi sẵn giá "
+                      "trị lạ để phân biệt “chưa ai ghi” với “ghi ra 0” — đúng như bạn đã làm "
+                      "rất tốt ở chặng trước.\n\n"
+                      "Nạp xong nói mình biết, mình đọc mấy biến ấy ra khỏi RAM chip bằng "
+                      "`target.debug` với `bien`.\n\n"
+                      "Một gợi ý về chỗ đáng nghi, không phải kết luận: `DSI_PCTLR = 0` "
+                      "nghĩa là PHY bị **tắt**, mà lúc khởi tạo nó phải được bật. BSP của ST "
+                      "có gọi `HAL_DSI_Stop()` giữa chừng rồi `HAL_DSI_Start()` lại ở cuối — "
+                      "nếu luồng của bạn dừng giữa hai cái đó thì số đo sẽ ra đúng như thế.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_duong_dsi(nk)
+        nk.anh(g, "do-chuoi-khoi-tao")
+
+    # ------------------------------------------------------------------ 17. màn nhấp nháy
+    #
+    # Anh Công: "màn sáng rồi nhưng đang nhấp nháy". Đo được:
+    #   · khung ảnh KHÔNG đổi giữa hai lần đọc ⇒ không phải do vẽ lại liên tục;
+    #   · `DSI_ISR1 = 0x80` (LPWRE) bám dai ⇒ LTDC đẩy điểm ảnh nhanh hơn DSI rút;
+    #   · và trên silicon: `RCC_CFGR.SWS = 0` ⇒ SYSCLK đang chạy từ **HSI 16 MHz**.
+    # Bản G7 chạy đúng ở 180 MHz. Mọi thông số nhịp của BSP màn hình tính cho 180 MHz.
+    if lam(17):
+        nk.buoc("Màn sáng nhưng NHẤP NHÁY — chip đang chạy 16 MHz thay vì 180 MHz")
+        loi, cc = hoi(g, nk, du_an,
+                      "Anh Công nhìn bo: **màn sáng rồi**, nhưng đang **nhấp nháy** và hiện "
+                      "chập chờn. Bạn đã đưa DSI lên được — 10/11 mắt của chuỗi hiển thị "
+                      "thông.\n\n"
+                      "Mình đo thêm ba thứ để bạn khỏi phải đoán:\n\n"
+                      "**1. Không phải do vẽ lại.** Đọc cùng một dải khung ảnh hai lần: nội "
+                      "dung **không đổi**. Nên nhấp nháy không đến từ tác vụ vẽ.\n\n"
+                      "**2. Mắt còn đỏ là thật**: `DSI_ISR1 = 0x00000080` — bit 7, **LPWRE** "
+                      "(lỗi ghi payload từ LTDC sang DSI), và nó **bám dai** qua bốn lần "
+                      "đọc. Nghĩa là LTDC đẩy điểm ảnh nhanh hơn đường DSI rút đi.\n\n"
+                      "**3. Và đây là chỗ đáng nhìn nhất** — đọc thẳng thanh ghi RCC trên "
+                      "chip đang chạy:\n"
+                      "```\n"
+                      "RCC_CFGR  = 0x00000000 → SWS = 0  ⇒ SYSCLK đang chạy từ HSI 16 MHz\n"
+                      "RCC_PLLCFGR = 0x24003008 → PLLN = 192 (giá trị reset), PLLM = 8\n"
+                      "FLASH_ACR = 0x00000000 → 0 wait state\n"
+                      "```\n\n"
+                      "Bản G7 trên cùng bo chạy ở **180 MHz**: HSE 8 MHz → PLLM 8, PLLN 360, "
+                      "PLLP /2, bật over-drive, Flash 5 wait state, rồi chuyển SYSCLK sang "
+                      "PLL. Mã của bạn bật HSE và đặt `PLLM` bằng tay qua thanh ghi, nhưng "
+                      "**không chuyển SYSCLK sang PLL** — nên cả chip vẫn ở 16 MHz, trong "
+                      "khi mọi thông số nhịp của BSP màn hình được tính cho 180 MHz.\n\n"
+                      "Sửa cấu hình xung nhịp cho đúng. Chỉ việc này thôi — logo và cảm ứng "
+                      "để lượt sau. Và nhớ: FreeRTOS lấy nhịp từ `SystemCoreClock`, đổi tần "
+                      "số mà quên cập nhật nó thì các tác vụ sẽ chạy sai nhịp.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_xung_nhip(nk)
+        _kiem_duong_dsi(nk)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)", "Màn còn nhấp nháy không?")
+        nk.anh(g, "sua-xung-nhip")
+
+    # ------------------------------------------------------------------ 18. nút: lệch + sai loại
+    #
+    # Anh Công: "đã hiển thị thông tin rồi, nhưng vùng màu xanh không biết là cái gì?".
+    # Đo trên khung ảnh: hình chữ nhật xanh ở x 154…759, y 390…439. Mã vẽ
+    # `FillRect(160, 400, 480, 50)` → x 160…640. Chữ vẽ `CENTER_MODE` trên cả 800 px.
+    # Ba toạ độ, ba chỗ khác nhau — nên nó trông như một mảng xanh trôi lệch khỏi dòng chữ.
+    if lam(18):
+        nk.buoc("Nút bị lệch và sai loại — phải là nút CHẠM, không phải nút vật lý")
+        loi, cc = hoi(g, nk, du_an,
+                      "Logo và thông tin đã hiện đúng, màn hết nhấp nháy — tốt. Anh Công "
+                      "nhìn bo và hỏi: *“vùng màu xanh không biết là cái gì? Có phải nút "
+                      "bấm không?”*\n\n"
+                      "Đúng là nút, nhưng nó sai ba chỗ. Mình **đo** trên khung ảnh thay vì "
+                      "nhận xét:\n\n"
+                      "- hình chữ nhật xanh thật sự nằm ở **x 154…759, y 390…439**;\n"
+                      "- mã vẽ `BSP_LCD_FillRect(160, 400, 480, 50)` → lẽ ra x 160…640;\n"
+                      "- dòng chữ vẽ bằng `CENTER_MODE` nên nó căn giữa **cả màn 800 px**, "
+                      "không căn giữa nút.\n\n"
+                      "Ba toạ độ ở ba chỗ khác nhau, nên người nhìn thấy một mảng xanh trôi "
+                      "lệch khỏi dòng chữ của chính nó. Nút phải **trông ra nút**: viền rõ, "
+                      "chữ nằm giữa đúng cái hình chữ nhật ấy.\n\n"
+                      "Và chỗ sai nặng hơn: nút ghi *“AN NUT USER BUTTON (PA0)”* — đó là "
+                      "**nút vật lý** trên bo. Anh Công yêu cầu **chạm vào nút trên màn "
+                      "hình**. Bo này có panel cảm ứng điện dung; nó là một con IC riêng nối "
+                      "qua I2C. Bạn tự tìm — mình chưa làm phần đó bao giờ trên bo này.\n\n"
+                      "Ba việc của lượt này:\n"
+                      "1. Vẽ nút cho đúng: hình và chữ cùng một toạ độ.\n"
+                      "2. Chạm vào nút “Chi tiết” → sang màn chi tiết.\n"
+                      "3. Màn chi tiết có nút **Close**, chạm vào thì quay lại.\n\n"
+                      "LED vẫn phải nháy song song trong suốt thời gian đó.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_cam_ung(nk, du_an)
+        _kiem_duong_dsi(nk)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Nút đã trông ra nút chưa, và chạm vào có sang màn chi tiết không?")
+        nk.anh(g, "nut-cham")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_cam_ung(nk: Any, du_an: pathlib.Path) -> None:
+    """Đã có mã CẢM ỨNG thật chưa, hay vẫn đọc nút vật lý PA0.
+
+    Đo trên mã nguồn: panel cảm ứng của bo nối qua I2C, nên phải thấy dấu vết của nó —
+    không thấy thì thứ đang chạy là nút vật lý, dù chữ trên màn có ghi gì.
+    """
+    fw = du_an / "firmware"
+    t = "\n".join(p.read_text("utf-8", errors="replace")
+                   for p in fw.rglob("*.c")) if fw.exists() else ""
+    cham = [k for k in ("BSP_TS_Init", "BSP_TS_GetState", "ft6x06", "FT6206", "TS_StateTypeDef",
+                        "touchDetected") if k.lower() in t.lower()]
+    vat_ly = [k for k in ("PA0", "USER_BUTTON", "GPIOA->IDR") if k in t]
+    nk.ket(bool(cham),
+           "Dùng CẢM ỨNG thật (panel qua I2C), không phải nút vật lý PA0",
+           (f"thấy: {', '.join(cham)}" if cham else "không thấy dấu vết cảm ứng nào")
+           + (f" · còn dùng nút vật lý: {', '.join(vat_ly)}" if vat_ly else ""))
+
+
+def _kiem_xung_nhip(nk: Any) -> None:
+    """Chip đang chạy ở nguồn xung nhịp nào — đọc thẳng RCC trên silicon."""
+    import shutil as _sh
+
+    from eide.build.mach_that import _doc_o_nho
+
+    oo = _sh.which("openocd")
+    if not oo:
+        nk.ket(False, "SYSCLK chạy từ PLL (không phải HSI)", "máy chưa có openocd")
+        return
+    o = _doc_o_nho(oo, [(0x40023808, 1), (0x40023804, 1), (0x40023C00, 1)])
+    def _g(a):
+        v = o.get(f"0x{a:08x}")
+        return int(v[0], 16) if v else None
+    cfgr, pll, acr = _g(0x40023808), _g(0x40023804), _g(0x40023C00)
+    if cfgr is None:
+        nk.ket(False, "SYSCLK chạy từ PLL (không phải HSI)", "không đọc được RCC_CFGR")
+        return
+    sws = (cfgr >> 2) & 3
+    ten = {0: "HSI 16 MHz", 1: "HSE", 2: "PLL"}.get(sws, "?")
+    nk.ket(sws == 2, "SYSCLK chạy từ PLL (không phải HSI 16 MHz)",
+           f"RCC_CFGR = 0x{cfgr:08X} → SWS = {sws} ({ten}) · "
+           f"PLLN = {(pll >> 6) & 0x1FF if pll else '?'} · "
+           f"Flash {acr & 0xF if acr is not None else '?'} wait state")
+
+
+def _kiem_duong_dsi(nk: Any) -> None:
+    """Chuỗi hiển thị đã thông chưa — đọc thẳng thanh ghi trên chip đang chạy."""
+    from eide.build.mach_that import doc_duong_hien_thi
+
+    d = doc_duong_hien_thi()
+    if not d.get("dat"):
+        nk.ket(False, "Chuỗi hiển thị THÔNG SUỐT", d.get("vi_sao_khong_dat") or "không đo được")
+        return
+    bang = "\n".join(
+        f"{'✓' if m['thong'] else '✗' if m['thong'] is False else '?'} {m['ten']:42} "
+        f"{m['so_do']}" for m in d["mat_xich"])
+    nk.ket(bool(d.get("thong_suot")), "Chuỗi hiển thị THÔNG SUỐT (11 mắt)",
+           bang + (f"\n\nĐứt ở: {', '.join(d['dut_o'])}" if d["dut_o"] else ""))
 
 
 def _kiem_noi_dung_dung(nk: Any, du_an: pathlib.Path) -> None:

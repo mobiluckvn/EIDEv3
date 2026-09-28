@@ -1,0 +1,175 @@
+/**
+  * @file ui.c
+  * @brief Giao dien hien thi LCD va xu ly nut bam cam ung cho STM32F469I-DISCO
+  */
+#include "ui.h"
+#include "stm32469i_discovery.h"
+#include "stm32469i_discovery_lcd.h"
+#include "stm32469i_discovery_sdram.h"
+#include "logo_ptit.h"
+#include "string.h"
+
+/* Toa do nut bam dong bo hinh va chu theo f-nguoi-67015084: x 160..640, y 400..450 */
+#define BTN_X      160
+#define BTN_Y      400
+#define BTN_WIDTH  480
+#define BTN_HEIGHT 50
+
+static ui_screen_t current_screen = UI_SCREEN_MAIN;
+
+static void UI_DrawLogo(uint16_t x0, uint16_t y0)
+{
+    uint32_t width = BSP_LCD_GetXSize();
+    uint32_t *fb = (uint32_t *)LCD_FB_START_ADDRESS;
+
+    for (uint32_t r = 0; r < LOGO_PTIT_HEIGHT; r++) {
+        for (uint32_t c = 0; c < LOGO_PTIT_WIDTH; c++) {
+            uint32_t color = logo_ptit_data[r * LOGO_PTIT_WIDTH + c];
+            if ((color & 0xFF000000) != 0) {
+                fb[(y0 + r) * width + (x0 + c)] = color;
+            }
+        }
+    }
+}
+
+/**
+ * @brief Ve nut bam co vien ro net va chu can chinh giua dung hop nut
+ */
+static void UI_DrawButton(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                          uint32_t bg_color, uint32_t border_color, uint32_t text_color,
+                          sFONT *font, const char *label)
+{
+    /* 1. Nen nut */
+    BSP_LCD_SetTextColor(bg_color);
+    BSP_LCD_FillRect(x, y, w, h);
+
+    /* 2. Khung vien nut ro net */
+    BSP_LCD_SetTextColor(border_color);
+    BSP_LCD_DrawRect(x, y, w, h);
+    BSP_LCD_DrawRect(x + 1, y + 1, w - 2, h - 2);
+
+    /* 3. Can chu o chinh giua hop nut */
+    uint32_t len = 0;
+    while (label[len] != '\0') {
+        len++;
+    }
+    uint16_t text_width = len * font->Width;
+    uint16_t text_x = x + ((w > text_width) ? ((w - text_width) / 2) : 0);
+    uint16_t text_y = y + ((h > font->Height) ? ((h - font->Height) / 2) : 0);
+
+    BSP_LCD_SetBackColor(bg_color);
+    BSP_LCD_SetTextColor(text_color);
+    BSP_LCD_SetFont(font);
+    BSP_LCD_DisplayStringAt(text_x, text_y, (uint8_t *)label, LEFT_MODE);
+}
+
+void UI_Init(void)
+{
+    BSP_SDRAM_Init();
+    BSP_LCD_Init();
+    BSP_LCD_LayerDefaultInit(0, LCD_FB_START_ADDRESS);
+    BSP_LCD_SelectLayer(0);
+    BSP_LCD_DisplayOn();
+    UI_ShowMainScreen();
+}
+
+void UI_ShowMainScreen(void)
+{
+    current_screen = UI_SCREEN_MAIN;
+
+    BSP_LCD_Clear(LCD_COLOR_WHITE);
+
+    /* Logo PTIT */
+    UI_DrawLogo(30, 120);
+
+    /* Thong tin De tai & Hoc vien */
+    BSP_LCD_SetBackColor(LCD_COLOR_WHITE);
+    
+    BSP_LCD_SetTextColor(LCD_COLOR_RED);
+    BSP_LCD_SetFont(&Font16);
+    BSP_LCD_DisplayStringAt(0, 30, (uint8_t *)"HOC VIEN CONG NGHE BUU CHINH VIEN THONG", CENTER_MODE);
+    BSP_LCD_DisplayStringAt(0, 55, (uint8_t *)"KHOA KY THUAT DIEN TU 1", CENTER_MODE);
+
+    BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);
+    BSP_LCD_SetFont(&Font20);
+    BSP_LCD_DisplayStringAt(300, 130, (uint8_t *)"DO AN TOT NGHIEP", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(300, 160, (uint8_t *)"HE THONG TAC TU EIDE v3", LEFT_MODE);
+
+    BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
+    BSP_LCD_SetFont(&Font16);
+    BSP_LCD_DisplayStringAt(300, 210, (uint8_t *)"DT: Nghien cuu & Trien khai EIDE Agent", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(300, 240, (uint8_t *)"tren Bo STM32F469I-Discovery", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(300, 280, (uint8_t *)"Hoc vien  : Vu Tri Cong", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(300, 310, (uint8_t *)"GVHD      : TS. Nguyen Trung Hieu", LEFT_MODE);
+
+    /* Nut cam ung Chi tiet tren man hinh chinh */
+    UI_DrawButton(BTN_X, BTN_Y, BTN_WIDTH, BTN_HEIGHT,
+                  LCD_COLOR_BLUE, LCD_COLOR_DARKBLUE, LCD_COLOR_WHITE,
+                  &Font20, "Chi tiet");
+}
+
+void UI_ShowDetailsScreen(void)
+{
+    current_screen = UI_SCREEN_DETAILS;
+
+    BSP_LCD_Clear(LCD_COLOR_DARKBLUE);
+
+    BSP_LCD_SetBackColor(LCD_COLOR_DARKBLUE);
+    BSP_LCD_SetTextColor(LCD_COLOR_YELLOW);
+    BSP_LCD_SetFont(&Font20);
+    BSP_LCD_DisplayStringAt(0, 25, (uint8_t *)"=== TINH NANG HE THONG EIDE v3 ===", CENTER_MODE);
+
+    BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+    BSP_LCD_SetFont(&Font16);
+    BSP_LCD_DisplayStringAt(50, 75,  (uint8_t *)"1. He dieu hanh FreeRTOS v10 da tac vu:", LEFT_MODE);
+    BSP_LCD_SetTextColor(LCD_COLOR_CYAN);
+    BSP_LCD_DisplayStringAt(80, 100, (uint8_t *)"- Task 1: Blink 4 LEDs (PG6, PD4, PD5, PK3)", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(80, 125, (uint8_t *)"- Task 2: Giam sat nut bam User PA0 (Debounce)", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(80, 150, (uint8_t *)"- Task 3: Quan ly giao dien LCD & cam ung DSI", LEFT_MODE);
+
+    BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+    BSP_LCD_DisplayStringAt(50, 185, (uint8_t *)"2. Phan cung STM32F469NIH6 Cortex-M4F:", LEFT_MODE);
+    BSP_LCD_SetTextColor(LCD_COLOR_CYAN);
+    BSP_LCD_DisplayStringAt(80, 210, (uint8_t *)"- Man hinh DSI 800x480 IC OTM8009A", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(80, 235, (uint8_t *)"- Bo nho mo rong SDRAM FMC (FrameBuffer)", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(80, 260, (uint8_t *)"- Cam ung dien dung FocalTech FT6206 qua I2C1", LEFT_MODE);
+
+    BSP_LCD_SetTextColor(LCD_COLOR_WHITE);
+    BSP_LCD_DisplayStringAt(50, 295, (uint8_t *)"3. Hien phap tac tu PRS-16 v3:", LEFT_MODE);
+    BSP_LCD_SetTextColor(LCD_COLOR_CYAN);
+    BSP_LCD_DisplayStringAt(80, 320, (uint8_t *)"- Datasheet la nguon su that, 4 tang tin cay", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(80, 345, (uint8_t *)"- 10 dieu khoan hiem hoa & kien truc co khao chung", LEFT_MODE);
+
+    /* Nut cam ung Close tren man hinh chi tiet */
+    UI_DrawButton(BTN_X, BTN_Y, BTN_WIDTH, BTN_HEIGHT,
+                  LCD_COLOR_RED, LCD_COLOR_WHITE, LCD_COLOR_WHITE,
+                  &Font20, "Close");
+}
+
+void UI_ToggleScreen(void)
+{
+    if (current_screen == UI_SCREEN_MAIN) {
+        UI_ShowDetailsScreen();
+    } else {
+        UI_ShowMainScreen();
+    }
+}
+
+ui_screen_t UI_GetCurrentScreen(void)
+{
+    return current_screen;
+}
+
+int UI_HandleTouch(uint16_t x, uint16_t y)
+{
+    /* Kiem tra cham trong vung nut bam theo f-nguoi-67015084: x=160..640, y=390..450 */
+    int in_x = (x >= 150 && x <= 650);
+    int in_y = ((y >= 380 && y <= 460) || (y >= 20 && y <= 100));
+    int in_swap = (y >= 150 && y <= 650) && ((x >= 380 && x <= 460) || (x >= 20 && x <= 100));
+
+    if ((in_x && in_y) || in_swap) {
+        UI_ToggleScreen();
+        return 1;
+    }
+    return 0;
+}

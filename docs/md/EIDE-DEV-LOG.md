@@ -3854,7 +3854,47 @@ nghĩ ra.
 
 `1202 ca đơn vị` (+7). Kế hoạch màn hình: 6/7 bước.
 
+#### Kết: màn hình tương tác chạy hoàn hảo
+
+> *"Đã chạy hoàn hảo."* — anh Công, 28/09/2026.
+
+Logo PTIT · thông tin đề tài đúng tên · nút **“Chi tiết”** chạm được → màn chi tiết → **Close**
+quay lại · LED nháy song song suốt thời gian đó. Ảnh sở cứ:
+`docs/stm32f469-freertos/ket-qua/anh/KHUNG-ANH-HOAN-CHINH.png`; mã ở
+`docs/stm32f469-freertos/firmware-chay-duoc/` (`sha256 094546e6…`, 263 344 byte, đã đối chiếu
+với chip).
+
+Ba chỗ hỏng còn lại được gỡ theo đúng một cách: **đo, rồi mới sửa.**
+
+**Màn sáng nhưng NHẤP NHÁY.** Ba phép đo, mỗi cái loại một khả năng:
+
+| đo | kết quả | loại được gì |
+|---|---|---|
+| đọc cùng dải khung ảnh hai lần | **không đổi** | không phải do tác vụ vẽ lại |
+| `DSI_ISR1` bốn lần | `0x80` (`LPWRE`) **bám dai** | LTDC đẩy nhanh hơn DSI rút |
+| `RCC_CFGR` trên silicon | `SWS = 0` | **SYSCLK vẫn ở HSI 16 MHz** |
+
+Bản G7 trên cùng bo chạy 180 MHz. Mã FreeRTOS bật HSE và đặt `PLLM` bằng tay qua thanh ghi
+nhưng **không chuyển SYSCLK sang PLL**, nên cả chip ở 16 MHz trong khi mọi thông số nhịp của
+BSP màn hình tính cho 180 MHz. Sửa xong: `SWS = 2`, `PLLN = 360`, Flash 5 wait state — và mắt
+thứ 11 của chuỗi hiển thị **tự tắt**. Chuỗi thông suốt cả 11.
+
+**Nút vẽ ở ba toạ độ khác nhau.** Anh Công hỏi *"vùng màu xanh là cái gì?"*. Đo trên khung
+ảnh: hình chữ nhật thật ở **x 154…759**, mã vẽ `FillRect(160, 400, 480, 50)` → **x 160…640**,
+còn chữ vẽ `CENTER_MODE` nên căn giữa **cả màn 800 px**. Ba chỗ, ba toạ độ — người nhìn thấy
+một mảng xanh trôi lệch khỏi dòng chữ của chính nó. Đo toạ độ thay vì nhận xét "nút bị lệch"
+là thứ biến một cảm giác thành một con số sửa được.
+
+**Nút sai loại.** Nó ghi *"AN NUT USER BUTTON (PA0)"* — nút vật lý, trong khi yêu cầu là
+**chạm màn**. Tác tử tự tìm ra panel cảm ứng nối qua I2C và làm được.
+
+#### Tác tử tự viết BA công cụ cho chính nó
+
+`plan.get` · `fs.copy` · `fs.remove` — mỗi cái kèm bộ kiểm riêng phải XANH mới được đăng ký,
+sống ở `.eide/cong-cu/` của dự án và được nạp lại mỗi lần mở dự án. Giữ trong repo tại
+`docs/stm32f469-freertos/firmware-chay-duoc/cong-cu-tac-tu-tu-viet/`.
+
 ### Còn lại
 
-- Logo PTIT, cảm ứng, và DSI chưa lên (`PLLLS = 0`, `DEN = CKE = 0`).
+- Khôi phục bản demo gốc của ST cho bo, nếu anh Công muốn.
 
