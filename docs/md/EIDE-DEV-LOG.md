@@ -3449,3 +3449,63 @@ nó vừa học được để soạn kế hoạch ấy.
 - Verifier chạy cho lời tuyên "đạt" của **chính tác tử chính** (hiện 0/402 lượt).
 - `tool.propose`: tác tử tự thấy thiếu năng lực và **tự viết công cụ mới**.
 
+### [DEV-281] 28/09/2026 · Tác tử tự phát hiện cái sai của chính mình
+
+Anh Công, sau phiên bo STM32F469: *"Agent không tự động phát hiện được sai mà bạn phải phát
+hiện."* Đúng, và sổ cái của phiên ấy chỉ ra **vì sao** — không phải vì thiếu cơ chế.
+
+#### Cái van có sẵn, nhưng ống dẫn không đi qua nó
+
+`src/eide/subagent.py` đã có `verifier`, và nó được thiết kế rất kỹ: chỉ có công cụ **đọc**,
+và **cố ý không cho biết đề bài** — *"cho nó đọc đề bài là mời nó suy ra kết luận mong đợi rồi
+đi tìm cách biện minh"*. Nhưng:
+
+```python
+CAN_KIEM_CHUNG = ("firmware", "sim-runner")   # chỉ nổ khi một SUBAGENT tuyên đạt
+```
+
+Tác tử chính làm hết mọi việc trong lượt của nó. Đo trên sổ cái: **402 lượt, 1078 lời gọi,
+0 lần gọi subagent** ⇒ verifier chạy **0 lần**. Lời tuyên "xong" của tác tử chính — thứ người
+dùng thật sự đọc — chưa bao giờ bị ai kiểm.
+
+→ Hook `tu_kiem_khi_tuyen_dat`: tuyên "đạt" **và** lượt này có ghi hiện vật → `another_round`
+kèm lệnh chạy verifier với **bằng chứng**, không phải kết luận.
+
+Điều kiện thứ hai quan trọng ngang điều kiện thứ nhất. Một câu *"xong rồi"* sau một lượt thuần
+đọc thường là **trả lời một câu hỏi**, không phải tuyên bố một việc đã làm — bắt nó kiểm chứng
+là dựng thủ tục quanh một cuộc trò chuyện. Và chỉ nổ một lần mỗi lượt: vòng thứ hai là vòng
+tác tử đang *trả lời chính lời nhắc này*.
+
+#### `ok` nói về LỜI GỌI, không nói về KẾT QUẢ
+
+Hình dạng lỗi lặp **năm lần** trong một phiên, ở năm tầng: `code.vendor_fetch` ok với 0/26
+tệp · `soi_chip` gộp `-c` nên `mdw` im lặng · `bsp_otm8009a_write` `return 0` cứng ·
+`g_otm8009a_init_ret = 0` vô nghĩa · `HAL_DSI_ShortWrite` trả `HAL_OK` cho 101 lệnh không tới
+đích.
+
+→ `eide/ket_qua.py`: sau mỗi lời gọi **thành công**, nếu lời gọi **liệt kê đích danh** một tập
+thứ cần lấy mà kết quả trả về **rỗng**, lõi chèn một lời nhắc. Bắt được hai ca đầu (công cụ
+EIDE); ba ca sau nằm trong firmware người dùng, và thứ bắt chúng là verifier đọc bằng chứng.
+
+**Phần khó của bộ dò này là chỗ nó phải IM LẶNG**, và bản đầu đã sai đúng ở đó — ba lần:
+
+| lỗi | hậu quả | sửa |
+|---|---|---|
+| có `pattern`/`query` trong danh sách "xin" | `fs.glob` không khớp tệp nào bị gắn cờ — mà một phép TÌM không thấy gì **là** câu trả lời | bỏ; chỉ nhận danh sách liệt kê đích danh |
+| `bool` là con của `int` | `dat: True` được tính là "số > 0" và **dập tắt cảnh báo** ở đúng ca `soi_chip` | loại `bool` tường minh |
+| xét mọi số trong kết quả | `so_hong: 26` là số thứ **hỏng** — nó xác nhận chứ không bác bỏ — lại dập tắt cảnh báo | chỉ xét các khoá **đếm tiến triển** |
+
+Sáu ca đối chứng đều đúng sau khi sửa. Ranh giới ấy không phải chi tiết phụ: `0` rất thường là
+câu trả lời ĐÚNG và là tin tốt (*0 lỗi biên dịch*), nên một bộ dò kêu ở mọi số 0 sẽ thành máy
+báo động giả trong một buổi chiều — và báo động giả dạy người ta bỏ qua cảnh báo, đắt hơn hẳn
+việc không có nó.
+
+### Số đo
+
+`1164 ca đơn vị` (+19). Gỡ dây nối trong lõi → ca `test_LOI_that_su_nhac…` đỏ đúng chỗ.
+
+### Còn lại
+
+- `tool.propose`: tác tử tự thấy thiếu năng lực và **tự viết công cụ mới** (anh Công đã chọn
+  hướng "tự viết tool thật, qua cổng").
+

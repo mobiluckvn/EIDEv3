@@ -442,6 +442,60 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                          "hoạch thiếu. Khi báo cáo lượt, NÓI RA chỗ lệch và vì sao, để người "
                          "dùng quyết: sửa kế hoạch, hay quay lại đúng nó.\n</system-reminder>"))
 
+    # ============================================= tự kiểm chứng lời tuyên "đạt" (N6, §B5)
+    #
+    # Đo được trên phiên bo STM32F469: `verifier` — tác tử con kiểm chứng độc lập, thiết kế
+    # rất tốt (chỉ công cụ ĐỌC, và **cố ý không cho biết đề bài** để nó không suy ra kết luận
+    # mong đợi rồi đi biện minh) — chạy **0 lần trong 402 lượt**.
+    #
+    # Không phải vì nó hỏng. Vì `CAN_KIEM_CHUNG` chỉ nổ khi một **subagent** tuyên đạt, mà
+    # tác tử chính làm hết mọi việc trong lượt của nó và **không sinh subagent lần nào**. Cái
+    # van tồn tại, nhưng ống dẫn không đi qua nó. Lời tuyên "xong" của chính tác tử chính —
+    # thứ người dùng thật sự đọc — chưa bao giờ bị ai kiểm.
+    _TUYEN_DAT = ("đã xong", "da xong", "hoàn thành", "hoan thanh", "chạy được",
+                  "chay duoc", "đã chạy", "đạt yêu cầu", "thành công", "thanh cong",
+                  "đã sửa xong", "khớp hoàn toàn", "mọi thứ đều ổn", "tất cả đều xanh")
+
+    @bus.on_stop
+    def tu_kiem_khi_tuyen_dat(ctx: Any) -> StopResult:
+        """Tuyên "đạt" + có GHI hiện vật trong lượt → bắt chạy verifier trước khi kết lượt.
+
+        Hai điều kiện, và điều kiện thứ hai quan trọng ngang điều kiện thứ nhất: chỉ nổ khi
+        lượt này **đã ghi được gì đó**. Một câu "xong rồi" sau một lượt thuần đọc thường là
+        trả lời một câu hỏi, không phải tuyên bố một việc đã làm — bắt nó kiểm chứng là dựng
+        thủ tục quanh một cuộc trò chuyện.
+
+        Chỉ nổ MỘT LẦN mỗi lượt (`ctx.da_tu_kiem`): vòng thứ hai là vòng tác tử đang trả lời
+        chính lời nhắc này, và bắt nó kiểm lại lần nữa sẽ thành vòng lặp.
+        """
+        if getattr(ctx, "da_tu_kiem", False):
+            return StopResult()
+        if not getattr(ctx, "da_ghi_gi_do", False):
+            return StopResult()
+        if "task.run" in (getattr(ctx, "cong_cu_da_goi", []) or []):
+            return StopResult(fired=["tu_kiem_da_chay"])
+        thay = [m for cau in (getattr(ctx, "loi_da_noi", []) or [])
+                for m in _TUYEN_DAT if m in (cau or "").lower()]
+        if not thay:
+            return StopResult()
+        ctx.da_tu_kiem = True
+        return StopResult(
+            another_round=True, reason_vi="tuyên đạt sau khi ghi hiện vật — cần kiểm chứng",
+            fired=["tu_kiem_khi_tuyen_dat"],
+            injection=("<system-reminder>\nBạn vừa nói việc đã xong (“"
+                       + thay[0] + "”) sau khi lượt này có ghi hiện vật.\n\n"
+                       "**N6 — không báo đạt giả.** Trước khi kết lượt, gọi "
+                       "`task.run(subagent=\"verifier\", …)` và đưa cho nó **bằng chứng**, "
+                       "không đưa kết luận: tệp nào, hiện vật nào, con số nào, đọc ở đâu ra. "
+                       "Verifier cố ý KHÔNG biết đề bài — nó chỉ mở từng bằng chứng ra xem "
+                       "chúng có nói đúng thứ bạn bảo chúng nói không.\n\n"
+                       "Đo được trên một phiên bo thật: “dịch sạch + nạp đúng từng byte + "
+                       "verify khớp hoàn toàn” đều ĐÚNG, trong khi chương trình đang chạy "
+                       "vẫn là bản nháy đèn cũ. Mọi phép đo đều xanh, và cái sai nằm đúng ở "
+                       "chỗ không ai đo.\n\n"
+                       "Verifier bảo `khong_dat` hay `chua_du_du_kien` thì NÓI RA điều đó "
+                       "với người dùng, đừng giữ lại kết luận cũ.\n</system-reminder>"))
+
     return bus
 
 

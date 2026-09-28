@@ -90,6 +90,12 @@ class TurnContext:
     # với "đang quay vòng".
     da_ghi_gi_do: bool = False
     da_nhac_quay_vong: set[str] = field(default_factory=set)
+    # Công cụ đã bị nhắc "ok mà kết quả rỗng" trong lượt này. Nhắc lại mỗi lần gọi sẽ thành
+    # tiếng ồn, và tiếng ồn thì bị bỏ qua — kể cả lần nó đáng đọc.
+    da_nhac_rong: set[str] = field(default_factory=set)
+    # Lượt này đã bị bắt tự kiểm chứng chưa. Vòng thứ hai là vòng tác tử đang TRẢ LỜI lời
+    # nhắc ấy; bắt nó kiểm lại lần nữa sẽ thành vòng lặp.
+    da_tu_kiem: bool = False
     # Lời NGƯỜI đã nói trong phiên — constant-guard coi con số họ tự nói là có nguồn.
     loi_nguoi_trong_phien: list[str] = field(default_factory=list)
     usage_luot: Any = None                       # chi phí CỦA LƯỢT NÀY, không phải phiên
@@ -755,6 +761,20 @@ class Agent:
         if res.ok and (getattr(spec, "writes_artefact", False)
                        or call.tool in ("fs.write", "fs.edit")):
             ctx.da_ghi_gi_do = True
+
+        # `ok` nói về LỜI GỌI, không nói về KẾT QUẢ. Xem `eide/ket_qua.py` cho năm lần bài
+        # học này xuất hiện trong một phiên duy nhất. Nhắc MỘT LẦN cho mỗi công cụ trong một
+        # lượt: nhắc lại mỗi lần gọi sẽ thành tiếng ồn, và tiếng ồn thì bị bỏ qua.
+        if res.ok:
+            from .ket_qua import khong_noi_gi, nhac_nho
+
+            rong, ly_do = khong_noi_gi(call.args or {}, res.data)
+            if rong and call.tool not in ctx.da_nhac_rong:
+                ctx.da_nhac_rong.add(call.tool)
+                self.ledger.append("hook", {"run_id": ctx.run_id, "hook": "ket_qua_rong",
+                                            "tool": call.tool, "ly_do": ly_do})
+                self.messages.append({"role": "user", "_he_thong": True,
+                                      "text": nhac_nho(call.tool, ly_do)})
 
         # MEM-42 §5.1 — kết quả KHÔNG đi nguyên văn vào transcript. Phần vượt trần nằm
         # ở blob và mô hình đọc lại bằng `blob.read`. Đây là chỗ rẻ nhất để giữ cửa sổ.
