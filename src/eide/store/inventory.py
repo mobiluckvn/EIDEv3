@@ -42,6 +42,29 @@ _STAGE_RULES = [
 ]
 
 
+# Bao nhiêu tên công cụ thì đủ để nhớ ra việc đang dở. Nhiều hơn thế là chép lại sổ cái vào
+# ngữ cảnh — đúng thứ mà bảng này sinh ra để khỏi phải làm.
+SO_CONG_CU_NHO_LAI = 12
+
+
+def _cong_cu_cua_luot(ledger: Any, run_id: str) -> list[str]:
+    """Tên các công cụ một lượt đã gọi, theo thứ tự, gộp lần lặp liên tiếp."""
+    ra: list[str] = []
+    for ev in ledger.read():
+        if ev.kind != "tool_use":
+            continue
+        d = ev.data or {}
+        if d.get("run_id") != run_id or not d.get("tool"):
+            continue
+        t = d["tool"]
+        if ra and ra[-1].split(" ×")[0] == t:
+            n = int(ra[-1].split(" ×")[1]) + 1 if " ×" in ra[-1] else 2
+            ra[-1] = f"{t} ×{n}"
+        else:
+            ra.append(t)
+    return ra[-SO_CONG_CU_NHO_LAI:]
+
+
 @dataclass(slots=True)
 class Inventory:
     counts: dict[str, int] = field(default_factory=dict)
@@ -116,9 +139,21 @@ class Inventory:
             L.append("STALE: 0.")
 
         # --- Việc dở
+        #
+        # Nói lượt dở ĐANG LÀM GÌ, không chỉ mã số của nó. Đo được trên phiên bo STM32F469:
+        # dòng cũ chỉ in `run_id` và 70 ký tự đầu của câu người dùng, nên mỗi lượt mới tác tử
+        # lại tiêu 3–10 lời gọi cho `ledger.query`/`history.diff` chỉ để biết mình đang dở
+        # việc gì — có lượt hết sạch hạn mức trước khi làm được việc nào. Danh sách công cụ
+        # nó vừa gọi là câu trả lời rẻ nhất cho câu "lúc nãy tôi đang làm gì".
         if self.unfinished_run:
             L.append(f"Lượt chạy dở: {self.unfinished_run.get('run_id')} — "
-                     f"{(self.unfinished_run.get('text') or '')[:70]}")
+                     f"{(self.unfinished_run.get('text') or '')[:160]}")
+            cc = self.unfinished_run.get("cong_cu") or []
+            if cc:
+                L.append("  Lượt đó đã gọi: " + " → ".join(cc))
+                L.append("  Đừng đi đọc lại sổ cái để nhớ ra việc đang dở — nó ở ngay đây. "
+                         "Và khi sắp hết hạn mức, hãy ghi chỗ đang dở vào EIDE.md "
+                         "(memory.note) để lượt sau khỏi phải dò lại.")
         if self.pending_cards:
             L.append(f"Thẻ đang chờ người trả lời ({len(self.pending_cards)}): "
                      + ", ".join(f"{p.get('gate') or p.get('type')}[{p.get('card_id')}]"
@@ -185,7 +220,9 @@ def build(store: Any, *, ledger: Any = None, project_name: str = "",
             # Lượt dở = lượt có turn.start mà không có turn.end tương ứng.
             ended = {ev.data.get("run_id") for ev in ledger.read() if ev.kind == "turn.end"}
             if runs[-1]["run_id"] not in ended:
-                inv.unfinished_run = runs[-1]
+                inv.unfinished_run = dict(runs[-1])
+                inv.unfinished_run["cong_cu"] = _cong_cu_cua_luot(
+                    ledger, runs[-1]["run_id"])
 
     inv.elapsed_ms = (time.perf_counter() - t0) * 1000.0
     return inv

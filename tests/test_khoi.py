@@ -478,3 +478,65 @@ def test_HIER16_snapshot_ghi_block_semver_da_dung(make_agent):
     s = a.history.tao_snapshot(ten="thu-mot", ghi_chu="trước khi đổi nguồn", boi="human")
     assert s.contents["khoi_thu_vien"] == {"MOD-PWR": "LDO-3V3@1.2.0"}
     assert s.chip is None or isinstance(s.chip, str)
+
+
+# ============================== lượt dở phải mang theo NÓ ĐANG LÀM GÌ
+def test_luot_do_khai_luon_cong_cu_da_goi(tmp_path):
+    """Đo được trên phiên bo STM32F469: dòng `<inventory>` cũ chỉ in `run_id` và 70 ký tự đầu
+    của câu người dùng. Mỗi lượt mới, tác tử lại tiêu 3–10 lời gọi cho `ledger.query` /
+    `history.diff` chỉ để nhớ ra mình đang dở việc gì — có lượt hết sạch hạn mức 40 lời gọi
+    **trước khi làm được việc nào**.
+
+    Danh sách công cụ nó vừa gọi là câu trả lời rẻ nhất cho câu "lúc nãy tôi đang làm gì", và
+    nó đã nằm sẵn trong sổ cái. Không đưa vào là bắt tác tử trả tiền hai lần cho cùng một
+    thông tin.
+    """
+    from eide.protocol.ledger import Ledger
+    from eide.store import inventory as INV
+    from eide.store.db import Store
+
+    led = Ledger(tmp_path / "ledger.jsonl")
+    led.append("turn.start", {"run_id": "run-1"})
+    led.append("ui_command", {"run_id": "run-1", "text": "sửa màn hình đen giúp tôi"})
+    for t in ("target.screen", "fs.read", "fs.read", "fs.read", "fs.edit", "build.compile"):
+        led.append("tool_use", {"run_id": "run-1", "tool": t})
+    # Không có turn.end → lượt này dở.
+
+    inv = INV.build(Store(tmp_path / "store"), ledger=led)
+    assert inv.unfinished_run and inv.unfinished_run["run_id"] == "run-1"
+    cc = inv.unfinished_run["cong_cu"]
+    assert cc == ["target.screen", "fs.read ×3", "fs.edit", "build.compile"], cc
+
+    ra = inv.render()
+    assert "Lượt chạy dở: run-1" in ra
+    assert "target.screen → fs.read ×3 → fs.edit → build.compile" in ra
+    # Và nói thẳng hai việc: đừng đi đọc lại sổ cái, và hãy ghi chỗ dở vào EIDE.md.
+    assert "Đừng đi đọc lại sổ cái" in ra and "EIDE.md" in ra
+
+
+def test_luot_da_xong_thi_KHONG_bao_do(tmp_path):
+    from eide.protocol.ledger import Ledger
+    from eide.store import inventory as INV
+    from eide.store.db import Store
+
+    led = Ledger(tmp_path / "ledger.jsonl")
+    led.append("turn.start", {"run_id": "run-1"})
+    led.append("tool_use", {"run_id": "run-1", "tool": "fs.read"})
+    led.append("turn.end", {"run_id": "run-1"})
+    inv = INV.build(Store(tmp_path / "store"), ledger=led)
+    assert inv.unfinished_run is None
+    assert "Lượt chạy dở" not in inv.render()
+
+
+def test_cong_cu_cua_luot_chi_giu_muoi_hai_cai_cuoi(tmp_path):
+    """Chép cả sổ cái vào ngữ cảnh là đúng thứ bảng này sinh ra để khỏi phải làm."""
+    from eide.protocol.ledger import Ledger
+    from eide.store.inventory import SO_CONG_CU_NHO_LAI, _cong_cu_cua_luot
+
+    led = Ledger(tmp_path / "ledger.jsonl")
+    for i in range(40):
+        led.append("tool_use", {"run_id": "run-1", "tool": f"cong_cu_{i}"})
+    led.append("tool_use", {"run_id": "run-KHAC", "tool": "khong_tinh"})
+    cc = _cong_cu_cua_luot(led, "run-1")
+    assert len(cc) == SO_CONG_CU_NHO_LAI
+    assert cc[-1] == "cong_cu_39" and "khong_tinh" not in cc

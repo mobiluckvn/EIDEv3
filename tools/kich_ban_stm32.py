@@ -935,8 +935,83 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
         nk.anh(g, "0-hay-hong")
 
+    # ------------------------------------------- 34. đọc hỏng là giới hạn của DỤNG CỤ
+    #
+    # Sáu lần `DSI_IO_ReadCmd` trả `LCD_ERROR` sau khi vào chế độ video, trong khi cùng lệnh
+    # ấy chạy được lúc `LCD_ReadType()` (trước `HAL_DSI_Start`). Dễ sa vào việc đi sửa "lỗi
+    # đọc" — nhưng đọc hỏng KHÔNG phải cái làm màn đen; nó là giới hạn của **dụng cụ đo**.
+    #
+    # Câu cần trả lời vẫn là câu cũ: panel nghĩ màn của nó đang thế nào. Và đã biết có một
+    # thời điểm lệnh đọc CHẠY ĐƯỢC — nên cứ hỏi ở đúng thời điểm ấy.
+    if lam(34):
+        nk.buoc("Đọc hỏng là giới hạn của dụng cụ, không phải nguyên nhân màn đen")
+        loi, cc = hoi(g, nk, du_an,
+                      "Số đo của bạn rất rõ, và cách bạn mồi bộ đệm bằng `AA BB CC DD EE "
+                      "FF` để phân biệt “chưa ai ghi” với “đọc ra 0” thì đúng bài — mình "
+                      "đọc từ chip ra:\n\n"
+                      "```\n"
+                      "g_panel_status   = AA BB CC DD EE FF 12 34   (mồi còn nguyên)\n"
+                      "g_panel_read_ret = [1, 1, 1, 1, 1, 1, -1, -1]   (1 = LCD_ERROR)\n"
+                      "```\n\n"
+                      "Một lưu ý về hướng đi, kẻo mất thời gian: **đọc hỏng không phải cái "
+                      "làm màn đen** — nó là giới hạn của dụng cụ đo, không phải nguyên "
+                      "nhân. Đừng biến nó thành mục tiêu.\n\n"
+                      "Câu cần trả lời vẫn là câu cũ: *panel nghĩ màn của nó đang thế nào*. "
+                      "Và bạn đã biết một điều rất có ích — có một thời điểm lệnh đọc **chạy "
+                      "được**: lúc `LCD_ReadType()` dò ID, trước `HAL_DSI_Start`. Vậy thì "
+                      "hỏi panel ở đúng chỗ đó, hoặc tìm cách làm cho lệnh đọc chạy được cả "
+                      "trong chế độ video — bạn chọn, miễn là ra số.\n\n"
+                      "Ra số rồi thì hai nhánh rẽ rất khác nhau: panel khai màn TẮT → lệnh "
+                      "bật của ta chưa tới nơi; panel khai màn BẬT mà mắt vẫn thấy đen → "
+                      "đèn nền. Đo trước, rồi mới sửa.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_trang_thai_panel(nk, ctx, du_an)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "hoi-panel-dung-cho")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_trang_thai_panel(nk: Any, ctx: Any, du_an: pathlib.Path) -> None:
+    """Panel đã KHAI được trạng thái của chính nó chưa — và khai bằng số nào.
+
+    Đọc thẳng biến trên chip, sau khi đối chiếu hash ảnh nạp. Ba trạng thái: chưa đo được /
+    đọc hỏng (mã trả về khác 0, hoặc bộ đệm còn nguyên giá trị mồi) / đọc được thật.
+    """
+    from eide.build.mach_that import (doc_nguoc_flash, ky_hieu_theo_ten, soi_chip)
+
+    xd = du_an / ".eide" / "build"
+    if not doc_nguoc_flash(xd / "mach.bin").get("dat"):
+        nk.ket(False, "Panel KHAI được trạng thái của chính nó",
+               "chip không chứa bản vừa dịch — số đọc từ RAM vẫn do bản cũ sinh ra")
+        return
+    k = ky_hieu_theo_ten(xd / "mach.elf", ["g_panel_status", "g_panel_read_ret"])
+    st = (k.get("ky_hieu") or {}).get("g_panel_status")
+    rt = (k.get("ky_hieu") or {}).get("g_panel_read_ret")
+    if not st:
+        nk.ket(False, "Panel KHAI được trạng thái của chính nó",
+               "không thấy `g_panel_status` trong ELF")
+        return
+    d = soi_chip([st["dia_chi"]] + ([rt["dia_chi"]] if rt else []),
+                 so_tu=max(2, (st["kich_thuoc"] + 3) // 4))
+    w = d["o_nho"].get(f"0x{st['dia_chi']:08x}") or []
+    b = b"".join(bytes.fromhex(x)[::-1] for x in w)[:st["kich_thuoc"]]
+    MOI = bytes([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x12, 0x34])
+    con_moi = bytes(b[:len(MOI)]) == MOI[:len(b)]
+    ma = ""
+    if rt:
+        v = d["o_nho"].get(f"0x{rt['dia_chi']:08x}") or []
+        so = [int(x, 16) - (1 << 32) if int(x, 16) >= 1 << 31 else int(x, 16) for x in v]
+        ma = f" · mã trả về: {so}"
+    xau = " ".join(f"{x:02X}" for x in b)
+    nk.ket(not con_moi and any(b),
+           "Panel KHAI được trạng thái của chính nó (đọc DCS thành công)",
+           (f"bộ đệm VẪN NGUYÊN giá trị mồi ({xau}) → chưa lần đọc nào ghi được gì{ma}"
+            if con_moi else f"đọc được: {xau}{ma}"))
 
 
 def _kiem_loai_panel_doc_duoc(nk: Any, ctx: Any) -> None:

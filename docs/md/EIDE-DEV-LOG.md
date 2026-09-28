@@ -3157,11 +3157,45 @@ Sáu lệnh đọc DCS đều **thất bại** sau khi chế độ video chạy,
 công** lúc `LCD_ReadType()` dò panel (trước `HAL_DSI_Start`). Đó là số đo, và nó hẹp hơn hẳn
 "màn hình đen".
 
+#### Lần 13 — vá lỗ hổng "tôi đang ở đâu", đo được bằng chính hành vi của tác tử
+
+Lỗ hổng ghi ở lần 10 đã đủ bằng chứng để vá. Triệu chứng: mỗi lượt mới, tác tử tiêu 3–10 lời
+gọi cho `ledger.query` / `history.list` / `history.diff` chỉ để nhớ ra mình đang dở việc gì —
+có lượt **hết sạch hạn mức 40 lời gọi trước khi làm được việc nào**.
+
+Nguyên nhân nằm ở một dòng: khối `<inventory>` chỉ in
+
+```
+Lượt chạy dở: run-256 — <70 ký tự đầu của câu người dùng>
+```
+
+Một mã số và một mẩu câu. Tác tử biết **có** lượt dở nhưng không biết dở **ở đâu**, nên nó đi
+đào sổ cái — trong khi thông tin ấy đã nằm sẵn ở đó, chỉ là không được đưa lên. Bắt nó trả
+tiền hai lần cho cùng một thông tin.
+
+→ Lượt dở giờ mang theo **danh sách công cụ nó vừa gọi**, gộp lần lặp liên tiếp, giữ 12 cái
+cuối (nhiều hơn là chép sổ cái vào ngữ cảnh — đúng thứ bảng này sinh ra để khỏi phải làm):
+
+```
+Lượt chạy dở: run-256 — sửa màn hình đen giúp tôi
+  Lượt đó đã gọi: target.screen → fs.read ×3 → fs.edit → build.compile
+  Đừng đi đọc lại sổ cái để nhớ ra việc đang dở — nó ở ngay đây. Và khi sắp hết hạn mức,
+  hãy ghi chỗ đang dở vào EIDE.md (memory.note) để lượt sau khỏi phải dò lại.
+```
+
+Một ghi nhận đáng nói cho báo cáo: `EIDE.md` — bộ nhớ dài hạn của dự án, tác tử **đọc mỗi
+lượt** — vẫn gần như trống sau 34 bước. Cơ chế có sẵn từ đầu; thứ thiếu là một lý do cụ thể để
+dùng nó đúng lúc. Đó là bài học chung của cả phiên này: *một năng lực không được nhắc đúng lúc
+thì tương đương không có*.
+
 ### Còn lại
 
 - Đọc DCS hỏng sau khi vào chế độ video → chưa hỏi được panel về trạng thái của chính nó.
-  Tác tử đang xử lý; đây là chỗ hẹp nhất còn lại.
-- Tóm tắt "tôi đang ở đâu" cho tác tử giữa hai lượt — lỗ hổng đo được ở lần 10, chưa vá.
+  Đo mới nhất: `g_panel_read_ret = [1, 1, -1, …]`, bộ đệm còn nguyên giá trị mồi.
+- Cần anh Công nhìn bo trong phòng tối: **đèn nền có sáng không** (màn đen-xám có ánh so với
+  đen tuyệt đối). Đó là phép đo duy nhất còn lại mà máy không làm được, và nó chia đôi phần
+  việc còn lại: đèn nền sáng → dữ liệu điểm ảnh không tới panel; đèn nền tắt → đường nguồn /
+  độ sáng.
 - Tóm tắt "tôi đang ở đâu" cho tác tử giữa hai lượt — lỗ hổng đo được ở trên, chưa vá. Phần vẽ đã chứng minh là đúng bằng số.
 - Chữ vỡ (dựng phông) và hộp nền đen của logo (alpha) — hai lỗi do `target.screen` lộ ra.
 - `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.
