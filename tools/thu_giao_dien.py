@@ -55,6 +55,26 @@ class GiaoDien:
         """Gõ một câu vào ô nhập — đúng như người bấm Enter."""
         self._gui({"kind": "say", "text": cau, "origin": {"surface": "console"}})
 
+    def du_an_moi(self, duong: pathlib.Path) -> dict:
+        """Bấm "Dự án mới…" rồi đặt tên — trừ cái bảng chọn tệp của macOS.
+
+        Bảng ấy là modal của hệ điều hành, không lái được từ một tệp lệnh; phần còn lại
+        (luật không lồng nhau · từ chối khi đã có sẵn · tạo thư mục · mở luôn) là đúng mã mà
+        cái nút gọi. Giới hạn này nói ra chứ không giấu.
+        """
+        self._gui({"ui": "du_an_moi", "tep": str(duong)})
+        return self._doi_mot_trong(("du_an_moi", "du_an_moi_loi"), 30)
+
+    def mo_gan_day(self, duong: pathlib.Path | str) -> dict:
+        """Bấm một dòng trong danh sách "Mở lại dự án gần đây"."""
+        self._gui({"ui": "mo_gan_day", "tep": str(duong)})
+        return self._doi("da_mo", 60)
+
+    def dong_du_an(self) -> dict:
+        """File ▸ Đóng dự án — quay về màn mở."""
+        self._gui({"ui": "dong_du_an"})
+        return self._doi("da_dong_du_an", 20)
+
     def mo_tab(self, surface: str) -> None:
         self._gui({"ui": "tab", "surface": surface})
 
@@ -105,6 +125,18 @@ class GiaoDien:
         moi = ds[self._da_doc:]
         self._da_doc = len(ds)
         return moi
+
+    def _doi_mot_trong(self, su_kien: tuple[str, ...], giay: float) -> dict:
+        """Đợi cái nào tới trước trong mấy sự kiện. Cần khi một lệnh có hai lối kết thúc —
+        đợi riêng lối thành công thì lối lỗi sẽ treo cho tới hết giờ, và bộ đo báo "quá hạn"
+        thay vì báo đúng cái lỗi mà app vừa nói ra."""
+        het = time.time() + giay
+        while time.time() < het:
+            for o in self._dong_moi():
+                if o.get("su_kien") in su_kien:
+                    return o
+            time.sleep(0.15)
+        raise TimeoutError(f"quá {giay:.0f}s chưa thấy {su_kien}")
 
     def _doi(self, su_kien: str, giay: float) -> dict:
         het = time.time() + giay

@@ -257,6 +257,7 @@ struct StatusBarView: View {
 struct MoDuAnView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var setup: Setup
+    @State private var loiTao: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -273,6 +274,11 @@ struct MoDuAnView: View {
                 .padding(6)
             }
 
+            if let v = loiTao {
+                Label(v, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Color.gateRed).font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let v = setup.vanDe {
                 Label(v, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(Color.gateRed).font(.callout)
@@ -283,15 +289,14 @@ struct MoDuAnView: View {
                     .textSelection(.enabled)
             }
 
+            if !setup.ganDay.isEmpty { ganDayView }
+
             HStack {
-                Button("Mở dự án") {
-                    Task {
-                        await state.mo(python: setup.pythonURL, repo: setup.repoURL,
-                                       duAn: setup.duAnURL)
-                    }
-                }
+                Button("Mở dự án") { Task { await moRoiGhiNho() } }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!setup.hopLe)
+
+                Button("Dự án mới…") { taoDuAnMoi() }
 
                 if !state.coreLog.isEmpty {
                     Spacer()
@@ -303,7 +308,74 @@ struct MoDuAnView: View {
             Spacer()
         }
         .padding(28)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Màn này trước đây không có nền của RIÊNG nó — nó mượn nền cửa sổ. Trên máy thì
+        // trông vẫn đúng, nhưng `cacheDisplay` chỉ vẽ cây view, nên ảnh tự chụp ra
+        // trắng-trên-trắng và không đọc được chữ nào. Cả cách kiểm của dự án này dựa vào
+        // tấm ảnh ấy, nên một màn không chụp được là một màn không kiểm được.
+        .background(.background)
+    }
+
+    /// Danh sách dự án gần đây.
+    ///
+    /// Dự án không còn trên đĩa vẫn được HIỆN, chỉ mờ đi và không bấm được, kèm nút "Quên".
+    /// Lặng lẽ lọc nó ra thì người dùng thấy một mục biến mất và không biết vì sao — mà lý do
+    /// thường là họ vừa đổi tên hay chuyển thư mục, tức là đúng lúc họ cần biết nhất.
+    private var ganDayView: some View {
+        GroupBox("Mở lại dự án gần đây") {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(setup.ganDay, id: \.self) { d in
+                    let con = FileManager.default.fileExists(atPath: d)
+                    HStack(spacing: 8) {
+                        Button {
+                            setup.duAnPath = d
+                            Task { await moRoiGhiNho() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: con ? "folder" : "questionmark.folder")
+                                Text(URL(fileURLWithPath: d).lastPathComponent).bold()
+                                Text(d).font(.caption).foregroundStyle(.tertiary)
+                                    .lineLimit(1).truncationMode(.head)
+                            }
+                        }
+                        .buttonStyle(.link)
+                        .disabled(!con)
+                        if !con {
+                            Text("không còn ở đây").font(.caption)
+                                .foregroundStyle(Color.staleAmber)
+                        }
+                        Spacer(minLength: 0)
+                        Button("Quên") { setup.quen(d) }
+                            .buttonStyle(.borderless).font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .padding(6)
+        }
+    }
+
+    private func taoDuAnMoi() {
+        let p = NSSavePanel()
+        p.title = "Dự án EIDE mới"
+        p.prompt = "Tạo"
+        p.nameFieldLabel = "Tên dự án:"
+        p.nameFieldStringValue = "du-an-moi"
+        p.canCreateDirectories = true
+        guard p.runModal() == .OK, let u = p.url else { return }
+        do {
+            try setup.taoDuAn(tai: u)
+            Task { await moRoiGhiNho() }
+        } catch {
+            loiTao = error.localizedDescription
+        }
+    }
+
+    /// Mở, rồi CHỈ ghi nhớ khi lõi đã bắt tay xong — xem `Setup.ghiNho`.
+    private func moRoiGhiNho() async {
+        loiTao = nil
+        await state.mo(python: setup.pythonURL, repo: setup.repoURL, duAn: setup.duAnURL)
+        if state.connection.ok { setup.ghiNho(setup.duAnPath) }
     }
 
     private func hang(_ nhan: String, _ gia: Binding<String>, _ goiY: String) -> some View {

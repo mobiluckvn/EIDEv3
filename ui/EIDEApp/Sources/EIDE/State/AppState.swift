@@ -84,6 +84,15 @@ final class AppState: ObservableObject {
 
     // MARK: - Mở dự án
 
+    /// Ba việc thuộc về `Setup` mà `AppState` không với tới: tạo dự án, mở một dự án khác,
+    /// và đọc danh sách gần đây. Lớp `EIDEApp` gắn vào lúc dựng.
+    ///
+    /// Có chúng thì kênh kiểm thử giao diện gọi được — nếu không, ba tính năng vừa làm sẽ
+    /// chỉ kiểm được bằng mắt, mà kiểm bằng mắt thì không chạy lại được ở lần sau.
+    var taoDuAnTai: ((String) throws -> Void)?
+    var moDuAnKhac: ((String) async -> Void)?
+    var duAnGanDay: (() -> [String])?
+
     func mo(python: URL, repo: URL, duAn: URL) async {
         client.onCommand = { [weak self] c in self?.apply(c) }
         client.onStderr = { [weak self] s in

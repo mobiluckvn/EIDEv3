@@ -4173,3 +4173,69 @@ chặn ở giao diện là chưa đủ.
 `1221 ca đơn vị` (+7): `tests/test_mo_lai_du_an.py`. Bốn ca đầu đã được chứng minh là **đỏ
 được** bằng cách phá lại chỗ vừa vá (bỏ cờ phát-lại-một-lần → 1 ca đỏ; bỏ luôn phần đóng thẻ →
 3 ca đỏ).
+
+### [DEV-290] 28/09/2026 · Vòng đời dự án: tạo mới · đóng · mở lại gần đây
+
+Hai khoảng trống DEV-289 nêu ra, nay vá. Nhưng lúc làm lộ ra **chỗ thứ ba**, và nếu thiếu nó
+thì hai cái kia vô dụng: `AppState.dong()` **chưa từng được gọi ở đâu**. Một khi đã đặt dự án
+thì không có đường quay lại màn mở — danh sách gần đây có làm ra cũng không ai tới được. Nên
+ba việc này phải đi cùng nhau chứ không tách rời.
+
+#### Tạo dự án
+
+File ▸ **Dự án mới…** (⌘N) và một nút trên màn mở. Dùng `NSSavePanel` chứ không phải
+`NSOpenPanel`: người đang **đặt tên** một thứ chưa có, không phải chọn một thứ đã có — bảng
+"mở" không có ô gõ tên, nên với nó "tạo dự án" vẫn là "tự tạo thư mục trong Finder trước đã".
+
+App **chỉ tạo thư mục**, không dựng `.eide/`. Giữ đúng một nguồn sự thật cho câu hỏi *"một dự
+án gồm những gì"*: `Paths.ensure` bên Python. App mà tự dựng lấy vài thư mục thì hai chỗ sẽ
+trôi khỏi nhau, và cái trôi ấy chỉ lộ ra khi có người mở một dự án do bản app cũ tạo.
+
+Hai lối bị chặn, mỗi lối một câu nói rõ vì sao:
+
+- **Đã có sẵn thứ gì đó ở đó** → bảo chọn tên khác, hoặc dùng "Mở dự án" nếu đây là dự án cũ.
+- **Nằm bên trong một dự án khác** (`duAnBaoTrum` đi ngược cây thư mục tìm `.eide`) → đây là
+  luật *"không tạo lồng"* của bản mẫu UI (A14.1.1). Lý do không phải hình thức: một dự án lồng
+  trong dự án khác thì `.eide/` của cái trong — sổ cái, kho hiện vật, ảnh chụp — trở thành tệp
+  thường trong hộp cát của tác tử ngoài; nó đọc được, sửa được, và **không có gì nói cho nó
+  biết** đấy là sổ cái của một dự án khác.
+
+#### Danh sách gần đây
+
+Tám dự án, mới nhất trước, trong File ▸ **Mở gần đây** và trên màn mở. Ba quyết định:
+
+- **Chỉ ghi nhớ sau khi lõi đã bắt tay xong**, không ghi lúc bấm nút. Ghi lúc bấm thì danh
+  sách sẽ đầy những đường dẫn gõ sai, và người phải thử từng cái mới biết cái nào thật.
+- **Dự án tự mở lúc khởi động cũng được ghi.** Không thì dự án người dùng dùng *nhiều nhất*
+  lại là dự án duy nhất không có trong danh sách.
+- **Dự án không còn trên đĩa vẫn được HIỆN**, chỉ mờ đi, không bấm được, kèm nhãn *"không còn
+  ở đây"* và nút "Quên". Lặng lẽ lọc nó ra thì người thấy một mục biến mất mà không biết vì
+  sao — mà lý do thường là họ vừa đổi tên hay chuyển thư mục, tức là đúng lúc họ cần biết nhất.
+
+#### Đo qua GUI thật, và một chỗ chỉ tấm ảnh nói được
+
+Kênh kiểm giao diện thêm ba lệnh (`du_an_moi`, `mo_gan_day`, `dong_du_an`) và hai trường trong
+ảnh chụp (`man_hinh`, `du_an_gan_day`). Không có `man_hinh` thì không phân biệt được *"đã đóng
+dự án"* với *"lệnh đóng chẳng làm gì"* — hai thứ trông giống hệt nhau qua mọi số khác. Kịch
+bản: `tools/review_tao_va_gan_day.py`, nhật ký `docs/review-mo-du-an/03-*.md`. Mười ô, xanh cả
+mười.
+
+Giới hạn nói ra: ba lệnh ấy gọi **đúng** những hàm mà nút bấm gọi, chỉ thiếu bảng chọn tệp của
+macOS — bảng ấy là modal, không lái được từ một tệp lệnh.
+
+Và một chỗ nữa: ảnh tự chụp của màn mở ra **trắng-trên-trắng**, không đọc được chữ nào — làm
+tôi tưởng nút "Dự án mới…" không được vẽ. Nó vẫn ở đó; màn ấy không có nền của **riêng** nó,
+nó mượn nền cửa sổ, mà `cacheDisplay` chỉ vẽ cây view. Trên máy trông vẫn đúng, nhưng cả cách
+kiểm của dự án này dựa vào tấm ảnh — **một màn không chụp được là một màn không kiểm được**.
+Thêm `.background(.background)` là xong.
+
+Riêng việc dòng `hai` hiện mờ kèm *"không còn ở đây"* thì bằng chứng là **tấm ảnh**
+(`docs/review-mo-du-an/anh/man-mo-du-an.png`), không phải một con số: phép đo chỉ khẳng định
+được đường dẫn còn trong danh sách. Phơi thêm một trường tính lại `fileExists` ở kênh kiểm sẽ
+chỉ lặp lại đúng biểu thức mà view dùng, chứ không chứng minh view có vẽ nó — nên tôi không
+làm, và ghi rõ ở đây thay vì để một ô xanh nói hộ.
+
+### Số đo
+
+`1221 ca đơn vị` (không đổi — đây là thay đổi ở tầng giao diện, kiểm bằng mười ô đo qua GUI
+thật và một ảnh do chính app vẽ).

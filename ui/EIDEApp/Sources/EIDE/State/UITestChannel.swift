@@ -155,6 +155,26 @@ final class UITestChannel {
                         self.ghi(["su_kien": "anh_loi", "ghi_chu": "\(error)"])
                     }
                 }
+            // Ba lệnh cho vòng đời dự án. Chúng gọi ĐÚNG những hàm mà nút bấm gọi, chỉ
+            // thiếu cái bảng chọn tệp của macOS — bảng ấy là modal, không lái được từ tệp,
+            // và đó là giới hạn được nói ra chứ không giấu đi.
+            case "du_an_moi":
+                if let d = v["tep"]?.stringValue {
+                    do {
+                        try s.taoDuAnTai?(d)
+                        Task { await s.moDuAnKhac?(d) }
+                        ghi(["su_kien": "du_an_moi", "tep": d])
+                    } catch {
+                        ghi(["su_kien": "du_an_moi_loi", "loi": error.localizedDescription])
+                    }
+                }
+            case "mo_gan_day":
+                if let d = v["tep"]?.stringValue {
+                    Task { await s.moDuAnKhac?(d); self.ghi(["su_kien": "da_mo", "tep": d]) }
+                }
+            case "dong_du_an":
+                s.dong()
+                ghi(["su_kien": "da_dong_du_an"])
             case "gioi_thieu":
                 // Mở bảng Giới thiệu. Có mặt ở đây để phép kiểm giao diện chạm được vào nó
                 // qua đúng một cửa như mọi thao tác khác, thay vì phải lái menu ở mức OS.
@@ -356,6 +376,10 @@ final class UITestChannel {
             // Bề RỘNG từng khối. Khối rộng hơn khung là khối đẩy các thứ bên phải ra ngoài
             // màn hình — người dùng mất luôn nút "Vì sao?" và không có cách nào cuộn tới.
             "rong_khoi": rongKhoi(), "nhan": nhan,
+            // Đang ở màn NÀO. Không có trường này thì không phân biệt được "đã đóng dự án"
+            // với "lệnh đóng chẳng làm gì" — hai thứ trông giống hệt nhau qua các số khác.
+            "man_hinh": s.connection.ok ? "lam-viec" : "mo-du-an",
+            "du_an_gan_day": s.duAnGanDay?() ?? [],
             "so_dong_hoi_thoai": s.transcript.count,
             // Số thẻ CÒN NÚT bấm được trong dòng hội thoại — đúng thứ `ConsoleView` vẽ
             // (`line.card != nil && !card.resolved`).
