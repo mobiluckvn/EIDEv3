@@ -588,3 +588,402 @@ def test_thieu_st_flash_thi_KHONG_DO_DUOC_chu_khong_phai_khong_khop(make_agent, 
     assert not r.ok and r.error.code == "E4015"
     assert "KHÔNG đo được khác với KHÔNG khớp" in r.error.hint_for_agent
     assert r.error.details["do_duoc"] is False
+
+
+# ============================== soi_chip — đo chip ĐANG CHẠY, không đọc mã rồi đoán
+# Đo được trên bo STM32F469 ngày 28/09/2026: firmware dịch sạch, nạp đúng từng byte,
+# `target.verify` khớp hoàn toàn, **mà màn hình đen**. Mọi phép đo tĩnh đều xanh. Chỉ chip
+# đang chạy nói được sự thật, nên bộ này canh đúng cái đường ống dẫn sự thật đó.
+
+_RA_HARDFAULT = """Info : clock speed 2000 kHz
+Info : stm32f4x.cpu: hardware has 6 breakpoints, 4 watchpoints
+[stm32f4x.cpu] halted due to debug-request, current mode: Handler HardFault
+xPSR: 0x21000003 pc: 0x08000db0 msp: 0x2002ffd0
+0xe000ed28: 00020000 40000000
+0xe000ed34: e000edf8 e000edf8
+"""
+
+
+def _openocd_gia(monkeypatch, ra: str, *, giu: list | None = None):
+    import subprocess
+
+    def _run(cl, **k):
+        if giu is not None:
+            giu.append(list(cl))
+        return subprocess.CompletedProcess(cl, 0, ra, "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+
+
+def test_soi_chip_tach_tung_c_chu_khong_gop_mot_chuoi(monkeypatch):
+    """Gộp cả chuỗi lệnh vào MỘT `-c` thì openocd chạy đúng nhưng không in kết quả `mdw`.
+
+    Đo được: gộp → `o_nho` rỗng; tách → đọc ra `0xe000ed28: 00020000`. Một phép đo im lặng
+    trông y hệt một phép đo không có gì để nói, nên lỗi này tự nó không kêu — phải có test.
+    """
+    giu: list[list[str]] = []
+    _openocd_gia(monkeypatch, _RA_HARDFAULT, giu=giu)
+    MT.soi_chip([0x20000000])
+    cl = giu[0]
+    assert "; " not in " ".join(cl), f"lệnh bị gộp vào một -c: {cl}"
+    lenh = [cl[i + 1] for i, x in enumerate(cl) if x == "-c"]
+    assert lenh[:2] == ["init", "halt"] and lenh[-1] == "exit"
+    assert "mdw 0x20000000 4" in lenh          # địa chỉ người gọi xin
+    assert "mdw 0xe000ed28 2" in lenh          # CFSR+HFSR: đọc LUÔN, không đợi ai nghĩ ra
+
+
+def test_soi_chip_doc_duoc_cfsr_thi_dich_ra_loi_nguoi_doc_duoc(monkeypatch):
+    _openocd_gia(monkeypatch, _RA_HARDFAULT)
+    d = MT.soi_chip()
+    assert d["dat"] and d["che_do"] == "Handler HardFault" and d["pc"] == "0x08000db0"
+    lp = d["loi_phan_cung"]
+    assert lp["cfsr"] == "0x00020000" and lp["hfsr"] == "0x40000000"
+    assert any("INVSTATE" in x for x in lp["nghia"])
+    assert any("FORCED" in x for x in lp["nghia"])
+    # MMARVALID/BFARVALID đều tắt → địa chỉ trong MMFAR/BFAR là rác. Nói "không hợp lệ"
+    # thay vì in ra một con số trông như sở cứ.
+    assert lp["mmfar"] == "(không hợp lệ)" and lp["bfar"] == "(không hợp lệ)"
+
+
+def test_soi_chip_khong_dung_duoc_chip_thi_KHONG_DAT_chu_khong_bao_chay_dung(monkeypatch):
+    _openocd_gia(monkeypatch, "Error: init mode failed (unable to connect to the target)\n")
+    d = MT.soi_chip()
+    assert not d["dat"] and "không dừng được chip" in d["vi_sao_khong_dat"]
+    assert d["che_do"] == ""
+
+
+def test_soi_chip_thieu_openocd_thi_noi_KHAC_voi_chip_chay_dung(monkeypatch):
+    monkeypatch.setattr(MT.shutil, "which", lambda x: None)
+    d = MT.soi_chip()
+    assert not d["dat"] and "Không soi được KHÁC" in d["vi_sao_khong_dat"]
+
+
+def test_soi_chip_khong_doc_duoc_thanh_ghi_thi_loi_phan_cung_RONG(monkeypatch):
+    """Không đọc được CFSR ≠ CFSR bằng 0. Trả rỗng, đừng dựng lên một chẩn đoán "sạch"."""
+    ra = ("[stm32f4x.cpu] halted due to debug-request, current mode: Thread\n"
+          "xPSR: 0x01000000 pc: 0x08000200 msp: 0x2002ffd0\n")
+    _openocd_gia(monkeypatch, ra)
+    d = MT.soi_chip()
+    assert d["dat"] and d["che_do"] == "Thread" and d["loi_phan_cung"] == {}
+
+
+# ============================== địa chỉ → tên hàm, và phanh "tên này có tin được không"
+def test_giai_ma_dia_chi_tra_ten_ham_va_dong_nguon(tmp_path, monkeypatch):
+    """Một địa chỉ không tên thì chỉ là một con số, và nó bắt tác tử đọc cả cây mã để đoán.
+
+    Đo được trên bo STM32F469: nhận `pc 0x08000db0`, tác tử gọi `fs.read` 28 lần rồi hết hạn
+    mức lời gọi của lượt và dừng giữa việc. `addr2line` trả lời trong 40 ms.
+    """
+    import subprocess
+
+    elf = tmp_path / "mach.elf"
+    elf.write_bytes(b"ELF" * 40)
+    ra = ("OTM8009A_Init_Ext\n/du-an/firmware/otm8009a.c:424\n"
+          "??\n??:0\n")
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/addr2line")
+    monkeypatch.setattr(MT.subprocess, "run",
+                        lambda cl, **k: subprocess.CompletedProcess(cl, 0, ra, ""))
+    d = MT.giai_ma_dia_chi(elf, [0x08000DB0, 0xE000ED28])
+    assert d["dat"]
+    a = d["ky_hieu"]["0x08000db0"]
+    assert a["ham"] == "OTM8009A_Init_Ext" and a["nguon"] == "otm8009a.c:424"
+    b = d["ky_hieu"]["0xe000ed28"]
+    assert b["ham"] == "" and b["nguon"] == "" and "không có ký hiệu" in b["ghi_chu"]
+    # Tên đọc từ ELF chứ không từ chip — hàm phải NÓI RA điều đó, không để tầng trên tự đoán.
+    assert d["can_doi_chieu"] and "target.verify" in d["canh_bao"]
+
+
+def test_giai_ma_dia_chi_khong_bo_mat_dia_chi_0(tmp_path, monkeypatch):
+    """Địa chỉ 0 là chỗ đặt bảng vector — một trong những chỗ đáng soi nhất khi HardFault.
+
+    `if d` lọc nó đi mất, và câu trả lời thiếu một địa chỉ trông y hệt câu trả lời đủ.
+    """
+    import subprocess
+
+    elf = tmp_path / "mach.elf"
+    elf.write_bytes(b"ELF")
+    giu: list[list[str]] = []
+
+    def _run(cl, **k):
+        giu.append(list(cl))
+        return subprocess.CompletedProcess(cl, 0, "_vector\n??:0\n", "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/addr2line")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    d = MT.giai_ma_dia_chi(elf, [0])
+    assert "0x00000000" in giu[0] and "0x00000000" in d["ky_hieu"]
+
+
+def test_giai_ma_dia_chi_nguon_kieu_hoi_hoi_dau_cham_hoi(tmp_path, monkeypatch):
+    """addr2line nói "không biết" bằng `??`, `??:0` VÀ `??:?`. Bỏ sót dạng thứ ba thì nó lọt
+    ra ngoài như một đường dẫn thật."""
+    import subprocess
+
+    elf = tmp_path / "mach.elf"
+    elf.write_bytes(b"ELF")
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/addr2line")
+    monkeypatch.setattr(MT.subprocess, "run",
+                        lambda cl, **k: subprocess.CompletedProcess(cl, 0, "_sdata\n??:?\n", ""))
+    d = MT.giai_ma_dia_chi(elf, [0x20000000])
+    assert d["ky_hieu"]["0x20000000"]["nguon"] == ""
+
+
+def test_giai_ma_dia_chi_thieu_elf_thi_noi_chua_dich(tmp_path):
+    d = MT.giai_ma_dia_chi(tmp_path / "khong-co.elf", [0x08000000])
+    assert not d["dat"] and "biên dịch trước" in d["vi_sao_khong_dat"]
+
+
+def test_giai_ma_dia_chi_thieu_addr2line_thi_KHONG_GIAI_DUOC_chu_khong_phai_khong_co_ham(
+        tmp_path, monkeypatch):
+    elf = tmp_path / "mach.elf"
+    elf.write_bytes(b"ELF")
+    monkeypatch.setattr(MT.shutil, "which", lambda x: None)
+    d = MT.giai_ma_dia_chi(elf, [0x08000000])
+    assert not d["dat"] and "KHÁC với địa chỉ không có hàm nào" in d["vi_sao_khong_dat"]
+
+
+def test_khop_tai_dia_chi_bat_duoc_chip_dang_chay_ban_khac(tmp_path, monkeypatch):
+    """Đo được trên bo STM32F469: PC giải mã thành `OTM8009A_Init_Ext`, mà 32 byte tại đúng
+    địa chỉ đó trên chip KHÁC tệp vừa dịch — chip đang chạy bản cũ, và cái tên kia sẽ dẫn tác
+    tử đi sửa một hàm không liên quan. Đây là phanh cho `giai_ma_dia_chi`."""
+    import subprocess
+
+    b = tmp_path / "mach.bin"
+    b.write_bytes(bytes(range(256)) * 8)
+
+    def _run(cl, **k):
+        Path(cl[2]).write_bytes(b"\xff" * 64)      # chip chứa thứ khác
+        return subprocess.CompletedProcess(cl, 0, "", "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/st-flash")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    d = MT.khop_tai_dia_chi(b, 0x08000100)
+    assert d["do_duoc"] and not d["khop"]
+    assert "KHÁC tệp vừa dịch" in d["vi_sao"]
+
+
+def test_khop_tai_dia_chi_khop_thi_ten_ham_tin_duoc(tmp_path, monkeypatch):
+    import subprocess
+
+    noi_dung = bytes(range(256)) * 8
+    b = tmp_path / "mach.bin"
+    b.write_bytes(noi_dung)
+
+    def _run(cl, **k):
+        lech = int(cl[3], 16) - 0x08000000
+        Path(cl[2]).write_bytes(noi_dung[lech:lech + int(cl[4])])
+        return subprocess.CompletedProcess(cl, 0, "", "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/st-flash")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    assert MT.khop_tai_dia_chi(b, 0x08000100)["khop"] is True
+
+
+def test_khop_tai_dia_chi_ngoai_anh_nap_thi_noi_ro_chu_khong_bao_LECH(tmp_path, monkeypatch):
+    """PC nằm ngoài ảnh nạp (RAM, bootloader) không phải bằng chứng chip chạy bản khác."""
+    b = tmp_path / "mach.bin"
+    b.write_bytes(b"\x00" * 64)
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/st-flash")
+    d = MT.khop_tai_dia_chi(b, 0x20000100)
+    assert not d["do_duoc"] and not d["khop"] and "nằm ngoài ảnh nạp" in d["vi_sao"]
+
+
+def test_khop_tai_dia_chi_thieu_st_flash_thi_chua_do_duoc(tmp_path, monkeypatch):
+    b = tmp_path / "mach.bin"
+    b.write_bytes(b"\x00" * 64)
+    monkeypatch.setattr(MT.shutil, "which", lambda x: None)
+    d = MT.khop_tai_dia_chi(b, 0x08000000)
+    assert not d["do_duoc"] and "chưa có `st-flash`" in d["vi_sao"]
+
+
+def test_target_debug_NOI_RA_thanh_ghi_loi_va_ten_ham_trong_note_vi(
+        make_agent, tmp_path, monkeypatch):
+    """Manh mối nằm trong payload mà lời văn không nhắc tới thì coi như không có.
+
+    Đo được trên bo STM32F469: `loi_phan_cung` đã có CFSR=0x00020000 → INVSTATE, nhưng
+    `note_vi` chỉ nói về `SysTick_Handler` — tức chỉ sang lỗi của LẦN TRƯỚC — và tác tử đi
+    theo lời văn, không đi theo JSON.
+    """
+    import subprocess
+
+    agent = make_agent([])
+    goc = agent.config.paths.project_root
+    (goc / ".eide" / "build").mkdir(parents=True, exist_ok=True)
+    (goc / ".eide" / "build" / "mach.elf").write_bytes(b"ELF" * 40)
+    (goc / ".eide" / "build" / "mach.bin").write_bytes(bytes(range(256)) * 16)
+
+    def _which(x):
+        return {"openocd": "/fake/openocd", "arm-none-eabi-addr2line": "/fake/a2l",
+                "st-flash": "/fake/st-flash"}.get(x)
+
+    def _run(cl, **k):
+        if "openocd" in cl[0]:
+            return subprocess.CompletedProcess(cl, 0, _RA_HARDFAULT, "")
+        if "a2l" in cl[0]:
+            return subprocess.CompletedProcess(
+                cl, 0, "OTM8009A_Init_Ext\n/du-an/firmware/otm8009a.c:424\n", "")
+        Path(cl[2]).write_bytes(b"\x7f" * 64)      # chip chứa bản KHÁC
+        return subprocess.CompletedProcess(cl, 0, "", "")
+
+    monkeypatch.setattr(MT.shutil, "which", _which)
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    r = agent.registry.run("target.debug", {}, _ctx(agent))
+    assert r.ok, getattr(r.error, "message_vi", r)
+    n = r.data["note_vi"]
+    assert "CFSR = 0x00020000" in n and "INVSTATE" in n and "FORCED" in n
+    assert "OTM8009A_Init_Ext" in n and "otm8009a.c:424" in n
+    # Và phanh: chip đang chạy bản khác → KHÔNG được để tác tử đi sửa hàm vừa nêu tên.
+    assert r.data["ky_hieu_tin_duoc"] is False
+    assert "KHÁC" in n and "Đừng đi sửa hàm vừa nêu tên" in n
+
+
+def test_target_debug_chua_doi_chieu_duoc_thi_khong_noi_la_tin_duoc(
+        make_agent, tmp_path, monkeypatch):
+    """Thiếu `st-flash` → chưa biết chip chạy bản nào. Ba trạng thái, không gộp thành hai."""
+    import subprocess
+
+    agent = make_agent([])
+    goc = agent.config.paths.project_root
+    (goc / ".eide" / "build").mkdir(parents=True, exist_ok=True)
+    (goc / ".eide" / "build" / "mach.elf").write_bytes(b"ELF" * 40)
+
+    def _which(x):
+        return {"openocd": "/fake/openocd", "arm-none-eabi-addr2line": "/fake/a2l"}.get(x)
+
+    def _run(cl, **k):
+        if "openocd" in cl[0]:
+            return subprocess.CompletedProcess(cl, 0, _RA_HARDFAULT, "")
+        return subprocess.CompletedProcess(cl, 0, "OTM8009A_Init_Ext\n/x/otm8009a.c:424\n", "")
+
+    monkeypatch.setattr(MT.shutil, "which", _which)
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    r = agent.registry.run("target.debug", {}, _ctx(agent))
+    assert r.ok and r.data["ky_hieu_tin_duoc"] is None
+    assert "chỉ đúng NẾU chip đang chạy đúng bản vừa dịch" in r.data["note_vi"]
+
+
+# ============================== khung ngoại lệ: lệnh NÀO đã fault, không phải handler nào
+def test_giai_khung_ngat_chi_ra_lenh_gay_fault_va_cho_goi_no():
+    """`pc = Default_Handler` là câu trả lời vòng tròn — nó đúng với MỌI fault.
+
+    Đo được trên bo STM32F469: khung ngoại lệ nói `pc_fault = 0x00000000` và
+    `lr = 0x080006F7` → `OTM8009A_ReadID_Ext` tại otm8009a.c:472, tức một lần gọi con trỏ hàm
+    NULL, chỉ đúng một dòng. Không có khung này thì tác tử chỉ nhận được tên của cái handler
+    bắt tất cả.
+    """
+    d = MT.giai_khung_ngat(["00000000", "00000001", "20000000", "00000000",
+                            "ffffffff", "080006f7", "00000000", "00000000"])
+    assert d["doc_duoc"] and d["pc"] == "0x00000000" and d["lr"] == "0x080006F7"
+    assert d["pc_fault"] == 0 and d["lr_fault"] == 0x080006F7
+    # Cờ T = 0 → lúc fault CPU không ở trạng thái Thumb: bằng chứng ĐỘC LẬP cho bit INVSTATE.
+    assert d["thumb"] is False and "địa chỉ CHẴN" in d["ghi_chu"]
+
+
+def test_giai_khung_ngat_co_thumb_thi_khong_doan_bua():
+    d = MT.giai_khung_ngat(["0"] * 7 + ["01000000"])
+    assert d["thumb"] is True and "ghi_chu" not in d
+
+
+@pytest.mark.parametrize("tu", [[], ["0"] * 7, ["xyz"] * 8])
+def test_giai_khung_ngat_doc_thieu_thi_NOI_THIEU_chu_khong_dung_khung_rac(tu):
+    d = MT.giai_khung_ngat(tu)
+    assert not d["doc_duoc"] and d["vi_sao"]
+
+
+def test_soi_chip_dang_o_handler_thi_doc_luon_khung_ngat(monkeypatch):
+    """Địa chỉ MSP chỉ biết được SAU khi dừng chip, nên cần lần gọi openocd thứ hai."""
+    import subprocess
+
+    lan: list[list[str]] = []
+
+    def _run(cl, **k):
+        lan.append(list(cl))
+        if len(lan) == 1:
+            return subprocess.CompletedProcess(cl, 0, _RA_HARDFAULT, "")
+        # openocd in mỗi 4 từ một dòng — xin 8 từ thì về HAI dòng.
+        ra = ("0x2002ffd0: 00000000 00000001 20000000 00000000 \n"
+              "0x2002ffe0: ffffffff 080006f7 00000000 00000000 \n")
+        return subprocess.CompletedProcess(cl, 0, ra, "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    d = MT.soi_chip()
+    assert len(lan) == 2, "phải gọi openocd lần thứ hai để đọc đỉnh ngăn xếp"
+    k = d["khung_ngat"]
+    assert k["doc_duoc"], k
+    assert k["pc_fault"] == 0 and k["lr_fault"] == 0x080006F7
+
+
+def test_doc_o_nho_ghep_cac_dong_4_tu_lai(monkeypatch):
+    """openocd in 4 từ một dòng. Không ghép thì xin 8 từ luôn chỉ nhận 4, và khung ngoại lệ
+    sẽ mãi mãi báo "chỉ đọc được 4/8" — một phép đo thiếu trông y hệt một phép đo bất lực."""
+    import subprocess
+
+    ra = ("0x20000000: 11111111 22222222 33333333 44444444 \n"
+          "0x20000010: 55555555 66666666 77777777 88888888 \n")
+    monkeypatch.setattr(MT.subprocess, "run",
+                        lambda cl, **k: subprocess.CompletedProcess(cl, 0, ra, ""))
+    d = MT._doc_o_nho("/fake/openocd", [(0x20000000, 8)])
+    assert len(d["0x20000000"]) == 8
+
+
+def test_soi_chip_o_Thread_thi_KHONG_doc_khung_ngat(monkeypatch):
+    """Không ở trong ngắt thì không có khung ngoại lệ nào để đọc — đừng dựng một cái ra."""
+    import subprocess
+
+    lan: list[int] = []
+
+    def _run(cl, **k):
+        lan.append(1)
+        return subprocess.CompletedProcess(
+            cl, 0, "[stm32f4x.cpu] halted due to debug-request, current mode: Thread\n"
+                   "xPSR: 0x01000000 pc: 0x08000200 msp: 0x2002ffd0\n", "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    d = MT.soi_chip()
+    assert len(lan) == 1 and "khung_ngat" not in d
+
+
+def test_target_debug_NOI_lenh_gay_fault_TRUOC_ten_handler(make_agent, monkeypatch):
+    """Thứ tự trong lời văn là một quyết định thiết kế: chỗ đáng sửa phải nói trước.
+
+    Đo được trên bo STM32F469: PC = `Default_Handler` (đúng mà vô dụng), khung ngoại lệ =
+    gọi con trỏ hàm NULL từ otm8009a.c:472. Nếu `note_vi` mở đầu bằng `Default_Handler` thì
+    tác tử đi đọc startup.c — nó đã làm đúng thế, 28 lần `fs.read`.
+    """
+    import subprocess
+
+    agent = make_agent([])
+    goc = agent.config.paths.project_root
+    (goc / ".eide" / "build").mkdir(parents=True, exist_ok=True)
+    (goc / ".eide" / "build" / "mach.elf").write_bytes(b"ELF" * 40)
+
+    def _which(x):
+        return {"openocd": "/fake/openocd", "arm-none-eabi-addr2line": "/fake/a2l"}.get(x)
+
+    lan: list[str] = []
+
+    def _run(cl, **k):
+        if "a2l" in cl[0]:
+            # Ba địa chỉ: PC, pc_fault (0x0), lr_fault. Trả theo đúng thứ tự xin.
+            return subprocess.CompletedProcess(
+                cl, 0, "Default_Handler\n/x/startup.c:272\n"
+                       "??\n??:0\n"
+                       "OTM8009A_ReadID_Ext\n/x/otm8009a.c:472\n", "")
+        lan.append("oo")
+        if len(lan) == 1:
+            return subprocess.CompletedProcess(cl, 0, _RA_HARDFAULT, "")
+        return subprocess.CompletedProcess(
+            cl, 0, "0x2002ffd0: 00000000 00000001 20000000 00000000 \n"
+                   "0x2002ffe0: ffffffff 080006f7 00000000 00000000 \n", "")
+
+    monkeypatch.setattr(MT.shutil, "which", _which)
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    r = agent.registry.run("target.debug", {}, _ctx(agent))
+    assert r.ok, getattr(r.error, "message_vi", r)
+    n = r.data["note_vi"]
+    assert "OTM8009A_ReadID_Ext" in n and "otm8009a.c:472" in n
+    assert "địa chỉ CHẴN" in n            # cờ T = 0 → nhảy tới địa chỉ chẵn
+    assert n.index("Khung ngoại lệ") < n.index("Địa chỉ → mã nguồn")

@@ -402,8 +402,192 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
         _kiem_man_hinh(nk, ctx, du_an, cc)
         nk.anh(g, "man-hinh-logo")
 
+    # ------------------------------------------- 17. màn hình đen: triệu chứng, không đáp án
+    #
+    # Anh Công nhìn bo và nói "màn hình đen xì". Mọi phép đo tĩnh đều xanh — dịch sạch, nạp
+    # đúng từng byte, logo có trong ảnh nạp. Đây đúng là chỗ tầng NGƯỜI tồn tại để bắt.
+    #
+    # Lời giao việc cố ý CHỈ nói triệu chứng. Đưa sẵn đáp án thì không đo được gì về việc
+    # tác tử có biết dùng công cụ đo hay không.
+    if lam(17):
+        nk.buoc("Người dùng báo: màn hình đen xì")
+        loi, cc = hoi(g, nk, du_an,
+                      "Mình vừa nhìn bo: **màn hình đen xì**, không hiện gì cả. Đèn nguồn "
+                      "vẫn sáng, bo vẫn nhận qua ST-LINK.\n\n"
+                      "Bạn đừng đoán bằng cách đọc lại mã — hãy ĐO trên chip đang chạy xem "
+                      "nó đang làm gì, rồi mới kết luận. Tìm ra thì sửa, dịch lại và nạp.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        da_soi = [c for c in cc if c["tool"] == "target.debug"]
+        nk.ket(bool(da_soi),
+               "Tác tử ĐO trên chip (target.debug) thay vì chỉ đọc lại mã",
+               "; ".join(json.dumps(c["args"], ensure_ascii=False)[:90] for c in da_soi)
+               or "— không gọi target.debug lần nào —")
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "sua-man-den")
+
+    # ------------------------------------------- 18. sửa xong SysTick thì kẹt HardFault
+    #
+    # Sau khi tác tử sửa `SysTick_Handler`, chip không còn kẹt ở `Handler SysTick` nữa — nó
+    # chuyển sang `Handler HardFault`. Màn hình vẫn đen. Đây là lần thứ hai trong cùng một
+    # phiên mà **mọi phép đo tĩnh vẫn xanh** và chỉ chip đang chạy nói được sự thật.
+    #
+    # Lần này EIDE nói thẳng số đo ra: `target.debug` đã đọc CFSR/HFSR và dịch bit thành lời.
+    # Lời giao việc vẫn KHÔNG chứa chẩn đoán — chỉ nhắc rằng đo lại là việc phải làm.
+    if lam(18):
+        nk.buoc("Sửa SysTick rồi mà màn hình vẫn đen — chip chuyển sang kẹt HardFault")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn sửa `SysTick_Handler` là đúng, cảm ơn. Nhưng mình vừa nhìn lại "
+                      "bo: **màn hình vẫn đen xì**.\n\n"
+                      "Đo lại trên chip đang chạy đi. `target.debug` giờ đọc luôn cả thanh "
+                      "ghi lỗi của CPU (CFSR/HFSR) và dịch từng bit thành lời, nên bạn "
+                      "không phải nhớ địa chỉ thanh ghi nào cả — cứ gọi nó rồi đọc phần "
+                      "`loi_phan_cung`.\n\n"
+                      "Đọc xong thì nói cho mình biết chip đang lỗi gì, VÌ SAO nó lỗi, rồi "
+                      "sửa, dịch lại và nạp. Nếu bạn cần đọc thêm ô nhớ nào (bảng vector, "
+                      "thanh ghi LTDC/DSI, ngăn xếp) thì truyền địa chỉ vào `dia_chi`.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_doc_thanh_ghi_loi(nk, ctx, cc)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "sua-hardfault")
+
+    # ------------------------------------------- 19. làm tiếp sau khi hết hạn mức lời gọi
+    #
+    # Lượt trước tác tử đọc được CFSR → INVSTATE, rồi **đốt 28 lần `fs.read`** để dò xem hàm
+    # nào nằm ở `pc 0x08000db0`, hết hạn mức 40 lời gọi và dừng giữa việc. Đó là một lỗ hổng
+    # NĂNG LỰC của EIDE, không phải lỗi của tác tử: EIDE nói được chip đang ở địa chỉ nào mà
+    # không nói được ở đấy có hàm gì, nên tác tử chỉ còn cách đọc cả cây mã nguồn.
+    #
+    # `target.debug` giờ trả luôn tên hàm + tệp:dòng (`addr2line`), kèm phanh: nó đối chiếu
+    # 32 byte tại đúng PC với tệp vừa dịch, và nếu KHÁC thì nói thẳng rằng tên hàm ấy thuộc
+    # bản khác — đo được là đang KHÁC, nên phanh này không phải phòng xa.
+    if lam(19):
+        nk.buoc("Làm tiếp: tác tử hết hạn mức lời gọi giữa việc, và EIDE vừa được bổ sung "
+                "năng lực đổi địa chỉ thành tên hàm")
+        loi, cc = hoi(g, nk, du_an,
+                      "Lượt trước bạn hết hạn mức lời gọi giữa việc — không sao, làm tiếp.\n\n"
+                      "Mình vừa bổ sung cho EIDE một năng lực mà bạn đang thiếu: `target.debug` "
+                      "giờ **tự đổi địa chỉ thành tên hàm và tệp:dòng**, nên bạn không phải "
+                      "`fs.read` hết cây mã nguồn để dò xem hàm nào nằm ở PC nữa. Nó cũng tự "
+                      "đối chiếu mã tại PC với tệp vừa dịch và nói cho bạn biết tên hàm ấy có "
+                      "tin được không.\n\n"
+                      "Gọi lại `target.debug` đi, đọc kỹ phần `note_vi` — nhất là câu về việc "
+                      "mã trên chip có khớp tệp vừa dịch không. Rồi kết luận: chip lỗi gì, vì "
+                      "sao, và sửa. Dịch lại, nạp, rồi soi lại lần nữa để chắc là hết fault.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_doc_thanh_ghi_loi(nk, ctx, cc)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "lam-tiep-hardfault")
+
+    # ------------------------------------------- 20. khung ngoại lệ: chỉ đúng một dòng
+    #
+    # Lượt 19 tác tử nạp lại đúng bản vừa dịch (hash khớp), nhưng chip vẫn HardFault và
+    # `target.debug` chỉ nói được `pc = Default_Handler` — một câu trả lời vòng tròn, vì
+    # `HardFault_Handler` là bí danh của nó nên PC ấy đúng với MỌI fault.
+    #
+    # Năng lực bổ sung lần này: `soi_chip` tự đọc 8 từ ở đỉnh ngăn xếp và dựng khung ngoại lệ.
+    # Đo được trên bo ngay sau khi viết xong: `pc_fault = 0x00000000`, `lr = 0x080006F7` →
+    # `OTM8009A_ReadID_Ext` tại otm8009a.c:472, cờ T = 0. Tức là một lần gọi con trỏ hàm NULL,
+    # chỉ đúng một dòng. Lời giao việc vẫn KHÔNG nói ra chẩn đoán ấy.
+    if lam(20):
+        nk.buoc("Chip vẫn HardFault: bổ sung khung ngoại lệ để biết LỆNH nào đã fault")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn nạp lại đúng bản rồi, hash khớp — cảm ơn. Nhưng **màn hình vẫn "
+                      "đen** và chip vẫn kẹt ở HardFault.\n\n"
+                      "Mình vừa thấy chỗ EIDE làm bạn bí: nó chỉ nói được `pc = "
+                      "Default_Handler`, mà `HardFault_Handler` là bí danh của "
+                      "`Default_Handler` nên PC đó đúng với mọi fault — nó không dẫn tới đâu. "
+                      "Nên mình bổ sung: `target.debug` giờ đọc luôn **khung ngoại lệ** ở đỉnh "
+                      "ngăn xếp, tức là địa chỉ của chính lệnh đã gây fault và địa chỉ của "
+                      "chỗ gọi nó, cả hai đã đổi sẵn thành tên hàm + tệp:dòng.\n\n"
+                      "Gọi `target.debug` lại đi. Đọc phần “Khung ngoại lệ” — nó nói thẳng "
+                      "lệnh nào fault và ai gọi. Từ đó mở đúng tệp, đúng dòng, và sửa. Dịch "
+                      "lại, nạp, soi lại để chắc là hết fault.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_doc_thanh_ghi_loi(nk, ctx, cc)
+        _kiem_khung_ngat(nk, ctx)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "khung-ngat")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_khung_ngat(nk: Any, ctx: Any) -> None:
+    """Khung ngoại lệ có chỉ ra được LỆNH gây fault không, và tác tử có tên hàm để đi sửa chưa.
+
+    Ba trạng thái: chưa soi / soi mà không dựng được khung / dựng được và có địa chỉ cụ thể.
+    """
+    a = ctx.store.get("target:debug") or {}
+    d = a.get("canonical") or {}
+    if not d:
+        nk.ket(False, "Khung ngoại lệ chỉ ra lệnh gây fault",
+               "— chưa có hiện vật target:debug nào, tức chưa soi chip lần nào ở lượt này —")
+        return
+    k = d.get("khung_ngat") or {}
+    if not d.get("che_do", "").lower().startswith("handler"):
+        nk.ghi("Khung ngoại lệ",
+               f"chip đang ở chế độ {d.get('che_do') or '?'} — không ở trong ngắt thì không "
+               "có khung ngoại lệ nào để đọc, và đó là tin tốt.")
+        return
+    ky = d.get("ky_hieu") or {}
+    ten = ""
+    if k.get("doc_duoc"):
+        def _ten(a: int) -> str:
+            # `& ~1`: LR đã đẩy luôn có bit 0 = 1 (bit Thumb), còn ký hiệu tra theo địa chỉ
+            # CHẴN. Bản đầu của phép kiểm này tra `0x080006f7` trong khi công cụ đã tra
+            # `0x080006f6`, nên nhật ký in "không có ký hiệu" cho đúng cái tên mà tác tử vừa
+            # nhận được và dùng đúng. Nhật ký nói sai về chính thứ nó đang làm chứng.
+            v = ky.get(f"0x{a & ~1:08x}") or {}
+            return ((v.get("ham") or "") + (f" ({v['nguon']})" if v.get("nguon") else "")
+                    or "(không có ký hiệu — địa chỉ nằm ngoài vùng mã của ELF)")
+
+        ten = "; ".join(f"{nhan} {k[nhan_k]} = {_ten(k[so])}"
+                        for nhan, nhan_k, so in (("lệnh fault ở", "pc", "pc_fault"),
+                                                 ("chỗ gọi (LR)", "lr", "lr_fault")))
+    nk.ket(bool(k.get("doc_duoc")),
+           "Khung ngoại lệ chỉ ra lệnh gây fault (không phải tên handler bắt-tất-cả)",
+           ten or f"không dựng được khung: {k.get('vi_sao') or 'chưa đọc đỉnh ngăn xếp'}")
+
+
+def _kiem_doc_thanh_ghi_loi(nk: Any, ctx: Any, cc: list[dict]) -> None:
+    """Tác tử có ĐỌC được thanh ghi lỗi không — và có đọc ra bit nào không.
+
+    Phân biệt ba trạng thái, vì gộp lại là cách một phép đo im lặng bị hiểu thành "sạch":
+    không gọi `target.debug` / gọi mà không ra thanh ghi / đọc được bit lỗi cụ thể.
+
+    Số đo lấy từ HIỆN VẬT `target:debug` trong kho, không từ sổ cái: sổ cái chỉ ghi tên công
+    cụ và `ok`, không ghi payload. Bản đầu của hàm này đọc `c["ket_qua"]` — một khoá không hề
+    tồn tại — nên nó sẽ luôn báo "KHÔNG đọc ra thanh ghi lỗi" kể cả khi tác tử đọc ra đủ cả
+    CFSR và HFSR. Lại đúng loại lỗi mà bài học của phiên này nói tới, lần này ở phía đỏ giả.
+    """
+    goi = [c for c in cc if c["tool"] == "target.debug"]
+    if not goi:
+        nk.ket(False, "Tác tử đọc thanh ghi lỗi của CPU (CFSR/HFSR)",
+               "— không gọi target.debug lần nào, nên chẩn đoán (nếu có) là đoán —")
+        return
+    a = ctx.store.get("target:debug") or {}
+    d = a.get("canonical") or {}
+    lp = d.get("loi_phan_cung") or {}
+    bit = list(lp.get("nghia") or [])
+    nk.ket(bool(bit),
+           "Tác tử đọc thanh ghi lỗi của CPU (CFSR/HFSR) và nhận được bit lỗi cụ thể",
+           (f"gọi target.debug {len(goi)} lần · chế độ: {d.get('che_do') or '?'} · PC: "
+            f"{d.get('pc') or '?'} · CFSR {lp.get('cfsr')} / HFSR {lp.get('hfsr')} → "
+            + "; ".join(bit)) if bit else
+           (f"gọi target.debug {len(goi)} lần, chế độ {d.get('che_do') or '?'}, nhưng KHÔNG "
+            "đọc ra thanh ghi lỗi — chưa đo được, khác với không có lỗi"))
 
 
 # ==================================================================== đối chiếu bằng mã

@@ -2731,3 +2731,113 @@ rằng mã chip đó suy từ nhãn bộ nạp *"chưa phải là ID chip đọc
 - `target.verify` / `target.debug` / `target.dangerous` chưa làm — TC030 (breakpoint, thanh ghi)
   và TC035 (RDP/eFuse) cần chúng. TC035 hiện đã được chặn ở tầng S0 nên không có lỗ hổng an
   toàn, chỉ là năng lực còn thiếu.
+
+### [DEV-279] 28/09/2026 · Màn hình đen: ba lần "mọi phép đo đều xanh mà hành vi vẫn sai"
+
+Bối cảnh: firmware hiện logo PTIT + bốn dòng thông tin đã **dịch sạch, nạp đúng từng byte,
+`target.verify` khớp hoàn toàn, ảnh nạp 129 780 B ≥ mảng logo 115 200 B**. Chín phép kiểm bằng
+mã đều xanh. Anh Công nhìn bo và nói: *"màn hình đen xì"*.
+
+Đây là chỗ tầng NGƯỜI của MDD-40 tồn tại để bắt, và nó bắt được ba lần liên tiếp — mỗi lần lộ
+ra một năng lực EIDE còn thiếu. Ba lần ấy chia sẻ đúng một hình dạng: **EIDE đo được rằng mọi
+thứ đúng, nhưng không đo được điều đang sai.**
+
+#### Lần 1 — chip kẹt trong ngắt, và EIDE không có cách nào nhìn thấy
+
+`openocd` nói `halted due to debug-request, current mode: **Handler SysTick**`. `SysTick_Handler`
+là bí danh của `Default_Handler`, mà `Default_Handler` là `while (1) {}`: `HAL_Init()` bật
+SysTick, tick đầu tiên nhảy vào vòng lặp vô hạn, chương trình chết trước khi chạm dòng vẽ.
+
+Không có công cụ nào của EIDE hỏi được câu *"chip đang làm gì"* → thêm **`target.debug`** (R2,
+`core=False`): dừng chip, đọc PC/xPSR/MSP và ô nhớ tuỳ ý, rồi cho chạy tiếp. Tác tử tự tìm ra
+nó (`tool.search` → `target.debug`), tìm ra lỗi, sửa, nạp lại.
+
+#### Lần 2 — `pc = Default_Handler` là một câu trả lời vòng tròn
+
+Sửa SysTick xong, chip chuyển sang kẹt `Handler HardFault`. Ba chỗ hỏng lộ ra liền nhau:
+
+**(a) Phép đo im lặng trông y hệt phép đo không có gì để nói.** `soi_chip()` gộp cả chuỗi lệnh
+openocd vào **một** `-c`. openocd chạy đúng nhưng **không in kết quả `mdw`**, nên `o_nho` rỗng
+và không ai biết vì sao. Tách mỗi lệnh một `-c` thì đọc ra ngay
+`0xe000ed28: 00020000 40000000`. Khoá bằng test so chính dòng lệnh (`"; " not in ...`).
+
+**(b) Thanh ghi lỗi bị giấu sau một câu đố.** Gặp HardFault mà phải nhớ địa chỉ CFSR mới chẩn
+đoán được thì đó là một phép đo có sẵn nhưng không ai lấy. → `soi_chip()` đọc **luôn**
+CFSR/HFSR/MMFAR/BFAR và dịch bit thành lời (`_BIT_CFSR`, 17 bit). Đọc được:
+`CFSR = 0x00020000` → **INVSTATE** (sai trạng thái Thumb), `HFSR = 0x40000000` → FORCED.
+
+**(c) Manh mối nằm trong payload mà lời văn không nhắc tới thì coi như không có.**
+`loi_phan_cung` đã đủ dữ liệu, nhưng `note_vi` vẫn chỉ nói về `SysTick_Handler` — tức chỉ sang
+lỗi của **lần trước**. Tác tử đi theo lời văn, không đi theo JSON. → đưa CFSR/HFSR vào `note_vi`.
+
+**(d) Một địa chỉ không tên bắt tác tử đọc cả cây mã để đoán.** Nhận `pc 0x08000db0`, tác tử
+gọi **`fs.read` 28 lần**, hết hạn mức 40 lời gọi của lượt và **dừng giữa việc**. Đây là lỗ hổng
+năng lực của EIDE, không phải lỗi của tác tử: `arm-none-eabi-addr2line` trả lời cùng câu hỏi
+trong 40 ms. → **`giai_ma_dia_chi()`**: địa chỉ → tên hàm + `tệp:dòng`.
+
+**(e) Và phanh cho chính năng lực vừa thêm.** `addr2line` luôn trả về một cái tên nghe thuyết
+phục — của bản ELF **trên đĩa**. Đo lần đầu: PC giải mã thành `OTM8009A_Init_Ext`, mà 32 byte
+tại đúng địa chỉ đó **trên chip KHÁC tệp vừa dịch** — chip đang chạy bản cũ, và cái tên kia sẽ
+dẫn tác tử đi sửa một hàm không liên quan. → **`khop_tai_dia_chi()`** đọc ngược 32 byte tại
+đúng PC và trả ba trạng thái: tin được / biết là sai / chưa đo được. Phanh này kiếm được chỗ
+của nó ngay lần chạy đầu tiên, không phải phòng xa.
+
+#### Lần 3 — khung ngoại lệ: từ "handler nào" sang "lệnh nào"
+
+Nạp lại đúng bản (hash khớp), chip vẫn HardFault, và `target.debug` chỉ nói được
+`pc = Default_Handler` (`startup.c:272`). Đúng, và vô dụng: `HardFault_Handler` là bí danh của
+`Default_Handler` nên PC ấy đúng với **mọi** fault, mãi mãi.
+
+Địa chỉ đáng đọc nằm ở nơi khác. Khi vào ngoại lệ, chính CPU đẩy 8 thanh ghi lên ngăn xếp, và
+từ thứ 7 là **PC của lệnh đã fault**. → **`giai_khung_ngat()`** + `soi_chip()` tự gọi openocd
+lần thứ hai để đọc 8 từ ở MSP (địa chỉ MSP chỉ biết được *sau* khi dừng chip).
+
+Đo trên bo ngay sau khi viết xong:
+
+| số đo | giá trị | nghĩa |
+|---|---|---|
+| `pc` lúc dừng | `0x08000f24` | `Default_Handler` — vô dụng |
+| `pc_fault` (khung) | `0x00000000` | **nhảy tới địa chỉ 0** |
+| `lr` (khung) | `0x080006F7` | `OTM8009A_ReadID_Ext` · `otm8009a.c:472` |
+| cờ T của xPSR đã đẩy | `0` | không ở trạng thái Thumb — bằng chứng **độc lập** cho INVSTATE |
+
+Tức là: gọi một con trỏ hàm **NULL** từ `otm8009a.c:472`. Chỉ đúng một dòng.
+
+Kết quả: lượt sau tác tử gọi `target.debug` **một lần** rồi `fs.read firmware/otm8009a.c
+offset=450` — đúng tệp, đúng vùng, không còn dò 28 lần. Sửa, dịch lại, nạp. Đo lại:
+
+```
+1. Thread   pc=0x08001942  HAL_Delay     stm32f4xx_hal.c:401
+4. Thread   pc=0x08001924  HAL_GetTick   stm32f4xx_hal.c:326
+```
+
+Ra khỏi HardFault, và PC luân phiên giữa `HAL_Delay` ↔ `HAL_GetTick` chứng minh SysTick **có**
+tick — `HAL_Delay` sẽ treo mãi nếu tick không tăng. Màn hình thì chỉ mắt anh Công trả lời được.
+
+#### Hai lỗi của chính phép đo, ở hai phía đối nhau
+
+Bài học *"trạng thái thứ ba không được gộp vào hai"* xuất hiện thêm hai lần, và lần này ở cả
+hai phía:
+
+* **`_han_muc` làm to hạn mức lên mười lần.** `str(gt).replace(".", "")` biến `"2097152.0"`
+  (Fact sinh từ `st-info`) thành `20971520` → trần Flash **20 MB cho chip 2 MB**. Loại lỗi này
+  không bao giờ tự kêu: trần quá rộng thì firmware nào cũng "vừa chip", kể cả bản 3 MB không
+  nạp được. → **`doc_so()`**: dấu chấm chỉ là phân nhóm nghìn khi nó chia thành **đúng nhóm ba
+  chữ số**; và `KB`/`K` của tài liệu chip là 1024, không phải 1000.
+* **Nhật ký nói sai về chính thứ nó đang làm chứng.** `_kiem_khung_ngat` tra ký hiệu ở
+  `0x080006f7` trong khi công cụ tra `0x080006f6` — lệch đúng **bit Thumb** của LR — nên nhật
+  ký in *"không có ký hiệu"* cho đúng cái tên mà tác tử vừa nhận được và dùng đúng.
+
+### Số đo
+
+`1069 ca đơn vị` (+40 so với DEV-278). Không thêm công cụ mới; `target.debug` được bổ sung ba
+năng lực (thanh ghi lỗi, tên hàm, khung ngoại lệ) và một phanh (`khop_tai_dia_chi`).
+
+Phiên bo thật: bước 17–20 (`tools/phien_stm32.py --buoc 17..20`). Bước 20 xanh cả hai phép kiểm
+mới: *"tác tử đọc thanh ghi lỗi và nhận được bit lỗi cụ thể"*, *"khung ngoại lệ chỉ ra lệnh gây
+fault"*.
+
+### Còn lại
+
+- Màn hình: cần anh Công xác nhận bằng mắt (tầng NGƯỜI) — máy đã xanh hết phần máy đo được.
+- `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.

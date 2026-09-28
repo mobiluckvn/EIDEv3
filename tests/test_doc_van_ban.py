@@ -350,6 +350,53 @@ def test_han_muc_bo_qua_fact_vo_ly(make_agent):
     assert flash == 2_000_000
 
 
+@pytest.mark.parametrize("chuoi,mong", [
+    ("2097152.0", 2097152.0),      # đã có dấu thập phân — KHÔNG được thành 20 971 520
+    ("2.097.152", 2097152.0),      # kiểu Âu: đúng nhóm ba → phân nhóm nghìn
+    ("2,097,152", 2097152.0),      # kiểu Anh–Mỹ
+    ("2097152", 2097152.0),
+    ("1.234.567,89", 1234567.89),  # cả hai dấu, kiểu Âu
+    ("1,234.5", 1234.5),           # cả hai dấu, kiểu Anh–Mỹ
+    ("0x200000", 2097152.0),       # tài liệu chip hay viết hệ 16
+    ("3.6", 3.6), ("1,5", 1.5), ("-40.5", -40.5),
+    ("", None), ("abc", None), (None, None),
+])
+def test_doc_so_khong_lam_to_gia_tri_len_muoi_lan(chuoi, mong):
+    """Đo được trên bo STM32F469: Fact `flash.size = "2097152.0"` (sinh từ `st-info`) bị
+    `str.replace(".", "")` biến thành **20 971 520** — trần Flash gấp mười lần chip thật.
+
+    Đây là loại lỗi không bao giờ tự kêu: trần quá rộng thì firmware nào cũng "vừa chip",
+    kể cả bản 3 MB không thể nạp. Một phép kiểm luôn xanh không phải một phép kiểm.
+    """
+    assert docs_mod.doc_so(chuoi) == mong
+
+
+def test_han_muc_doc_dung_fact_do_tu_silicon(make_agent):
+    """`st-info` trả `flash: 2097152` và kho lưu thành `"2097152.0"` — phải ra 2 MiB."""
+    from eide.tools.xay_dung import _han_muc
+
+    agent = make_agent([])
+    for k, v in (("flash.size", "2097152.0"), ("ram.size", "262144.0")):
+        agent.store.put_fact({"fact_id": f"f-{k}", "subject": "chip:STM32F469NI",
+                              "key": k, "value": v, "unit": "",
+                              "condition": "", "tier": "VANG", "origin": "silicon",
+                              "source": {"doc_id": "st-info", "cite": "probe"},
+                              "confidence": 1.0})
+    assert _han_muc(_ctx(agent), None) == (2 * 1024 * 1024, 256 * 1024)
+
+
+def test_han_muc_KB_la_1024_khong_phai_1000(make_agent):
+    """Tài liệu chip viết `324 Kbytes` RAM. `K` ở đây là 1024 — 331 776, không phải 324 000."""
+    from eide.tools.xay_dung import _han_muc
+
+    agent = make_agent([])
+    agent.store.put_fact({"fact_id": "f-ram", "subject": "chip:STM32F469NI",
+                          "key": "ram.size", "value": "324", "unit": "KB",
+                          "condition": "", "tier": "BAC", "origin": "extract",
+                          "source": {"doc_id": "X", "cite": "dòng 3"}, "confidence": 1.0})
+    assert _han_muc(_ctx(agent), None)[1] == 324 * 1024
+
+
 def test_nap_header_thi_CHI_DUONG_toi_fact_extract_pinout(make_agent):
     """Đo được trên bo thật: nạp xong header, tác tử đi `fs.grep` đọc chân thay vì gọi công cụ.
 

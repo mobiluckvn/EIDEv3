@@ -462,6 +462,48 @@ def ve_don_vi_co_ban(gia_tri: float, don_vi: str) -> float:
     return gia_tri
 
 
+def doc_so(gt: Any) -> float | None:
+    """Chuỗi số trong tài liệu → số. `None` nếu không đọc ra số.
+
+    Cái khó duy nhất ở đây là dấu chấm: `2.097.152` là hai triệu (kiểu Âu), còn `2097152.0`
+    là hai triệu *đã* viết dấu thập phân. Bản trước xoá sạch mọi dấu chấm, nên
+    `"2097152.0"` thành `20971520` — **hạn mức Flash gấp mười lần chip thật**, và một hạn
+    mức quá rộng không bao giờ kêu: firmware nào cũng "vừa", kể cả bản 3 MB không nạp được.
+
+    Quy tắc: dấu chấm/phẩy chỉ là dấu phân nhóm nghìn khi nó CHIA THÀNH ĐÚNG NHÓM BA CHỮ SỐ
+    (`1.234`, `2.097.152`). Mọi trường hợp khác nó là dấu thập phân.
+
+    Chỗ còn mơ hồ, nói ra để không ai tin quá: một mình chuỗi `1.234` thì không cách nào biết
+    nó là *một nghìn hai trăm ba mươi tư* hay *một phẩy hai ba tư* — hàm này chọn nghĩa thứ
+    nhất. Phanh thứ hai là `hop_ly()`: giá trị ra khỏi khoảng hợp lý của khoá thì bị bỏ, nên
+    một lần đoán sai nghĩa thường thành "không có số" chứ không thành "số sai".
+    """
+    s = str(gt).strip().replace(" ", "").replace("_", "")
+    if not s:
+        return None
+    dau = "-" if s[0] == "-" else ""
+    s = s.lstrip("+-")
+    if re.fullmatch(r"0[xX][0-9a-fA-F]+", s):
+        return float(int(s, 16))
+    co_cham, co_phay = "." in s, "," in s
+    if co_cham and co_phay:
+        # Cái nào ở sau là dấu thập phân; cái kia là phân nhóm nghìn.
+        if s.rfind(".") > s.rfind(","):
+            s = s.replace(",", "")
+        else:
+            s = s.replace(".", "").replace(",", ".")
+    else:
+        for d in (".", ","):
+            if d in s and re.fullmatch(r"\d{1,3}(?:\%s\d{3})+" % d, s):
+                s = s.replace(d, "")       # đúng nhóm ba → phân nhóm nghìn
+                break
+        s = s.replace(",", ".")            # còn lại thì đó là dấu thập phân
+    try:
+        return float(dau + s)
+    except ValueError:
+        return None
+
+
 def hop_ly(khoa: str, gia_tri: float, don_vi: str) -> bool:
     """Giá trị này có thể là thứ mà khoá đó nói tới không."""
     pv = PHAM_VI_HOP_LY.get(khoa)

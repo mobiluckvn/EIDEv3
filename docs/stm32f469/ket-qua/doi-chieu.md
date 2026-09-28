@@ -19,7 +19,7 @@ Sinh tự động bởi `tools/doi_chieu_stm32.py`. Bộ này **không có sẵn
 | LED3 | `PD5` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | **có** |
 | LED4 | `PK3` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | **có** |
 
-Chân có trong firmware mà tài liệu (phần LED) không nhắc tới: `PA0` — mỗi chân như thế phải có một Fact khác đứng sau.
+Chân có trong firmware mà tài liệu (phần LED) không nhắc tới: `PA0`, `PA8`, `PB8`, `PB9`, `PC0`, `PC13`, `PC14`, `PC15`, `PC9`, `PH0`, `PH1`, `PH4`, `PH5`, `PH7`, `PI8` — mỗi chân như thế phải có một Fact khác đứng sau.
 
 ## Fact trong kho (14)
 
@@ -45,15 +45,15 @@ Chân có trong firmware mà tài liệu (phần LED) không nhắc tới: `PA0`
 - **dat**: `True`
 - **cong_cu**: `arm-none-eabi-gcc`
 - **so_loi**: `0`
-- **so_canh_bao**: `0`
+- **so_canh_bao**: `33`
 - **tep_ra**: `.eide/build/mach.hex`
 - **tep_bin**: `.eide/build/mach.bin`
 - **thieu_libc**: `True`
-- **flash**: `492`
-- **sram**: `0`
+- **flash**: `128620`
+- **sram**: `744`
 - **flash_toi_da**: `20971520`
 - **sram_toi_da**: `3276800`
-- **ty_le_flash**: `0.0`
+- **ty_le_flash**: `0.006`
 - **ty_le_sram**: `0.0`
 - **vi_sao_khong_dat**: ``
 
@@ -62,10 +62,10 @@ Chân có trong firmware mà tài liệu (phần LED) không nhắc tới: `PA0`
 - **dat**: `True`
 - **cach**: `st-flash`
 - **tep**: `mach.bin`
-- **so_byte**: `492`
-- **hash**: `f351053423cc90824d7aca3c3d8290f611e35ba07bd54de2ea4c02e109b1bfde`
+- **so_byte**: `128620`
+- **hash**: `e5e39ee429efe6df28dab1cf27890541f8f81bd842277d5cb75a655920099958`
 - **dich**: `0x08000000`
-- **giay**: `0.4`
+- **giay**: `5.5`
 - **da_verify**: `True`
 - **chip_da_doi_chieu**: `STM32F46x_F47x`
 - **vi_sao_khong_dat**: ``

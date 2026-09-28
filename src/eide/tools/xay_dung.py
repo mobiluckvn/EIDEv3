@@ -599,19 +599,20 @@ def _han_muc(ctx: Any, hc: dict[str, Any] | None) -> tuple[int, int]:
     Không có Fact thì trả 0 và công cụ nói thẳng là chưa biết firmware có vừa chip không —
     thà không kết luận còn hơn kết luận bằng một con số nhớ được.
     """
-    from ..knowledge.docs import PHAM_VI_HOP_LY, ve_don_vi_co_ban
+    from ..knowledge.docs import PHAM_VI_HOP_LY, doc_so, ve_don_vi_co_ban
 
     def _so(khoa: str) -> int:
         for f in ctx.store.query_facts(key=khoa, limit=20):
-            gt = f.get("value")
-            try:
-                v = float(str(gt).replace(".", "").replace(",", "."))
-            except (TypeError, ValueError):
+            v = doc_so(f.get("value"))
+            if v is None:
                 continue
             dv = str(f.get("unit") or "")
-            v = ve_don_vi_co_ban(v, dv) if dv else v
+            # `KB`/`K` trong tài liệu chip là 1024, không phải 1000 — `ve_don_vi_co_ban` dùng
+            # bội số thập phân (đúng cho Hz, sai cho bộ nhớ), nên bộ nhớ tính riêng ở đây.
             if dv.upper() in ("KB", "K"):
-                v = float(str(gt).replace(",", ".")) * 1024
+                v = v * 1024
+            elif dv:
+                v = ve_don_vi_co_ban(v, dv)
             # Phanh cuối: một Fact vô lý KHÔNG được thành hạn mức. Đo được trên bo STM32F469:
             # mẫu "FLASH Size" khớp vào dòng khai địa chỉ thanh ghi `FLASHSIZE_BASE` và sinh
             # ra `flash.size = 7`; `build.compile` lấy 7 làm trần rồi báo một firmware 224

@@ -273,6 +273,149 @@ def dang_ky(r: Registry) -> None:
                 "của trình nạp — con chip đang chứa đúng bản này. Nó KHÔNG chứng minh chương "
                 "trình đang chạy đúng; muốn biết điều đó thì phải quan sát hành vi.")}
 
+    @r.tool("target.debug", "Mạch thật",
+            "SOI chip đang chạy: dừng nó lại, xem nó đang ở đâu (mã thường hay trong một "
+            "ngắt), đọc PC/xPSR/MSP, ĐỌC THANH GHI LỖI CFSR/HFSR và dịch từng bit thành lời, "
+            "ĐỔI ĐỊA CHỈ THÀNH TÊN HÀM + tệp:dòng, rồi cho chạy tiếp. Dùng khi firmware dịch "
+            "sạch và nạp đúng MÀ hành vi vẫn sai — đừng đi đọc cả cây mã nguồn để đoán hàm "
+            "nào ở địa chỉ nào, công cụ này trả lời sẵn.",
+            {"type": "object",
+             "properties": {
+                 "dia_chi": {"type": "array", "items": {"type": "integer"},
+                             "description": "địa chỉ cần đọc, ví dụ [0x40016800] cho LTDC"},
+                 "so_tu": {"type": "integer",
+                           "description": "đọc mấy từ 32-bit mỗi địa chỉ (mặc định 4)"}}},
+            risk="R2", core=False,
+            keywords=["gỡ lỗi", "debug", "treo", "đứng", "không chạy", "màn hình đen",
+                      "thanh ghi", "chip đang làm gì", "halt", "pc"])
+    def target_debug(ctx: Any, dia_chi: list[int] | None = None, so_tu: int = 4):
+        from ..build import mach_that as MT
+
+        d = MT.soi_chip(list(dia_chi or []), so_tu=so_tu)
+        if not d["dat"]:
+            return ToolResult(False, error=EideError(
+                "E4018", f"Chưa soi được chip: {d['vi_sao_khong_dat']}",
+                hint_for_agent=("KHÔNG soi được khác với chip chạy đúng. Thiếu openocd thì "
+                                "đề nghị người dùng cài qua tool.install."),
+                details=d, alternatives=["tool.install", "target.detect"], blame="external"))
+
+        # PC là một con số; tác tử cần một cái TÊN. Đo được trên bo STM32F469: nhận
+        # `pc 0x08000db0` xong, tác tử đi `fs.read` 28 lần để dò hàm nào ở đấy rồi hết hạn
+        # mức lời gọi và dừng giữa việc. `addr2line` trả lời trong 40 ms, nên EIDE trả lời
+        # luôn thay vì để nó phải đọc cả cây mã nguồn.
+        goc = Path(ctx.config.paths.project_root)
+        elf = goc / ".eide" / "build" / "mach.elf"
+        xin = ([int(d["pc"], 16)] if d.get("pc") else []) + list(dia_chi or [])
+        # Khung ngoại lệ có địa chỉ ĐÁNG quan tâm hơn cả PC: `pc_fault` là lệnh đã gây fault,
+        # `lr_fault` là chỗ gọi nó. PC lúc dừng chỉ là `Default_Handler` — đúng với mọi fault,
+        # nên tự nó không dẫn tới đâu.
+        kn = d.get("khung_ngat") or {}
+        if kn.get("doc_duoc"):
+            xin += [kn["pc_fault"], kn["lr_fault"] & ~1]
+        ten = MT.giai_ma_dia_chi(elf, xin)
+        d["ky_hieu"] = ten.get("ky_hieu") or {}
+        d["ky_hieu_vi_sao_khong_co"] = ten.get("vi_sao_khong_dat", "")
+
+        # Và ngay sau khi có tên, đi hỏi silicon xem cái tên ấy có nói về mã đang chạy không.
+        # Đo được trên bo STM32F469: PC 0x08000db0 giải mã thành `OTM8009A_Init_Ext`, mà 32
+        # byte tại đúng địa chỉ đó trên chip KHÁC tệp vừa dịch — tức chip đang chạy bản cũ và
+        # cái tên kia sẽ dẫn tác tử đi sửa một hàm không liên quan.
+        d["ky_hieu_tin_duoc"] = None
+        if d["ky_hieu"] and d.get("pc"):
+            k = MT.khop_tai_dia_chi(goc / ".eide" / "build" / "mach.bin", int(d["pc"], 16))
+            d["doi_chieu_tai_pc"] = k
+            d["ky_hieu_tin_duoc"] = k["khop"] if k["do_duoc"] else None
+
+        trong_ngat = d["che_do"].lower().startswith("handler")
+        lp = d.get("loi_phan_cung") or {}
+        # Thanh ghi lỗi phải đi vào CÂU NÓI, không chỉ nằm trong payload. Đo được trên bo
+        # STM32F469: `loi_phan_cung` có đủ CFSR=0x00020000 → INVSTATE, nhưng `note_vi` không
+        # nhắc tới nó, nên manh mối quyết định nằm ở một khoá lồng sâu trong JSON mà lời văn
+        # thì vẫn đang chỉ sang `SysTick_Handler` — tức là chỉ sang lỗi của LẦN TRƯỚC.
+        cau_loi = ""
+        if lp.get("nghia"):
+            cau_loi = ("**Thanh ghi lỗi của CPU nói rõ hơn tên handler**: CFSR = "
+                       f"{lp['cfsr']}, HFSR = {lp.get('hfsr', '?')} → "
+                       + "; ".join(lp["nghia"]) + ". ")
+            for k, nh in (("mmfar", "địa chỉ gây lỗi truy cập bộ nhớ"),
+                          ("bfar", "địa chỉ gây lỗi bus")):
+                if lp.get(k) and lp[k] != "(không hợp lệ)":
+                    cau_loi += f"{nh.capitalize()}: {lp[k]}. "
+        elif lp:
+            cau_loi = (f"CFSR = {lp.get('cfsr')} — không bit lỗi nào bật, nên chỗ dừng này "
+                       "không phải do fault. ")
+
+        # Khung ngoại lệ: nói TRƯỚC tên hàm ở PC, vì nó là chỗ tác tử phải đi sửa. Đo được
+        # trên bo STM32F469: PC = `Default_Handler` (vô dụng), còn khung nói `pc_fault = 0x0`
+        # và `lr = 0x080006F7` → `OTM8009A_ReadID_Ext` tại otm8009a.c:472 — tức là một lần
+        # gọi con trỏ hàm NULL, chỉ đúng một dòng.
+        cau_khung = ""
+        if kn.get("doc_duoc"):
+            def _ten(a: int) -> str:
+                v = (d["ky_hieu"] or {}).get(f"0x{a:08x}") or {}
+                return ((v.get("ham") or "") + (f" ({v['nguon']})" if v.get("nguon") else "")
+                        or "không có ký hiệu ở địa chỉ này")
+
+            cau_khung = (
+                "**Khung ngoại lệ ở đỉnh ngăn xếp — đây là chỗ đáng đọc, không phải PC**: "
+                f"lệnh gây fault ở {kn['pc']} = {_ten(kn['pc_fault'])}; chỗ gọi nó "
+                f"(LR) {kn['lr']} = {_ten(kn['lr_fault'] & ~1)}. ")
+            if kn.get("ghi_chu"):
+                cau_khung += kn["ghi_chu"] + " "
+            if any("STKERR" in x for x in lp.get("nghia", [])):
+                cau_khung += ("⚠️ CFSR có bit STKERR: fault xảy ra TRONG LÚC đẩy ngăn xếp, "
+                              "nên tám số của khung này là rác — đừng tin chúng. ")
+        elif kn:
+            cau_khung = f"Chưa dựng được khung ngoại lệ: {kn.get('vi_sao', 'không rõ')} "
+
+        # Tên hàm, kèm ĐÚNG mức tin được. Ba trạng thái, không gộp: tin được / biết là sai /
+        # chưa đo được. Gộp hai cái sau thành "không tin" thì tác tử bỏ mất một manh mối thật;
+        # gộp vào "tin được" thì nó đi sửa hàm của một bản firmware không còn trên chip.
+        cau_ten = ""
+        if d["ky_hieu"]:
+            ds = "; ".join(
+                f"{a} = {v['ham'] or '(không có ký hiệu)'}"
+                + (f" ({v['nguon']})" if v["nguon"] else "")
+                for a, v in d["ky_hieu"].items())
+            tin = d.get("ky_hieu_tin_duoc")
+            dc = d.get("doi_chieu_tai_pc") or {}
+            cau_ten = (
+                f"**Địa chỉ → mã nguồn** (giải từ mach.elf): {ds}. "
+                + ("Mã tại PC trên chip khớp tệp vừa dịch, nên tên hàm này nói về đúng mã "
+                   "đang chạy. " if tin is True else
+                   "⚠️ NHƯNG mã tại PC trên chip **KHÁC** tệp vừa dịch: " + dc.get("vi_sao", "")
+                   + " Đừng đi sửa hàm vừa nêu tên — nó thuộc bản khác. "
+                   if tin is False else
+                   "Chưa đối chiếu được mã trên chip với tệp vừa dịch ("
+                   + (dc.get("vi_sao") or "không rõ")
+                   + "), nên tên hàm này chỉ đúng NẾU chip đang chạy đúng bản vừa dịch. "))
+        elif d.get("ky_hieu_vi_sao_khong_co"):
+            cau_ten = f"Chưa đổi được địa chỉ thành tên hàm: {d['ky_hieu_vi_sao_khong_co']} "
+        ctx.store.apply(
+            artefact_id="target:debug", type="target",
+            op="update" if ctx.store.get("target:debug") else "create",
+            author=f"agent:{ctx.run_id}", canonical=d,
+            explain={"summary": f"soi chip: {d['che_do']}",
+                     "why": "firmware dịch sạch và nạp đúng mà hành vi vẫn sai",
+                     "sources": ["openocd"], "diff_prev": "—", "next": "—",
+                     "confidence": "BAC"},
+            view_hint={"kind": "kv", "path": "openocd"})
+        return {
+            **d,
+            "dang_ket_trong_ngat": trong_ngat,
+            "note_vi": (
+                f"Chip đang ở chế độ **{d['che_do']}**, PC = {d['pc'] or '?'}. "
+                + cau_loi + cau_khung + cau_ten
+                + ("ĐÂY LÀ MANH MỐI CHÍNH: “Handler …” nghĩa là CPU đang nằm trong một trình "
+                   "phục vụ ngắt. Nếu nó ở đó mãi thì chương trình chính đã chết ở đúng chỗ "
+                   "ấy — hay gặp nhất là một handler để mặc định thành `while(1){}` trong "
+                   "startup, ví dụ `SysTick_Handler` sau khi `HAL_Init()` bật SysTick. "
+                   if trong_ngat else
+                   "“Thread” nghĩa là đang chạy mã thường — chỗ chết (nếu có) nằm trong một "
+                   "vòng lặp của chính chương trình, không phải trong ngắt. ")
+                + (f"Ô nhớ đọc được: {d['o_nho']}. " if d["o_nho"] else "")
+                + "Đây là trạng thái tại ĐÚNG lúc dừng, không phải suy từ mã nguồn.")}
+
     @r.tool("target.log", "Mạch thật",
             "Đọc log từ cổng nối tiếp của bo trong một khoảng thời gian. Cổng im lặng thì nói "
             "là im lặng — đó KHÔNG phải bằng chứng firmware sai.",
