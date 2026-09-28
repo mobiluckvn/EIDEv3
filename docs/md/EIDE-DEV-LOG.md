@@ -2525,10 +2525,125 @@ nguyên văn E2006 vẫn nguyên vẹn.
 **không đo được** — thiếu `st-flash` thì trả E4015 với câu "KHÔNG đo được khác với KHÔNG khớp",
 chứ không nói chip sai bản. Đo thật trên bo: 492 byte, khác 0 byte, sha256 `f3510534…`.
 
+#### 14. Logo lên màn hình — năm lỗ hổng nữa, và bốn trong số đó làm việc chạy được trông như việc không thể
+
+Yêu cầu: *"tìm logo của trường PTIT, viết chương trình hiển thị logo lên màn hình và thông
+tin của sản phẩm, của tôi và của thầy Hiếu"*. Bo này có màn cảm ứng 800×480 nối qua **MIPI
+DSI** — khác hẳn mức khó của việc nháy một cái đèn.
+
+**Khảo sát trước khi giao việc.** Vẽ được lên màn ấy cần LTDC + DSI + driver panel OTM8009A +
+SDRAM ngoài làm bộ đệm khung, tức khoảng **60–70 tệp** trải trên năm repo của ST
+(`32f469idiscovery-bsp`, `stm32f4xx-hal-driver`, `cmsis-device-f4`, `cmsis-core`,
+`stm32-otm8009a`). Ba chỗ chặn, gỡ được hai — và cái thứ ba **cố ý không gỡ hộ**.
+
+**(a) Không có đường lấy mã nguồn của hãng.** `doc.fetch` lấy một tệp một lượt, và tệp nó lấy
+về đi vào **kho tài liệu** — trong khi thứ cần ở đây là **mã sẽ được biên dịch**. Sáu mươi
+lượt gọi vượt ngân sách một lượt làm việc, và người dùng phải duyệt cổng sáu mươi lần: đúng
+kiểu ma sát dạy người ta bấm Duyệt theo phản xạ, rồi bấm nốt cả cái thẻ đáng đọc.
+
+→ `code.vendor_fetch` (R3, G-DATA). Chỉ nhận tệp văn bản: một tệp nhị phân lọt vào thư mục
+firmware sẽ làm trình biên dịch báo một lỗi không liên quan gì tới nguyên nhân thật. Không bao
+giờ ghi ra ngoài thư mục đích, kể cả khi đường dẫn trong repo có `..`. Và **hỏng một phần phải
+nói ra là hỏng một phần**: lấy 70 tệp mà 3 tệp lỗi rồi báo "xong" là cách để lỗi hiện ra lúc
+liên kết, xa chỗ gây ra nó nhất. Có `doi_ten` vì `stm32f4xx_hal_conf_template.h` **bắt buộc**
+phải thành `stm32f4xx_hal_conf.h`, nếu không mọi `#include` trong HAL đều hỏng.
+
+**(b) Chip không có trình đọc PNG.** Không có công cụ đổi ảnh thì tác tử chỉ còn hai đường:
+bịa ra một mảng điểm ảnh, hoặc bảo người dùng tự đi làm. → `asset.image_to_c` (R2). Ba điều cố
+ý: **tính trước** số byte và so với Flash *còn lại* (nói trước, thay vì để trình liên kết báo
+`region FLASH overflowed` sau mười phút); **giữ tỉ lệ** khi thu nhỏ (méo là thứ nhìn thấy
+ngay); và nói rõ RGB565 **bỏ hẳn** kênh trong suốt — một logo nền trong suốt sẽ thành nền đen
+nếu không ai nói trước.
+
+**(c) Không có newlib, và không gỡ hộ.** `brew install --cask gcc-arm-embedded` cần **sudo**
+nên tác tử không cài được; máy không có `memset`/`memcpy`/`printf` mà HAL dùng nhiều. Ràng
+buộc này được nói thẳng trong lệnh giao việc để tác tử tự xử lý — đúng yêu cầu của anh Công:
+*"nếu agent gặp lỗi hoặc chưa làm được thì bạn fix lỗi hoặc bổ sung năng lực. Không làm thay
+agent."*
+
+**Rồi lượt chạy đầu phơi ra ba lỗ hổng nữa, và cả ba cùng một hình dạng: một việc CHẠY ĐƯỢC
+trông như một việc KHÔNG THỂ.**
+
+**(d) `E3001` cho một truy vấn không phải về chip.** Tác tử gõ *"logo PTIT Học viện Công nghệ
+Bưu chính Viễn thông"* và nhận về lỗi **mất mạng** — trong khi máy vào mạng hoàn toàn bình
+thường. Nguyên nhân: `TO_CHUC_HANG` không khớp hãng nào, nên backend GitHub bỏ cuộc, và không
+có backend nào khác. Một lỗi gọi sai tên dẫn tác tử đi sai hướng: nó sẽ đợi mạng, không đi tìm
+đường khác.
+
+→ Backend **Wikimedia Commons**, đứng cuối chuỗi `SearXNG → GitHub hãng → Wikimedia`. Thứ tự
+ấy theo độ gần với "tài liệu của hãng", và Wikimedia là **bên thứ ba** nên phải đứng cuối:
+kết quả ghi rõ phải nạp với `nguon="ben_thu_ba"` và nhắc xem giấy phép từng tệp. Khi truy vấn
+có chữ "logo/ảnh/hình" thì ảnh được xếp trên PDF — hỏi logo mà nhận về một bản PDF 1275×1650
+thì gần như chắc chắn không phải thứ người ta muốn. Đo thật: ra đúng
+`Logo_PTIT_University.png` (4251×4251, có kênh trong suốt).
+
+**(e) `doc.fetch` từ chối ảnh.** Tìm đúng logo rồi bị **chính EIDE** chặn ở bước tải:
+*"không nhận ra định dạng… byte đầu b'\x89PNG'"*. → Nhận PNG/JPEG/GIF/BMP/TIFF/WebP/SVG,
+nhưng **không** đưa vào kho tài liệu: ảnh không trích dẫn được, nên `note_vi` chỉ thẳng sang
+`asset.image_to_c` thay vì để tác tử gọi `doc.load` rồi đọc một lỗi nói về OCR. SVG phải xét
+**trước** HTML — nó là văn bản XML, và nhận nhầm thành trang web thì một tệp logo bị từ chối
+kèm câu "trên trang không có liên kết PDF nào".
+
+**(f) Lỗi của chính tôi, và nó giả dạng thành lỗi mạng.** `User-Agent` tôi viết cho lời gọi
+Wikimedia có dấu tiếng Việt (*"luận văn PTIT"*), mà urllib mã hoá header HTTP bằng **latin-1**
+→ `UnicodeEncodeError`. Nó hiện ra thành *"Không gọi được API Wikimedia"* — một câu khiến người
+đọc đi kiểm đường truyền, trong khi lỗi nằm gọn trong một chuỗi hằng. Sửa thành ASCII, và có
+một ca kiểm **đọc thẳng mã nguồn** rồi `encode("latin-1")` từng dòng có `User-Agent`, để lỗi
+này không quay lại bằng một lần sửa vô ý.
+
+#### 15. Đoán đường dẫn, và ba lần hệ thống nói sai về chính nó
+
+Việc "hiện logo lên màn" được chia làm ba lượt sau khi lượt gộp thất bại. **Lượt một xong
+sạch**: tác tử đi `doc.search_web` → `doc.fetch` → `asset.image_to_c`, tìm được
+`Logo_PTIT_University.png` trên Wikimedia (4251×4251, có kênh trong suốt), tải về, và sinh ra
+`logo_ptit.c/h` ở 240×240 rgb565 — 115 KB trong Flash 2 MB. Cả ba phép kiểm xanh: có ảnh
+thật, mảng sinh **bằng công cụ** từ chính ảnh đó, và header khai đúng kích thước.
+
+**Lượt hai thất bại theo một kiểu đáng ghi.** Tác tử xin 49 tệp từ `STM32CubeF4` theo bố cục
+quen thuộc — `Drivers/STM32F4xx_HAL_Driver/Src/…`, `Drivers/BSP/STM32469I-Discovery/…`,
+`Drivers/BSP/Components/otm8009a/…` — và **44 tệp trả 404**. Chỉ `Drivers/CMSIS/Include/*`
+còn thật. Lý do: ST đã tách HAL, CMSIS device, BSP của bo và driver panel thành các **repo
+riêng** (submodule), nên bố cục tác tử nhớ là bố cục của bản đóng gói cũ.
+
+Đây không phải lỗi suy luận. Đó là **đoán khi đáng lẽ phải nhìn**, và lỗi thật là của EIDE:
+nó không có công cụ nào để *nhìn xem một repo có gì*. → `code.vendor_list` (R2), dùng lại
+nhớ đệm cây tệp của bộ tìm kiếm. Đo thật: `*hal_dsi*` trong `stm32f4xx-hal-driver` ra đúng
+`Inc/stm32f4xx_hal_dsi.h` + `Src/stm32f4xx_hal_dsi.c`; `*otm8009a*` trong `stm32-otm8009a` ra
+4 tệp; `*stm32f469xx*` trong `cmsis-device-f4` ra 6 tệp, kể cả `Source/Templates/gcc/
+startup_stm32f469xx.s`. Không khớp gì thì nói thẳng *"nhiều SDK tách thành nhiều repo"* thay
+vì để tác tử thử lại đúng phép đoán vừa hỏng.
+
+**Và ba lần hệ thống nói sai về chính nó — mỗi lần một chiều khác nhau.**
+
+**(a) Bộ chống quay vòng đếm sai chiều.** Lượt gộp trôi hết vào:
+
+    ledger.query → fs.glob ×5 → store.list → store.get → ledger.query → history.list
+                 → ledger.query ×4
+
+Mười bốn lời gọi chỉ-đọc, không ghi gì. Nhưng `_nhac_neu_dang_quay_vong` đếm **theo từng tên
+công cụ** với ngưỡng 6, nên không tên nào chạm ngưỡng cho tới lời gọi thứ mười bốn — và tới
+đó thì lượt đã hết, lời nhắc không còn ai đọc. Trải việc tìm ra nhiều công cụ khác nhau không
+làm nó bớt là quay vòng. Thêm ngưỡng **tổng** lời gọi chỉ-đọc (10), và thêm `history.list`,
+`history.diff`, `snapshot.list` vào danh sách công cụ đọc — **đúng ba công cụ tác tử đã dùng
+để quay vòng**, và cả ba vắng mặt trong bản trước.
+
+**(b) Nhật ký chép một lời gọi thành công thành lỗi.** Sở cứ ghi
+`code.vendor_fetch → LỖI None` trong khi sổ cái ghi `ok: true`, 22 giây. Nguyên nhân: lời gọi
+bị cổng chặn **chạy ở lượt sau** (`run-113` mở cổng, `run-121` chạy), nên lúc bộ ghi đọc sổ
+cái thì dòng `tool_result` chưa kịp có, và `ok is None` bị in ra thành `LỖI None`. Nay đợi
+rồi đọc lại, và nếu vẫn chưa có thì ghi **"CHƯA RÕ (kết quả chưa ghi xong)"**. Một sở cứ nói
+sai về chính thứ nó đang làm chứng thì tệ hơn không có sở cứ.
+
+**(c) Lỗi của người giao việc, tức là tôi.** Lượt đầu tôi giao cả việc trong một câu: tìm
+logo + lấy 60–70 tệp driver + viết chương trình + biên dịch + nạp. Ngân sách một lượt là 40
+lời gọi. Việc quá lớn cho một lượt thì **chia ra là việc của người giao**, không phải lỗi của
+người làm — và tôi đã đổ cho tác tử trước khi nhìn ra điều đó.
+
 ### Số đo
 
-`973 ca đơn vị` (+93 so với DEV-277) · `96 công cụ` khi cờ sơ đồ tắt (+5: `doc.fetch`,
-`target.detect`, `target.flash`, `target.verify`, `target.log`), `105` khi bật.
+`1018 ca đơn vị` (+93 so với DEV-277) · `99 công cụ` khi cờ sơ đồ tắt (+8: `doc.fetch`, `target.detect`,
+`target.flash`, `target.verify`, `target.log`, `code.vendor_fetch`, `code.vendor_list`,
+`asset.image_to_c`), `108` khi bật.
 
 Phiên bo thật (`tools/phien_stm32.py`): bước 1–2 chạy được trên bo đang cắm — tác tử tự tìm ra
 công cụ (`tool.search` → `target.detect`), nhận đúng **ST Discovery F469NI**, và **tự nói ra**
