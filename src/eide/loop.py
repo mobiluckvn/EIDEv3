@@ -546,10 +546,19 @@ class Agent:
         return (
             f"[EIDE] Lượt này bạn {vi_sao} và chưa ghi được gì — "
             f"{len(goi)}/{self.config.budget.max_tool_calls} lời gọi đã dùng. Dừng tìm lại. "
-            "Chọn một trong ba: (1) làm việc chính bằng dữ kiện đang có; (2) nói thẳng với "
+            "Chọn một trong BỐN: (1) làm việc chính bằng dữ kiện đang có; (2) nói thẳng với "
             "người dùng là bạn chưa tìm ra thứ gì và hỏi họ; (3) nếu việc quá lớn cho một "
-            "lượt thì làm phần đầu rồi báo lại. Đừng tìm tiếp bằng một truy vấn khác cho "
-            "cùng một câu hỏi.")
+            "lượt thì làm phần đầu rồi báo lại; "
+            # Lựa chọn thứ tư, và nó là lựa chọn duy nhất đổi được tình hình cho LẦN SAU.
+            #
+            # Đo được trên phiên bo STM32F469: tác tử có `pc = 0x08000db0`, cần biết hàm nào
+            # ở đó, và gọi `fs.read` 28 lần rồi hết hạn mức mà vẫn chưa chắc. `addr2line`
+            # trả lời trong 40 ms. Nó không thiếu thông minh — nó thiếu CÁI MIỆNG để nói
+            # "tôi cần một công cụ", nên ba lựa chọn trên đều dẫn nó quay lại cày tay.
+            "(4) **cày tay nhiều thế này thường là dấu hiệu THIẾU CÔNG CỤ, không phải thiếu "
+            "cố gắng** — nếu có một công cụ trả lời được câu hỏi này trong một lời gọi, xin "
+            "tự viết nó bằng `tool.propose` (kèm chính số đo vừa rồi làm lý do). "
+            "Đừng tìm tiếp bằng một truy vấn khác cho cùng một câu hỏi.")
 
     def _cau_im_lang(self, ctx: TurnContext) -> str:
         """Câu thay cho sự im lặng: nói đã làm gì và mời người dùng đẩy tiếp."""

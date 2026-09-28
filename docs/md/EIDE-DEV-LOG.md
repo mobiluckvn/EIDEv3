@@ -3509,3 +3509,70 @@ việc không có nó.
 - `tool.propose`: tác tử tự thấy thiếu năng lực và **tự viết công cụ mới** (anh Công đã chọn
   hướng "tự viết tool thật, qua cổng").
 
+### [DEV-282] 28/09/2026 · Tác tử tự bù năng lực cho chính mình
+
+Anh Công: *"Agent cũng cần tự thấy thiếu công cụ để viết thêm (tự viết thêm năng lực)."* Được
+trình ba hướng — chỉ đề xuất / viết script rời / tự viết tool thật qua cổng — anh chọn hướng
+đi xa nhất.
+
+#### Số đo làm chặng này ra đời
+
+Tác tử có `pc = 0x08000db0` và cần biết hàm nào nằm ở đó. Nó gọi **`fs.read` 28 lần**, hết
+hạn mức 40 lời gọi của lượt, rồi dừng giữa việc mà vẫn chưa chắc. `arm-none-eabi-addr2line`
+trả lời cùng câu hỏi trong **40 ms**.
+
+Nó không thiếu thông minh. Nó thiếu **cái miệng**: `tool.install` chỉ cài CLI ngoài, và không
+có đường nào để nói *"EIDE thiếu một năng lực"*. Toàn phiên, **580/1078 lời gọi (54 %)** là
+`fs.read`/`fs.grep`/`fs.glob`.
+
+#### Luồng
+
+```
+tool.propose → kiểm đề xuất bằng mã → thẻ G-TOOL (R3)
+(người duyệt)
+→ tác tử viết .eide/cong-cu/<ten>.py và .eide/cong-cu/test_<ten>.py bằng fs.write
+tool.reload  → CHẠY bộ kiểm; XANH thì nạp và đăng ký, ĐỎ thì từ chối kèm đuôi pytest
+```
+
+Và phần **"tự thấy"**: lời nhắc chống quay vòng — thứ nổ đúng lúc tác tử đang cày — nay có
+lựa chọn thứ tư: *"cày tay nhiều thế này thường là dấu hiệu THIẾU CÔNG CỤ, không phải thiếu
+cố gắng — xin tự viết nó bằng `tool.propose`, kèm chính số đo vừa rồi làm lý do."* Ba lựa
+chọn cũ đều dẫn nó quay lại cày tay.
+
+#### Bốn hàng rào, vì đây là mã chạy trong chính tiến trình EIDE
+
+1. **Đề xuất phải nói được gì.** `vi_sao` bắt buộc mang **số đo**, không mang cảm giác —
+   *"tôi thấy hơi chậm"* không đủ để ai quyết, *"tôi gọi `fs.read` 28 lần rồi hết hạn mức"*
+   thì đủ. `test` phải nói sẽ kiểm ca nào, **kể cả ca nó phải im lặng**.
+2. **Chỉ ghi vào `.eide/cong-cu/` của dự án.** Ranh giới này không do tôi nghĩ ra — **sandbox
+   quyết hộ**: `fs.write` bị chặn ngoài thư mục dự án (TC070), nên bản thiết kế đầu (ghi vào
+   `src/eide/tools/them/`) sẽ hỏng ngay lời gọi đầu tiên. Bắt được trước khi viết test, và nó
+   hoá ra là thiết kế đúng hơn: công cụ tự viết là của **dự án**, mã nguồn EIDE không bị
+   chạm, và hoàn tác một changeset là đủ để gỡ sạch.
+3. **Bộ kiểm phải XANH mới được đăng ký.** Hàng rào quan trọng nhất. Không có nó thì ta vừa
+   cho tác tử một cách rất nhanh để tự tin vào một thứ sai. Chạy trong tiến trình riêng —
+   một bộ kiểm hỏng không được kéo theo cả EIDE. Test đỏ → `E7005`, kèm câu *"đừng sửa test
+   cho vừa mã: N6 — không đổi tiêu chí để đạt."*
+4. **Đăng ký đúng cái tên đã duyệt.** Người dùng duyệt một cái tên cụ thể; nạp xong mà
+   registry mọc ra `code.khac_han` là lách cổng → `E7007`.
+
+Khung mã trả về cho tác tử mang sẵn ba bài học đã trả giá, đặt ngay chỗ nó đang viết: trả về
+**số đo** chứ đừng chỉ trả `ok` · *"không đo được"* phải khác *"đo được và bằng 0"* · hằng số
+phần cứng **tra** từ header của hãng, đừng dựng lại từ trí nhớ.
+
+#### Ca kiểm đáng kể nhất
+
+`test_TRON_VONG_DOI_de_xuat_viet_kiem_nap_dung_duoc`: tác tử đề xuất → viết mã + test → nạp →
+và **gọi được công cụ nó tự viết ngay trong cùng lượt**, không phải khởi động lại EIDE. Từng
+mảnh xanh riêng không chứng minh được cái vòng khép lại, mà cái vòng khép lại mới là thứ được
+yêu cầu.
+
+### Số đo
+
+`1180 ca đơn vị` (+16). Hai công cụ mới: `tool.propose` (R3, cổng G-TOOL), `tool.reload`.
+
+### Còn lại
+
+- MDD-40 không còn mục nào trống.
+- Khôi phục bản demo gốc của ST cho bo STM32F469, nếu anh Công muốn.
+
