@@ -317,3 +317,53 @@ def test_vendor_list_luon_hien(make_agent):
     agent = make_agent([])
     assert agent.registry._tools["code.vendor_list"].core is True
     assert "code.vendor_list" in {t["name"] for t in agent.registry.declarations()}
+
+
+# ===================================================================== nhánh sai thì tự sửa
+def test_liet_ke_tu_sua_nhanh_khi_nhanh_sai(monkeypatch):
+    """Repo của ST không thống nhất: hal-driver dùng `master`, otm8009a dùng `main`.
+
+    Đo được: tác tử sửa đúng tên repo rồi vẫn trượt vì đoán nhánh là `main`. Bắt nó đoán
+    nhánh là lặp lại đúng lỗi "đoán thay vì nhìn", chỉ ở một tầng thấp hơn.
+    """
+    from eide.knowledge import tim_kiem as tk
+
+    goi: list[str] = []
+
+    def cay(org, repo, nhanh, cache, *, timeout):
+        goi.append(nhanh)
+        if nhanh != "master":
+            raise OSError("404")
+        return ["Src/stm32f4xx_hal_ltdc.c", "Inc/stm32f4xx_hal_ltdc.h"]
+
+    monkeypatch.setattr(tk, "_cay_repo", cay)
+    monkeypatch.setattr(tk, "nhanh_mac_dinh", lambda o, r, **k: "master")
+    d = S.liet_ke("STMicroelectronics/stm32f4xx-hal-driver", nhanh="main", mau="*ltdc*")
+    assert d["so_khop"] == 2 and d["nhanh"] == "master" and d["doi_nhanh"] is True
+    assert goi == ["main", "master"], "phải thử nhánh được nêu TRƯỚC rồi mới hỏi mặc định"
+
+
+def test_liet_ke_khong_doi_nhanh_khi_mac_dinh_cung_hong(monkeypatch):
+    from eide.knowledge import tim_kiem as tk
+
+    monkeypatch.setattr(tk, "_cay_repo",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("404")))
+    monkeypatch.setattr(tk, "nhanh_mac_dinh", lambda o, r, **k: "")
+    d = S.liet_ke("o/r", nhanh="main")
+    assert d["so_khop"] == 0
+    assert "có thể repo không tồn tại" in d["vi_sao_khong_dat"]
+
+
+def test_nhanh_mac_dinh_co_nho_dem(tmp_path, monkeypatch):
+    from eide.knowledge import tim_kiem as tk
+
+    n = {"lan": 0}
+
+    def gia(url, *, timeout, tran=0):
+        n["lan"] += 1
+        return {"default_branch": "master"}
+
+    monkeypatch.setattr(tk, "_json_url", gia)
+    assert tk.nhanh_mac_dinh("o", "r", cache=tmp_path) == "master"
+    assert tk.nhanh_mac_dinh("o", "r", cache=tmp_path) == "master"
+    assert n["lan"] == 1, "lần thứ hai phải đọc từ nhớ đệm"

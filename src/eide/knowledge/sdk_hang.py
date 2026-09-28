@@ -93,9 +93,28 @@ def liet_ke(repo: str, *, nhanh: str = "main", mau: str = "", gioi_han: int = 20
     org, ten = repo.split("/", 1)
     try:
         duong = _cay_repo(org, ten, nhanh, cache, timeout=timeout)
-    except Exception as e:                                    # noqa: BLE001
-        ra["vi_sao_khong_dat"] = f"Không đọc được cây tệp: {type(e).__name__}: {e}"
-        return ra
+    except Exception as e_dau:                                # noqa: BLE001
+        # Nhánh sai thì hỏi GitHub nhánh mặc định rồi thử lại MỘT lần, thay vì bắt người gọi
+        # đoán. Repo của ST không thống nhất: `stm32f4xx-hal-driver` dùng `master`,
+        # `stm32-otm8009a` dùng `main`. Đoán nhánh là lặp lại lỗi "đoán thay vì nhìn".
+        from .tim_kiem import nhanh_mac_dinh
+
+        that = nhanh_mac_dinh(org, ten, cache=cache, timeout=min(timeout, 20))
+        if not that or that == nhanh:
+            ra["vi_sao_khong_dat"] = (
+                f"Không đọc được cây tệp của {repo}@{nhanh}: "
+                f"{type(e_dau).__name__}: {e_dau}"
+                + (f" (nhánh mặc định của repo này là `{that}`)" if that else
+                   " — có thể repo không tồn tại."))
+            return ra
+        try:
+            duong = _cay_repo(org, ten, that, cache, timeout=timeout)
+        except Exception as e:                                # noqa: BLE001
+            ra["vi_sao_khong_dat"] = (f"Không đọc được cây tệp của {repo} ở cả `{nhanh}` lẫn "
+                                      f"nhánh mặc định `{that}`: {type(e).__name__}: {e}")
+            return ra
+        ra["nhanh"] = nhanh = that
+        ra["doi_nhanh"] = True
     if "__CAT_BOT__" in duong:
         duong.remove("__CAT_BOT__")
         ra["bi_cat"] = True
@@ -152,6 +171,21 @@ def lay_sdk(repo: str, tep: list[str], dich: Path, *, nhanh: str = "main",
         return kq
 
     import urllib.parse
+
+    # Thử một tệp trước để biết nhánh có đúng không. Sai nhánh thì MỌI tệp đều 404, và người
+    # gọi chỉ biết điều đó sau khi đã xin cả chục tệp — đo được: 26/26 tệp hỏng vì nhánh.
+    if tep and mo_url is None:
+        from .tim_kiem import nhanh_mac_dinh
+
+        thu = f"https://raw.githubusercontent.com/{repo}/{nhanh}/" + "/".join(
+            urllib.parse.quote(x) for x in tep[0].split("/"))
+        thu_kq = tv.tai_ve(thu, dich, ten_tep=".eide-thu-nhanh", tran_byte=4096,
+                           timeout=min(timeout, 20))
+        (dich / ".eide-thu-nhanh").unlink(missing_ok=True)
+        if "404" in thu_kq.vi_sao_khong_dat:
+            that = nhanh_mac_dinh(*repo.split("/", 1))
+            if that and that != nhanh:
+                kq.nhanh = nhanh = that
 
     dich.mkdir(parents=True, exist_ok=True)
     for duong in tep:

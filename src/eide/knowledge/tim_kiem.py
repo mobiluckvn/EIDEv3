@@ -274,6 +274,31 @@ def _diem_repo(ten_repo: str, tu: list[str]) -> float:
     return sum(_diem_mot_tu(t, n) for t in tu)
 
 
+def nhanh_mac_dinh(org: str, repo: str, *, cache: Path | None = None,
+                   timeout: float = 20.0) -> str:
+    """Nhánh mặc định của một repo, hỏi thẳng GitHub. Rỗng nếu không hỏi được.
+
+    Vì sao cần: repo của ST không thống nhất — `stm32f4xx-hal-driver` dùng `master`,
+    `stm32-otm8009a` dùng `main`, `32f469idiscovery-bsp` dùng `main`. Đo được trên bo
+    STM32F469: tác tử sửa đúng tên repo rồi vẫn trượt vì đoán nhánh là `main`. Bắt nó đoán
+    nhánh là lặp lại đúng lỗi "đoán thay vì nhìn", chỉ ở một tầng thấp hơn.
+    """
+    tep = (cache / f"nhanh-{org}-{repo}.txt") if cache else None
+    if tep and tep.exists() and time.time() - tep.stat().st_mtime < HAN_CAY_GIAY:
+        cu = tep.read_text("utf-8").strip()
+        if cu:
+            return cu
+    try:
+        d = _json_url(f"https://api.github.com/repos/{org}/{repo}", timeout=timeout)
+    except Exception:                                         # noqa: BLE001
+        return ""
+    ra = str((d or {}).get("default_branch") or "")
+    if ra and tep:
+        tep.parent.mkdir(parents=True, exist_ok=True)
+        tep.write_text(ra, "utf-8")
+    return ra
+
+
 def _repo_cua_org(org: str, cache: Path | None, *, timeout: float,
                   tran_trang: int = 4) -> list[tuple[str, str]]:
     """Danh sách repo của một tổ chức, có nhớ đệm. Trả [(tên, nhánh mặc định)]."""
