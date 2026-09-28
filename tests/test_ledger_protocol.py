@@ -2,6 +2,7 @@
 """Sổ cái và giao thức UAP — bất biến I1–I6, toàn vẹn lịch sử (§F3)."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -157,3 +158,122 @@ def test_write_ahead_truoc_khi_lam(tmp_path):
     assert "incident" in kinds
     ha = next(e for e in lg.read() if e.kind == "human_act")
     assert ha.data["text"] == "làm cái mạch đo nhiệt"
+
+
+# ============================== nhiều TIẾN TRÌNH cùng ghi một sổ cái
+# Đo được trong chính dự án này ngày 28/09/2026: app EIDE đang mở dự án STM32F469, bộ kịch bản
+# phiên mở **cùng** dự án đó, và cả hai cùng ghi. Sổ cái có hai bản ghi cùng mang `seq 9156`.
+# Chính tác tử phát hiện — nó đọc sổ cái và báo "lệch thứ tự ở dòng 9174". Đó là hỏng đúng cái
+# thuộc tính mà sổ cái tồn tại để có (§F3), nên bộ này canh nó.
+
+_KICH_BAN_TIEN_TRINH = """
+import sys, json
+sys.path.insert(0, {src!r})
+from eide.protocol.ledger import Ledger
+l = Ledger({duong!r})
+for i in range({so!r}):
+    l.append("ui_command", {{"ai": {ten!r}, "i": i, "chu": "có dấu tiếng Việt — ăn uống"}})
+"""
+
+
+def test_hai_tien_trinh_cung_ghi_thi_so_cai_van_toan_ven(tmp_path):
+    """`threading.Lock` chỉ khoá trong MỘT tiến trình. Hai tiến trình thì mỗi bên giữ
+    `_seq`/`_head` đọc lúc khởi tạo rồi tự đếm tiếp — và sổ cái thành hai dãy số chồng nhau.
+    """
+    import subprocess
+    import sys
+
+    p = tmp_path / "ledger.jsonl"
+    src = str(Path(__file__).resolve().parents[1] / "src")
+    chay = [subprocess.Popen(
+        [sys.executable, "-c", _KICH_BAN_TIEN_TRINH.format(
+            src=src, duong=str(p), so=40, ten=ten)])
+        for ten in ("a", "b", "c")]
+    for c in chay:
+        assert c.wait(timeout=120) == 0
+
+    ds = [json.loads(x) for x in p.read_text("utf-8").splitlines() if x.strip()]
+    assert len(ds) == 120
+    # Điều kiện thật sự cần: `seq` là một thứ tự tổng, không trùng, không tụt.
+    assert [d["seq"] for d in ds] == list(range(1, 121))
+    dat, mo_ta = Ledger(p).verify()
+    assert dat, mo_ta
+
+
+def test_duoi_tep_doc_dung_dong_cuoi_khi_co_tieng_viet(tmp_path):
+    """Nhảy tới một vị trí byte bất kỳ rồi đọc ở chế độ văn bản sẽ cắt đôi một ký tự UTF-8
+    nhiều byte. Sổ cái này đầy tiếng Việt có dấu, nên lỗi đó không phải giả thuyết — nó đã
+    nổ ngay lần chạy bộ kiểm đầu tiên."""
+    from eide.protocol.ledger import _duoi_tep
+
+    p = tmp_path / "l.jsonl"
+    l = Ledger(p)
+    for i in range(300):
+        l.append("ui_command", {"chu": "ăn uống đầy đủ, ngủ nghỉ điều độ " * 20, "i": i})
+    with p.open("rb") as f:
+        seq, h = _duoi_tep(f)
+    assert seq == 300 and len(h) == 64
+
+
+def test_duoi_tep_tep_rong_va_tep_chi_mot_dong(tmp_path):
+    from eide.protocol.ledger import GENESIS, _duoi_tep
+
+    p = tmp_path / "l.jsonl"
+    p.write_bytes(b"")
+    with p.open("rb") as f:
+        assert _duoi_tep(f) == (0, GENESIS)
+    l = Ledger(p)
+    l.append("ui_command", {"x": 1})
+    with p.open("rb") as f:
+        assert _duoi_tep(f)[0] == 1
+
+
+def test_duoi_tep_dong_cuoi_vo_thi_lui_lai_dong_truoc(tmp_path):
+    """Mất điện giữa lúc ghi để lại một dòng cụt. Trả `(0, GENESIS)` thì bản ghi kế tiếp sẽ
+    giả vờ là dòng đầu tiên — im lặng làm hỏng cả chuỗi. Lùi lại một dòng mới đúng."""
+    from eide.protocol.ledger import _duoi_tep
+
+    p = tmp_path / "l.jsonl"
+    l = Ledger(p)
+    for i in range(3):
+        l.append("ui_command", {"i": i})
+    with p.open("ab") as f:
+        f.write(b'{"seq": 4, "ts": "x", "ki')       # dòng cụt
+    with p.open("rb") as f:
+        assert _duoi_tep(f)[0] == 3
+
+
+def test_verify_KHONG_cao_buoc_bi_sua_khi_chi_la_hai_tien_trinh(tmp_path):
+    """Một cáo buộc sai ở đúng chỗ người ta phải tin tuyệt đối thì đắt hơn nhiều so với im
+    lặng. `seq` lặp mà từng bản ghi vẫn tự khớp hash = tai nạn vận hành, không phải ai sửa."""
+    p = tmp_path / "l.jsonl"
+    l1 = Ledger(p)
+    l1.append("ui_command", {"i": 1})
+    l1.append("ui_command", {"i": 2})
+    # Mô phỏng tiến trình thứ hai với bộ đếm cũ: ghi tay một bản ghi seq lặp, hash tự khớp.
+    ds = [json.loads(x) for x in p.read_text("utf-8").splitlines()]
+    from eide.protocol.ledger import _digest
+
+    body = {"seq": 2, "ts": "2026-09-28T00:00:00+00:00", "kind": "ui_command", "data": {"i": 9}}
+    payload = json.dumps(body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    rec = {**body, "prev": ds[0]["hash"], "hash": _digest(payload, ds[0]["hash"])}
+    with p.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+    dat, mo_ta = Ledger(p).verify()
+    assert not dat
+    assert "KHÔNG phải ai sửa" in mo_ta and "hai tiến trình" in mo_ta
+    assert "bị sửa" not in mo_ta
+
+
+def test_verify_VAN_cao_buoc_bi_sua_khi_noi_dung_that_su_lech(tmp_path):
+    """Nhẹ tay với tai nạn vận hành không được phép làm nhẹ tay với sửa nội dung thật."""
+    p = tmp_path / "l.jsonl"
+    l = Ledger(p)
+    l.append("ui_command", {"i": 1})
+    l.append("ui_command", {"i": 2})
+    ds = [json.loads(x) for x in p.read_text("utf-8").splitlines()]
+    ds[1]["data"] = {"i": 999}                     # sửa nội dung, giữ nguyên hash
+    p.write_text("\n".join(json.dumps(d, ensure_ascii=False) for d in ds) + "\n", "utf-8")
+    dat, mo_ta = Ledger(p).verify()
+    assert not dat and "bị sửa" in mo_ta

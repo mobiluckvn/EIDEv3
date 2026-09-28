@@ -1095,3 +1095,236 @@ def test_doc_khung_anh_doc_thieu_byte_thi_KHONG_ghi_anh_cut(tmp_path, monkeypatc
 def test_doc_khung_anh_dinh_dang_la_thi_noi_biet_nhung_gi(tmp_path):
     d = MT.doc_khung_anh(0xC0000000, 8, 8, "YUV420", tmp_path / "a.png")
     assert not d["dat"] and "ARGB8888" in d["vi_sao_khong_dat"]
+
+
+# ============================== đi dọc chuỗi hiển thị: đứt ở MẮT NÀO
+def _openocd_reg(monkeypatch, gia_tri: dict[int, int]):
+    import subprocess
+
+    def _run(cl, **k):
+        ra = ""
+        for i, x in enumerate(cl):
+            if x == "-c" and cl[i + 1].startswith("mdw"):
+                d = int(cl[i + 1].split()[1], 16)
+                ra += f"0x{d:08x}: {gia_tri.get(d, 0):08x} \n"
+        return subprocess.CompletedProcess(cl, 0, ra, "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+
+
+_DUONG_HONG = {0x40016818: 0xC0002221, 0x40016884: 1,     # LTDC bật, lớp 1 bật
+               0x40016C04: 1,                             # host DSI bật
+               0x40017000: 0x0000000A,                    # DSIEN=0, SHTDN=1
+               0x40021C1C: 0x00000000}                    # XRES bit 7 = 0 → panel bị giữ reset
+
+
+def test_doc_duong_hien_thi_chi_dung_mat_xich_bi_dut(monkeypatch):
+    """Bốn mắt xích hỏng theo bốn cách khác nhau và cho ra CÙNG MỘT màn hình đen.
+
+    Đo được trên bo STM32F469 khi khung ảnh đã vẽ đúng mà màn vẫn đen: `DSI_WCR = 0x0000000A`
+    (DSIEN = 0, SHTDN = 1) và `GPIOH_ODR` bit 7 = 0 (XRES tích cực thấp vẫn bị kéo xuống →
+    panel bị giữ trong reset). Hai số đó biến "lỗi ở đâu đó trong đường ra màn hình" thành hai
+    dòng sửa được.
+    """
+    _openocd_reg(monkeypatch, _DUONG_HONG)
+    d = MT.doc_duong_hien_thi()
+    assert d["dat"] and not d["thong_suot"]
+    assert d["dut_o"] == ["Bọc DSI bật (DSIEN)", "Hiển thị không bị tắt (SHTDN)",
+                          "Panel đã ra khỏi reset (XRES = PH7)"]
+    # Ba mắt đầu vẫn thông — phép đo phải nói ra điều đó, không gộp cả chuỗi thành "hỏng".
+    assert [m["thong"] for m in d["mat_xich"][:3]] == [True, True, True]
+    assert all(m["cach_sua"] for m in d["mat_xich"] if m["thong"] is False)
+
+
+def test_doc_duong_hien_thi_thong_suot_thi_chi_sang_den_nen(monkeypatch):
+    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40017000: 0x0000000C,
+                               0x40021C1C: 1 << 7})
+    d = MT.doc_duong_hien_thi()
+    assert d["thong_suot"] and d["dut_o"] == []
+
+
+def test_doc_duong_hien_thi_chan_xres_la_cua_RIENG_TUNG_BO(monkeypatch):
+    """Đọc nhầm chân thì dòng về panel là vô nghĩa — nên nó là tham số, và kết quả luôn khai
+    mình đang đọc chân nào."""
+    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40020814: 1 << 3})
+    d = MT.doc_duong_hien_thi(chan_xres=3, odr_xres=0x40020814)
+    assert d["chan_xres"] == "PH3" and "RIÊNG từng bo" in d["ghi_chu_chan"]
+    assert "Panel đã ra khỏi reset (XRES = PH3)" not in d["dut_o"]
+
+
+def test_doc_duong_hien_thi_khong_doc_duoc_thi_KHONG_bao_dut(monkeypatch):
+    """`None` = chưa đọc được. Báo đứt vì không đọc được là một báo động giả, và báo động giả
+    dạy người ta bỏ qua cảnh báo."""
+    import subprocess
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run",
+                        lambda cl, **k: subprocess.CompletedProcess(
+                            cl, 0, "0x40016818: c0002221 \n", ""))
+    d = MT.doc_duong_hien_thi()
+    assert d["dat"] and d["dut_o"] == []
+    assert any(m["thong"] is None for m in d["mat_xich"])
+
+
+def test_target_screen_noi_thang_DUT_O_DAU(make_agent, monkeypatch):
+    import subprocess
+
+    agent = make_agent([])
+    khung = (bytes([0x19, 0x20, 0xDE, 0xFF]) * 4 + bytes([0xFF]) * 16) * 4
+    tt = {0x40016818: 0x00002221, 0x40016884: 1, 0x40016894: 0, 0x400168AC: 0xC0000000,
+          0x400168B0: 0x0C800C83, 0x400168B4: 0x000001E0, 0x40016888: 0x03430024,
+          0x4001688C: 0x01EF0010, **_DUONG_HONG}
+
+    def _run(cl, **k):
+        ra = ""
+        for i, x in enumerate(cl):
+            if x != "-c":
+                continue
+            l = cl[i + 1]
+            if l.startswith("dump_image"):
+                _, tep, dc, n = l.split()
+                Path(tep).write_bytes(khung[:int(n)])
+            elif l.startswith("mdw"):
+                d = int(l.split()[1], 16)
+                ra += f"0x{d:08x}: {tt.get(d, 0):08x} \n"
+        return subprocess.CompletedProcess(cl, 0, ra, "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: f"/fake/{x}")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    r = agent.registry.run("target.screen", {"rong": 4, "cao": 8}, _ctx(agent))
+    assert r.ok, getattr(r.error, "message_vi", r)
+    n = r.data["note_vi"]
+    assert "chương trình ĐÃ vẽ" in n and "ĐỨT Ở:" in n
+    assert "Panel đã ra khỏi reset" in n and "GPIO_PIN_SET" in n
+    assert r.data["duong"]["dut_o"]
+
+
+# ============================== kẹt, quanh quẩn, hay đang reset lại — ba thứ khác hẳn nhau
+def test_lay_mau_pc_dem_so_dia_chi_KHONG_du_phai_do_KHOANG_TRAI(monkeypatch):
+    """Đo được trên bo STM32F469: sáu mẫu rơi vào **năm** địa chỉ — nghe như "đang chạy bình
+    thường" — nhưng cả năm nằm trong **42 byte** của nhau, tức một vòng lặp chặt bên trong
+    đúng một hàm (`HAL_InitTick`). Thứ phân biệt được là khoảng trải, không phải số lượng.
+    """
+    import subprocess
+
+    dia = ["0x0800199c", "0x080019be", "0x080019c2", "0x080019c4", "0x080019c6",
+           "0x080019be", "0x080019c2", "0x0800199c"]
+    n = iter(dia)
+
+    def _run(cl, **k):
+        p = next(n, dia[-1])
+        return subprocess.CompletedProcess(
+            cl, 0, "[stm32f4x.cpu] halted due to debug-request, current mode: Thread\n"
+                   f"xPSR: 0x01000000 pc: {p} msp: 0x2004fef8\n", "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    d = MT.lay_mau_pc(8)
+    assert d["dat"] and d["so_dia_chi_khac_nhau"] == 5
+    assert d["trai_byte"] == 42
+    assert "QUANH QUẨN" in d["ket_luan"] and "reset lại" in d["ket_luan"]
+
+
+def test_lay_mau_pc_chay_that_thi_noi_la_chay_that(monkeypatch):
+    import subprocess
+
+    dia = ["0x08000100", "0x08004500", "0x08009000", "0x0800c300",
+           "0x08001200", "0x08007700"]
+    n = iter(dia)
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run", lambda cl, **k: subprocess.CompletedProcess(
+        cl, 0, "[stm32f4x.cpu] halted due to debug-request, current mode: Thread\n"
+               f"xPSR: 0x01000000 pc: {next(n, dia[-1])} msp: 0x2004fef8\n", ""))
+    d = MT.lay_mau_pc(6)
+    assert d["trai_byte"] > d["nguong_trai_byte"] and "không kẹt" in d["ket_luan"]
+
+
+def test_lay_mau_pc_ket_o_dung_mot_lenh(monkeypatch):
+    import subprocess
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run", lambda cl, **k: subprocess.CompletedProcess(
+        cl, 0, "[stm32f4x.cpu] halted due to debug-request, current mode: Thread\n"
+               "xPSR: 0x01000000 pc: 0x08000db0 msp: 0x2004fef8\n", ""))
+    d = MT.lay_mau_pc(5)
+    assert d["so_dia_chi_khac_nhau"] == 1 and "ĐỨNG YÊN" in d["ket_luan"]
+
+
+@pytest.mark.parametrize("csr,mong", [
+    (0x0E000000, "PORRST"),          # đo được trên bo: bật nguồn + NRST + BOR
+    (1 << 29, "IWDGRST"),            # chó canh cắn — lý do rất khác, cách sửa rất khác
+    (1 << 28, "SFTRST"),
+    (0, None),
+])
+def test_doc_nguyen_nhan_reset_hoi_chinh_con_chip(monkeypatch, csr, mong):
+    """Một chương trình đang reset đi reset lại và một chương trình kẹt một chỗ nhìn qua cửa
+    sổ gỡ lỗi thì giống hệt nhau. `RCC_CSR` trả lời thẳng bằng một bit."""
+    import subprocess
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run", lambda cl, **k: subprocess.CompletedProcess(
+        cl, 0, f"0x{MT.RCC_CSR:08x}: {csr:08x} \n", ""))
+    d = MT.doc_nguyen_nhan_reset()
+    assert d["dat"] and d["csr"] == f"0x{csr:08X}"
+    if mong:
+        assert any(mong in x for x in d["nguyen_nhan"])
+    else:
+        assert d["nguyen_nhan"] == []
+    # Cờ DÍNH: thấy PINRST không có nghĩa là VỪA bị reset bởi chân NRST.
+    assert "DÍNH" in d["ghi_chu"]
+
+
+def test_target_debug_lay_mau_thi_noi_ca_ket_luan_va_ly_do_reset(make_agent, monkeypatch):
+    import subprocess
+
+    agent = make_agent([])
+    goc = agent.config.paths.project_root
+    (goc / ".eide" / "build").mkdir(parents=True, exist_ok=True)
+    (goc / ".eide" / "build" / "mach.elf").write_bytes(b"ELF" * 40)
+    dia = ["0x0800199c", "0x080019be", "0x080019c2", "0x080019c4"]
+    n = iter(dia * 3)
+
+    def _which(x):
+        return {"openocd": "/fake/openocd", "arm-none-eabi-addr2line": "/fake/a2l"}.get(x)
+
+    def _run(cl, **k):
+        if "a2l" in cl[0]:
+            so = sum(1 for i, x in enumerate(cl) if x == "-e") and len(cl) - 5
+            return subprocess.CompletedProcess(
+                cl, 0, "HAL_InitTick\n/x/stm32f4xx_hal.c:264\n" * max(1, so), "")
+        lenh = [cl[i + 1] for i, x in enumerate(cl) if x == "-c"]
+        if any(l.startswith("mdw") and hex(MT.RCC_CSR)[2:] in l for l in lenh):
+            return subprocess.CompletedProcess(cl, 0, f"0x{MT.RCC_CSR:08x}: 0e000000 \n", "")
+        return subprocess.CompletedProcess(
+            cl, 0, "[stm32f4x.cpu] halted due to debug-request, current mode: Thread\n"
+                   f"xPSR: 0x01000000 pc: {next(n, dia[-1])} msp: 0x2004fef8\n", "")
+
+    monkeypatch.setattr(MT.shutil, "which", _which)
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    r = agent.registry.run("target.debug", {"lay_mau": 6}, _ctx(agent))
+    assert r.ok, getattr(r.error, "message_vi", r)
+    assert r.data["nhieu_mau"]["dat"] and r.data["nguyen_nhan_reset"]["dat"]
+    n_vi = r.data["note_vi"]
+    assert "QUANH QUẨN" in n_vi and "RCC_CSR = 0x0E000000" in n_vi and "PORRST" in n_vi
+
+
+def test_target_debug_khong_lay_mau_thi_khong_ton_them_lan_dung_chip(make_agent, monkeypatch):
+    """Lấy mẫu phải là việc tác tử XIN, không phải việc luôn xảy ra: mỗi mẫu là một lần dừng
+    con chip đang chạy, và dừng chip là can thiệp vào chính thứ đang đo."""
+    import subprocess
+
+    agent = make_agent([])
+    dem: list[int] = []
+
+    def _run(cl, **k):
+        dem.append(1)
+        return subprocess.CompletedProcess(
+            cl, 0, "[stm32f4x.cpu] halted due to debug-request, current mode: Thread\n"
+                   "xPSR: 0x01000000 pc: 0x08000200 msp: 0x2004fef8\n", "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd" if x == "openocd" else None)
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    r = agent.registry.run("target.debug", {}, _ctx(agent))
+    assert r.ok and r.data["nhieu_mau"] == {} and r.data["nguyen_nhan_reset"] == {}
+    assert len(dem) == 1

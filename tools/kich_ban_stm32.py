@@ -550,8 +550,159 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
         nk.anh(g, "nhin-khung-anh")
 
+    # ------------------------------------------- 22. sửa đúng đầu bị hỏng: DSI → panel
+    #
+    # Tác tử đã chẩn đoán đúng ở lượt 21 bằng hai lời gọi công cụ. Giờ là việc sửa, và lời
+    # giao việc KHÔNG chứa đáp án — chỉ nói thêm hai lỗi mà chính khung ảnh vừa lộ ra, thứ
+    # mà mắt người nhìn một màn hình đen không thể thấy.
+    if lam(22):
+        nk.buoc("Sửa đường DSI → panel, và hai lỗi mà khung ảnh vừa lộ ra")
+        loi, cc = hoi(g, nk, du_an,
+                      "Chẩn đoán của bạn đúng, và chỉ tốn hai lời gọi công cụ — tốt.\n\n"
+                      "Giờ sửa đi, đúng cái đầu bị hỏng mà bạn vừa chỉ ra. Bạn đọc được mọi "
+                      "thanh ghi bằng `target.debug` với tham số `dia_chi`, và sau khi nạp "
+                      "thì `target.screen` cho bạn xem lại kết quả.\n\n"
+                      "Hai việc nữa, cùng gói: chính khung ảnh bạn vừa đọc lộ ra hai lỗi mà "
+                      "nhìn một màn hình đen thì không thấy được —\n"
+                      "1. **Bốn dòng chữ bị vỡ**, các ký tự chồng lên nhau, đọc không ra.\n"
+                      "2. **Logo có một hộp nền đen** vuông quanh nó: ảnh PNG gốc nền trong "
+                      "suốt, mà kênh alpha bị đổ thành màu đen khi đổi sang mảng điểm.\n\n"
+                      "Sửa cả ba, dịch lại, nạp, rồi gọi `target.screen` để tự kiểm. Khi nào "
+                      "bạn thấy khung ảnh đã đúng thì bảo mình, mình nhìn bo bằng mắt.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_nhin_khung_anh(nk, ctx, cc)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "sua-dsi-panel")
+
+    # ------------------------------------------- 23. "làm tiếp" — chạy lại được nhiều lần
+    #
+    # Một lượt của tác tử có hạn mức lời gọi công cụ, và một việc sửa thật thường không vừa
+    # trong một lượt. Bước này không thêm yêu cầu mới, chỉ nối lượt — chạy lại bao nhiêu lần
+    # cũng được (`--buoc 23`). Nó KHÔNG nhắc lại đáp án: nhắc lại thì lần sau không đo được
+    # tác tử có tự giữ được mạch việc hay không.
+    if lam(23):
+        nk.buoc("Làm tiếp cho xong việc đang dở")
+        loi, cc = hoi(g, nk, du_an,
+                      "Làm tiếp đi bạn. Xong việc đang dở thì dịch lại, nạp, rồi gọi "
+                      "`target.screen` để tự kiểm khung ảnh. Nếu còn thiếu gì thì cứ nói.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_nhin_khung_anh(nk, ctx, cc)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "lam-tiep")
+
+    # ------------------------------------------- 24. đi dọc chuỗi hiển thị
+    #
+    # Lượt 23: chữ và logo đã đúng trong khung ảnh (1301 màu, chữ sắc nét, hết hộp nền đen),
+    # màn hình vẫn đen. `target.screen` nói được "lỗi ở đường LTDC → DSI → panel" — nhưng đó
+    # là tên của cả một chuỗi bốn mắt xích, mà bốn mắt ấy hỏng theo bốn cách khác nhau và cho
+    # ra CÙNG MỘT màn hình đen.
+    #
+    # → `target.screen` giờ đi dọc chuỗi và nói đứt ở mắt nào. Lời giao việc vẫn không nói ra
+    # kết quả đo — để còn đo được tác tử có đọc số rồi mới sửa hay không.
+    if lam(24):
+        nk.buoc("Chữ và logo đã đúng trong khung ảnh; đi dọc chuỗi hiển thị tìm mắt bị đứt")
+        loi, cc = hoi(g, nk, du_an,
+                      "Mình đọc khung ảnh rồi: **chữ đã sắc nét đọc được, logo đã hết hộp nền "
+                      "đen**. Hai lỗi đó bạn sửa xong. Nhưng màn hình vẫn đen.\n\n"
+                      "Mình vừa nâng `target.screen`: nó đi dọc cả chuỗi hiển thị — LTDC → lớp "
+                      "ảnh → host DSI → bọc DSI → chân reset của panel — và nói thẳng **đứt ở "
+                      "mắt nào**, kèm số đọc được từ thanh ghi và chỗ trong mã cần sửa. Trước "
+                      "đây nó chỉ nói được tên cả chuỗi, mà bốn mắt ấy hỏng theo bốn cách khác "
+                      "nhau và cho ra cùng một màn hình đen.\n\n"
+                      "Gọi `target.screen`, đọc phần “đi dọc chuỗi hiển thị”, sửa đúng những "
+                      "mắt bị đứt. Dịch lại, nạp, rồi gọi lại `target.screen` — khi cả chuỗi "
+                      "thông thì bảo mình, mình nhìn bo bằng mắt.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_nhin_khung_anh(nk, ctx, cc)
+        _kiem_duong_hien_thi(nk, ctx)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "duong-hien-thi")
+
+    # ------------------------------------------- 25. chương trình không TIẾN tới phần màn hình
+    #
+    # Sau lượt 24 chip không fault, nhưng PC quanh quẩn trong một vùng 42 byte — và ba mắt
+    # cuối của chuỗi hiển thị vẫn đứt. Nghĩa là chương trình **chưa chạy tới** chỗ bật chúng.
+    #
+    # Một mẫu PC đơn lẻ không phân biệt được "kẹt một chỗ", "vòng lặp chặt" và "chip reset
+    # lại" — cả ba cho ra cùng một con số. → `target.debug` nhận tham số `lay_mau`, và đọc
+    # thêm `RCC_CSR` để chính con chip khai lý do khởi động gần nhất.
+    if lam(25):
+        nk.buoc("Ba mắt cuối vẫn đứt vì chương trình chưa chạy tới đó")
+        loi, cc = hoi(g, nk, du_an,
+                      "Mình đo lại sau khi bạn nạp: chip **không** fault, nhưng ba mắt cuối "
+                      "của chuỗi hiển thị vẫn đứt y như cũ. Nghi là chương trình chưa chạy "
+                      "tới chỗ bật chúng.\n\n"
+                      "Mình vừa thêm cho `target.debug` tham số **`lay_mau`**: truyền vào một "
+                      "số (ví dụ 8) thì nó lấy PC nhiều lần và nói cho bạn biết chương trình "
+                      "đang TIẾN hay đứng quanh quẩn một chỗ — một mẫu PC đơn lẻ không phân "
+                      "biệt được “kẹt”, “vòng lặp chặt” và “chip reset lại”, cả ba cho ra "
+                      "cùng một con số. Nó đọc luôn `RCC_CSR` để chính con chip khai lý do "
+                      "khởi động gần nhất (chó canh cắn? reset phần mềm? bật nguồn?).\n\n"
+                      "Gọi `target.debug` với `lay_mau: 8`. Đọc kết luận và tên hàm. Rồi nói "
+                      "cho mình biết chương trình đang mắc ở đâu và vì sao, xong mới sửa.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_lay_mau(nk, ctx, cc)
+        _kiem_duong_hien_thi(nk, ctx)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "lay-mau-pc")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_lay_mau(nk: Any, ctx: Any, cc: list[dict]) -> None:
+    """Tác tử có lấy nhiều mẫu PC không, và kết luận rút ra là gì."""
+    goi = [c for c in cc if c["tool"] == "target.debug"]
+    d = ((ctx.store.get("target:debug") or {}).get("canonical") or {})
+    nm = d.get("nhieu_mau") or {}
+    if not goi:
+        nk.ket(False, "Tác tử lấy NHIỀU mẫu PC để biết chương trình có tiến lên không",
+               "— không gọi target.debug lần nào —")
+        return
+    ky = d.get("ky_hieu") or {}
+    ham = sorted({v["ham"] for v in ky.values() if v.get("ham")})
+    nk.ket(bool(nm.get("dat")),
+           "Tác tử lấy NHIỀU mẫu PC (một mẫu đơn lẻ không phân biệt được kẹt / vòng lặp / "
+           "reset lại)",
+           (f"{len(nm.get('mau', []))} mẫu · trải {nm.get('trai_byte')} byte · "
+            f"hàm: {', '.join(ham) or '?'} · {nm.get('ket_luan', '')}")
+           if nm.get("dat") else
+           f"gọi target.debug {len(goi)} lần nhưng không lấy mẫu (thiếu tham số `lay_mau`)")
+    nnr = d.get("nguyen_nhan_reset") or {}
+    if nnr.get("dat"):
+        nk.ghi("Lý do khởi động gần nhất, do chính con chip khai",
+               f"RCC_CSR = {nnr['csr']} → " + ("; ".join(nnr["nguyen_nhan"]) or "không cờ nào"))
+
+
+def _kiem_duong_hien_thi(nk: Any, ctx: Any) -> None:
+    """Chuỗi hiển thị đã thông chưa — từng mắt một, kèm số đọc được.
+
+    Với báo cáo, bảng này là chỗ thấy rõ nhất vì sao "mọi phép đo đều xanh mà màn hình đen":
+    năm mắt xích, chỉ cần một mắt đứt là mắt người thấy đúng một thứ — màu đen.
+    """
+    d = ((ctx.store.get("target:screen") or {}).get("canonical") or {}).get("duong") or {}
+    if not d.get("dat"):
+        nk.ket(False, "Đọc được trạng thái từng mắt của chuỗi hiển thị",
+               d.get("vi_sao_khong_dat") or "— chưa gọi target.screen ở lượt này —")
+        return
+    bang = "\n".join(
+        f"{'✓' if m['thong'] else '✗' if m['thong'] is False else '?'} {m['ten']:38} "
+        f"{m['so_do']}" for m in d["mat_xich"])
+    nk.ket(bool(d.get("thong_suot")),
+           "Chuỗi hiển thị THÔNG SUỐT (LTDC → lớp ảnh → host DSI → bọc DSI → panel)",
+           bang + (f"\n\nĐứt ở: {', '.join(d['dut_o'])}" if d["dut_o"] else ""))
 
 
 def _kiem_nhin_khung_anh(nk: Any, ctx: Any, cc: list[dict]) -> None:

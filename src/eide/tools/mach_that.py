@@ -325,17 +325,37 @@ def dang_ky(r: Registry) -> None:
                                 "thì đề nghị người dùng cài qua tool.install."),
                 details=d, alternatives=["tool.install", "target.debug"], blame="external"))
 
+        # Khung ảnh có nội dung mà người dùng vẫn thấy đen → đi dọc chuỗi hiển thị NGAY, đừng
+        # để tác tử chỉ nhận được tên cả một chuỗi bốn mắt xích. Bốn mắt ấy hỏng theo bốn cách
+        # khác nhau và cho ra cùng một màn hình đen.
+        duong = MT.doc_duong_hien_thi() if not d.get("chi_mot_mau") else {"dat": False}
+
         ctx.store.apply(
             artefact_id="target:screen", type="target",
             op="update" if ctx.store.get("target:screen") else "create",
-            author=f"agent:{ctx.run_id}", canonical={**d, "ltdc": cau},
+            author=f"agent:{ctx.run_id}", canonical={**d, "ltdc": cau, "duong": duong},
             explain={"summary": f"đọc khung ảnh {rong}×{cao} {dinh_dang}",
                      "why": "phân biệt vẽ sai với panel không hiện",
                      "sources": ["openocd", "LTDC"], "diff_prev": "—", "next": "—",
                      "confidence": "VANG"},
             view_hint={"kind": "image", "path": str(ra_tep)})
+        cau_duong = ""
+        if duong.get("dat"):
+            cau_duong = "Đi dọc chuỗi hiển thị: " + " · ".join(
+                ("✓" if m["thong"] else "✗" if m["thong"] is False else "?") + " " + m["ten"]
+                for m in duong["mat_xich"]) + ". "
+            if duong["dut_o"]:
+                cau_duong += ("**ĐỨT Ở: " + ", ".join(duong["dut_o"]) + "** — "
+                              + "; ".join(f"{m['ten']}: {m['so_do']} → {m['cach_sua']}"
+                                          for m in duong["mat_xich"]
+                                          if m["thong"] is False and m["cach_sua"]) + ". "
+                              + duong["ghi_chu_chan"] + " ")
+            else:
+                cau_duong += ("Cả chuỗi đều thông, nên nếu mắt vẫn không thấy gì thì nghi đèn "
+                              "nền hoặc chính tấm panel — không phải cấu hình. ")
+
         return {
-            **d, "ltdc": cau,
+            **d, "ltdc": cau, "duong": duong,
             "note_vi": (
                 f"Đọc {d['so_byte']} byte khung ảnh tại {d['dia_chi']} ({rong}×{cao} "
                 f"{dinh_dang}) → `{d['tep']}`. "
@@ -348,7 +368,7 @@ def dang_ky(r: Registry) -> None:
                    + ". Có nhiều màu nghĩa là **chương trình ĐÃ vẽ**. Nếu người dùng vẫn thấy "
                      "màn hình đen thì lỗi KHÔNG ở phần vẽ mà ở đường đưa ảnh ra tấm hiển "
                      "thị: LTDC → DSI → panel (OTM8009A), hoặc đèn nền. ")
-                + f"LTDC bật: {cau.get('ltdc_bat')}, lớp 1 bật: {cau.get('lop1_bat')}. "
+                + cau_duong
                 + "Đây là bộ nhớ của con chip trên bàn, không phải ảnh chụp màn hình máy tính.")}
 
     @r.tool("target.debug", "Mạch thật",
@@ -362,11 +382,16 @@ def dang_ky(r: Registry) -> None:
                  "dia_chi": {"type": "array", "items": {"type": "integer"},
                              "description": "địa chỉ cần đọc, ví dụ [0x40016800] cho LTDC"},
                  "so_tu": {"type": "integer",
-                           "description": "đọc mấy từ 32-bit mỗi địa chỉ (mặc định 4)"}}},
+                           "description": "đọc mấy từ 32-bit mỗi địa chỉ (mặc định 4)"},
+                 "lay_mau": {"type": "integer",
+                             "description": ("lấy mẫu PC bấy nhiêu lần để biết chương trình "
+                                             "đang tiến hay quanh quẩn một chỗ; 0 = không "
+                                             "lấy mẫu (mặc định)")}}},
             risk="R2", core=False,
             keywords=["gỡ lỗi", "debug", "treo", "đứng", "không chạy", "màn hình đen",
                       "thanh ghi", "chip đang làm gì", "halt", "pc"])
-    def target_debug(ctx: Any, dia_chi: list[int] | None = None, so_tu: int = 4):
+    def target_debug(ctx: Any, dia_chi: list[int] | None = None, so_tu: int = 4,
+                     lay_mau: int = 0):
         from ..build import mach_that as MT
 
         d = MT.soi_chip(list(dia_chi or []), so_tu=so_tu)
@@ -403,6 +428,16 @@ def dang_ky(r: Registry) -> None:
             k = MT.khop_tai_dia_chi(goc / ".eide" / "build" / "mach.bin", int(d["pc"], 16))
             d["doi_chieu_tai_pc"] = k
             d["ky_hieu_tin_duoc"] = k["khop"] if k["do_duoc"] else None
+
+        # Chip không ở trong ngắt mà hành vi vẫn sai → câu hỏi đổi thành "nó có TIẾN lên
+        # không". Một mẫu PC đơn lẻ không trả lời được: kẹt một chỗ, quanh quẩn một vòng lặp,
+        # và chip reset lại đều cho ra cùng một con số. Nên lấy nhiều mẫu, cộng với lý do
+        # reset do chính chip khai.
+        d["nhieu_mau"] = MT.lay_mau_pc(lay_mau) if lay_mau else {}
+        d["nguyen_nhan_reset"] = MT.doc_nguyen_nhan_reset() if lay_mau else {}
+        if d["nhieu_mau"].get("dat"):
+            xin_them = sorted({int(x, 16) for x in d["nhieu_mau"]["mau"]})
+            dia_chi = list(dia_chi or []) + xin_them[:8]
 
         trong_ngat = d["che_do"].lower().startswith("handler")
         lp = d.get("loi_phan_cung") or {}
@@ -449,6 +484,18 @@ def dang_ky(r: Registry) -> None:
         # Tên hàm, kèm ĐÚNG mức tin được. Ba trạng thái, không gộp: tin được / biết là sai /
         # chưa đo được. Gộp hai cái sau thành "không tin" thì tác tử bỏ mất một manh mối thật;
         # gộp vào "tin được" thì nó đi sửa hàm của một bản firmware không còn trên chip.
+        cau_mau = ""
+        nm = d.get("nhieu_mau") or {}
+        if nm.get("dat"):
+            cau_mau = nm["ket_luan"] + " "
+            nnr = d.get("nguyen_nhan_reset") or {}
+            if nnr.get("dat"):
+                cau_mau += (f"Lý do khởi động gần nhất do chip khai (RCC_CSR = {nnr['csr']}): "
+                            + ("; ".join(nnr["nguyen_nhan"]) or "không cờ nào bật") + ". "
+                            + nnr["ghi_chu"] + " ")
+        elif nm:
+            cau_mau = f"Chưa lấy được nhiều mẫu PC: {nm.get('vi_sao_khong_dat', '?')} "
+
         cau_ten = ""
         if d["ky_hieu"]:
             ds = "; ".join(
@@ -483,7 +530,7 @@ def dang_ky(r: Registry) -> None:
             "dang_ket_trong_ngat": trong_ngat,
             "note_vi": (
                 f"Chip đang ở chế độ **{d['che_do']}**, PC = {d['pc'] or '?'}. "
-                + cau_loi + cau_khung + cau_ten
+                + cau_loi + cau_khung + cau_mau + cau_ten
                 + ("ĐÂY LÀ MANH MỐI CHÍNH: “Handler …” nghĩa là CPU đang nằm trong một trình "
                    "phục vụ ngắt. Nếu nó ở đó mãi thì chương trình chính đã chết ở đúng chỗ "
                    "ấy — hay gặp nhất là một handler để mặc định thành `while(1){}` trong "

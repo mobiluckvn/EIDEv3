@@ -683,6 +683,207 @@ _PF_LTDC = {0: "ARGB8888", 1: "RGB888", 2: "RGB565"}
 TRAN_BYTE_KHUNG_ANH = 4 * 1024 * 1024
 
 
+# Chuỗi phải thông suốt thì mắt mới thấy gì: bộ nhớ khung ảnh → LTDC → bọc DSI → host DSI →
+# panel ra khỏi reset. Đứt bất cứ mắt nào cũng cho ra **cùng một** màn hình đen, và đó chính
+# là lý do phải đi dọc nó bằng số thay vì đoán xem mắt nào hỏng.
+DSI_GOC = 0x40016C00
+LTDC_GOC = 0x40016800
+# Chân XRES của panel. Đây là số của RIÊNG bo 32F469IDISCOVERY, đọc từ `BSP_LCD_Reset()` trong
+# `stm32469i_discovery_lcd.c`: *"reset the LCD by activation of XRES (active low) connected to
+# PH7"*. Bo khác thì chân khác — nên nó là tham số, và kết quả nói rõ mình đang giả định gì.
+GPIOH_ODR = 0x40021C1C
+CHAN_XRES_MAC_DINH = 7
+
+
+# RCC_CSR — con chip tự khai lần khởi động vừa rồi là do đâu. Bit 24 (RMVF) để xoá cờ.
+RCC_CSR = 0x40023874
+_BIT_RESET = (
+    (31, "LPWRRST — reset do lỗi khi vào chế độ ngủ sâu"),
+    (30, "WWDGRST — **chó canh cửa sổ (WWDG) đã cắn**"),
+    (29, "IWDGRST — **chó canh độc lập (IWDG) đã cắn**: chương trình không kịp vỗ về nó"),
+    (28, "SFTRST — reset do phần mềm tự gọi (NVIC_SystemReset)"),
+    (27, "PORRST — bật nguồn (cắm điện / rút cắm lại)"),
+    (26, "PINRST — chân NRST bị kéo xuống (nút RESET, hoặc bộ nạp)"),
+    (25, "BORRST — điện áp tụt dưới ngưỡng"),
+)
+
+
+def doc_nguyen_nhan_reset(*, timeout: float = 60.0) -> dict[str, Any]:
+    """Lần khởi động vừa rồi của chip là do đâu — hỏi chính con chip, không suy từ triệu chứng.
+
+    Vì sao cần: một chương trình *đang reset đi reset lại* và một chương trình *kẹt ở một chỗ*
+    nhìn qua cửa sổ gỡ lỗi thì giống hệt nhau — cả hai đều cho ra một PC không tiến lên. Nhưng
+    nguyên nhân và cách sửa khác hẳn nhau, và `RCC_CSR` trả lời thẳng câu đó bằng một bit.
+
+    Lưu ý đọc kết quả: các cờ này **dính** cho tới khi có ai xoá (bit RMVF). Thấy `PINRST`
+    không có nghĩa là *vừa* bị reset bởi chân NRST — chỉ nghĩa là lần reset gần nhất *mà chưa
+    ai xoá cờ* là thế. Hàm nói ra điều này thay vì để người đọc tự biết.
+    """
+    ra: dict[str, Any] = {"dat": False, "vi_sao_khong_dat": "", "nguyen_nhan": []}
+    oo = shutil.which("openocd")
+    if not oo:
+        ra["vi_sao_khong_dat"] = "máy chưa có `openocd`."
+        return ra
+    o = _doc_o_nho(oo, [(RCC_CSR, 1)], timeout=timeout)
+    v = o.get(f"0x{RCC_CSR:08x}")
+    if not v:
+        ra["vi_sao_khong_dat"] = "không đọc được RCC_CSR."
+        return ra
+    try:
+        csr = int(v[0], 16)
+    except ValueError:
+        ra["vi_sao_khong_dat"] = f"RCC_CSR đọc ra không phải số hệ 16: {v[0]!r}"
+        return ra
+    ra["dat"] = True
+    ra["csr"] = f"0x{csr:08X}"
+    ra["nguyen_nhan"] = [ten for bit, ten in _BIT_RESET if csr & (1 << bit)]
+    ra["ghi_chu"] = ("Cờ reset DÍNH cho tới khi phần mềm xoá (bit RMVF của RCC_CSR). Đây là "
+                     "lần reset gần nhất chưa ai xoá cờ, không nhất thiết là lần vừa xảy ra. "
+                     "Muốn đo vòng lặp reset thì xoá cờ, để chạy một lúc, rồi đọc lại.")
+    return ra
+
+
+def lay_mau_pc(so_lan: int = 8, *, timeout: float = 60.0) -> dict[str, Any]:
+    """Lấy mẫu PC nhiều lần để biết chương trình ĐANG TIẾN hay đứng yên.
+
+    Một mẫu PC đơn lẻ không phân biệt được ba thứ khác hẳn nhau: chương trình **kẹt** ở một
+    chỗ, chương trình **đi qua** chỗ đó liên tục trong một vòng lặp, và chip **reset lại** nên
+    lần nào cũng bị bắt gặp ở đoạn khởi động. Cả ba cho ra cùng một con số nếu chỉ nhìn một
+    lần — đo được đúng thế trên bo STM32F469: PC nằm ở `HAL_InitTick` sáu lần liên tiếp.
+
+    Nhiều mẫu thì phân biệt được: một địa chỉ duy nhất = kẹt thật; vài địa chỉ gần nhau = một
+    vòng lặp; địa chỉ rải khắp = đang chạy bình thường.
+    """
+    ra: dict[str, Any] = {"dat": False, "mau": [], "vi_sao_khong_dat": ""}
+    oo = shutil.which("openocd")
+    if not oo:
+        ra["vi_sao_khong_dat"] = "máy chưa có `openocd`."
+        return ra
+    for _ in range(max(2, min(so_lan, 32))):
+        d = soi_chip(timeout=timeout)
+        if d["dat"] and d["pc"]:
+            ra["mau"].append(d["pc"])
+    if not ra["mau"]:
+        ra["vi_sao_khong_dat"] = "không dừng được chip lần nào."
+        return ra
+    ra["dat"] = True
+    dem: dict[str, int] = {}
+    for x in ra["mau"]:
+        dem[x] = dem.get(x, 0) + 1
+    ra["so_dia_chi_khac_nhau"] = len(dem)
+    ra["hay_gap_nhat"] = max(dem.items(), key=lambda kv: kv[1])
+    # ĐẾM số địa chỉ khác nhau thì không phân biệt được gì cả. Đo được trên bo STM32F469: sáu
+    # mẫu rơi vào năm địa chỉ — nghe như "đang chạy bình thường" — nhưng cả năm nằm trong
+    # **40 byte** của nhau, tức một vòng lặp chặt bên trong đúng một hàm. Thứ phân biệt được
+    # là KHOẢNG TRẢI, không phải số lượng.
+    so = [int(x, 16) for x in dem]
+    ra["trai_byte"] = max(so) - min(so)
+    ra["tu"], ra["den"] = f"0x{min(so):08X}", f"0x{max(so):08X}"
+    # Ngưỡng là quy ước, nên nó được nói ra chứ không giấu trong một câu kết luận. 256 byte
+    # cỡ một hàm nhỏ đã dịch; rộng hơn thế thì chương trình có đi qua nhiều hàm.
+    ra["nguong_trai_byte"] = 256
+    ra["ket_luan"] = (
+        f"PC không nhúc nhích qua {len(ra['mau'])} lần lấy mẫu — chương trình ĐỨNG YÊN ở "
+        "đúng một lệnh." if len(dem) == 1 else
+        f"{len(ra['mau'])} mẫu rơi vào {len(dem)} địa chỉ nhưng chỉ trải {ra['trai_byte']} "
+        f"byte ({ra['tu']}–{ra['den']}) — chương trình đang QUANH QUẨN trong một vùng nhỏ cỡ "
+        "một hàm: hoặc một vòng lặp chặt, hoặc chip reset lại nên lần nào cũng bị bắt gặp ở "
+        "cùng đoạn khởi động. Đọc RCC_CSR để phân biệt hai cái, và giải mã địa chỉ ra tên hàm "
+        "để biết vùng đó là gì." if ra["trai_byte"] <= ra["nguong_trai_byte"] else
+        f"PC trải {ra['trai_byte']} byte qua {len(dem)} địa chỉ — chương trình đang chạy qua "
+        "nhiều chỗ, không kẹt.")
+    return ra
+
+
+def doc_duong_hien_thi(*, chan_xres: int = CHAN_XRES_MAC_DINH,
+                       odr_xres: int = GPIOH_ODR,
+                       timeout: float = 60.0) -> dict[str, Any]:
+    """Đi dọc chuỗi LTDC → bọc DSI → host DSI → panel và nói ĐỨT Ở ĐÂU.
+
+    Vì sao cần: `target.screen` trả lời được câu *"vẽ sai hay panel không hiện"*, nhưng khi
+    câu trả lời là "panel không hiện" thì nó chỉ nói được tên cả một chuỗi bốn mắt xích. Bốn
+    mắt ấy hỏng theo bốn cách khác nhau và cho ra **cùng một** màn hình đen.
+
+    Đo được trên bo STM32F469 ngày 28/09/2026, khi khung ảnh đã vẽ đúng mà màn vẫn đen:
+
+        DSI_WCR = 0x0000000A  → DSIEN = 0 (bọc DSI chưa bật), SHTDN = 1 (đang tắt hiển thị)
+        GPIOH_ODR bit 7 = 0   → XRES tích cực thấp vẫn đang được kéo xuống: panel bị giữ reset
+
+    Hai số đó biến "lỗi ở đâu đó trong đường ra màn hình" thành hai dòng sửa được.
+
+    Chỗ hàm này KHÔNG biết, và nói ra: chân XRES là của riêng từng bo. Mặc định lấy theo
+    32F469IDISCOVERY; bo khác phải truyền vào, và nếu truyền sai thì dòng về panel là vô nghĩa
+    — nên nó luôn đi kèm câu khai mình đang đọc chân nào.
+    """
+    ra: dict[str, Any] = {"dat": False, "vi_sao_khong_dat": "", "mat_xich": [], "dut_o": []}
+    oo = shutil.which("openocd")
+    if not oo:
+        ra["vi_sao_khong_dat"] = ("máy chưa có `openocd`. Không đọc được KHÁC với đường hiển "
+                                  "thị không có lỗi.")
+        return ra
+    o = _doc_o_nho(oo, [(LTDC_GOC + 0x18, 1), (LTDC_GOC + 0x84, 1),
+                        (DSI_GOC + 0x04, 1), (DSI_GOC + 0x400, 1), (odr_xres, 1)],
+                   timeout=timeout)
+
+    def _lay(dc: int) -> int | None:
+        v = o.get(f"0x{dc:08x}")
+        try:
+            return int(v[0], 16) if v else None
+        except ValueError:
+            return None
+
+    gcr, l1cr = _lay(LTDC_GOC + 0x18), _lay(LTDC_GOC + 0x84)
+    dsi_cr, wcr, odr = _lay(DSI_GOC + 0x04), _lay(DSI_GOC + 0x400), _lay(odr_xres)
+    if gcr is None and wcr is None:
+        ra["vi_sao_khong_dat"] = "không đọc được thanh ghi nào — cáp SWD, hay chip đang bị giữ?"
+        return ra
+    ra["dat"] = True
+
+    def _mat(ten: str, dat: bool | None, so: str, giai_thich: str, cach_sua: str = "") -> None:
+        ra["mat_xich"].append({"ten": ten, "thong": dat, "so_do": so,
+                               "nghia": giai_thich, "cach_sua": cach_sua})
+        # `None` = chưa đọc được. KHÔNG gộp vào "đứt" — báo đứt vì không đọc được là một báo
+        # động giả, và báo động giả dạy người ta bỏ qua cảnh báo.
+        if dat is False:
+            ra["dut_o"].append(ten)
+
+    _mat("LTDC bật", None if gcr is None else bool(gcr & 1),
+         f"LTDC_GCR = 0x{gcr:08X}" if gcr is not None else "chưa đọc được",
+         "bộ điều khiển màn hình có đang quét khung ảnh ra không",
+         "HAL_LTDC_Init / __HAL_LTDC_ENABLE")
+    _mat("Lớp 1 bật", None if l1cr is None else bool(l1cr & 1),
+         f"LTDC_L1CR = 0x{l1cr:08X}" if l1cr is not None else "chưa đọc được",
+         "lớp ảnh có được bật để hiện không",
+         "BSP_LCD_LayerDefaultInit")
+    _mat("Host DSI bật", None if dsi_cr is None else bool(dsi_cr & 1),
+         f"DSI_CR = 0x{dsi_cr:08X}" if dsi_cr is not None else "chưa đọc được",
+         "khối DSI có đang chạy không", "HAL_DSI_Start")
+    if wcr is None:
+        _mat("Bọc DSI bật (DSIEN)", None, "chưa đọc được", "", "")
+        _mat("Hiển thị không bị tắt (SHTDN)", None, "chưa đọc được", "", "")
+    else:
+        _mat("Bọc DSI bật (DSIEN)", bool(wcr & (1 << 2)), f"DSI_WCR = 0x{wcr:08X}",
+             "bọc DSI là chỗ ảnh của LTDC được đóng gói rồi đẩy ra đường DSI; tắt thì màn "
+             "đen dù LTDC chạy hoàn hảo",
+             "__HAL_DSI_WRAPPER_ENABLE / HAL_DSI_Start")
+        _mat("Hiển thị không bị tắt (SHTDN)", not (wcr & (1 << 1)), f"DSI_WCR = 0x{wcr:08X}",
+             "bit SHTDN = 1 nghĩa là đang ở trạng thái TẮT hiển thị",
+             "xoá bit SHTDN, hoặc gọi lại HAL_DSI_Start sau khi cấu hình xong")
+    _mat(f"Panel đã ra khỏi reset (XRES = PH{chan_xres})",
+         None if odr is None else bool(odr & (1 << chan_xres)),
+         f"ODR(0x{odr_xres:08X}) = 0x{odr:08X}, bit {chan_xres} = "
+         f"{(odr >> chan_xres) & 1}" if odr is not None else "chưa đọc được",
+         "XRES tích cực THẤP: bit = 0 nghĩa là panel đang bị giữ trong reset và sẽ không "
+         "hiện gì, dù mọi thứ phía trước đều đúng",
+         "BSP_LCD_Reset() phải kết thúc bằng việc kéo chân này LÊN (GPIO_PIN_SET)")
+    ra["chan_xres"] = f"PH{chan_xres}"
+    ra["ghi_chu_chan"] = ("Chân XRES là của RIÊNG từng bo; mặc định ở đây lấy theo "
+                          "32F469IDISCOVERY (BSP_LCD_Reset trong stm32469i_discovery_lcd.c). "
+                          "Bo khác thì truyền `chan_xres`/`odr_xres` khác.")
+    ra["thong_suot"] = not ra["dut_o"]
+    return ra
+
+
 def doc_khung_anh(dia_chi: int, rong: int, cao: int, dinh_dang: str, ra_tep: Path, *,
                   timeout: float = 300.0) -> dict[str, Any]:
     """Đọc framebuffer từ chip qua SWD rồi ghi thành PNG. Tác tử **xem được** nó đã vẽ gì.

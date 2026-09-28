@@ -2874,8 +2874,82 @@ Một ghi chú về ràng buộc bảo mật: đây **không** phải ảnh ch�
 của con chip trên bàn, không liên quan tới cửa sổ nào đang mở, và không dùng `screencapture` —
 lệnh đã hai lần chụp nhầm cửa sổ riêng tư trong dự án này.
 
+#### Lần 5 — "lỗi ở đường LTDC → DSI → panel" vẫn là tên của cả một chuỗi
+
+Tác tử sửa xong hai lỗi mà khung ảnh lộ ra: tải **phông thật của ST** (`font8/12/16/20/24.c`)
+nên chữ hết vỡ, và sinh lại logo dạng **ARGB8888** nên hết hộp nền đen. Đọc lại khung ảnh:
+1301 màu, chữ sắc nét, logo sạch nền. Màn hình vẫn đen.
+
+`target.screen` nói được "lỗi ở đường LTDC → DSI → panel" — nhưng đó là tên của **bốn mắt
+xích**, và bốn mắt ấy hỏng theo bốn cách khác nhau, cho ra **cùng một** màn hình đen.
+→ **`doc_duong_hien_thi()`** đi dọc chuỗi và nói đứt ở mắt nào, kèm số và chỗ trong mã cần sửa:
+
+| mắt xích | đo được | |
+|---|---|---|
+| LTDC bật | `LTDC_GCR = 0xC0002221` | ✓ |
+| Lớp 1 bật | `LTDC_L1CR = 0x00000001` | ✓ |
+| Host DSI bật | `DSI_CR = 0x00000001` | ✓ |
+| Bọc DSI bật (DSIEN) | `DSI_WCR = 0x0000000A` → bit 2 = 0 | ✗ |
+| Hiển thị không bị tắt (SHTDN) | `DSI_WCR` bit 1 = 1 | ✗ |
+| Panel ra khỏi reset (XRES = PH7) | `GPIOH_ODR` bit 7 = 0 | ✗ |
+
+Chân XRES lấy từ chính mã BSP, không từ trí nhớ: *"reset the LCD by activation of XRES (active
+low) connected to PH7"* — và vì nó là số của **riêng từng bo**, nó là tham số, và kết quả luôn
+khai mình đang đọc chân nào.
+
+#### Lần 6 — một mẫu PC không phân biệt được ba thứ khác hẳn nhau
+
+Tác tử sửa, nạp; chip **không** fault, nhưng ba mắt cuối vẫn đứt. PC nằm ở `HAL_InitTick` sáu
+lần liên tiếp — nghĩa là chương trình chưa chạy tới chỗ bật chúng. Nhưng *tại sao* thì một mẫu
+PC đơn lẻ không nói được: **kẹt một lệnh**, **vòng lặp chặt**, và **chip reset lại** (nên lần
+nào cũng bị bắt gặp ở đoạn khởi động) đều cho ra cùng một con số.
+
+→ `target.debug` nhận tham số `lay_mau`, cộng với **`doc_nguyen_nhan_reset()`** đọc `RCC_CSR`
+để chính con chip khai lý do khởi động gần nhất (IWDG/WWDG cắn? reset phần mềm? bật nguồn?).
+
+Và đây là **lỗi của chính phép đo mới, bắt được ngay khi viết xong**: bản đầu kết luận theo
+*số địa chỉ khác nhau*. Sáu mẫu rơi vào **năm** địa chỉ → nó nói *"chương trình đang chạy bình
+thường"*. Mà cả năm nằm trong **42 byte** của nhau — một vòng lặp chặt bên trong đúng một hàm.
+Thứ phân biệt được là **khoảng trải**, không phải số lượng. Ngưỡng (256 byte) được nói ra trong
+kết quả, không giấu trong một câu kết luận.
+
+Kết quả: lượt sau tác tử gọi `tool.search` → `target.debug {lay_mau: 8}` — **hai lời gọi** — và
+nhận đúng câu *"8 mẫu rơi vào 4 địa chỉ nhưng chỉ trải 40 byte, hàm `HAL_InitTick`"*, kèm
+`RCC_CSR = 0x0E000000` (bật nguồn + NRST + BOR, **không** có chó canh nào cắn).
+
+#### Sổ cái: hai tiến trình cùng ghi — do chính tác tử phát hiện
+
+Giữa lượt, tác tử mở đầu câu trả lời bằng một cảnh báo không ai hỏi nó:
+
+> **Lưu ý toàn vẹn:** Sổ cái ghi nhận bị lệch thứ tự ở dòng 9174 (`seq` ghi là 9156).
+
+Kiểm bằng mã: **4 chỗ lệch**, `seq` tụt lui rồi nhảy lại. Nguyên nhân: `Ledger` khoá bằng
+`threading.Lock` — chỉ an toàn **trong một tiến trình** — trong khi app EIDE đang mở dự án và
+bộ kịch bản phiên mở **cùng** dự án đó. Mỗi bên đọc `_seq`/`_head` lúc khởi tạo rồi tự đếm
+tiếp, nên sổ cái thành hai dãy số chồng nhau và chuỗi hash đứt.
+
+Đó là hỏng đúng cái thuộc tính mà sổ cái tồn tại để có (§F3 "toàn vẹn lịch sử"). Sửa:
+
+* **Khoá liên tiến trình** (`fcntl.flock`) ôm trọn cả việc đọc đuôi lẫn việc ghi. Tính `seq`
+  ngoài khoá rồi mới khoá để ghi thì hai tiến trình vẫn tính ra cùng một số — dùng đúng cái
+  lỗi mà khoá này sinh ra để chữa.
+* **Đọc lại đuôi tệp bên trong khoá**: giá trị nhớ trong bộ nhớ chỉ là gợi ý, đĩa mới là sự
+  thật. `_duoi_tep()` duyệt ngược từ cuối theo khối, không đọc cả tệp — sổ cái phiên này đã
+  hơn **10 000 dòng**, và đọc lại cả tệp mỗi lần ghi biến việc ghi từ O(1) thành O(n): dự án
+  càng làm lâu càng chậm dần, kiểu chậm không ai truy ra được vì nó không hỏng ở đâu cả.
+* Đọc lùi phải ở chế độ **nhị phân**. Nhảy tới một vị trí byte bất kỳ rồi đọc ở chế độ văn bản
+  cắt đôi một ký tự UTF-8 nhiều byte — và sổ cái này đầy tiếng Việt có dấu, nên lỗi ấy nổ ngay
+  ở lần chạy bộ kiểm đầu tiên.
+* **`verify()` thôi cáo buộc sai.** Bản trước gộp hai hỏng khác hẳn nhau vào một câu *"Sổ cái
+  bị sửa"*. `seq` lặp mà **từng bản ghi vẫn tự khớp hash của chính nó** là tai nạn vận hành,
+  không phải ai sửa gì. Một cáo buộc sai ở đúng chỗ người ta phải tin tuyệt đối thì đắt hơn
+  nhiều so với im lặng.
+
+Bộ kiểm cho chỗ này chạy **ba tiến trình thật**, mỗi tiến trình ghi 40 sự kiện, rồi đòi
+`seq == 1..120` và `verify()` xanh. Phá có chủ ý (bỏ đọc lại đuôi) → đỏ ở đúng bản ghi thứ ba.
+
 ### Còn lại
 
-- Màn hình: lỗi ở đường DSI → panel, tác tử đang sửa. Phần vẽ đã chứng minh là đúng bằng số.
+- Màn hình: chương trình chưa chạy tới chỗ bật ba mắt cuối; tác tử đang sửa. Phần vẽ đã chứng minh là đúng bằng số.
 - Chữ vỡ (dựng phông) và hộp nền đen của logo (alpha) — hai lỗi do `target.screen` lộ ra.
 - `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.
