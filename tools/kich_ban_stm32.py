@@ -1063,8 +1063,148 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
         nk.anh(g, "ghi-roi-doc-lai")
 
+    # ------------------------------------------- 37. bo TỪNG CHẠY ĐÚNG → lỗi ở mã ta
+    #
+    # Anh Công xác nhận: trước khi ta nạp đè, bo chạy bản demo của ST bình thường — giao diện
+    # nhiều ứng dụng, chạm được. Nghĩa là panel, đèn nền, cáp mềm đều TỐT. Mọi nghi ngờ phần
+    # cứng bị loại, và lỗi nằm 100% trong mã của ta.
+    #
+    # Đòn bẩy mạnh nhất lúc này: tồn tại một bản CHẠY ĐÚNG để đối chiếu. `stm32469i_discovery_lcd.c`
+    # và `otm8009a.c` trong dự án đã bị sửa nhiều lần trong mười mấy lượt vừa rồi — mỗi chỗ
+    # lệch so với bản gốc của ST là một nghi phạm, và danh sách ấy hữu hạn.
+    if lam(37):
+        nk.buoc("Bo từng chạy đúng bản demo của ST → lỗi nằm trong mã ta, đối chiếu bản gốc")
+        loi, cc = hoi(g, nk, du_an,
+                      "Tin quan trọng từ anh Công: **trước khi ta nạp đè, bo chạy hoàn toàn "
+                      "bình thường** — bản demo của ST, giao diện nhiều ứng dụng, chạm được "
+                      "để điều khiển.\n\n"
+                      "Vậy panel, đèn nền và cáp mềm đều **tốt**. Mọi nghi ngờ phần cứng bị "
+                      "loại. Lỗi nằm 100% trong mã của ta — và mình đã đi sai hướng ở lượt "
+                      "trước khi nghi phần cứng, xin lỗi bạn.\n\n"
+                      "Điều đó cho ta một đòn bẩy mạnh: **tồn tại một bản chạy đúng để đối "
+                      "chiếu**. Hai tệp `stm32469i_discovery_lcd.c` và `otm8009a.c` trong dự "
+                      "án đã bị sửa nhiều lần suốt mười mấy lượt vừa rồi — sửa để qua "
+                      "HardFault, để qua lỗi biên dịch, để thêm cái này cái kia. Mỗi chỗ "
+                      "lệch so với bản gốc của ST là một nghi phạm, và danh sách ấy hữu "
+                      "hạn.\n\n"
+                      "Việc của bạn: lấy lại **bản gốc** hai tệp đó từ kho của ST "
+                      "(`code.vendor_fetch` — bạn đã dùng nó ở lượt 12), rồi **đối chiếu "
+                      "từng chỗ khác nhau** với bản đang có. Với mỗi chỗ lệch, trả lời hai "
+                      "câu: *vì sao nó được sửa* và *nó có thể làm màn không sáng không*.\n\n"
+                      "Nhớ một số đo bạn đã có: đường ĐỌC DCS trả về rác (ghi 0x88 đọc lại "
+                      "ra 0x00, cùng thanh ghi ba lần ra ba giá trị) trong khi mã trả về vẫn "
+                      "là thành công. Chỗ lệch nào giải thích được cả chuyện đó thì đáng ngờ "
+                      "nhất.\n\n"
+                      "Đừng sửa vội. Trình cho mình danh sách chỗ lệch trước.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_doi_chieu_ban_goc(nk, ctx, du_an, cc)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "doi-chieu-ban-goc")
+
+    # ------------------------------------------- 38. sửa gốc: lớp bọc vứt mất byte dữ liệu
+    #
+    # Tác tử tìm ra gốc, và kiểm chứng độc lập cho thấy nó đúng:
+    #
+    #   DSI_IO_WriteCmd(NbrParams<=1, p) → HAL_DSI_ShortWrite(..., p[0], p[1])
+    #   ST gọi: otm8009a_write_reg(&Ctx, 0xFF, &short_reg_data[1], 0)   ← Length=0, giá trị ở pData
+    #   Lớp bọc: nhánh else đặt buf[1] = 0, VỨT pData[0]
+    #
+    # → khoảng 50 lệnh ghi một byte trong cả chuỗi khởi tạo OTM8009A (mở khoá CMD2, bơm
+    # nguồn, gamma) đều ghi 0x00. Panel không dựng được mạch nguồn nội → panel và đèn nền
+    # cùng chết, trong khi nó vẫn đủ sống để trả lời ID.
+    #
+    # Và nó giải thích nốt vì sao `g_otm8009a_init_ret = 0`: `bsp_otm8009a_write` `return 0`
+    # vô điều kiện, còn `DSI_IO_WriteCmd` là `void`. Cái OK ấy chưa bao giờ nói về kết quả.
+    if lam(38):
+        nk.buoc("Sửa gốc: lớp bọc vứt mất byte dữ liệu của mọi lệnh ghi một byte")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn tìm ra gốc rồi, và mình đã kiểm chứng độc lập — **bạn đúng**.\n\n"
+                      "```c\n"
+                      "/* DSI_IO_WriteCmd: NbrParams <= 1 → HAL_DSI_ShortWrite(..., p[0], p[1]) */\n"
+                      "/* ST gọi:  otm8009a_write_reg(&Ctx, 0xFF, &short_reg_data[1], 0);   */\n"
+                      "/*          Length = 0, nhưng GIÁ TRỊ nằm trong pData                */\n"
+                      "else { buf[1] = 0; DSI_IO_WriteCmd(0, buf); }   /* ← vứt pData[0] */\n"
+                      "```\n\n"
+                      "Nên khoảng 50 lệnh ghi một byte trong cả chuỗi khởi tạo OTM8009A — mở "
+                      "khoá CMD2, chỉnh bơm nguồn, gamma — đều ghi **0x00**. Panel không "
+                      "dựng được mạch nguồn nội, nên panel và đèn nền cùng chết, trong khi "
+                      "nó vẫn đủ sống để trả lời ID.\n\n"
+                      "Nó còn giải thích nốt một thứ làm ta lạc hướng mấy lượt: "
+                      "`g_otm8009a_init_ret = 0` **không có nghĩa gì**, vì "
+                      "`bsp_otm8009a_write` `return 0` vô điều kiện còn `DSI_IO_WriteCmd` là "
+                      "`void`. Lại đúng hình dạng cũ — `ok` nói về lời gọi, không nói về kết "
+                      "quả.\n\n"
+                      "Giờ sửa: lớp bọc phải chuyển đúng byte dữ liệu khi `Length == 0`. "
+                      "Nhân tiện cho `bsp_otm8009a_write` trả về mã thật thay vì `return 0` "
+                      "cứng — nếu không thì lần sau ta lại tin một con số không có nội dung. "
+                      "Dịch lại, nạp, rồi bảo mình; anh Công sẽ nhìn bo.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_lop_boc_ghi(nk, du_an)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "sua-lop-boc")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_lop_boc_ghi(nk: Any, du_an: pathlib.Path) -> None:
+    """Lớp bọc đã chuyển đúng byte dữ liệu khi `Length == 0` chưa.
+
+    Đọc mã nguồn chứ không đọc ELF: đây là câu hỏi về *ý* của đoạn mã, không về trạng thái
+    chip. Nhưng nói rõ như vậy, vì "mã đã sửa" chưa phải "chip đang chạy bản sửa" — phép kiểm
+    màn hình ngay sau mới trả lời câu thứ hai.
+    """
+    import re as _re
+
+    f = du_an / "firmware" / "otm8009a.c"
+    if not f.exists():
+        nk.ket(False, "Lớp bọc ghi DSI chuyển ĐÚNG byte dữ liệu khi Length == 0",
+               "không thấy firmware/otm8009a.c")
+        return
+    ma = f.read_text("utf-8", errors="replace")
+    m = _re.search(r"bsp_otm8009a_write\b.*?\n[}]", ma, _re.S)
+    if not m:
+        nk.ket(False, "Lớp bọc ghi DSI chuyển ĐÚNG byte dữ liệu khi Length == 0",
+               "không thấy hàm bsp_otm8009a_write")
+        return
+    than = m.group(0)
+    # Mẫu phải bắt Ý, không bắt một cách viết. Bản đầu tìm đúng chuỗi `buf[1] = pData[0]`,
+    # nên nó báo ĐỎ cho bản sửa đúng `buf[1] = (pData != NULL) ? pData[0] : 0;` — một phép
+    # kiểm chỉ nhận ra đúng lời giải mà chính nó nghĩ ra thì không đo gì cả.
+    m1 = _re.search(r"buf\[1\]\s*=([^;]*);", than)
+    gan = (m1.group(1) if m1 else "")
+    vut = bool(m1) and "pData" not in gan
+    chuyen = bool(m1) and "pData" in gan
+    cung = bool(_re.search(r"return\s+0\s*;\s*\n[}]", than))
+    nk.ket(chuyen and not vut,
+           "Lớp bọc ghi DSI chuyển ĐÚNG byte dữ liệu khi Length == 0 (mã nguồn)",
+           ("đã chuyển pData[0] vào buf[1]" if chuyen else "CHƯA chuyển pData[0]")
+           + ("; vẫn còn `buf[1] = 0`" if vut else "")
+           + ("; và vẫn `return 0` cứng — mã trả về vẫn chưa nói gì" if cung else
+              "; mã trả về đã là mã thật"))
+
+
+def _kiem_doi_chieu_ban_goc(nk: Any, ctx: Any, du_an: pathlib.Path, cc: list[dict]) -> None:
+    """Tác tử có LẤY VỀ bản gốc của hãng để đối chiếu không — hay lại đọc mã trong đầu.
+
+    Đây là chỗ dễ trôi nhất: "đối chiếu với bản gốc" rất dễ biến thành "nhớ xem bản gốc viết
+    gì". Phép kiểm đòi một hiện vật: tệp của hãng phải nằm trên đĩa.
+    """
+    lay = [c for c in cc if c["tool"] in ("code.vendor_fetch", "doc.fetch")]
+    goc = sorted(du_an.rglob("*goc*.c")) + sorted((du_an / "tai-lieu").rglob("*.c")) \
+        if (du_an / "tai-lieu").exists() else sorted(du_an.rglob("*goc*.c"))
+    nk.ket(bool(lay) or bool(goc),
+           "Tác tử LẤY VỀ bản gốc của ST để đối chiếu (không đối chiếu bằng trí nhớ)",
+           (f"{len(lay)} lời gọi lấy mã hãng · tệp gốc trên đĩa: "
+            + (", ".join(x.name for x in goc[:6]) or "—"))
+           if (lay or goc) else
+           "— không lấy tệp gốc nào; mọi so sánh ở lượt này là so với trí nhớ —")
 
 
 def _kiem_ma_tra_ve_ghi(nk: Any, ctx: Any, du_an: pathlib.Path) -> None:

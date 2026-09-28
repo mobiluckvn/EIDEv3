@@ -3245,9 +3245,70 @@ phần cứng, và hai câu hỏi rẻ nhất cần anh Công trả lời trư�
 này **đã từng hiện gì chưa** (bản demo của ST lúc mới cắm), và **cáp mềm của module LCD có
 cắm chắc không**.
 
+#### Lần 15 — bo TỪNG CHẠY ĐÚNG, và điều đó cho một bản đối chứng
+
+Anh Công trả lời: *"Board trước khi bạn nạp code mới thì hoạt động bình thường mà. Giao diện
+hiển thị nhiều ứng dụng có thể touch vào để điều khiển."*
+
+Panel, đèn nền, cáp mềm — **tất cả đều tốt**. Nghi ngờ phần cứng ở lần 14 là sai hướng, và
+tôi đã nói điều đó với tác tử thay vì lặng lẽ đổi đề.
+
+Quan trọng hơn: nó cho một **bản đối chứng**. Hai tệp `stm32469i_discovery_lcd.c` và
+`otm8009a.c` đã bị sửa nhiều lần suốt mười mấy lượt — để qua HardFault, để qua lỗi biên dịch,
+để thêm cái này cái kia. Mỗi chỗ lệch so với bản gốc của ST là một nghi phạm, và danh sách ấy
+**hữu hạn**. Giao việc: lấy bản gốc về, đối chiếu từng chỗ, mỗi chỗ trả lời hai câu — *vì sao
+nó được sửa* và *nó có thể làm màn không sáng không*. Chưa sửa vội.
+
+#### Lần 16 — gốc rễ: một lớp bọc vứt mất byte dữ liệu của ~50 lệnh
+
+Tác tử trình ra nghi phạm số 1, và kiểm chứng độc lập cho thấy **nó đúng**:
+
+```c
+/* BSP của ST — NbrParams <= 1 nghĩa là gói ngắn 2 byte: lệnh + GIÁ TRỊ */
+void DSI_IO_WriteCmd(uint32_t NbrParams, uint8_t *pParams) {
+  if (NbrParams <= 1)
+    HAL_DSI_ShortWrite(&hdsi_eval, ..., pParams[0], pParams[1]);   /* pParams[1] = giá trị */
+  ...
+}
+
+/* Driver của ST gọi với Length = 0, giá trị nằm trong pData */
+otm8009a_write_reg(&pObj->Ctx, 0xFF, &short_reg_data[1], 0);
+
+/* Lớp bọc tự viết — nhánh Length == 0 */
+else { buf[1] = 0; DSI_IO_WriteCmd(0, buf); }      /* ← VỨT pData[0] */
+```
+
+Quy ước của driver OTM8009A đời cũ: `Length = 0` **không** có nghĩa "không có dữ liệu", mà là
+"gói ngắn một byte dữ liệu, dữ liệu ở `pData`". Lớp bọc hiểu nhầm thành "không có gì để gửi".
+
+Hệ quả: **khoảng 50 lệnh ghi thanh ghi một byte trong cả chuỗi khởi tạo OTM8009A đều ghi
+`0x00`** — mở khoá CMD2, chỉnh bơm nguồn (`SD_PCH_CTRL`), gamma, tất cả. Panel không dựng được
+mạch nguồn nội của nó, nên **panel và đèn nền cùng chết**, trong khi nó vẫn đủ sống để trả lời
+lệnh đọc ID.
+
+Và nó giải thích nốt hai thứ đã làm cả tôi lẫn tác tử lạc hướng nhiều lượt:
+
+* **`g_otm8009a_init_ret = 0` chưa bao giờ có nghĩa.** `bsp_otm8009a_write` `return 0` vô điều
+  kiện, còn `DSI_IO_WriteCmd` là `void`. Lần thứ tư trong phiên cùng một hình dạng: **`ok` nói
+  về lời gọi, không nói về kết quả.**
+* **Lời khai "panel đang sáng" ở lần 14** dựng trên một panel chưa hề được cấu hình — nên
+  `0x9C` nghe thuyết phục ấy là rác, đúng như phép thử ghi-rồi-đọc-lại đã chỉ ra.
+
+Tác tử sửa: `buf[1] = (pData != NULL) ? pData[0] : 0;`, và cho `bsp_otm8009a_write` trả về mã
+thật thay vì `return 0` cứng.
+
+**Và phép kiểm của tôi báo ĐỎ cho bản sửa đúng ấy** — vì nó tìm đúng chuỗi `buf[1] = pData[0]`,
+không khớp dạng có toán tử ba ngôi. Một phép kiểm chỉ nhận ra đúng lời giải mà chính nó nghĩ ra
+thì không đo gì cả. Sửa thành: bắt **ý** (vế phải có nhắc `pData` không), không bắt một cách
+viết.
+
+Đo sau khi nạp: `DSI_ISR1` bit 7 (`LPWRE`) bật — lần đầu tiên đường DSI **báo có chuyện xảy
+ra**, thay vì im lặng như suốt mười mấy lượt trước, khi mọi lệnh đều là `0x00` nên panel chẳng
+phản ứng gì.
+
 ### Còn lại
 
-- Chờ hai câu trả lời trên để quyết định còn sửa firmware nữa hay không.
+- Cần anh Công nhìn bo: đèn nền đã sáng chưa.
 - Cần anh Công nhìn bo trong phòng tối: **đèn nền có sáng không** (màn đen-xám có ánh so với
   đen tuyệt đối). Đó là phép đo duy nhất còn lại mà máy không làm được, và nó chia đôi phần
   việc còn lại: đèn nền sáng → dữ liệu điểm ảnh không tới panel; đèn nền tắt → đường nguồn /
