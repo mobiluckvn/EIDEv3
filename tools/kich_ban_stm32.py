@@ -355,6 +355,28 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
         _kiem_man_hinh(nk, ctx, du_an, cc)
         nk.anh(g, "logo-ptit")
 
+    # ------------------------------------------- 15. sửa tiếp cho tới khi dịch và nạp được
+    #
+    # Một lượt riêng, chạy lại được nhiều lần. Biên dịch 30 tệp của hãng lần đầu ra 51 lỗi là
+    # chuyện thường của nghề — cái đáng đo không phải "lần đầu có sạch không" mà là "mỗi vòng
+    # có bớt lỗi đi không".
+    if lam(15):
+        nk.buoc("Sửa tiếp lỗi biên dịch cho tới khi dịch được và nạp lên bo")
+        truoc = _so_loi_dich(ctx)
+        loi, cc = hoi(g, nk, du_an,
+                      "Vẫn chưa dịch được. Bạn xem lỗi rồi sửa tiếp nhé — thiếu tệp nào của "
+                      "hãng thì lấy thêm, thiếu hàm nào thì viết. Dịch xong thì nạp luôn lên "
+                      "bo cho mình.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        sau = _so_loi_dich(ctx)
+        nk.ghi("Số lỗi biên dịch", f"trước lượt này: {truoc} → sau: {sau}")
+        nk.ket(sau < truoc or sau == 0,
+               f"Mỗi vòng phải bớt lỗi: {truoc} → {sau}",
+               "không bớt thì tác tử đang sửa vòng quanh" if sau >= truoc and sau else "")
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.anh(g, "sua-tiep")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
 
@@ -788,3 +810,12 @@ def _kiem_driver(nk: Any, du_an: pathlib.Path, cc: list[dict]) -> None:
                     if p.is_file() and p.suffix in (".c", ".h")) if fw.is_dir() else ""
     for can in ("LTDC", "DSI", "OTM8009A", "SDRAM"):
         nk.ket(can.lower() in chu.lower(), f"Mã có phần {can}", "")
+
+
+def _so_loi_dich(ctx: Any) -> int:
+    """Số lỗi của lần biên dịch gần nhất. -1 nếu chưa dịch lần nào."""
+    a = ctx.store.get("build:firmware")
+    c = (a or {}).get("canonical") or {}
+    if not a:
+        return -1
+    return 0 if c.get("dat") else int(c.get("so_loi") or 0)

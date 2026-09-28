@@ -234,6 +234,33 @@ def duong_libc(gcc: str, cpu: str, co_fpu: bool = False) -> str:
     return ra if ra and ra != "libc.a" and Path(ra).exists() else ""
 
 
+# Thư mục con nhiều tới mấy cũng không nên nổ dòng lệnh. Cây SDK của hãng sâu chừng 5–6 cấp.
+TRAN_THU_MUC_INCLUDE = 60
+
+
+def _duong_include(sketch: Path) -> list[str]:
+    """`-I` cho thư mục gốc VÀ mọi thư mục con có header.
+
+    Vì sao không phải một `-I` duy nhất: mã của hãng mang theo `#include` **tương đối** giả
+    định đúng cây thư mục gốc của nó. Đo được trên bo STM32F469:
+
+        stm32469i_discovery_lcd.c:58: #include "../../../Utilities/Fonts/fonts.h"
+
+    Ba cấp `..` ấy chỉ đúng khi tệp nằm ở `Drivers/BSP/STM32469I-Discovery/`. Với một thư mục
+    phẳng, đường dẫn đó không trỏ vào đâu cả — và người đọc lỗi sẽ đi tìm một tệp `fonts.h`
+    bị thiếu, trong khi tệp ấy có thật và nằm ngay trong dự án.
+
+    Nên: giữ được cây thì giữ, và trình biên dịch phải tìm header ở mọi thư mục con.
+    """
+    if sketch.is_file():
+        return [f"-I{sketch.parent}"]
+    thu_muc = {sketch}
+    for p in sketch.rglob("*.h"):
+        thu_muc.add(p.parent)
+    ds = sorted(thu_muc, key=lambda x: str(x))[:TRAN_THU_MUC_INCLUDE]
+    return [f"-I{d}" for d in ds]
+
+
 def _nguon_bare_metal(sketch: Path) -> tuple[list[str], list[str]]:
     """(tệp nguồn, tệp linker script) trong một thư mục firmware bare-metal."""
     if sketch.is_file():
@@ -375,7 +402,7 @@ def _lenh_arm(kq: "KetQuaBienDich", cc: dict[str, str], *, sketch: Path, build: 
         cc["arm-none-eabi-gcc"], f"-mcpu={cpu}", "-mthumb", *cờ_fpu,
         "-Os", "-g3", "-std=gnu11", "-Wall", "-Wextra",
         "-ffreestanding", "-ffunction-sections", "-fdata-sections",
-        f"-I{sketch}",
+        *_duong_include(sketch),
         "-T", ld[0], "-nostartfiles",
         "-Wl,--gc-sections", f"-Wl,-Map={build / 'mach.map'}",
         "-o", str(build / "mach.elf"), *nguon, *thu_vien]

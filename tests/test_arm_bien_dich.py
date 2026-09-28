@@ -182,3 +182,54 @@ def test_env_check_khai_newlib_thieu(tmp_path):
     assert "newlib (libc cho ARM)" in ten
     nl = next(c for c in kq["cong_cu"] if c["ten"].startswith("newlib"))
     assert nl["bat_buoc"] is False and nl["cach_cai"]
+
+
+# ============================== include: mã của hãng mang theo #include tương đối
+def test_moi_thu_muc_con_co_header_deu_duoc_I(tmp_path):
+    """Ca thật trên bo STM32F469.
+
+        stm32469i_discovery_lcd.c:58: #include "../../../Utilities/Fonts/fonts.h"
+
+    Ba cấp `..` ấy chỉ đúng khi tệp nằm đúng chỗ trong cây của ST. Một `-I` duy nhất vào thư
+    mục gốc không đủ, và người đọc lỗi sẽ đi tìm một `fonts.h` bị thiếu — trong khi tệp ấy có
+    thật và nằm ngay trong dự án.
+    """
+    fw = tmp_path / "firmware"
+    (fw / "Drivers" / "BSP" / "Bo").mkdir(parents=True)
+    (fw / "Utilities" / "Fonts").mkdir(parents=True)
+    (fw / "Drivers" / "BSP" / "Bo" / "bsp.h").write_text("#define X 1\n", "utf-8")
+    (fw / "Utilities" / "Fonts" / "fonts.h").write_text("#define F 1\n", "utf-8")
+    (fw / "mach.c").write_text("int main(void){return 0;}\n", "utf-8")
+
+    duong = TC._duong_include(fw)
+    assert f"-I{fw}" in duong
+    assert f"-I{fw / 'Drivers' / 'BSP' / 'Bo'}" in duong
+    assert f"-I{fw / 'Utilities' / 'Fonts'}" in duong
+    # Thư mục KHÔNG có header thì không cần -I.
+    assert not any("Drivers'" in d and d.endswith("Drivers") for d in duong)
+
+
+@can_arm
+def test_dich_duoc_khi_header_nam_o_thu_muc_con(tmp_path):
+    """Kiểm bằng trình biên dịch thật, không chỉ bằng danh sách cờ."""
+    goc, fw = _du_an(tmp_path, c="")
+    (fw / "mach.c").unlink()
+    (fw / "inc" / "sau").mkdir(parents=True)
+    (fw / "inc" / "sau" / "cau_hinh.h").write_text("#define GIA_TRI 7\n", "utf-8")
+    (fw / "mach.c").write_text(
+        "#include <stdint.h>\n"
+        '#include "cau_hinh.h"\n'
+        "extern uint32_t _estack;\n"
+        "void Reset_Handler(void);\n"
+        "static volatile uint32_t d;\n"
+        '__attribute__((section(".isr_vector"), used))\n'
+        "uint32_t const v[2] = { (uint32_t)&_estack, (uint32_t)Reset_Handler };\n"
+        "void Reset_Handler(void) { for(;;) d += GIA_TRI; }\n", "utf-8")
+    kq = TC.bien_dich(goc=goc, sketch=fw, isa="armv7e-m")
+    assert kq.dat, kq.vi_sao_khong_dat + "\n" + kq.nguyen_van[-600:]
+
+
+def test_tep_don_le_thi_I_vao_thu_muc_chua_no(tmp_path):
+    p = tmp_path / "mach.c"
+    p.write_text("int main(void){return 0;}\n", "utf-8")
+    assert TC._duong_include(p) == [f"-I{tmp_path}"]
