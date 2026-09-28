@@ -27,7 +27,9 @@ RA = REPO / "docs/stm32f469/ket-qua/doi-chieu.md"
 
 # Chân kiểu PG6 / PD4. Cũng bắt dạng tài liệu viết rời: `GPIOG` + `GPIO_PIN_6`.
 _MAU_CHAN = re.compile(r"\bP([A-K])(\d{1,2})\b")
-_MAU_CONG = re.compile(r"\bGPIO([A-K])\b")
+# `\b` sau [A-K] không khớp `GPIOG_BSRR` (`_` là ký tự từ); `(?![A-Z])` để
+# `GPIOAEN` của RCC không bị đọc thành cổng A.
+_MAU_CONG = re.compile(r"\bGPIO([A-K])(?![A-Z])")
 _MAU_SO_CHAN = re.compile(r"\bGPIO_PIN_(\d{1,2})\b")
 
 

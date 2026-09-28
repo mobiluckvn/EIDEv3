@@ -220,6 +220,59 @@ def dang_ky(r: Registry) -> None:
                 + "Việc nạp KHÔNG hoàn tác được — bản firmware cũ trên chip đã mất. "
                 + " ".join(kq.canh_bao))}
 
+    @r.tool("target.verify", "Mạch thật",
+            "ĐỌC NGƯỢC Flash từ chip rồi so từng byte với tệp đã nạp. Đây là bằng chứng độc "
+            "lập: `st-flash write` tự nói “verified”, nhưng đó là lời của chính công cụ vừa "
+            "ghi. Công cụ này đi hỏi silicon con chip đang chứa bản nào.",
+            {"type": "object",
+             "properties": {
+                 "tep": {"type": "string",
+                         "description": "đường dẫn .bin để đối chiếu (mặc định "
+                                        ".eide/build/mach.bin)"}}},
+            risk="R2", core=False,
+            keywords=["verify", "đối chiếu", "đọc ngược", "chip đang chạy bản nào",
+                      "kiểm tra sau khi nạp"])
+    def target_verify(ctx: Any, tep: str = ""):
+        from ..build import mach_that as MT
+
+        goc = ctx.config.paths.project_root
+        p = (goc / tep).resolve() if tep else (goc / ".eide" / "build" / "mach.bin")
+        d = MT.doc_nguoc_flash(p)
+        a = ctx.store.get(MA_NAP)
+        c = (a or {}).get("canonical") or {}
+        if a is not None:
+            ctx.store.apply(
+                artefact_id=MA_NAP, type="target", op="update",
+                author=f"agent:{ctx.run_id}",
+                canonical={**c, "doc_nguoc": d},
+                explain={"summary": "đọc ngược Flash để đối chiếu",
+                         "why": "lời của trình nạp không phải bằng chứng về nội dung trên chip",
+                         "sources": [str(p.name)], "diff_prev": "—", "next": "—",
+                         "confidence": "BAC"},
+                view_hint={"kind": "kv", "path": p.name})
+
+        if not d["do_duoc"]:
+            return ToolResult(False, error=EideError(
+                "E4015", f"Chưa đối chiếu được nội dung trên chip: {d['vi_sao']}",
+                hint_for_agent=("KHÔNG đo được khác với KHÔNG khớp — đừng nói chip sai bản. "
+                                "Nếu thiếu st-flash thì đề nghị người dùng cài qua "
+                                "tool.install."),
+                details=d, alternatives=["tool.install", "target.detect"], blame="external"))
+        if not d["dat"]:
+            return ToolResult(False, error=EideError(
+                "E4016", d["vi_sao"],
+                hint_for_agent=("Chip đang chạy một bản KHÁC. Nạp lại (target.flash) rồi đối "
+                                "chiếu lần nữa TRƯỚC khi giải thích bất cứ hành vi nào quan "
+                                "sát được trên bo."),
+                details=d, alternatives=["target.flash"], blame="external"))
+        return {
+            **d,
+            "note_vi": (
+                f"Đọc ngược {d['so_byte']} byte từ {d['dia_chi']} và so từng byte: GIỐNG HỆT "
+                f"tệp đã nạp (sha256 {d['hash_tep'][:16]}). Đây là bằng chứng độc lập với lời "
+                "của trình nạp — con chip đang chứa đúng bản này. Nó KHÔNG chứng minh chương "
+                "trình đang chạy đúng; muốn biết điều đó thì phải quan sát hành vi.")}
+
     @r.tool("target.log", "Mạch thật",
             "Đọc log từ cổng nối tiếp của bo trong một khoảng thời gian. Cổng im lặng thì nói "
             "là im lặng — đó KHÔNG phải bằng chứng firmware sai.",

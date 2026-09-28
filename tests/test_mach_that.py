@@ -531,3 +531,60 @@ def test_chi_co_chipid_thi_noi_la_chua_suy_ra_duoc_ten(monkeypatch):
                         lambda *a, **k: subprocess.CompletedProcess(a[0], 0, ra, ""))
     ten, vi_sao, _ = MT.doc_id_chip()
     assert ten == "" and "chưa suy ra được tên chip" in vi_sao
+
+
+# ============================== target.verify — hỏi silicon, không tin lời trình nạp
+def test_verify_khop_thi_noi_ro_no_KHONG_chung_minh_chuong_trinh_chay_dung(
+        make_agent, tmp_path, monkeypatch):
+    import subprocess
+
+    agent = make_agent([])
+    b = agent.config.paths.project_root / ".eide" / "build" / "mach.bin"
+    b.parent.mkdir(parents=True, exist_ok=True)
+    b.write_bytes(BIN)
+
+    def gia_read(cmd, *a, **k):
+        pathlib_Path = type(b)
+        pathlib_Path(cmd[2]).write_bytes(BIN)          # st-flash read <ra> <addr> <len>
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/st-flash")
+    monkeypatch.setattr(MT.subprocess, "run", gia_read)
+    r = agent.registry.run("target.verify", {}, _ctx(agent))
+    assert r.ok and r.data["dat"] and r.data["so_byte_khac"] == 0
+    assert "GIỐNG HỆT" in r.data["note_vi"]
+    # Câu quan trọng nhất: khớp byte KHÔNG có nghĩa là chương trình chạy đúng.
+    assert "KHÔNG chứng minh chương trình đang chạy đúng" in r.data["note_vi"]
+
+
+def test_verify_lech_thi_bao_chip_dang_chay_ban_khac(make_agent, tmp_path, monkeypatch):
+    import subprocess
+
+    agent = make_agent([])
+    b = agent.config.paths.project_root / ".eide" / "build" / "mach.bin"
+    b.parent.mkdir(parents=True, exist_ok=True)
+    b.write_bytes(BIN)
+
+    def gia_read(cmd, *a, **k):
+        type(b)(cmd[2]).write_bytes(BIN[:-4] + b"\xff\xff\xff\xff")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/st-flash")
+    monkeypatch.setattr(MT.subprocess, "run", gia_read)
+    r = agent.registry.run("target.verify", {}, _ctx(agent))
+    assert not r.ok and r.error.code == "E4016"
+    assert "KHÁC tệp đã nạp" in r.error.message_vi
+    assert "TRƯỚC khi giải thích bất cứ hành vi nào" in r.error.hint_for_agent
+
+
+def test_thieu_st_flash_thi_KHONG_DO_DUOC_chu_khong_phai_khong_khop(make_agent, monkeypatch):
+    """Cùng bài học với `chua_do_duoc`: hai trạng thái khác nhau, hai hành động khác nhau."""
+    agent = make_agent([])
+    b = agent.config.paths.project_root / ".eide" / "build" / "mach.bin"
+    b.parent.mkdir(parents=True, exist_ok=True)
+    b.write_bytes(BIN)
+    monkeypatch.setattr(MT.shutil, "which", lambda x: None)
+    r = agent.registry.run("target.verify", {}, _ctx(agent))
+    assert not r.ok and r.error.code == "E4015"
+    assert "KHÔNG đo được khác với KHÔNG khớp" in r.error.hint_for_agent
+    assert r.error.details["do_duoc"] is False

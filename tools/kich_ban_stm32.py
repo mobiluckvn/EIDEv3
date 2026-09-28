@@ -276,6 +276,29 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "không đo được bằng mã — kịch bản cố ý không tự trả lời.")
         nk.anh(g, "chay-that")
 
+    # ------------------------------------------- 11. ứng dụng NGƯỜI DÙNG TEST ĐƯỢC
+    if lam(11):
+        nk.buoc("Ứng dụng người dùng bấm được và thấy được: 4 đèn + nút bấm")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bây giờ mình muốn một ứng dụng mà mình TỰ KIỂM ĐƯỢC bằng tay, chứ "
+                      "không phải chỉ nháy một đèn rồi tin lời bạn. Bạn viết lại firmware "
+                      "cho mình như sau:\n"
+                      "- Dùng CẢ BỐN đèn LED người dùng của bo, không chỉ một.\n"
+                      "- Có phản ứng với NÚT BẤM trên bo: mình bấm thì hành vi phải đổi rõ "
+                      "rệt, nhìn là biết ngay.\n"
+                      "- Chân của cả bốn đèn và của nút phải lấy từ Fact có trích dẫn, không "
+                      "lấy từ trí nhớ. Chưa có Fact thì trích ra trước đã.\n"
+                      "- Mức tích cực của nút (bấm là mức cao hay mức thấp) cũng phải đọc từ "
+                      "tài liệu — đoán sai thì mình bấm mà không thấy gì, hoặc nó tự chạy "
+                      "như đang bị bấm.\n"
+                      "Viết xong thì biên dịch, nạp, rồi VIẾT CHO MÌNH CÁCH KIỂM: mình phải "
+                      "làm gì và phải thấy gì, từng bước một.",
+                      giay=2400)
+        ten = [c["tool"] for c in cc]
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(ten) or "—")
+        _kiem_ung_dung_test_duoc(nk, ctx, du_an)
+        nk.anh(g, "ung-dung-test-duoc")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
 
@@ -437,3 +460,163 @@ def _kiem_vector_table(nk: Any, du_an: pathlib.Path, binp: pathlib.Path) -> None
            + (f" · linker script khai: "
               + "; ".join(x.strip() for x in re.findall(r"^\s*RAM.*$", khai, re.M)[:2])
               if khai else ""))
+
+
+def _kiem_ung_dung_test_duoc(nk: Any, ctx: Any, du_an: pathlib.Path) -> None:
+    """Ứng dụng này có THẬT SỰ kiểm được bằng tay không, và mỗi chân có Fact đứng sau không.
+
+    Phép kiểm ở đây cố ý KHÔNG hỏi "firmware có đúng không" — không đo được. Nó hỏi ba câu
+    hẹp hơn mà đo được, và mỗi câu chặn một cách hỏng đã gặp thật:
+
+      1. Bốn chân LED và một chân nút có mặt trong mã?  (nếu không thì "dùng cả bốn đèn"
+         chỉ là lời hứa)
+      2. Mỗi chân ấy có Fact trong kho, và Fact có trích dẫn?  (N1 — số nhớ được thì lần
+         sau không ai kiểm lại được)
+      3. Ảnh nạp trên chip có ĐÚNG là bản vừa dịch không?  (đọc ngược Flash, không tin lời
+         trình nạp)
+    """
+    import json as _json
+
+    fw = du_an / "firmware"
+    ma = "\n".join(p.read_text("utf-8", errors="replace")
+                   for p in sorted(fw.rglob("*"))
+                   if p.is_file() and p.suffix in (".c", ".h", ".s", ".S")) if fw.is_dir() else ""
+
+    # --- 1. chân trong mã
+    trong_ma, vi_sao_doc = _chan_trong_firmware(ma)
+    nk.ghi("Chân đọc được từ firmware",
+           (", ".join(sorted(trong_ma)) or "—") + "\n" + vi_sao_doc)
+
+    # --- 2. Fact chân trong kho
+    # Tìm Fact chân theo NỘI DUNG, không theo hình dạng khoá.
+    #
+    # Bản trước chỉ nhận `subject="pin:<chip>.<tên>"` + `key="ten"` — đúng hình dạng mà
+    # `fact.extract_pinout` sinh ra. Tác tử lại dùng `fact.from_doc` và đặt khoá theo cách của
+    # nó (`chip:STM32F469NI` / `led1.pin` = `PG6`), nên bộ đo báo **0/4 Fact** trong khi kho có
+    # đủ cả bốn, có trích dẫn đàng hoàng. Một bộ đo chỉ nhận đúng một cách làm sẽ báo sai mỗi
+    # lần tác tử làm đúng bằng cách khác.
+    fs = ctx.store.query_facts(limit=800)
+    chan_fact: dict[str, tuple[str, str]] = {}
+    for f in fs:
+        khoa = str(f.get("key") or "")
+        gt = str(f.get("value") or "").strip()
+        ten = (str(f.get("subject", "")).split(".", 1)[-1]
+               if str(f.get("subject", "")).startswith("pin:") else khoa)
+        ng = _nguon(f)
+        if re.fullmatch(r"P[A-K]\d{1,2}", gt):               # `PG6`
+            chan_fact[ten] = (gt, str(ng.get("cite") or ""))
+        elif re.fullmatch(r"GPIO_PIN_\d{1,2}", gt):          # `GPIO_PIN_0` + cổng ở Fact khác
+            goc = khoa.rsplit(".", 1)[0]
+            cong = next((str(x.get("value")) for x in fs
+                         if str(x.get("key") or "").startswith(goc)
+                         and re.fullmatch(r"GPIO[A-K]", str(x.get("value") or ""))), "")
+            if cong:
+                chan_fact[ten] = (f"P{cong[-1]}{gt.rsplit('_', 1)[-1]}",
+                                  str(ng.get("cite") or ""))
+    nk.ghi("Fact chân trong kho",
+           "\n".join(f"  {k:22} {v[0]:6} {v[1]}" for k, v in sorted(chan_fact.items()))
+           or "— chưa có Fact chân nào —", ma=True)
+
+    led = {k: v for k, v in chan_fact.items() if k.upper().startswith("LED")}
+    nut = {k: v for k, v in chan_fact.items()
+           if "BUTTON" in k.upper() or "WAKEUP" in k.upper() or "KEY" in k.upper()}
+    nk.ket(len(led) >= 4, f"Có Fact cho đủ 4 đèn LED: {len(led)}/4",
+           ", ".join(f"{k}={v[0]}" for k, v in sorted(led.items())) or "—")
+    nk.ket(bool(nut), "Có Fact cho nút bấm",
+           ", ".join(f"{k}={v[0]}" for k, v in sorted(nut.items())) or "—")
+
+    # Chân nào trong Fact mà mã KHÔNG dùng, và ngược lại.
+    can_dung = {v[0] for v in list(led.values()) + list(nut.values())}
+    thieu = sorted(x for x in can_dung if x not in trong_ma)
+    nk.ket(bool(can_dung) and not thieu,
+           f"Mọi chân cần dùng đều xuất hiện trong mã: {len(can_dung) - len(thieu)}"
+           f"/{len(can_dung)}",
+           ("THIẾU TRONG MÃ: " + ", ".join(thieu)) if thieu else
+           ", ".join(sorted(can_dung)) or "—")
+
+    # --- 3. chip có đúng bản vừa dịch không
+    _kiem_chip_dung_ban_vua_dich(nk, du_an)
+
+
+def _kiem_chip_dung_ban_vua_dich(nk: Any, du_an: pathlib.Path) -> None:
+    """Đọc ngược Flash từ chip rồi so byte với `.bin`. Không tin lời trình nạp.
+
+    `st-flash write` tự nói "verified", nhưng đó là lời của chính công cụ vừa ghi. Một phép
+    đo độc lập đọc lại từ silicon trả lời đúng câu người dùng hỏi: *con chip trên bàn đang
+    chứa bản nào?*
+    """
+    import hashlib
+    import shutil as _sh
+    import subprocess as _sp
+    import tempfile as _tf
+
+    binp = du_an / ".eide" / "build" / "mach.bin"
+    st = _sh.which("st-flash")
+    if not binp.exists() or not st:
+        nk.ket(False, "Đọc ngược Flash từ chip để đối chiếu",
+               "chưa có mach.bin" if not binp.exists() else "máy chưa có st-flash")
+        return
+    mong = binp.read_bytes()
+    ra = pathlib.Path(_tf.mkdtemp()) / "doc-lai.bin"
+    r = _sp.run([st, "read", str(ra), "0x08000000", str(len(mong))],
+                capture_output=True, text=True, timeout=120)
+    if r.returncode != 0 or not ra.exists():
+        nk.ket(False, "Đọc ngược Flash từ chip để đối chiếu",
+               (r.stderr or r.stdout or "")[-300:])
+        return
+    that = ra.read_bytes()
+    khop = that == mong
+    nk.ket(khop, f"Chip đang chứa ĐÚNG bản vừa dịch ({len(mong)} byte)",
+           f"sha256 tệp  : {hashlib.sha256(mong).hexdigest()[:32]}\n"
+           f"sha256 chip : {hashlib.sha256(that).hexdigest()[:32]}"
+           + ("" if khop else
+              f"\nkhác ở {sum(1 for a, b in zip(mong, that) if a != b)} byte"))
+
+
+def _chan_trong_firmware(ma: str) -> tuple[set[str], str]:
+    """Chân GPIO mà firmware THẬT SỰ chạm tới. Trả `(tập chân, giải thích cách đọc)`.
+
+    Bản trước lấy tích Descartes của {cổng thấy được} × {số thấy sau `<<`} và gọi đó là "chân
+    trong mã". Hai chỗ sai, và cả hai đều cho ra kết luận tự tin mà sai:
+
+    - Các số nó bắt được là **0, 3, 6, 10** — đó là bit bật xung nhịp trong `RCC_AHB1ENR`
+      (GPIOAEN=0, GPIODEN=3, GPIOGEN=6, GPIOKEN=10), không phải số chân.
+    - Firmware viết `1UL << LED2_PIN`, tức **tên macro** chứ không phải chữ số, nên PD4 và PD5
+      trượt hoàn toàn và bộ đo báo "thiếu trong mã" cho những chân đang được dùng đúng.
+
+    Cách làm đúng: giải bảng `#define` của chính firmware thành số, rồi ghép cổng với bit
+    **trên cùng một dòng** — `GPIOD_BSRR = ... (1UL << LED2_PIN)` cho ra PD4. Bỏ qua dòng
+    chạm `RCC_`, vì bit ở đó thuộc về xung nhịp chứ không thuộc về chân.
+    """
+    gia_tri: dict[str, int] = {}
+    for m in re.finditer(r"^\s*#\s*define\s+(\w+)\s+\(?\s*(\d{1,3})\s*[uUlL]*\s*\)?\s*(?:/\*.*)?$",
+                         ma, re.M):
+        gia_tri[m.group(1)] = int(m.group(2))
+
+    ra: set[str] = set()
+    for dong in ma.splitlines():
+        if "RCC_" in dong:                    # bit ở đây là xung nhịp, không phải chân
+            continue
+        # `\b` sau [A-K] KHÔNG khớp `GPIOG_BSRR` vì `_` cũng là ký tự từ — đó là lý do
+        # bản trước đọc được 0 chân. `(?![A-Z])` để `GPIOAEN` (bit RCC) không
+        # bị đọc thành cổng A.
+        cong = set(re.findall(r"\bGPIO([A-K])(?![A-Z])", dong))
+        if len(cong) != 1:
+            continue
+        c = cong.pop()
+        for tok in re.findall(r"<<\s*\(?\s*(\w+)", dong):
+            n = int(tok) if tok.isdigit() else gia_tri.get(tok, -1)
+            if 0 <= n <= 15:                  # chân GPIO của STM32 chỉ từ 0..15
+                ra.add(f"P{c}{n}")
+        # `GPIOA_IDR & (1UL << BUTTON_PIN)` đã bắt ở trên; còn dạng `MODER &= ~(3UL << (X*2))`
+        for tok in re.findall(r"\(\s*(\w+)\s*\*\s*2\s*\)", dong):
+            n = int(tok) if tok.isdigit() else gia_tri.get(tok, -1)
+            if 0 <= n <= 15:
+                ra.add(f"P{c}{n}")
+
+    vi_sao = (f"đọc {len(gia_tri)} #define thành số, ghép cổng với bit trên cùng dòng, "
+              "bỏ qua dòng có RCC_ (bit xung nhịp không phải số chân)")
+    if not gia_tri and not ra:
+        vi_sao = ("KHÔNG đọc được mẫu nào — firmware có thể dùng cách viết khác. "
+                  "Không đọc được KHÁC với không dùng.")
+    return ra, vi_sao

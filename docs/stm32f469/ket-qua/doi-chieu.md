@@ -3,8 +3,9 @@
 Sinh tự động bởi `tools/doi_chieu_stm32.py`. Bộ này **không có sẵn đáp án**: nó đọc tài liệu trong kho của dự án rồi so với mã nguồn.
 
 
-## Tài liệu văn bản đã nạp (3)
+## Tài liệu văn bản đã nạp (4)
 
+- `BSP-STM32469I-DISCO-C` · `stm32469i_discovery.c` · 943 dòng
 - `CMSIS-STM32F469XX-H` · `stm32f469xx.h` · 20285 dòng
 - `PROE-STM32F469` · `proe_stm32f469.txt` · 1576 dòng
 - `BSP-STM32469I-DISCO-H` · `stm32469i_discovery.h` · 362 dòng
@@ -14,11 +15,13 @@ Sinh tự động bởi `tools/doi_chieu_stm32.py`. Bộ này **không có sẵn
 | LED | Tài liệu nói | Nguồn | Có trong firmware? |
 |---|---|---|---|
 | LED1 | `PG6` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | **có** |
-| LED2 | `PD4` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | không |
-| LED3 | `PD5` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | không |
-| LED4 | `PK3` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | không |
+| LED2 | `PD4` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | **có** |
+| LED3 | `PD5` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | **có** |
+| LED4 | `PK3` | `BSP-STM32469I-DISCO-H` (stm32469i_discovery.h) | **có** |
 
-## Fact trong kho (5)
+Chân có trong firmware mà tài liệu (phần LED) không nhắc tới: `PA0` — mỗi chân như thế phải có một Fact khác đứng sau.
+
+## Fact trong kho (14)
 
 | Chủ đề | Khoá | Giá trị | Tầng | Trích dẫn |
 |---|---|---|---|---|
@@ -27,6 +30,15 @@ Sinh tự động bởi `tools/doi_chieu_stm32.py`. Bộ này **không có sẵn
 | `config:flash` | config:flash.origin | None | CAUHINH | ? · **KHÔNG CÓ** |
 | `config:ram` | config:ram.size | 327680.0 | CAUHINH | ? · **KHÔNG CÓ** |
 | `config:ram` | config:ram.origin | None | CAUHINH | ? · **KHÔNG CÓ** |
+| `chip:STM32F469NI` | led1.pin | PG6 | BAC | BSP-STM32469I-DISCO-H · dòng 121–160 |
+| `chip:STM32F469NI` | led2.pin | PD4 | BAC | BSP-STM32469I-DISCO-H · dòng 121–160 |
+| `chip:STM32F469NI` | led3.pin | PD5 | BAC | BSP-STM32469I-DISCO-H · dòng 121–160 |
+| `chip:STM32F469NI` | led4.pin | PK3 | BAC | BSP-STM32469I-DISCO-H · dòng 121–160 |
+| `chip:STM32F469NI` | button.port | GPIOA | BAC | BSP-STM32469I-DISCO-H · dòng 161–200 |
+| `chip:STM32F469NI` | button.pin | GPIO_PIN_0 | BAC | BSP-STM32469I-DISCO-H · dòng 161–200 |
+| `chip:STM32F469NI` | button.exti_mode | GPIO_MODE_IT_RISING | BAC | BSP-STM32469I-DISCO-C · dòng 281–320 |
+| `chip:STM32F469NI` | led.on_state | GPIO_PIN_RESET | BAC | BSP-STM32469I-DISCO-C · dòng 241–280 |
+| `chip:STM32F469NI` | led.off_state | GPIO_PIN_SET | BAC | BSP-STM32469I-DISCO-C · dòng 161–200 |
 
 ## Biên dịch
 
@@ -37,7 +49,7 @@ Sinh tự động bởi `tools/doi_chieu_stm32.py`. Bộ này **không có sẵn
 - **tep_ra**: `.eide/build/mach.hex`
 - **tep_bin**: `.eide/build/mach.bin`
 - **thieu_libc**: `True`
-- **flash**: `224`
+- **flash**: `492`
 - **sram**: `0`
 - **flash_toi_da**: `20971520`
 - **sram_toi_da**: `3276800`
@@ -50,8 +62,8 @@ Sinh tự động bởi `tools/doi_chieu_stm32.py`. Bộ này **không có sẵn
 - **dat**: `True`
 - **cach**: `st-flash`
 - **tep**: `mach.bin`
-- **so_byte**: `224`
-- **hash**: `bb463633c94cae1cadd495ac10d038ebcb7cc31ca6a373259cd4b20dbaf4a6da`
+- **so_byte**: `492`
+- **hash**: `f351053423cc90824d7aca3c3d8290f611e35ba07bd54de2ea4c02e109b1bfde`
 - **dich**: `0x08000000`
 - **giay**: `0.4`
 - **da_verify**: `True`

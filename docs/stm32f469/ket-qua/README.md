@@ -33,10 +33,23 @@ không"*.
 Ví dụ: "biên dịch đạt" đọc từ `store.get("build:firmware")` và đòi có tệp ảnh thật; "nạp đạt"
 đòi hash, số byte, và đích.
 
-**3. Phần duy nhất không đo được bằng mã là đèn LED có nhấp nháy hay không.** Kịch bản cố ý
-**không tự trả lời** câu đó — nó ghi ra một câu hỏi cho anh Công. Bo này không có cổng COM
-nối sẵn vào USART (header BSP của ST không định nghĩa cổng COM nào), nên `target.log` im lặng
-là kết quả **đúng**, không phải dấu hiệu firmware sai.
+**3. Phần duy nhất không đo được bằng mã là hành vi của đèn.** Kịch bản cố ý **không tự trả
+lời** câu đó — nó ghi ra một câu hỏi cho anh Công. Bo này không có cổng COM nối sẵn vào USART
+(header BSP của ST không định nghĩa cổng COM nào), nên `target.log` im lặng là kết quả
+**đúng**, không phải dấu hiệu firmware sai.
+
+## Ứng dụng đang nằm trên chip
+
+Bài kiểm bằng tay, hai hành vi khác nhau rõ rệt nên nhìn là biết đúng hay sai:
+
+| Thao tác | Phải thấy |
+|---|---|
+| Không bấm gì | Bốn đèn sáng **lần lượt vòng quanh**: LED1 xanh lá (PG6) → LED2 cam (PD4) → LED3 đỏ (PD5) → LED4 xanh dương (PK3) |
+| Giữ nút USER (nút xanh) | Cả bốn đèn **chớp nháy đồng loạt, nhanh hơn hẳn**; thả ra thì quay về chạy vòng |
+
+Anh Công đã bấm thử và xác nhận đúng (28/09/2026) — mục đầu tiên của dự án đạt ở **tầng
+NGƯỜI**. Mọi chân trong firmware đều có Fact kèm trích dẫn (5/5), và mức tích cực của đèn
+(sáng ở mức THẤP) đọc từ `BSP_LED_On` trong tệp `.c` của ST, không phải đoán.
 
 ## Môi trường đã đo được (không phải giả định)
 

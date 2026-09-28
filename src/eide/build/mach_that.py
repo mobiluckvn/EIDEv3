@@ -375,6 +375,58 @@ def nap_qua_st_flash(bin_path: Path, *, dia_chi: int = 0x08000000) -> KetQuaNap:
     return kq
 
 
+def doc_nguoc_flash(bin_path: Path, *, dia_chi: int = 0x08000000) -> dict[str, Any]:
+    """Đọc ngược Flash từ chip rồi so từng byte với tệp đã nạp.
+
+    `st-flash write` tự in "verified", nhưng đó là lời của **chính công cụ vừa ghi**. Phép đo
+    này đi hỏi silicon: *con chip trên bàn đang chứa bản nào?* Đó mới là câu người dùng hỏi
+    khi họ nhìn bo và thấy nó không chạy như mong đợi.
+
+    Trả `dat=False` kèm lý do khi không đo được — và "không đo được" KHÔNG phải "không khớp".
+    """
+    import hashlib
+    import tempfile
+
+    ra: dict[str, Any] = {"dat": False, "do_duoc": False, "so_byte": 0,
+                          "hash_tep": "", "hash_chip": "", "so_byte_khac": 0,
+                          "vi_sao": "", "dia_chi": f"0x{dia_chi:08X}"}
+    st = shutil.which("st-flash")
+    if not st:
+        ra["vi_sao"] = ("máy chưa có `st-flash` nên không đọc ngược được Flash. Không đọc "
+                        "được KHÁC với không khớp — chưa kết luận gì về nội dung trên chip.")
+        return ra
+    if not bin_path.exists() or bin_path.stat().st_size == 0:
+        ra["vi_sao"] = f"không có {bin_path.name} để đối chiếu."
+        return ra
+
+    mong = bin_path.read_bytes()
+    ra["so_byte"] = len(mong)
+    ra["hash_tep"] = hashlib.sha256(mong).hexdigest()
+    dich = Path(tempfile.mkdtemp()) / "doc-nguoc.bin"
+    try:
+        r = subprocess.run([st, "read", str(dich), f"0x{dia_chi:08x}", str(len(mong))],
+                           capture_output=True, text=True, timeout=180)
+    except (OSError, subprocess.SubprocessError) as e:
+        ra["vi_sao"] = f"st-flash read không chạy được: {type(e).__name__}: {e}"
+        return ra
+    if r.returncode != 0 or not dich.exists():
+        ra["vi_sao"] = ("st-flash read thất bại: "
+                        + ((r.stderr or r.stdout or "").strip()[-200:] or "không rõ"))
+        return ra
+
+    that = dich.read_bytes()
+    ra["do_duoc"] = True
+    ra["hash_chip"] = hashlib.sha256(that).hexdigest()
+    ra["so_byte_khac"] = sum(1 for a, b in zip(mong, that) if a != b) + abs(
+        len(mong) - len(that))
+    ra["dat"] = that == mong
+    if not ra["dat"]:
+        ra["vi_sao"] = (f"Nội dung trên chip KHÁC tệp đã nạp ở {ra['so_byte_khac']} byte. "
+                        "Chip đang chạy một bản khác — nạp lại trước khi kết luận gì về "
+                        "hành vi quan sát được.")
+    return ra
+
+
 # =========================================================================== đọc log
 def doc_log(cong: str, *, baud: int = 115200, giay: float = 5.0,
             tran_byte: int = 64 * 1024) -> dict[str, Any]:

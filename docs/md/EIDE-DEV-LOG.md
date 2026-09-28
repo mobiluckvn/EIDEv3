@@ -2482,10 +2482,53 @@ bị ép vào một ô nhị phân.
 làm sai: một cảnh báo sai ở đúng chỗ nguy hiểm nhất (thao tác không hoàn tác được) dạy người
 dùng bấm qua cảnh báo — và lần sau, khi thẻ cổng báo đúng, họ cũng bấm qua.
 
+#### 13. Ứng dụng người dùng TỰ KIỂM ĐƯỢC, và hai phép đo của tôi lại sai
+
+Anh Công yêu cầu một ứng dụng *"mà mình TỰ KIỂM ĐƯỢC bằng tay, chứ không phải chỉ nháy một
+đèn rồi tin lời bạn"*: dùng cả bốn đèn, có phản ứng với nút bấm, và mức tích cực của nút phải
+đọc từ tài liệu chứ không đoán.
+
+Tác tử làm được, và có một bước đáng ghi lại: nó gọi `fact.from_doc` cho từng chân, rồi khi
+cần biết **đèn sáng ở mức cao hay thấp**, nó phát hiện header BSP chỉ *khai báo* `BSP_LED_On`
+chứ không có thân hàm — nên nó đi **tải thêm tệp `.c`** và trích ra
+`led.on_state = GPIO_PIN_RESET` từ đúng dòng có `HAL_GPIO_WritePin(..., GPIO_PIN_RESET)`.
+Đèn trên bo này tích cực mức THẤP, và firmware kéo chân xuống 0 để bật. Tôi đã kiểm lại chỗ
+trích dẫn ấy bằng tay: câu chữ có thật ở đúng khoảng dòng được nêu.
+
+Kết quả: 4 đèn chạy vòng khi thả nút, cả 4 chớp nhanh đồng loạt khi giữ nút. Anh Công bấm thử
+và xác nhận đúng — đây là mục đầu tiên của dự án đạt ở **tầng NGƯỜI**, thứ không có cách nào
+đo bằng mã.
+
+**Nhưng bộ đo của tôi báo sai hai lần, theo hai chiều ngược nhau.**
+
+Lần một, báo **thiếu** cái đang có: phép kiểm "chân nào trong mã" lấy tích Descartes của
+{cổng thấy được} × {số thấy sau `<<`}. Những số nó bắt được là **0, 3, 6, 10** — đó là bit bật
+xung nhịp trong `RCC_AHB1ENR` (GPIOAEN=0, GPIODEN=3, GPIOGEN=6, GPIOKEN=10), **không phải số
+chân**. Còn PD4/PD5 thì trượt hẳn vì firmware viết `1UL << LED2_PIN`, tức tên macro chứ không
+phải chữ số. Sửa: giải bảng `#define` của chính firmware thành số, ghép cổng với bit **trên
+cùng một dòng**, và bỏ qua dòng có `RCC_`.
+
+Lần hai, báo **có** vì lý do sai: regex `\bGPIO([A-K])\b` **không khớp** `GPIOG_BSRR`, vì `_`
+cũng là ký tự từ nên `\b` không đứng được ở đó. Nghĩa là suốt thời gian qua, bảng đối chiếu
+firmware ↔ tài liệu xanh **nhờ khớp vào chú thích** `/* LED1 … PG6 */`, không phải nhờ đọc mã.
+Đúng cùng một lỗi với "control.c không có AVR" ở DEV-276 — lần thứ sáu. Sửa thành
+`\bGPIO([A-K])(?![A-Z])`: khớp `GPIOG_BSRR`, không khớp `GPIOAEN`.
+
+Và một lần tôi tự nghi oan hệ thống: thấy `led.on_state = GPIO_PIN_RESET` trích dẫn "dòng
+241–280" mà tệp `.h` ở đó chỉ có macro reset I2C, tôi kết luận `fact.from_doc` đã để lọt một
+Fact bịa. Sai — Fact ấy trích dẫn tệp **`.c`**, không phải `.h`; tôi kiểm nhầm tệp. Phép kiểm
+nguyên văn E2006 vẫn nguyên vẹn.
+
+**Thêm `target.verify`** (R2): đọc ngược Flash từ chip rồi so từng byte với tệp đã nạp.
+`st-flash write` tự in "verified", nhưng đó là lời của **chính công cụ vừa ghi**; công cụ này
+đi hỏi silicon *con chip đang chứa bản nào*. Nó cũng giữ đúng ba trạng thái: khớp / khác /
+**không đo được** — thiếu `st-flash` thì trả E4015 với câu "KHÔNG đo được khác với KHÔNG khớp",
+chứ không nói chip sai bản. Đo thật trên bo: 492 byte, khác 0 byte, sha256 `f3510534…`.
+
 ### Số đo
 
-`968 ca đơn vị` (+93 so với DEV-277) · `95 công cụ` khi cờ sơ đồ tắt (+4: `doc.fetch`,
-`target.detect`, `target.flash`, `target.log`), `104` khi bật.
+`973 ca đơn vị` (+93 so với DEV-277) · `96 công cụ` khi cờ sơ đồ tắt (+5: `doc.fetch`,
+`target.detect`, `target.flash`, `target.verify`, `target.log`), `105` khi bật.
 
 Phiên bo thật (`tools/phien_stm32.py`): bước 1–2 chạy được trên bo đang cắm — tác tử tự tìm ra
 công cụ (`tool.search` → `target.detect`), nhận đúng **ST Discovery F469NI**, và **tự nói ra**
