@@ -2,11 +2,7 @@
 #define UI_H
 
 #include <stdint.h>
-
-typedef enum {
-    UI_SCREEN_MAIN = 0,
-    UI_SCREEN_DETAILS = 1
-} ui_screen_t;
+#include "ui_state.h"
 
 void UI_Init(void);
 void UI_ShowMainScreen(void);

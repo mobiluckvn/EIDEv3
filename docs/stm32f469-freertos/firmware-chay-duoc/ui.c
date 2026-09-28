@@ -3,6 +3,7 @@
   * @brief Giao dien hien thi LCD va xu ly nut bam cam ung cho STM32F469I-DISCO
   */
 #include "ui.h"
+#include "ui_state.h"
 #include "stm32469i_discovery.h"
 #include "stm32469i_discovery_lcd.h"
 #include "stm32469i_discovery_sdram.h"
@@ -14,8 +15,6 @@
 #define BTN_Y      400
 #define BTN_WIDTH  480
 #define BTN_HEIGHT 50
-
-static ui_screen_t current_screen = UI_SCREEN_MAIN;
 
 static void UI_DrawLogo(uint16_t x0, uint16_t y0)
 {
@@ -75,7 +74,7 @@ void UI_Init(void)
 
 void UI_ShowMainScreen(void)
 {
-    current_screen = UI_SCREEN_MAIN;
+    UI_State_Set(UI_SCREEN_MAIN);
 
     BSP_LCD_Clear(LCD_COLOR_WHITE);
 
@@ -110,7 +109,7 @@ void UI_ShowMainScreen(void)
 
 void UI_ShowDetailsScreen(void)
 {
-    current_screen = UI_SCREEN_DETAILS;
+    UI_State_Set(UI_SCREEN_DETAILS);
 
     BSP_LCD_Clear(LCD_COLOR_DARKBLUE);
 
@@ -148,7 +147,7 @@ void UI_ShowDetailsScreen(void)
 
 void UI_ToggleScreen(void)
 {
-    if (current_screen == UI_SCREEN_MAIN) {
+    if (UI_State_Toggle() == UI_SCREEN_DETAILS) {
         UI_ShowDetailsScreen();
     } else {
         UI_ShowMainScreen();
@@ -157,17 +156,12 @@ void UI_ToggleScreen(void)
 
 ui_screen_t UI_GetCurrentScreen(void)
 {
-    return current_screen;
+    return UI_State_Get();
 }
 
 int UI_HandleTouch(uint16_t x, uint16_t y)
 {
-    /* Kiem tra cham trong vung nut bam theo f-nguoi-67015084: x=160..640, y=390..450 */
-    int in_x = (x >= 150 && x <= 650);
-    int in_y = ((y >= 380 && y <= 460) || (y >= 20 && y <= 100));
-    int in_swap = (y >= 150 && y <= 650) && ((x >= 380 && x <= 460) || (x >= 20 && x <= 100));
-
-    if ((in_x && in_y) || in_swap) {
+    if (UI_State_CheckTouch(x, y)) {
         UI_ToggleScreen();
         return 1;
     }

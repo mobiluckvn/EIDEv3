@@ -510,8 +510,14 @@ def test_test_run_KHONG_in_JSON_thi_khong_ket_luan(make_agent):
         '#include <stdio.h>\nint main(void){ printf("Tất cả test đã chạy OK\\n"); return 0; }\n',
         "utf-8")
     r = agent.registry.run("test.run", {"explain": _EX}, ctx)
-    assert r.ok and r.data["dat"] is False
-    assert "không đếm được" in r.data["vi_sao_khong_dat"]
+    # Siết lại ngày 28/09/2026: trước đây đây là một lời gọi THÀNH CÔNG mang `dat=False`.
+    # Đúng về dữ liệu, nhưng thứ tác tử đọc được là dòng "0/0 ca đạt" — một câu không có ô
+    # đỏ nào — còn lời chỉ khuôn đầu ra nằm trong `vi_sao_khong_dat` thì không lối nào tới
+    # được nó. Đo thật ở phiên FreeRTOS: tác tử lặng lẽ đoán khuôn, in mười dòng JSON mười
+    # kiểu. Chạy xong không đếm được ca nào là THẤT BẠI, và lời sửa phải đi kèm.
+    assert not r.ok and r.error.code == "E4014"
+    assert "không đếm được ca nào" in r.error.message_vi.lower()
+    assert '"ca": [' in r.error.hint_for_agent, "phải chỉ đúng khuôn cần in"
 
 
 def test_chua_co_test_thi_NOI_THANG_chu_khong_coi_la_dat(make_agent):
@@ -644,3 +650,40 @@ def test_sua_nguong_bang_mot_thu_khong_phai_so_thi_KHONG_doi_gi(make_agent):
         "origin": {"surface": "simulation", "block": "criteria:sim-01"}}), seen.append)
     tc = agent.store.get("criteria:sim-01")["canonical"]
     assert next(x for x in tc["assert"] if x["ma"] == "A1")["nguong"] == 15.0
+
+@pytest.mark.skipif(not co_cc, reason="không có trình biên dịch C trên máy")
+def test_test_run_NHAT_tep_logic_theo_header_chu_khong_theo_TEN(make_agent):
+    """Bản trước chỉ gom `firmware/control*.c` — một cái tên nghĩ ra từ dự án khác.
+
+    Dự án FreeRTOS đặt logic ở `ui_state.c`, nên nó không được liên kết vào, tệp test báo
+    thiếu ký hiệu, và tác tử **chép logic sang tệp test** để có thứ mà chạy — bộ kiểm thành
+    xanh mãi mãi. Một cái tên đoán sẵn đã đẻ ra một ô xanh giả, nên phép nhặt phải dựa vào
+    thứ ĐO ĐƯỢC: tệp có kéo header của bo hay không.
+    """
+    agent = make_agent([])
+    goc = agent.config.paths.project_root
+    (goc / "firmware").mkdir(parents=True, exist_ok=True)
+    (goc / "firmware/ui_state.c").write_text(
+        "#include <stdint.h>\nint nguong(void){ return 480; }\n", "utf-8")
+    (goc / "firmware/ui.c").write_text(
+        '#include "stm32469i_discovery.h"\nvoid ve(void){}\n', "utf-8")
+    (goc / "firmware/main.c").write_text("int main(void){ return 0; }\n", "utf-8")
+    (goc / "test").mkdir(parents=True, exist_ok=True)
+    (goc / "test/t.c").write_text(
+        '#include <stdio.h>\nint nguong(void);\n'
+        'int main(void){ printf("{\\"ca\\": [{\\"ten\\": \\"A\\", \\"dat\\": %s,'
+        ' \\"vi\\": \\"nguong\\"}]}\\n", nguong()==480?"true":"false"); return 0; }\n',
+        "utf-8")
+
+    from eide.tools.xay_dung import _logic_dich_duoc_tren_may
+    ten = [x.name for x in _logic_dich_duoc_tren_may(goc)]
+    assert ten == ["ui_state.c"], f"phải nhặt đúng tệp không dính header của bo, được {ten}"
+
+    r = agent.registry.run("test.run", {"explain": _EX}, _ctx(agent))
+    assert r.ok, getattr(r.error, "hint_for_agent", "")
+    assert r.data["so_ca"] == 1 and r.data["so_dat"] == 1
+    # Và phải NÓI RA nó dịch cùng tệp nào, bỏ ngoài tệp nào — nếu không, "1/1 ca đạt" đọc
+    # như "sản phẩm đã được kiểm" trong khi có thể chỉ là tệp test tự kiểm chính nó.
+    assert "Dịch cùng mã sản phẩm: ui_state.c" in r.data["note_vi"]
+    assert "ui.c" in r.data["note_vi"].split("Ngoài tầm")[-1]
+

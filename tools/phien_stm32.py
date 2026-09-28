@@ -46,6 +46,17 @@ def main() -> int:
 
     from phien_robot import NhatKy                 # noqa: E402  (dùng lại nguyên lớp)
 
+    # Hàng rào thứ hai, thêm sau khi nó đã cắn: `--buoc 20` nghĩa là "chạy tiếp bước 20 của
+    # phiên đang có", nhưng mặc định lại là `rmtree` — nên câu lệnh đọc như "chạy tiếp" mà
+    # làm việc "xoá sạch". Tôi đã mất `test/test_ui.c` của tác tử đúng theo cách ấy. Hai cờ
+    # này nói ngược nhau thì phải DỪNG và bắt gõ rõ, đừng đoán hộ.
+    if a.buoc and not a.giu_du_an and DU_AN.exists():
+        print("DỪNG: `--buoc` là chạy tiếp một phiên đang có, nhưng thiếu `--giu-du-an` thì "
+              f"{DU_AN} sẽ bị XOÁ SẠCH.\n"
+              "  · chạy tiếp:  --buoc ... --giu-du-an\n"
+              "  · làm lại từ đầu: bỏ --buoc, hoặc tự xoá thư mục trước.", file=sys.stderr)
+        return 2
+
     if not a.giu_du_an:
         if DU_AN.exists():
             shutil.rmtree(DU_AN)

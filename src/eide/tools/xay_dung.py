@@ -520,6 +520,70 @@ def dang_ky(r: Registry) -> None:
 
 
     # ====================================================================== unit test
+    @r.tool("test.sensitivity", "Mô phỏng",
+            "ĐO XEM BỘ KIỂM CÓ ĐO GÌ KHÔNG: phá mã sản phẩm rồi chạy lại test. Không ca nào "
+            "đỏ nghĩa là bộ kiểm không nhìn thấy tệp ấy — dù báo cáo có bao nhiêu ô xanh. "
+            "Gọi nó SAU khi test.run xanh, trước khi nói với người dùng rằng đã kiểm xong.",
+            {"type": "object",
+             "properties": {
+                 "nguon": {"type": "array", "items": {"type": "string"},
+                           "description": ("tệp mã SẢN PHẨM cần đo (không phải tệp test); "
+                                           "bỏ trống thì lấy firmware/*.c")},
+                 "test": {"type": "array", "items": {"type": "string"},
+                          "description": "tệp test; bỏ trống thì lấy test/*.c + tests/*.c"}},
+             "required": []},
+            risk="R1", core=False,
+            keywords=["độ nhạy", "đột biến", "mutation", "test có đo gì không",
+                      "kiểm bộ kiểm", "test giả", "ô xanh giả"])
+    def test_sensitivity(ctx: Any, nguon: list[str] | None = None,
+                         test: list[str] | None = None):
+        """Đo được trên phiên FreeRTOS: tác tử viết `test/test_ui.c` với sáu ca kiểm đầy đủ
+        tên, ngưỡng, báo cáo JSON — và **tự định nghĩa lại** hàm của sản phẩm ngay trong tệp
+        test. Phá `firmware/ui.c` thật thì cả sáu ca vẫn ĐẠT.
+
+        Cấu trúc đúng không chứng minh được nó đo gì.
+        """
+        from ..build import dot_bien as DB
+        from ..build import mo_phong as MP
+
+        goc = ctx.config.paths.project_root
+        tep_test = ([(goc / x) for x in test] if test else
+                    sorted((goc / "test").glob("*.c")) + sorted((goc / "tests").glob("*.c")))
+        tep_test = [x for x in tep_test if x.exists()]
+        if not tep_test:
+            return ToolResult(False, error=EideError(
+                "E4011", "Chưa có tệp test nào để đo độ nhạy.",
+                hint_for_agent="Viết test trước (xem test.run), rồi quay lại đo.",
+                alternatives=["test.run"], blame="agent"))
+        sp = ([(goc / x) for x in nguon] if nguon else
+              [x for x in sorted((goc / "firmware").glob("*.c"))
+               if x.name not in ("startup.c", "libc_stub.c")])
+        sp = [x for x in sp if x.exists()][:12]
+        if not sp:
+            return ToolResult(False, error=EideError(
+                "E4011", "Không thấy tệp mã sản phẩm nào để phá.",
+                hint_for_agent="Nêu `nguon` là các tệp .c của sản phẩm mà bộ kiểm này nhắm tới.",
+                blame="agent"))
+
+        def _chay(them: Any = None) -> tuple[bool, str]:
+            """`them=None`: chạy bộ kiểm y như tác tử vẫn chạy. `them=p`: nạp thêm tệp sản
+            phẩm `p`. Hai lần chạy này phải khác nhau, nếu không phép đo vô nghĩa."""
+            kq = MP.chay_test(goc=goc, nguon=tep_test + ([them] if them else []))
+            if not kq.chay_duoc:
+                return False, (kq.loi_bien_dich or kq.vi_sao_khong_dat or "")[-800:]
+            return kq.so_hong == 0, kq.vi_sao_khong_dat or ""
+
+        d = DB.do_do_nhay(sp, _chay)
+        xau = [x for x in d.get("tep", [])
+               if x["trang_thai"] in ("khong_thay", "khong_nap_duoc")]
+        return {
+            **d, "khong_cham": [x["tep"] for x in xau],
+            "note_vi": DB.loi_nguoi_doc(d)
+            + ("\n\nSửa theo hướng này: tách phần LOGIC (tính toán, máy trạng thái, kiểm "
+               "toạ độ) ra một tệp .c KHÔNG `#include` header của bo, rồi cho cả firmware "
+               "lẫn tệp test cùng dịch tệp ấy. Đừng chép logic sang tệp test — một bộ kiểm "
+               "tự định nghĩa lại thứ nó đang kiểm thì xanh mãi mãi." if xau else "")}
+
     @r.tool("test.run", "Mô phỏng",
             "Chạy unit test của firmware trên MÁY CHỦ (phần cứng thay bằng mock): bao nhiêu "
             "ca đạt, ca nào hỏng và vì sao, và độ phủ nếu đo được.",
@@ -548,16 +612,13 @@ def dang_ky(r: Registry) -> None:
         tep_test = ([(goc / x) for x in nguon] if nguon else
                     sorted((goc / "test").glob("*.c")) + sorted((goc / "tests").glob("*.c")))
         tep_test = [x for x in tep_test if x.exists()]
-        ds = tep_test + ([] if nguon else
-                         [x for x in sorted((goc / "firmware").glob("control*.c"))
-                          if x.exists()])
+        ds = tep_test + ([] if nguon else _logic_dich_duoc_tren_may(goc))
         if not tep_test:
             return ToolResult(False, error=EideError(
                 "E4011", "Chưa có tệp test nào (test/*.c hoặc tests/*.c).",
                 hint_for_agent=(
                     "Viết test cho phần LOGIC của firmware — phần không đụng thanh ghi. Mỗi "
-                    "tệp test có main() in ra một dòng JSON "
-                    '{"ca": [{"ten": "...", "dat": true, "vi": "..."}]}. '
+                    "tệp test có main(). " + MP.KHUON_RA + "\n"
                     "Chưa có test thì nói thẳng là chưa có, đừng coi im lặng là đạt."),
                 alternatives=["fs.write", "fs.glob"], blame="agent"))
 
@@ -571,8 +632,22 @@ def dang_ky(r: Registry) -> None:
         if not kq.chay_duoc:
             return ToolResult(False, error=EideError(
                 "E4012", f"Test chưa chạy được: {kq.vi_sao_khong_dat}",
-                hint_for_agent=("Sửa lỗi rồi chạy lại.\n" + kq.loi_bien_dich[-1200:]),
-                details={"lenh": kq.lenh_bien_dich}, blame="agent"))
+                hint_for_agent=("Sửa lỗi rồi chạy lại.\n"
+                                + (kq.loi_bien_dich[-1200:] or MP.KHUON_RA)),
+                details={"lenh": kq.lenh_bien_dich, "tep_da_dich": kq.tep_nguon},
+                blame="agent"))
+
+        # Chạy xong mà KHÔNG CA NÀO là một thất bại, không phải một kết quả rỗng vô hại.
+        # Trả thành công ở đây thì tác tử đọc được "0/0 ca đạt" — một câu không có ô đỏ nào —
+        # và lời chỉ khuôn đầu ra nằm trong `vi_sao_khong_dat` không bao giờ tới tay nó. Đúng
+        # chỗ N6 cấm: im lặng không được phép đọc thành đạt.
+        if kq.so_ca == 0:
+            return ToolResult(False, error=EideError(
+                "E4014", "Test chạy xong nhưng KHÔNG đếm được ca nào.",
+                hint_for_agent=kq.vi_sao_khong_dat,
+                details={"tep_da_dich": kq.tep_nguon,
+                         "nguyen_van": kq.nguyen_van[-800:]},
+                alternatives=["fs.edit", "test.sensitivity"], blame="agent"))
 
         phu = kq.do_phu
         return {
@@ -583,6 +658,7 @@ def dang_ky(r: Registry) -> None:
                 + ". "
                 + (f"Độ phủ dòng {phu.get('dong')}. " if phu.get("do_duoc") else
                    f"CHƯA đo được độ phủ — {phu.get('vi_sao', '')} ")
+                + _noi_da_dich(goc, ds, tep_test)
                 + ("Test chạy trên máy chủ với phần cứng thay bằng mock: nó kiểm LOGIC, "
                    "không kiểm định thời và không kiểm thanh ghi."))}
 
@@ -656,3 +732,57 @@ def _han_muc(ctx: Any, hc: dict[str, Any] | None) -> tuple[int, int]:
         return 0
 
     return _so("flash.size"), _so("ram.size")
+
+# Tệp logic dịch được trên máy chủ: không kéo theo header của bo.
+#
+# Vì sao cần: bản trước chỉ gom `firmware/control*.c` — một cái tên nghĩ ra từ một dự án
+# khác. Dự án FreeRTOS đặt logic ở `ui_state.c`, nên `test.run` không liên kết nó vào, tệp
+# test báo "thiếu ký hiệu", và tác tử **chép logic sang tệp test** để có thứ mà chạy. Bộ
+# kiểm thành ra xanh mãi mãi. Một cái tên tệp đoán sẵn đã đẻ ra một ô xanh giả.
+_HEADER_CUA_BO = ("stm32", "stm32469i_discovery", "cmsis", "core_cm", "FreeRTOS.h", "bsp",
+                  "hal_", "nrf", "esp_", "driverlib")
+
+
+def _logic_dich_duoc_tren_may(goc: Any) -> list[Any]:
+    """Nhặt các tệp `.c` trong `firmware/` KHÔNG `#include` header của bo.
+
+    Nhặt theo **tính chất đo được** (nó có kéo header phần cứng không) chứ không theo tên
+    tệp. Tệp nào kéo header thì bỏ qua — và chỗ bỏ qua ấy được nói ra ở `note_vi`, vì "bộ
+    kiểm không chạm tới nó" là một điều người đọc cần biết, không phải một chi tiết nội bộ.
+    """
+    import re as _re
+    ra = []
+    fw = goc / "firmware"
+    if not fw.exists():
+        return ra
+    for p in sorted(fw.glob("*.c")):
+        if p.name in ("startup.c", "libc_stub.c", "main.c"):
+            continue                       # main() trùng với main() của tệp test
+        try:
+            t = p.read_text("utf-8", errors="replace")
+        except OSError:
+            continue
+        inc = _re.findall(r'^\s*#\s*include\s*[<"]([^>"]+)', t, _re.M)
+        if any(any(k.lower() in h.lower() for k in _HEADER_CUA_BO) for h in inc):
+            continue
+        ra.append(p)
+    return ra[:12]
+
+def _noi_da_dich(goc: Any, ds: list[Any], tep_test: list[Any]) -> str:
+    """Nói ra bộ kiểm vừa dịch CÙNG những tệp sản phẩm nào, và bỏ qua tệp nào vì sao.
+
+    Không có câu này thì `12/12 ca đạt` đọc như "sản phẩm đã được kiểm", trong khi nó có
+    thể chỉ có nghĩa "tệp test tự kiểm chính nó".
+    """
+    sp = [p.name for p in ds if p not in tep_test]
+    fw = goc / "firmware"
+    bo = ([p.name for p in sorted(fw.glob("*.c"))
+           if p.name not in sp and p.name not in ("startup.c", "libc_stub.c")]
+          if fw.exists() else [])
+    if not sp:
+        return ("Bộ kiểm KHÔNG dịch cùng tệp mã sản phẩm nào — nó chỉ chạy mã nằm trong "
+                "chính tệp test, nên các ô xanh trên không nói gì về sản phẩm. "
+                + (f"Bỏ ngoài: {', '.join(bo[:8])}. " if bo else ""))
+    return ("Dịch cùng mã sản phẩm: " + ", ".join(sp) + ". "
+            + (f"Ngoài tầm (kéo header của bo, chưa kiểm được trên máy chủ): "
+               f"{', '.join(bo[:8])}. " if bo else ""))

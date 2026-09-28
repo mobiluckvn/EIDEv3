@@ -209,7 +209,7 @@ def chay_test(*, goc: Path, nguon: list[Path], thu_muc_build: Path | None = None
     dong = [d.strip() for d in (rr.stdout or "").splitlines() if d.strip().startswith("{")]
     if not dong:
         kq.vi_sao_khong_dat = ("Chương trình test không in ra dòng JSON nào — không đếm được "
-                               "bao nhiêu ca đạt, nên không kết luận gì.")
+                               "bao nhiêu ca đạt, nên không kết luận gì.\n" + KHUON_RA)
         return kq
     try:
         d = json.loads(dong[-1])
@@ -222,7 +222,7 @@ def chay_test(*, goc: Path, nguon: list[Path], thu_muc_build: Path | None = None
     kq.so_dat = sum(1 for x in kq.ca if x.get("dat") is True)
     kq.so_hong = kq.so_ca - kq.so_dat
     if kq.so_ca == 0:
-        kq.vi_sao_khong_dat = "Chương trình test chạy xong nhưng không có ca nào."
+        kq.vi_sao_khong_dat = KHUON_RA + _doan_khuon_sai(dong)
     elif kq.so_hong:
         kq.vi_sao_khong_dat = "; ".join(
             f"{x.get('ten')}: {x.get('vi', 'hỏng')}" for x in kq.ca if not x.get("dat"))[:600]
@@ -255,3 +255,41 @@ def _do_phu(*, build: Path, prof: Path, chay: Path) -> dict[str, Any]:
             return {"do_duoc": True, "dong": ty[1] if len(ty) > 1 else (ty[0] if ty else ""),
                     "nguyen_van": d.strip()}
     return {"do_duoc": False, "vi_sao": "llvm-cov không in ra dòng tổng."}
+
+# Khuôn đầu ra mà `chay_test` đếm được. Nó phải nằm ở một chỗ NÓI RA ĐƯỢC, không chỉ nằm
+# trong đầu người viết bộ phân tích.
+#
+# Đo được ngày 28/09/2026: tác tử viết một tệp test in **mười dòng** JSON cho cùng một ca,
+# mỗi dòng đoán một khuôn khác nhau (`{"assert":…}`, `{"type":"case",…}`, `{"ca":…}`, …).
+# Đó không phải cẩu thả — đó là dấu vết của một công cụ chỉ nói ra khuôn của mình trong một
+# thông báo lỗi chỉ hiện khi CHƯA CÓ tệp test nào. Có tệp rồi thì im lặng, và tác tử đoán.
+#
+# Và không nới bộ phân tích cho nhận cả mười khuôn ấy: mười dòng kia tự khai "đạt" mà sau
+# lưng không có phép khẳng định nào. Nhận chúng là đếm mười ca đạt giả — đúng thứ N6 cấm.
+# Chỗ cần sửa là NÓI RA, không phải nhận bừa.
+KHUON_RA = (
+    "Chương trình test phải in ĐÚNG MỘT dòng JSON, là dòng cuối cùng bắt đầu bằng `{`:\n"
+    '  {"ca": [{"ten": "A2 cham giua nut", "dat": true, "vi": "CheckTouch(400,425) = 1"}, '
+    '{"ten": "A3 cham ngoai nut", "dat": false, "vi": "mong 0, nhan duoc 1"}]}\n'
+    "Một dòng, một mảng `ca`, mỗi ca có `ten` · `dat` (true/false) · `vi` (vì sao). "
+    "Các dòng khác in thoải mái — chỉ dòng JSON CUỐI mới được đếm.")
+
+
+def _doan_khuon_sai(dong: list[str]) -> str:
+    """Khi có JSON mà không có `ca`: nói ra tệp test đang in khuôn gì, để khỏi đoán tiếp."""
+    if not dong:
+        return ""
+    import json as _j
+    khoa: set[str] = set()
+    for d in dong[-12:]:
+        try:
+            o = _j.loads(d)
+        except ValueError:
+            continue
+        if isinstance(o, dict):
+            khoa |= set(o.keys())
+    if not khoa:
+        return ""
+    return ("\nTệp test đang in các khoá: " + ", ".join(sorted(khoa)[:12])
+            + f" — trên {len(dong)} dòng JSON. Không khoá nào trong số đó là `ca`, nên "
+              "không đếm được ca nào, và im lặng coi là đạt thì sai.")

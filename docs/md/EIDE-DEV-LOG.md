@@ -3935,3 +3935,119 @@ của macOS**.
 `1202 ca đơn vị` (không đổi — đây là thay đổi ở tầng giao diện, và nó được kiểm bằng ảnh chụp
 qua GUI thật).
 
+
+### [DEV-288] 28/09/2026 · Bộ kiểm tự viết của tác tử — sáu ô xanh không đo gì cả
+
+**Việc người dùng giao:** *"Kiểm tra năng lực tự viết test plan, testcase, tự do test của
+agent"*. Kịch bản phiên FreeRTOS thêm bước 19, cố ý **không** nói khuôn nào, công cụ nào, kiểm
+những gì — đó chính là phần cần đo. Chỉ nêu hai điều quan tâm: mỗi ca phải nói *đo bằng gì* và
+*ngưỡng nào là đạt* **trước** khi chạy, và phần không kiểm được phải khai ra.
+
+Tác tử viết `test/test_ui.c`: sáu ca TC-01…TC-06, mỗi ca có tên, có ngưỡng, có thông điệp, in
+báo cáo JSON, chạy qua `test.run`, sáu ô xanh. Ba phép kiểm đầu của kịch bản — *có hiện vật ·
+ca có ngưỡng · có dám để ô đỏ* — đều xanh.
+
+Rồi tôi phá `firmware/ui.c` thật: đổi mọi toạ độ nút thành `99999`, tức là hỏng hẳn logic chạm.
+Chạy lại chính bộ kiểm ấy:
+
+```
+ĐẠT  TC-01 … ĐẠT  TC-06          ← cả sáu ca, không ca nào nhúc nhích
+```
+
+Tệp test **tự định nghĩa lại** `UI_ToggleScreen` và `UI_HandleTouch` ngay trong chính nó. Nó
+đang kiểm một bản sao của logic viết trong tệp test, nên nó sẽ xanh mãi mãi dù sản phẩm làm gì.
+
+**Cấu trúc đúng không chứng minh được nó đo gì.** Một bộ kiểm có đủ tên ca, đủ ngưỡng, đủ báo
+cáo JSON, mà không chạm mã sản phẩm, thì tệ hơn không có bộ kiểm nào: nó biến một chỗ *chưa
+được kiểm* thành một *ô xanh*, và ô xanh thì dừng việc tìm lỗi.
+
+Đây là dạng khác của bài học cũ **"`ok` nói về lời gọi, không nói về kết quả"**, lần này ở tầng
+kiểm thử: *"xanh nói về tệp test, không nói về sản phẩm"*.
+
+#### Năng lực mới: `test.sensitivity` — đo bộ kiểm bằng đột biến mã
+
+`src/eide/build/dot_bien.py` + công cụ `test.sensitivity` (R1, không khoá): phá mã sản phẩm rồi
+chạy lại bộ kiểm. Không ca nào đỏ ⇒ bộ kiểm không nhìn thấy tệp ấy.
+
+Nó trả **bốn** trạng thái, không phải hai — mỗi lần gộp lại là một lần nói sai:
+
+| trạng thái | nghĩa |
+|---|---|
+| `thay` | phá thì đỏ ⇒ bộ kiểm có nhìn tệp này |
+| `khong_thay` | nạp được, phá rồi vẫn xanh ⇒ không nhìn |
+| `khong_nap_duoc` | bộ kiểm không dịch nổi cùng tệp sản phẩm — bằng chứng **mạnh hơn**: trùng ký hiệu nghĩa là tệp test đã định nghĩa lại hàm của sản phẩm; thiếu header của bo nghĩa là logic dính chặt phần cứng |
+| `chua_do_duoc` | không có chỗ nào để phá / không đọc được — cái này mới thật sự là "chưa biết" |
+
+Ba chỗ mô-đun tự rào mình, vì nếu không thì chính nó thành một ô xanh giả:
+
+- **Không đụng chuỗi và chú thích.** Đổi một chữ trong `printf` thì hành vi không đổi, và một
+  đột biến không đổi hành vi mà bộ kiểm "không bắt được" là một **cáo buộc sai**.
+- **Không phá toán tử ghép.** Bản đầu đổi `i++` thành `i+-` — mã không dịch được, mà "không
+  dịch được" rất dễ bị đọc thành "bộ kiểm bắt được". Bài kiểm `test_dot_bien_khong_pha_toan_tu
+  _ghep` bắt đúng lỗi này khi tôi viết nó.
+- **Bộ kiểm đỏ sẵn thì không kết luận gì.** Không phân biệt được "đỏ vì đột biến" với "đỏ từ
+  trước", nên phải nói *chưa đo được*, không được nói tốt mà cũng không được nói giả.
+
+Mô-đun tự nói ra chỗ nó **không** làm: đây không phải mutation testing đầy đủ, không có
+mutation score, không phân biệt đột biến tương đương. Nó trả lời đúng một câu nhị phân cho mỗi
+tệp — *"bộ kiểm có thấy tệp này không?"* — và một bộ kiểm qua được phép này vẫn có thể rất
+nông; nó chỉ chứng minh mình **không rỗng**.
+
+#### Ba lỗ hổng của EIDE đã đẻ ra cái bộ kiểm giả ấy
+
+Giao số đo cho tác tử rồi để nó tự sửa, ba chỗ lộ ra — và cả ba đều là lỗi của **EIDE**, không
+phải tính lười của tác tử:
+
+1. **`test.run` chỉ gom `firmware/control*.c`** — một cái tên nghĩ ra từ một dự án khác. Dự án
+   này đặt logic ở `ui_state.c`, nên nó không được liên kết vào, tệp test báo thiếu ký hiệu, và
+   tác tử **chép logic sang tệp test** để có thứ mà chạy. *Một cái tên tệp đoán sẵn đã đẻ ra
+   một ô xanh giả.* Nay nhặt theo thứ **đo được**: tệp `.c` nào trong `firmware/` không
+   `#include` header của bo thì liên kết vào. Và `note_vi` **nói ra** nó dịch cùng tệp nào, bỏ
+   ngoài tệp nào vì sao — không có câu ấy thì `8/8 ca đạt` đọc như "sản phẩm đã được kiểm".
+2. **Khuôn đầu ra JSON chỉ được nói ra trong một thông báo lỗi chỉ hiện khi CHƯA có tệp test
+   nào.** Có tệp rồi thì im lặng, và tác tử đoán: nó in **mười dòng JSON mười kiểu** cho cùng
+   một ca (`{"assert":…}`, `{"type":"case",…}`, `{"ca":…}`, …). Khuôn nay nằm ở
+   `mo_phong.KHUON_RA`, đi kèm mọi lối hỏng, và khi có JSON mà không có khoá `ca` thì nói luôn
+   tệp test đang in khoá gì. **Cố ý không nới bộ phân tích cho nhận cả mười khuôn:** mười dòng
+   kia tự khai "đạt" mà sau lưng không có phép khẳng định nào — nhận chúng là đếm mười ca đạt
+   giả, đúng thứ N6 cấm. Chỗ cần sửa là *nói ra*, không phải *nhận bừa*.
+3. **Chạy xong không đếm được ca nào thì `test.run` trả THÀNH CÔNG** với dòng `0/0 ca đạt` —
+   một câu không có ô đỏ nào — còn lời chỉ khuôn nằm trong `vi_sao_khong_dat` thì không lối nào
+   tới được tác tử. Nay là lỗi `E4014`.
+
+#### Tác tử làm gì khi nhận số đo
+
+Không cãi, và không tin luôn: nó **tự chạy `test.sensitivity`** để kiểm lại lời người dùng
+trước khi sửa. Rồi nó tách `firmware/ui_state.c` — máy trạng thái màn hình + phép kiểm vùng
+chạm, không `#include` header nào của bo — và sửa `ui.c` thành lớp **uỷ quyền** cho nó. Logic
+nằm một chỗ, trên đúng đường sản phẩm chạy, và dịch được trên máy chủ.
+
+Đo lại, bằng `cc` trần chứ không bằng `dot_bien.py` (đo một công cụ bằng chính nó thì hai cái
+cùng sai một kiểu vẫn ra màu xanh):
+
+```
+✅ phá thì ĐỎ: ui_state.c · ngoài tầm: touch.c, ui.c (không dịch cùng được)
+```
+
+Tám ca, có cả hai ca **biên** `(150,380)` đạt và `(149,380)` không đạt. Và nó tự khai phần chưa
+kiểm được: `ui.c` (vẽ LCD qua BSP) và `touch.c` (I2C tới FT6206) — nói rõ phần nào đã tách
+sang `ui_state.c` để kiểm được, phần nào chỉ kiểm được trên bo.
+
+Nạp lại bo sau khi tách: PC rơi vào `prvCheckTasksWaitingTermination` (nhân FreeRTOS vẫn chạy),
+11/11 mắt xích hiển thị thông, màn vẫn đúng logo PTIT + bốn dòng + nút "Chi tiet". Việc tách
+không làm hỏng sản phẩm — đo trên silicon, không suy từ mã.
+
+#### Một cái bẫy trong kịch bản phiên, do tôi đạp phải
+
+`--buoc 20` đọc như *"chạy tiếp bước 20 của phiên đang có"*, nhưng mặc định lại `rmtree` cả thư
+mục dự án. Tôi mất `test/test_ui.c` bản đầu và cả sổ cái của dự án theo đúng cách ấy. Nay hai
+cờ nói ngược nhau thì **dừng**, bắt gõ rõ, không đoán hộ. Firmware khôi phục từ bản chụp đã
+commit; sổ cái **không** nối lại — nối một sổ cái cũ vào một sổ cái mới sẽ làm chuỗi băm khớp
+giả, mà một chuỗi băm khớp giả còn tệ hơn một chuỗi bị đứt có ghi chú.
+
+### Số đo
+
+`1214 ca đơn vị` (+12 so với DEV-287): 11 ca cho `dot_bien` + 1 ca cho phép nhặt tệp logic
+không theo tên. Công cụ mới: `test.sensitivity`. Một ca cũ được **siết**:
+`test_test_run_KHONG_in_JSON_thi_khong_ket_luan` từ "thành công mang `dat=False`" thành "lỗi
+`E4014` kèm khuôn cần in".
