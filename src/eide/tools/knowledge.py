@@ -1286,6 +1286,21 @@ def register(r: Registry) -> Registry:
         cache = Path(os.environ.get("EIDE_CACHE_DIR")
                      or (Path.home() / ".cache" / "eide")) / "tim-kiem"
         d = sdk_hang.liet_ke(repo, nhanh=nhanh, mau=mau, gioi_han=gioi_han, cache=cache)
+        if d.get("het_han_muc"):
+            # Mã lỗi RIÊNG cho hết hạn mức, và lời khuyên NGƯỢC với lời khuyên "repo sai".
+            # Gộp hai cái thì tác tử nhận được câu "thử repo khác" đúng lúc repo nó chọn
+            # hoàn toàn đúng — đo được trên phiên FreeRTOS, và nó đã bỏ đi tự gõ lại nhân
+            # FreeRTOS bằng tay vì tin rằng repo của hãng không lấy được.
+            cho = int(d.get("cho_giay") or 0)
+            return ToolResult(False, error=EideError(
+                "E3003", d["vi_sao_khong_dat"],
+                hint_for_agent=(
+                    f"Đợi khoảng {max(1, cho // 60)} phút rồi gọi LẠI ĐÚNG repo này. "
+                    "Đây không phải lỗi của repo hay của mẫu tìm — hạn mức là của cả máy, "
+                    "60 lượt/giờ khi không có token. Trong lúc chờ, làm việc khác trong kế "
+                    "hoạch. TUYỆT ĐỐI đừng tự viết lại mã của hãng bằng tay: mã ấy là thứ "
+                    "phải LẤY, không phải thứ để nhớ lại."),
+                details=d, alternatives=["code.vendor_list"], blame="external"))
         if d["vi_sao_khong_dat"]:
             return ToolResult(False, error=EideError(
                 "E3005", d["vi_sao_khong_dat"],

@@ -392,3 +392,49 @@ def test_tag_hong_thi_tra_rong_chu_khong_no(monkeypatch):
     monkeypatch.setattr(tk, "_json_url",
                         lambda *a, **k: (_ for _ in ()).throw(OSError("mạng")))
     assert tk.tag_cua_repo("o", "r") == []
+
+
+# ============================== hết hạn mức ≠ repo không tồn tại
+def test_HET_HAN_MUC_khong_duoc_goi_la_repo_khong_ton_tai(monkeypatch):
+    """Đo được trên phiên FreeRTOS: `code.vendor_list("FreeRTOS/FreeRTOS-Kernel")` trả câu
+    *"hết hạn mức GitHub, còn 222 s — có thể repo không tồn tại"*.
+
+    Hai chuyện khác hẳn nhau và dẫn tới hai hành động NGƯỢC nhau: một cái bảo "đợi vài phút
+    rồi gọi lại đúng repo này", cái kia bảo "tìm chỗ khác". Tác tử tin vế sau, bỏ việc lấy mã
+    của hãng, và chuyển sang **tự gõ lại nhân FreeRTOS bằng tay** — thứ tệ nhất có thể làm
+    với mã của một dự án có thật. Một câu mơ hồ ở đúng chỗ rẽ nhánh đắt hơn nhiều so với một
+    lỗi rõ ràng.
+    """
+    from eide.knowledge import sdk_hang as SK
+    from eide.knowledge.tim_kiem import HetHanMuc
+
+    def _no(*a, **k):
+        raise HetHanMuc(222, False)
+
+    monkeypatch.setattr("eide.knowledge.tim_kiem._cay_repo", _no)
+    d = SK.liet_ke("FreeRTOS/FreeRTOS-Kernel", mau="*ARM_CM4F*")
+    assert d["het_han_muc"] is True and d["cho_giay"] == 222
+    t = d["vi_sao_khong_dat"]
+    assert "HẾT HẠN MỨC" in t and "không phải repo sai" in t
+    assert "không tồn tại" not in t.replace("có tồn tại hay không thì lần gọi này", "")
+    assert "đừng tự viết lại mã của hãng" in t.lower()
+
+
+def test_het_han_muc_co_MA_LOI_RIENG_va_loi_khuyen_nguoc_lai(make_agent, monkeypatch):
+    """`E3003` (hạn mức) chứ không phải `E3005` (repo/mẫu sai) — và lời khuyên phải ngược
+    lại: gọi LẠI ĐÚNG repo ấy, đừng đi tìm chỗ khác."""
+    from eide.knowledge.tim_kiem import HetHanMuc
+
+    def _no(*a, **k):
+        raise HetHanMuc(300, False)
+
+    monkeypatch.setattr("eide.knowledge.tim_kiem._cay_repo", _no)
+    agent = make_agent([])
+    r = agent.registry.run("code.vendor_list",
+                           {"repo": "FreeRTOS/FreeRTOS-Kernel", "mau": "*ARM_CM4F*"},
+                           _ctx(agent))
+    assert not r.ok and r.error.code == "E3003"
+    assert r.error.blame == "external"          # không phải lỗi của tác tử
+    h = r.error.hint_for_agent
+    assert "gọi LẠI ĐÚNG repo này" in h and "5 phút" in h
+    assert "đừng tự viết lại mã của hãng" in h.lower()

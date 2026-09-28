@@ -83,7 +83,7 @@ def liet_ke(repo: str, *, nhanh: str = "main", mau: str = "", gioi_han: int = 20
     """
     import fnmatch
 
-    from .tim_kiem import _cay_repo
+    from .tim_kiem import HetHanMuc, _cay_repo
 
     ra: dict[str, Any] = {"repo": repo, "nhanh": nhanh, "mau": mau,
                           "tep": [], "so_khop": 0, "bi_cat": False, "vi_sao_khong_dat": ""}
@@ -93,6 +93,20 @@ def liet_ke(repo: str, *, nhanh: str = "main", mau: str = "", gioi_han: int = 20
     org, ten = repo.split("/", 1)
     try:
         duong = _cay_repo(org, ten, nhanh, cache, timeout=timeout)
+    except HetHanMuc as e:
+        # HẾT HẠN MỨC ≠ REPO KHÔNG TỒN TẠI. Hai chuyện khác hẳn nhau và dẫn tới hai hành
+        # động ngược nhau: một cái bảo "đợi vài phút rồi thử lại", cái kia bảo "tìm chỗ
+        # khác". Đo được trên phiên FreeRTOS: lời khuyên gộp *"hết hạn mức GitHub, còn 222 s
+        # — có thể repo không tồn tại"* đã đẩy tác tử bỏ việc lấy mã của hãng và quay sang
+        # **tự gõ lại nhân FreeRTOS bằng tay**. Một câu mơ hồ ở đúng chỗ rẽ nhánh thì đắt
+        # hơn nhiều so với một lỗi rõ ràng.
+        ra["het_han_muc"] = True
+        ra["cho_giay"] = getattr(e, "con_lai_giay", 0) or 0
+        ra["vi_sao_khong_dat"] = (
+            f"HẾT HẠN MỨC GitHub, không phải repo sai: {e}. Repo `{repo}` có tồn tại hay "
+            "không thì lần gọi này chưa nói được gì. Đợi rồi gọi lại — ĐỪNG đổi sang repo "
+            "khác, và tuyệt đối đừng tự viết lại mã của hãng bằng tay.")
+        return ra
     except Exception as e_dau:                                # noqa: BLE001
         # Nhánh sai thì hỏi GitHub nhánh mặc định rồi thử lại MỘT lần, thay vì bắt người gọi
         # đoán. Repo của ST không thống nhất: `stm32f4xx-hal-driver` dùng `master`,
@@ -109,6 +123,12 @@ def liet_ke(repo: str, *, nhanh: str = "main", mau: str = "", gioi_han: int = 20
             return ra
         try:
             duong = _cay_repo(org, ten, that, cache, timeout=timeout)
+        except HetHanMuc as e:
+            ra["het_han_muc"] = True
+            ra["cho_giay"] = getattr(e, "con_lai_giay", 0) or 0
+            ra["vi_sao_khong_dat"] = (
+                f"HẾT HẠN MỨC GitHub khi thử nhánh `{that}`: {e}. Đợi rồi gọi lại.")
+            return ra
         except Exception as e:                                # noqa: BLE001
             ra["vi_sao_khong_dat"] = (f"Không đọc được cây tệp của {repo} ở cả `{nhanh}` lẫn "
                                       f"nhánh mặc định `{that}`: {type(e).__name__}: {e}")

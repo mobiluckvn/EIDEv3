@@ -3576,3 +3576,73 @@ yêu cầu.
 - MDD-40 không còn mục nào trống.
 - Khôi phục bản demo gốc của ST cho bo STM32F469, nếu anh Công muốn.
 
+### [DEV-283] 28/09/2026 · Dự án thứ hai trên cùng bo: FreeRTOS — ba năng lực mới chạy thật
+
+Anh Công mở một dự án MỚI trên cùng bo STM32F469I-DISCO (dự án G7 để nguyên), đầu vào là
+thông tin bo đã đo được ở phiên trước, việc là *"tìm bản FreeRTOS tương thích và viết ứng dụng
+biên dịch và cài lên phần cứng"*. Đây là lần đầu plan mode, verifier cho tác tử chính, và
+`tool.propose` chạy trên một việc thật — và kịch bản **cố ý không bảo tác tử dùng cái nào**.
+Bảo trước thì phép đo mất nghĩa: ta sẽ chỉ biết nó làm theo lời.
+
+#### Plan mode tự nổ, không ai bảo
+
+Nhận việc, tác tử đi khảo sát (`passport.isa` → `code.vendor_list` → `env.check` →
+`target.detect`) rồi **tự gọi `plan.enter`**, và nộp kế hoạch **8 bước** — mỗi bước có đủ
+*việc · công cụ · hiện vật · cổng · chi phí*, kèm **3 giả định** và **3 mục ngoài phạm vi**
+(nói rõ nó cố ý *không* đụng tới LCD/DSI, Ethernet/USB, và option bytes). Thẻ **G-SCOPE** hiện
+ra, anh Công duyệt.
+
+Tiến độ được đánh dấu bằng `plan.step_done` kèm hiện vật: 3/8 → 6/8 qua hai lượt. Đây đúng là
+thứ phiên trước không có — ở đó mỗi lượt mới tác tử tiêu 3–10 lời gọi chỉ để tự định vị.
+
+#### Bộ nhớ dài hạn được dùng ngay từ lượt đầu
+
+Phiên trước, `EIDE.md` gần như trống sau 34 bước. Lần này, ngay lượt hai tác tử gọi
+`memory.note` ×3 và **9/10 mốc** của bo có trong `EIDE.md`. Một lời gọi bị từ chối `E4003` vì
+nó thử ghi vào mục **"Đừng"** — ranh giới của người (§7.1). Đó là thiết kế chạy đúng, không
+phải bug: nó nhận gợi ý và ghi sang mục khác.
+
+#### Bug của EIDE, lộ ra đúng chỗ rẽ nhánh
+
+`code.vendor_list("FreeRTOS/FreeRTOS-Kernel")` trả về:
+
+> *"hết hạn mức GitHub, còn 222 s — **có thể repo không tồn tại**."*
+
+Hai vế dẫn tới hai hành động **ngược nhau**: một cái bảo *"đợi vài phút rồi gọi lại đúng repo
+này"*, cái kia bảo *"tìm chỗ khác"*. Tác tử tin vế sau, và bước 2 trong kế hoạch của nó thành
+**"tạo các tệp mã nguồn FreeRTOS Kernel bằng `fs.write`"** — tức tự gõ lại nhân của một dự án
+có thật. Thứ tệ nhất có thể làm với mã của hãng.
+
+Sửa: `HetHanMuc` có nhánh riêng trong `liet_ke()`, và công cụ trả **`E3003`** (không phải
+`E3005`) với `blame="external"` và lời khuyên **ngược lại**: *gọi lại đúng repo ấy sau N phút,
+đừng đổi repo, và tuyệt đối đừng tự viết lại mã của hãng bằng tay — mã ấy là thứ phải LẤY,
+không phải thứ để nhớ lại.* Lại đúng bài học cũ ở dạng mới: **một trạng thái thứ ba bị gộp
+vào hai**, và lần này cái giá là hướng đi của cả một kế hoạch.
+
+Sau khi sửa và hạn mức hồi, tác tử lấy mã thật về: `tasks.c`, `queue.c`, `list.c`, `heap_4.c`,
+`FreeRTOSConfig.h`, và `port.c` đúng bản **`portable/GCC/ARM_CM4F/`** — "tương thích" trở
+thành một thứ **đo được** (port khớp Cortex-M4F có FPU) thay vì một lời tuyên bố.
+
+#### Đo trên phần cứng thật
+
+| phép đo | kết quả |
+|---|---|
+| chip chứa đúng bản vừa dịch | ✓ (đọc ngược Flash, 5 300 byte) |
+| PC lấy mẫu 6 lần | `prvIdleTask` (`tasks.c:5934`) và `prvCheckTasksWaitingTermination` (`tasks.c:6208`) |
+| chân LED đổi trạng thái | PG6 và PD4 **có đổi** giữa các lần đọc |
+
+PC rơi vào đúng phần trong của bộ lập lịch FreeRTOS là bằng chứng mạnh nhất có thể lấy được
+bằng máy: nhân **đã khởi động và đang chạy**, không phải một vòng lặp giả vờ. Phần còn lại —
+nhịp nháy có đúng như thiết kế không — thuộc tầng NGƯỜI.
+
+### Số đo
+
+`1182 ca đơn vị` (+2, cho chỗ phân biệt hết-hạn-mức). Dự án G7 cũ **không bị chạm tới**, có
+hàng rào kiểm bằng mã trong `tools/phien_freertos.py`.
+
+### Còn lại
+
+- Anh Công nhìn bo xác nhận nhịp nháy của các tác vụ.
+- `tool.propose` chưa được tác tử dùng lần nào trong phiên này — chưa gặp việc nào bí tới mức
+  cần. Ghi lại để biết cơ chế có được tìm tới hay không, không phải để ép.
+
