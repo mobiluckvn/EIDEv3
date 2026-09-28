@@ -299,6 +299,30 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
         _kiem_ung_dung_test_duoc(nk, ctx, du_an)
         nk.anh(g, "ung-dung-test-duoc")
 
+    # ------------------------------------------- 12. logo PTIT + thông tin lên màn LCD
+    if lam(12):
+        nk.buoc("Hiện logo PTIT và thông tin luận văn lên màn LCD 800×480 của bo")
+        loi, cc = hoi(g, nk, du_an,
+                      "Việc tiếp theo, khó hơn: mình muốn bo hiện lên MÀN HÌNH của nó "
+                      "(màn cảm ứng 800×480 gắn sẵn trên bo) những thứ sau:\n"
+                      "- Logo của Học viện Công nghệ Bưu chính Viễn thông (PTIT). Bạn tự tìm "
+                      "logo trên mạng, tải về, rồi đổi sang dạng chip vẽ được.\n"
+                      "- Tên sản phẩm: EIDE v3 — IDE nhúng có tác tử đồng tác giả.\n"
+                      "- Học viên: Vũ Trí Công.\n"
+                      "- Giảng viên hướng dẫn: TS. Nguyễn Trung Hiếu.\n\n"
+                      "Màn này dùng giao tiếp MIPI DSI, nên bạn sẽ cần driver của hãng "
+                      "(LTDC, DSI, panel OTM8009A, và SDRAM ngoài để làm bộ đệm khung). "
+                      "Những thứ đó nằm trên GitHub của ST. Cứ lấy về rồi biên dịch; lỗi thì "
+                      "sửa cho tới khi xong, rồi nạp lên bo.\n"
+                      "LƯU Ý MÁY NÀY: `arm-none-eabi-gcc` KHÔNG kèm newlib, và bản cài newlib "
+                      "cần quyền sudo nên bạn không cài được — nghĩa là không có memset/"
+                      "memcpy/printf. Bạn tự viết những hàm tối thiểu đó nếu cần.",
+                      giay=3600)
+        ten = [c["tool"] for c in cc]
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(ten) or "—")
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.anh(g, "logo-ptit")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
 
@@ -620,3 +644,60 @@ def _chan_trong_firmware(ma: str) -> tuple[set[str], str]:
         vi_sao = ("KHÔNG đọc được mẫu nào — firmware có thể dùng cách viết khác. "
                   "Không đọc được KHÁC với không dùng.")
     return ra, vi_sao
+
+
+def _kiem_man_hinh(nk: Any, ctx: Any, du_an: pathlib.Path, cc: list[dict]) -> None:
+    """Phần hiển thị: có ảnh thật, có driver thật, có bốn dòng chữ, và có nạp được không.
+
+    Phép kiểm ở đây KHÔNG thể trả lời "màn có hiện đúng không" — chỉ mắt anh Công thấy được.
+    Nó trả lời bốn câu hẹp hơn mà đo được, và mỗi câu chặn một cách hỏng riêng:
+
+      1. Logo có phải ẢNH THẬT tải về không, hay là một mảng ai đó gõ ra?
+      2. Driver màn hình có phải mã của hãng không, hay là mã tự nghĩ?
+      3. Bốn thông tin bắt buộc có mặt trong mã không?
+      4. Bản trên chip có đúng bản vừa dịch không?
+    """
+    fw = du_an / "firmware"
+    tep = sorted(p.name for p in fw.rglob("*") if p.is_file()) if fw.is_dir() else []
+    nk.ghi(f"Tệp trong firmware/ ({len(tep)})", ", ".join(tep) or "—")
+
+    # 1. logo: có ảnh nguồn và có mảng sinh ra từ nó
+    anh = [p for p in (du_an).rglob("*")
+           if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".bmp")
+           and ".eide" not in p.parts]
+    da_doi = [c for c in cc if c["tool"] == "asset.image_to_c" and c["ok"]]
+    nk.ghi("Ảnh tải về trong dự án",
+           "\n".join(f"  {p.relative_to(du_an)} · {p.stat().st_size} byte" for p in anh)
+           or "— không có ảnh nào —", ma=True)
+    nk.ket(bool(anh), "Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)",
+           f"{len(anh)} ảnh")
+    nk.ket(bool(da_doi), "Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó",
+           "; ".join(json.dumps(c["args"], ensure_ascii=False)[:100] for c in da_doi) or "—")
+
+    # 2. driver của hãng, không phải mã tự nghĩ
+    lay = [c for c in cc if c["tool"] == "code.vendor_fetch"]
+    nk.ghi("Lấy mã hãng",
+           "\n".join(f"  {c['args'].get('repo')} · "
+                     f"{len(c['args'].get('tep') or [])} tệp · "
+                     + ("ok" if c["ok"] else f"LỖI {c['loi']}") for c in lay) or "—",
+           ma=True)
+    chu = "\n".join(p.read_text("utf-8", errors="replace")
+                    for p in sorted(fw.rglob("*"))
+                    if p.is_file() and p.suffix in (".c", ".h")) if fw.is_dir() else ""
+    for can in ("LTDC", "DSI", "OTM8009A", "SDRAM"):
+        nk.ket(can.lower() in chu.lower(), f"Mã có nhắc tới {can}", "")
+
+    # 3. bốn thông tin bắt buộc
+    phai_co = {"PTIT": ("PTIT", "Bưu chính"), "EIDE v3": ("EIDE",),
+               "Vũ Trí Công": ("Vũ Trí Công", "Vu Tri Cong"),
+               "TS. Nguyễn Trung Hiếu": ("Nguyễn Trung Hiếu", "Nguyen Trung Hieu")}
+    thieu = [k for k, v in phai_co.items() if not any(x in chu for x in v)]
+    nk.ket(not thieu, f"Bốn thông tin bắt buộc có trong mã: {4 - len(thieu)}/4",
+           ("THIẾU: " + ", ".join(thieu)) if thieu else ", ".join(phai_co))
+
+    # 4. chip đang chạy bản nào
+    _kiem_chip_dung_ban_vua_dich(nk, du_an)
+
+    nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+           "Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy "
+           "nhất của bước này không đo được bằng mã.")

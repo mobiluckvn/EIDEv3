@@ -1174,4 +1174,116 @@ def register(r: Registry) -> Registry:
             alternatives=["doc.search_web", "Nhờ người dùng tải thủ công rồi doc.load"],
             details=ra, blame="external"))
 
+    @r.tool("code.vendor_fetch", "Mã nguồn",
+            "Lấy NHIỀU tệp MÃ NGUỒN của hãng từ một repo GitHub vào dự án, một lượt. Khác "
+            "doc.fetch: tệp lấy về đây là mã sẽ được BIÊN DỊCH vào firmware, không phải tài "
+            "liệu để trích dẫn. Chỉ nhận tệp văn bản (.c/.h/.s/.ld…).",
+            {"type": "object",
+             "properties": {
+                 "repo": {"type": "string",
+                          "description": "owner/name, ví dụ "
+                                         "STMicroelectronics/stm32f4xx-hal-driver"},
+                 "tep": {"type": "array", "items": {"type": "string"},
+                         "description": "đường dẫn trong repo, ví dụ Src/stm32f4xx_hal.c"},
+                 "nhanh": {"type": "string", "description": "mặc định main"},
+                 "dich": {"type": "string",
+                          "description": "thư mục trong dự án, mặc định firmware"},
+                 "phang": {"type": "boolean",
+                           "description": "true (mặc định): đổ hết vào một thư mục phẳng, "
+                                          "để trình biên dịch chỉ cần một -I"},
+                 "doi_ten": {"type": "object",
+                             "additionalProperties": {"type": "string"},
+                             "description": ("{đường_dẫn_repo: tên_mới}. Một số tệp của hãng "
+                                             "BẮT BUỘC đổi tên mới dùng được, ví dụ "
+                                             "stm32f4xx_hal_conf_template.h → "
+                                             "stm32f4xx_hal_conf.h")},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["repo", "tep", "explain"]},
+            risk="R3", gate="G-DATA", needs_explain=True,
+            keywords=["lấy sdk", "hal", "driver", "bsp", "cmsis", "thư viện hãng",
+                      "vendor", "mã nguồn hãng"])
+    def code_vendor_fetch(ctx: Any, repo: str, tep: list[str], explain: dict[str, Any],
+                          nhanh: str = "main", dich: str = "firmware", phang: bool = True,
+                          doi_ten: dict[str, str] | None = None):
+        from ..knowledge import sdk_hang
+        from .builtin import _rel
+
+        thu_muc = ctx.config.paths.project_root / (dich or "firmware")
+        kq = sdk_hang.lay_sdk(repo, list(tep), thu_muc, nhanh=nhanh, phang=phang,
+                              doi_ten=dict(doi_ten or {}))
+        if kq.vi_sao_khong_dat:
+            return ToolResult(False, error=EideError(
+                "E3004", kq.vi_sao_khong_dat,
+                hint_for_agent="Sửa tham số rồi gọi lại; đừng thử lại y nguyên.",
+                details=kq.to_dict(), blame="agent"))
+        ra = kq.to_dict()
+        ra["thu_muc"] = _rel(ctx, thu_muc)
+        hong = [t for t in kq.tep if not t.dat]
+        ra["note_vi"] = (
+            f"Lấy được {kq.so_dat}/{len(kq.tep)} tệp từ {repo}@{nhanh} "
+            f"({kq.tong_byte / 1024:.0f} KB) vào {ra['thu_muc']}. "
+            + (f"HỎNG {len(hong)} tệp — đọc danh sách `hong` và nói ra, ĐỪNG coi là xong: "
+               + "; ".join(f"{t.duong_repo}: {t.vi_sao[:80]}" for t in hong[:5])
+               + ". Thiếu một tệp nguồn thì lỗi sẽ hiện ra lúc liên kết, ở một chỗ không "
+                 "liên quan gì tới nguyên nhân thật. "
+               if hong else "Không tệp nào hỏng. ")
+            + "Đây là MÃ CỦA HÃNG đưa vào dự án của người dùng: nói cho họ biết đã thêm gì, "
+              "từ repo nào, và nhắc rằng mã ấy có giấy phép riêng của hãng.")
+        return ra
+
+    @r.tool("asset.image_to_c", "Mã nguồn",
+            "Đổi một tệp ảnh thành cặp .c/.h chứa mảng điểm ảnh để firmware vẽ thẳng lên màn. "
+            "Chip không có trình đọc PNG — muốn hiện ảnh thì nó phải nằm trong Flash dưới "
+            "dạng mảng đã giải nén.",
+            {"type": "object",
+             "properties": {
+                 "anh": {"type": "string", "description": "đường dẫn tệp ảnh trong dự án"},
+                 "ten_bien": {"type": "string",
+                              "description": "tên biến C, ví dụ logo_ptit"},
+                 "dinh_dang": {"type": "string",
+                               "enum": ["rgb565", "argb8888", "rgb888"],
+                               "description": "rgb565 = 2 byte/điểm, KHÔNG giữ trong suốt"},
+                 "rong_toi_da": {"type": "integer", "description": "thu nhỏ, giữ tỉ lệ"},
+                 "cao_toi_da": {"type": "integer"},
+                 "dich": {"type": "string", "description": "thư mục ra, mặc định firmware"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["anh", "ten_bien", "explain"]},
+            risk="R2", needs_explain=True,
+            keywords=["ảnh", "logo", "hình", "bitmap", "png", "đổi ảnh", "hiện ảnh",
+                      "màn hình", "image"])
+    def asset_image_to_c(ctx: Any, anh: str, ten_bien: str, explain: dict[str, Any],
+                         dinh_dang: str = "rgb565", rong_toi_da: int = 0,
+                         cao_toi_da: int = 0, dich: str = "firmware"):
+        from ..knowledge import anh_sang_c
+        from .builtin import _rel, _resolve
+        from .xay_dung import _han_muc, _ho_chieu
+
+        p = _resolve(ctx, anh)
+        flash_max, _ = _han_muc(ctx, _ho_chieu(ctx))
+        b = ctx.store.get("build:firmware")
+        da_dung = int(((b or {}).get("canonical") or {}).get("flash") or 0)
+        con_lai = max(0, flash_max - da_dung) if flash_max else 0
+
+        kq = anh_sang_c.doi_anh(p, ctx.config.paths.project_root / (dich or "firmware"),
+                                ten_bien=ten_bien, dinh_dang=dinh_dang,
+                                rong_toi_da=rong_toi_da, cao_toi_da=cao_toi_da,
+                                flash_con_lai=con_lai)
+        if not kq.dat:
+            return ToolResult(False, error=EideError(
+                "E4017", kq.vi_sao_khong_dat,
+                hint_for_agent=("Sửa kích thước hoặc định dạng rồi gọi lại. Nói con số cho "
+                                "người dùng — họ là người quyết định logo to bao nhiêu."),
+                details=kq.to_dict(), alternatives=["asset.image_to_c"], blame="agent"))
+        ra = kq.to_dict()
+        ra["thu_muc"] = _rel(ctx, ctx.config.paths.project_root / (dich or "firmware"))
+        ra["note_vi"] = (
+            f"Đã sinh {kq.tep_c} và {kq.tep_h}: {kq.rong}×{kq.cao} điểm ảnh, "
+            f"{kq.so_byte / 1024:.0f} KB trong Flash"
+            + (f" (Flash còn {con_lai / 1024:.0f} KB trước khi thêm ảnh này)"
+               if con_lai else "")
+            + f". Dùng bằng `#include \"{kq.tep_h}\"` rồi vẽ mảng `{kq.ten_bien}_data` — "
+              f"kích thước có sẵn ở macro {kq.ten_bien.upper()}_WIDTH/HEIGHT. "
+            + (" ".join(kq.canh_bao) if kq.canh_bao else ""))
+        return ra
+
     return r
