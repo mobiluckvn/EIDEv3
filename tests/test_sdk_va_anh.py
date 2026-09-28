@@ -251,3 +251,69 @@ def test_cay_bi_cat_thi_noi_ra(monkeypatch):
 def test_ten_repo_sai_thi_khong_goi_mang_khi_liet_ke():
     d = S.liet_ke("khong-hop-le")
     assert d["so_khop"] == 0 and "owner/name" in d["vi_sao_khong_dat"]
+
+
+# ===================================================================== 0 tệp = THẤT BẠI
+def _ctx(agent):
+    from eide.loop import TurnContext
+
+    return TurnContext(config=agent.config, store=agent.store, ledger=agent.ledger,
+                       eide_md=agent.eide_md, ids=agent.ids, registry=agent.registry,
+                       emit=lambda c: None, history=agent.history, run_id="run-1")
+
+
+_EX = {"summary": "lấy driver", "why": "cần để vẽ lên màn", "sources": [],
+       "diff_prev": "—", "next": "—", "confidence": "BAC"}
+
+
+def test_khong_tep_nao_ve_duoc_thi_la_THAT_BAI(make_agent, monkeypatch):
+    """Đo được: tác tử xin 26 tệp từ `stm32f4xx_hal_driver@main` — tên repo VÀ nhánh đều sai.
+
+    Nó nhận `ok` rồi đi tiếp như thể đã có driver trong tay. Không tệp nào về được là thất
+    bại, không phải "thành công một phần".
+    """
+    from eide.knowledge import tai_ve as tv
+
+    agent = make_agent([])
+    import urllib.error
+
+    def luon_404(url, *, timeout):
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(tv, "_mo_that", luon_404)
+    r = agent.registry.run(
+        "code.vendor_fetch",
+        {"repo": "STMicroelectronics/stm32f4xx_hal_driver", "nhanh": "main",
+         "tep": ["Src/stm32f4xx_hal_dsi.c", "Inc/stm32f4xx_hal_dsi.h"], "explain": _EX},
+        _ctx(agent))
+    assert not r.ok and r.error.code == "E3006"
+    assert "TÊN REPO hoặc NHÁNH sai" in r.error.message_vi
+    assert "code.vendor_list" in r.error.alternatives
+    assert "GẠCH NỐI" in r.error.hint_for_agent
+
+
+def test_ve_duoc_mot_phan_thi_van_la_thanh_cong_NHUNG_noi_ro_hong(make_agent, monkeypatch):
+    from eide.knowledge import tai_ve as tv
+
+    agent = make_agent([])
+    import urllib.error
+
+    def mot_co_mot_khong(url, *, timeout):
+        if url.endswith("co.c"):
+            return MayChuGia({"co.c": HAL}).__call__(url, timeout=timeout)
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(tv, "_mo_that", mot_co_mot_khong)
+    r = agent.registry.run(
+        "code.vendor_fetch",
+        {"repo": "o/r", "tep": ["Src/co.c", "Src/khong.c"], "explain": _EX}, _ctx(agent))
+    assert r.ok and r.data["so_dat"] == 1 and r.data["so_hong"] == 1
+    assert "HỎNG 1 tệp" in r.data["note_vi"]
+    assert "ĐỪNG coi là xong" in r.data["note_vi"]
+
+
+def test_vendor_list_luon_hien(make_agent):
+    """Công cụ tồn tại để chặn việc đoán mà lại nấp sau một lần tìm thì không chặn được gì."""
+    agent = make_agent([])
+    assert agent.registry._tools["code.vendor_list"].core is True
+    assert "code.vendor_list" in {t["name"] for t in agent.registry.declarations()}

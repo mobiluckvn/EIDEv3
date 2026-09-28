@@ -1229,6 +1229,23 @@ def register(r: Registry) -> Registry:
         ra = kq.to_dict()
         ra["thu_muc"] = _rel(ctx, thu_muc)
         hong = [t for t in kq.tep if not t.dat]
+        if kq.so_dat == 0:
+            # KHÔNG tệp nào về được thì đây là thất bại, không phải "thành công một phần".
+            # Đo được: tác tử xin 26 tệp từ `stm32f4xx_hal_driver@main` (tên repo và nhánh
+            # đều sai), nhận `ok`, rồi đi tiếp như thể đã có driver trong tay.
+            toan_404 = all("404" in t.vi_sao for t in hong)
+            return ToolResult(False, error=EideError(
+                "E3006",
+                f"KHÔNG lấy được tệp nào trong {len(kq.tep)} tệp từ {repo}@{nhanh}."
+                + (" Cả {} tệp đều trả 404 — gần như chắc chắn TÊN REPO hoặc NHÁNH sai, "
+                   "không phải từng đường dẫn sai.".format(len(hong)) if toan_404 else ""),
+                hint_for_agent=(
+                    "Gọi **code.vendor_list** với repo đó để xem nó có thật và có những tệp "
+                    "nào, rồi dùng ĐÚNG đường dẫn nó trả về. Đừng xin lại danh sách vừa "
+                    "hỏng. Lưu ý tên repo của ST dùng GẠCH NỐI "
+                    "(`stm32f4xx-hal-driver`) và nhánh mặc định có thể là `master`.\n"
+                    + "\n".join(f"{t.duong_repo}: {t.vi_sao[:90]}" for t in hong[:6])),
+                details=ra, alternatives=["code.vendor_list"], blame="agent"))
         ra["note_vi"] = (
             f"Lấy được {kq.so_dat}/{len(kq.tep)} tệp từ {repo}@{nhanh} "
             f"({kq.tong_byte / 1024:.0f} KB) vào {ra['thu_muc']}. "
@@ -1253,7 +1270,11 @@ def register(r: Registry) -> Registry:
                  "nhanh": {"type": "string", "description": "mặc định main"},
                  "gioi_han": {"type": "integer", "description": "mặc định 200"}},
              "required": ["repo"]},
-            risk="R2", core=False,
+            # core=True có chủ ý. Bản trước để `core=False` (ẩn tới khi tìm bằng
+            # tool.search), và tác tử đi thẳng tới `code.vendor_fetch` với một tên repo đoán
+            # ra — `stm32f4xx_hal_driver@main` thay vì `stm32f4xx-hal-driver@master`. Công cụ
+            # tồn tại để chặn việc đoán mà lại nấp sau một lần tìm thì nó không chặn được gì.
+            risk="R2", core=True,
             keywords=["liệt kê", "repo có gì", "đường dẫn", "tìm tệp", "sdk", "hal",
                       "bsp", "driver", "vendor list"])
     def code_vendor_list(ctx: Any, repo: str, mau: str = "", nhanh: str = "main",
