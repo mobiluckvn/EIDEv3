@@ -123,6 +123,11 @@ def liet_ke(repo: str, *, nhanh: str = "main", mau: str = "", gioi_han: int = 20
     khop = [d for d in duong
             if not m or fnmatch.fnmatch(d, m) or fnmatch.fnmatch(d.rsplit("/", 1)[-1], m)
             or m.lower() in d.lower()]
+    # Tag của repo: driver của hãng có nhiều thế hệ API và phải khớp BSP đang dùng. Không
+    # nêu ra thì tác tử chỉ còn nước lấy nhánh mặc định rồi gặp lỗi kiểu dữ liệu không khớp.
+    from .tim_kiem import tag_cua_repo
+
+    ra["tag"] = tag_cua_repo(org, ten)
     ra["so_khop"] = len(khop)
     ra["tep"] = sorted(khop)[:gioi_han]
     ra["bi_cat_ket_qua"] = len(khop) > gioi_han

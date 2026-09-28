@@ -1300,6 +1300,10 @@ def register(r: Registry) -> Registry:
             + (f" (chỉ hiện {len(d['tep'])} tệp đầu)" if d.get("bi_cat_ket_qua") else "")
             + ". Dùng ĐÚNG những đường dẫn này cho code.vendor_fetch — đường dẫn đoán ra sẽ "
               "trả 404 và bạn chỉ biết sau khi đã xin cả chục tệp."
+            + (f" Repo này có các tag: {', '.join(d['tag'][:10])}. Driver của hãng có nhiều "
+               "THẾ HỆ API và phải khớp với BSP bạn đang dùng — nhánh mặc định thường là bản "
+               "mới nhất, có thể không khớp. Truyền tag vào `nhanh` để lấy đúng thế hệ."
+               if d.get("tag") else "")
             + (" LƯU Ý: GitHub CẮT BỚT danh sách tệp của repo này, nên có thể còn tệp không "
                "hiện ra." if d.get("bi_cat") else ""))
         return d

@@ -367,3 +367,28 @@ def test_nhanh_mac_dinh_co_nho_dem(tmp_path, monkeypatch):
     assert tk.nhanh_mac_dinh("o", "r", cache=tmp_path) == "master"
     assert tk.nhanh_mac_dinh("o", "r", cache=tmp_path) == "master"
     assert n["lan"] == 1, "lần thứ hai phải đọc từ nhớ đệm"
+
+
+def test_liet_ke_khai_luon_TAG_vi_driver_co_nhieu_the_he_API(monkeypatch):
+    """Ca thật: `stm32-otm8009a@main` là API v2 (`OTM8009A_IO_t` có Init/SendCmd),
+
+    còn BSP `32f469idiscovery-bsp` là v1 và gọi API cũ — bốn lỗi cuối của lượt biên dịch đều
+    từ chỗ lệch ấy. Không nêu tag thì tác tử chỉ còn nước lấy nhánh mặc định rồi không hiểu
+    vì sao kiểu dữ liệu không khớp.
+    """
+    from eide.knowledge import tim_kiem as tk
+
+    monkeypatch.setattr(tk, "_cay_repo", lambda *a, **k: ["otm8009a.c", "otm8009a.h"])
+    monkeypatch.setattr(tk, "tag_cua_repo",
+                        lambda o, r, **k: ["v2.0.2", "v2.0.0", "v1.0.7", "v1.0.4"])
+    d = S.liet_ke("STMicroelectronics/stm32-otm8009a", mau="*otm8009a*")
+    assert d["so_khop"] == 2
+    assert d["tag"][:3] == ["v2.0.2", "v2.0.0", "v1.0.7"]
+
+
+def test_tag_hong_thi_tra_rong_chu_khong_no(monkeypatch):
+    from eide.knowledge import tim_kiem as tk
+
+    monkeypatch.setattr(tk, "_json_url",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("mạng")))
+    assert tk.tag_cua_repo("o", "r") == []

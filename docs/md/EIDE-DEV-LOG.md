@@ -2675,9 +2675,47 @@ Một phép đo phụ, để biết bước cuối khó tới đâu: ba mô-đun
 (`hal_ltdc.c`, `hal_dsi.c`, `hal_sdram.c`) **không gọi hàm libc nào** — nên việc máy thiếu
 newlib ít nguy hiểm hơn tôi lo lúc đầu.
 
+#### 17. Biên dịch 30 tệp của hãng: 51 → 13 → 4 lỗi, và ba chỗ EIDE bắt tác tử đoán
+
+Bước cuối — viết chương trình, biên dịch, nạp — mất nhiều vòng, và **phép đo tôi đặt cho nó
+không hỏi "lần đầu có dịch sạch không"**. Dịch 30 tệp của ST lần đầu ra 51 lỗi là chuyện
+thường của nghề. Câu đáng hỏi là **"mỗi vòng có bớt lỗi đi không"**, vì sửa vòng quanh mới là
+thứ đáng báo động. Đo được: **51 → 13 → 4**.
+
+Ba lỗi trong chuỗi ấy là lỗi của EIDE, và cả ba cùng một hình dạng: **hệ thống bắt tác tử
+đoán một thứ mà nó có thể hỏi.**
+
+**(a) Một `-I` cho một cây thư mục.** `stm32469i_discovery_lcd.c:58` có
+`#include "../../../Utilities/Fonts/fonts.h"` — ba cấp `..` chỉ đúng khi tệp nằm ở
+`Drivers/BSP/STM32469I-Discovery/`. Tôi thiết kế `code.vendor_fetch` đổ hết vào **một thư mục
+phẳng** cho tiện, và `bien_dich` truyền đúng một `-I`. Hậu quả: người đọc lỗi đi tìm một
+`fonts.h` bị thiếu, trong khi tệp ấy **có thật** trong `STM32CubeF4/Utilities/Fonts/`. → `-I`
+cho thư mục gốc **và mọi thư mục con có header** (trần 60), để giữ được cây của hãng thì giữ.
+
+**(b) Nhánh.** Repo của ST không thống nhất — đo trên năm repo tác tử cần:
+`stm32f4xx-hal-driver`, `cmsis-device-f4`, `cmsis-core` dùng `master`; `32f469idiscovery-bsp`
+và `stm32-otm8009a` dùng `main`. Không ai đoán đúng cả năm. → công cụ tự hỏi
+`default_branch`, thử nhánh được nêu trước rồi mới đổi, và **khai ra là đã đổi**.
+
+**(c) Thế hệ API của driver.** Bốn lỗi cuối đều là
+`'OTM8009A_IO_t' has no member named 'Init'` — `stm32-otm8009a` ở nhánh `main` là **API v2**,
+còn BSP `32f469idiscovery-bsp` là **v1** và gọi API cũ. Đây là một vấn đề rất thật của nghề
+nhúng, và tác tử không sai: nó chỉ không có cách nào **nhìn thấy** repo ấy có tag `v1.0.7`.
+→ `code.vendor_list` khai luôn danh sách tag, kèm câu nhắc rằng driver có nhiều thế hệ API và
+phải khớp BSP đang dùng.
+
+Một chi tiết vui về phép đoán tên repo: tác tử viết `stm32f4xx_hal_driver` (gạch dưới) trong
+khi tên thật là `stm32f4xx-hal-driver`. Nó **vẫn chạy** — GitHub giữ chuyển hướng cho repo đã
+đổi tên. Nên phép đoán tên của nó thật ra đúng; thứ nó không đoán được là **nhánh**, và đó
+chính là chỗ công cụ đi hỏi thay nó.
+
+Và một ghi nhận về môi trường: giữa chừng **bo bị rút khỏi máy** (`st-info` thấy 0 bộ nạp,
+`/Volumes/DIS_F469NI` biến mất). Phép kiểm "đọc ngược Flash" đỏ với đúng lý do
+*"Couldn't find any ST-Link devices"* thay vì im lặng hay báo sai — đó là hành vi đúng.
+
 ### Số đo
 
-`1024 ca đơn vị` (+93 so với DEV-277) · `99 công cụ` khi cờ sơ đồ tắt (+8: `doc.fetch`, `target.detect`,
+`1029 ca đơn vị` (+93 so với DEV-277) · `99 công cụ` khi cờ sơ đồ tắt (+8: `doc.fetch`, `target.detect`,
 `target.flash`, `target.verify`, `target.log`, `code.vendor_fetch`, `code.vendor_list`,
 `asset.image_to_c`), `108` khi bật.
 

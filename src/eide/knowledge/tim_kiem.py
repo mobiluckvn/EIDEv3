@@ -299,6 +299,24 @@ def nhanh_mac_dinh(org: str, repo: str, *, cache: Path | None = None,
     return ra
 
 
+def tag_cua_repo(org: str, repo: str, *, gioi_han: int = 20,
+                 timeout: float = 20.0) -> list[str]:
+    """Các tag của một repo, mới nhất trước. Rỗng nếu không hỏi được.
+
+    Vì sao cần: driver của hãng có nhiều **thế hệ API** và phải khớp với BSP đang dùng. Đo
+    được trên bo STM32F469: `stm32-otm8009a` ở nhánh `main` là API v2 (`OTM8009A_IO_t` có
+    `Init/DeInit/SendCmd`), còn BSP `32f469idiscovery-bsp` là v1 và gọi API cũ — bốn lỗi cuối
+    của lượt biên dịch đều từ chỗ lệch ấy. Không có cách xem tag thì tác tử chỉ còn nước lấy
+    nhánh mặc định và không hiểu vì sao kiểu dữ liệu không khớp.
+    """
+    try:
+        d = _json_url(f"https://api.github.com/repos/{org}/{repo}/tags?per_page={gioi_han}",
+                      timeout=timeout)
+    except Exception:                                         # noqa: BLE001
+        return []
+    return [str(t.get("name") or "") for t in (d or []) if t.get("name")]
+
+
 def _repo_cua_org(org: str, cache: Path | None, *, timeout: float,
                   tran_trang: int = 4) -> list[tuple[str, str]]:
     """Danh sách repo của một tổ chức, có nhớ đệm. Trả [(tên, nhánh mặc định)]."""
