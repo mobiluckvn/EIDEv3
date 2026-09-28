@@ -258,6 +258,14 @@ struct MoDuAnView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var setup: Setup
     @State private var loiTao: String?
+    /// Nhịp kiểm lại xem các dự án trong danh sách có còn trên đĩa không.
+    ///
+    /// `FileManager.fileExists` gọi trong thân view chỉ chạy lại khi SwiftUI dựng lại view —
+    /// mà xoá một thư mục ở Finder thì không có gì báo cho SwiftUI cả. Đo được: xoá dự án
+    /// trong lúc màn này đang hiện thì dòng của nó vẫn xanh và vẫn bấm được. Nhịp hai giây
+    /// chỉ chạy khi CHƯA mở dự án nào, tức là đúng lúc màn này hiện ra.
+    @State private var nhip = 0
+    private let dongHo = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -309,6 +317,7 @@ struct MoDuAnView: View {
         }
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onReceive(dongHo) { _ in nhip &+= 1 }
         // Màn này trước đây không có nền của RIÊNG nó — nó mượn nền cửa sổ. Trên máy thì
         // trông vẫn đúng, nhưng `cacheDisplay` chỉ vẽ cây view, nên ảnh tự chụp ra
         // trắng-trên-trắng và không đọc được chữ nào. Cả cách kiểm của dự án này dựa vào
@@ -325,7 +334,9 @@ struct MoDuAnView: View {
         GroupBox("Mở lại dự án gần đây") {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(setup.ganDay, id: \.self) { d in
-                    let con = FileManager.default.fileExists(atPath: d)
+                    // `nhip` không được dùng để làm gì ngoài việc buộc dòng này tính lại —
+                    // nếu bỏ nó đi, `fileExists` sẽ đóng băng ở lần dựng view đầu tiên.
+                    let con = nhip >= 0 && FileManager.default.fileExists(atPath: d)
                     HStack(spacing: 8) {
                         Button {
                             setup.duAnPath = d

@@ -4,7 +4,7 @@ Ghi tự động. Mỗi mục là một bước có thật trong một phiên EI
 
 - Nguồn: `ba thư mục dựng tại chỗ`
 - Thư mục dự án: `du-lieu/thu-vong-doi/mot`
-- Bắt đầu: 28/09/2026 20:44:47
+- Bắt đầu: 28/09/2026 20:49:13
 
 ---
 
@@ -19,7 +19,7 @@ man_hinh = lam-viec
 ✅ Dự án TỰ MỞ lúc khởi động cũng vào danh sách gần đây
 
 ```
-gần đây: ['/Users/congvt/Documents/EIDE_v3/du-lieu/thu-vong-doi/mot']
+gần đây: ['/Users/congvt/Documents/EIDE_v3/du-lieu/thu-vong-doi/mot', '/Users/congvt/Documents/EIDE_v3/du-lieu/thu-vong-doi/hai']
 ```
 
 
@@ -28,7 +28,7 @@ gần đây: ['/Users/congvt/Documents/EIDE_v3/du-lieu/thu-vong-doi/mot']
 ✅ Tạo được thư mục dự án mới từ giao diện
 
 ```
-{'stt': 2, 'su_kien': 'du_an_moi', 'tep': '/Users/congvt/Documents/EIDE_v3/du-lieu/thu-vong-doi/hai', 'ts': '2026-09-28T13:44:51Z'} · thư mục có: True
+{'stt': 2, 'su_kien': 'du_an_moi', 'tep': '/Users/congvt/Documents/EIDE_v3/du-lieu/thu-vong-doi/hai', 'ts': '2026-09-28T13:49:18Z'} · thư mục có: True
 ```
 
 ✅ Lõi tự dựng `.eide/` và `EIDE.md` cho dự án mới — app KHÔNG tự dựng hộ
@@ -85,13 +85,17 @@ man_hinh = lam-viec · gần đây: ['/Users/congvt/Documents/EIDE_v3/du-lieu/th
 
 ## Bước 6. Dự án trong danh sách bị xoá khỏi đĩa — hiện thế nào?
 
-✅ Vẫn HIỆN trong danh sách (mờ, không bấm được) thay vì lặng lẽ biến mất
+✅ Vẫn HIỆN trong danh sách thay vì lặng lẽ biến mất
 
 ```
 lặng lẽ lọc ra thì người thấy một mục mất đi mà không biết vì sao — mà lý do thường là họ vừa đổi tên hoặc chuyển thư mục, đúng lúc họ cần biết nhất
 ```
 
 ![man-mo-du-an](anh/06-man-mo-du-an.png)
+
+**Đọc tấm ảnh trên**
+
+dòng `mot` xanh và bấm được · dòng `hai` mờ, không bấm được, kèm nhãn hổ phách "không còn ở đây" và nút "Quên". Nhãn ấy chỉ xuất hiện sau khi màn tự kiểm lại — nên nếu ảnh cho thấy `hai` vẫn xanh thì nhịp đồng hồ đã hỏng.
 
 **Kết thúc**
 

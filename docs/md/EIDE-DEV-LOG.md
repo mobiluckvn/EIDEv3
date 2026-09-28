@@ -4229,11 +4229,28 @@ nó mượn nền cửa sổ, mà `cacheDisplay` chỉ vẽ cây view. Trên má
 kiểm của dự án này dựa vào tấm ảnh — **một màn không chụp được là một màn không kiểm được**.
 Thêm `.background(.background)` là xong.
 
+#### Cái nhãn "không còn ở đây" suýt nữa chỉ đúng trên giấy
+
 Riêng việc dòng `hai` hiện mờ kèm *"không còn ở đây"* thì bằng chứng là **tấm ảnh**
 (`docs/review-mo-du-an/anh/man-mo-du-an.png`), không phải một con số: phép đo chỉ khẳng định
 được đường dẫn còn trong danh sách. Phơi thêm một trường tính lại `fileExists` ở kênh kiểm sẽ
 chỉ lặp lại đúng biểu thức mà view dùng, chứ không chứng minh view có vẽ nó — nên tôi không
 làm, và ghi rõ ở đây thay vì để một ô xanh nói hộ.
+
+Và chính tấm ảnh ấy bắt được lỗi. Bản đầu: `FileManager.fileExists` gọi trong thân view chỉ
+chạy lại khi SwiftUI **dựng lại** view — mà xoá một thư mục ở Finder thì không có gì báo cho
+SwiftUI cả. Xoá dự án trong lúc màn này đang hiện thì dòng của nó **vẫn xanh và vẫn bấm
+được**: đúng cái bẫy mà nhãn kia sinh ra để tránh, chỉ dời đi vài giây. Nhãn chỉ xuất hiện ở
+lần dựng sau — mở app lần tới, hoặc vừa đóng một dự án — nên mười ô đo đều xanh và ảnh chụp
+đầu tiên (chụp ở một lần chạy khác) cũng trông đúng.
+
+Vá bằng một nhịp hai giây, chỉ chạy khi **chưa mở dự án nào**, tức đúng lúc màn này hiện ra.
+Bài đo nay đợi qua một nhịp rồi mới chụp, và nhật ký ghi thẳng cách đọc tấm ảnh: *nếu `hai`
+vẫn xanh thì nhịp đồng hồ đã hỏng.*
+
+Đây là lần thứ hai trong hai chặng liền, một ô xanh đúng đi kèm một màn hình sai — lần trước
+là thẻ cổng đã đóng mà nút vẫn bấm được (DEV-289). Cùng một hình dạng: **số đo đúng, câu hỏi
+sai**, và cái sai chỉ hiện ra khi nhìn vào thứ người dùng thật sự nhìn.
 
 ### Số đo
 

@@ -110,10 +110,22 @@ def main() -> int:
     e = g.chup("mot-du-an-da-mat")
     con = str(hai) in (e.get("du_an_gan_day") or [])
     nk.ket(con,
-           "Vẫn HIỆN trong danh sách (mờ, không bấm được) thay vì lặng lẽ biến mất",
+           "Vẫn HIỆN trong danh sách thay vì lặng lẽ biến mất",
            "lặng lẽ lọc ra thì người thấy một mục mất đi mà không biết vì sao — mà lý do "
            "thường là họ vừa đổi tên hoặc chuyển thư mục, đúng lúc họ cần biết nhất")
+    # Đợi qua một nhịp đồng hồ rồi mới chụp.
+    #
+    # `fileExists` gọi trong thân view chỉ chạy lại khi SwiftUI dựng lại view, mà xoá một
+    # thư mục ở Finder thì không có gì báo cho SwiftUI. Ảnh chụp ngay lập tức cho thấy dòng
+    # `hai` vẫn xanh và vẫn bấm được — đúng cái bẫy mà nhãn "không còn ở đây" sinh ra để
+    # tránh. Chỗ này là BẰNG CHỨNG BẰNG ẢNH: phép đo chỉ nói được đường dẫn còn trong danh
+    # sách, không nói được giao diện vẽ nó ra sao.
+    time.sleep(3)
     nk.anh(g, "man-mo-du-an")
+    nk.ghi("Đọc tấm ảnh trên",
+           "dòng `mot` xanh và bấm được · dòng `hai` mờ, không bấm được, kèm nhãn hổ phách "
+           "\"không còn ở đây\" và nút \"Quên\". Nhãn ấy chỉ xuất hiện sau khi màn tự kiểm "
+           "lại — nên nếu ảnh cho thấy `hai` vẫn xanh thì nhịp đồng hồ đã hỏng.")
 
     nk.ghi("Kết thúc", f"nhật ký: {nk.md}")
     return 0
