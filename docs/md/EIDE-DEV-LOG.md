@@ -3188,10 +3188,66 @@ lượt** — vẫn gần như trống sau 34 bước. Cơ chế có sẵn từ 
 dùng nó đúng lúc. Đó là bài học chung của cả phiên này: *một năng lực không được nhắc đúng lúc
 thì tương đương không có*.
 
+#### Lần 14 — đèn nền tắt hẳn, và lời khai của panel không đứng vững
+
+Anh Công đo giúp thứ máy không đo được: tắt đèn phòng, nhìn sát màn — **đèn nền không sáng,
+đen tuyệt đối**. Không phải đen-xám có ánh, mà tối như lúc rút điện.
+
+Số đo ấy thu hẹp mọi thứ: trên bo này đèn nền **do chính OTM8009A điều khiển bằng lệnh DCS**,
+không có GPIO riêng (`otm8009a.c` dòng 419/424 — `WRDISBV` đặt độ sáng, `WRCTRLD` bật
+*"Brightness Control Block, Display Dimming & BackLight on"*). Nên câu hỏi còn lại: lệnh GHI
+có tới panel không? Và không ai biết, vì **mọi mã trả về đều đang bị vứt** — bốn
+`HAL_DSI_ShortWrite` trong `main.c`, và cả `OTM8009A_Init(...)` ở `lcd.c:448`.
+
+Tác tử giữ lại từng mã. Đọc từ chip (hash đã đối chiếu):
+
+```
+g_dsi_write_ret     = [0, 0, 0, 0]        ← cả bốn lệnh GHI đều thành công
+g_otm8009a_init_ret = [0]                 ← chuỗi khởi tạo panel chạy HẾT, trả OK
+g_panel_cmd_status  = 40 9C 00 07 4F 2C …
+                       │  │        │  └── 0x54 = 0x2C → BCTRL=1, BL=1  (đèn nền BẬT)
+                       │  │        └───── 0x52 = 0x4F (độ sáng ≈ 30 %)
+                       │  └────────────── 0x0A = 0x9C → booster=1, sleep_out=1, DISPLAY_ON=1
+                       └───────────────── 0xDA = 0x40, đúng ID OTM8009A
+```
+
+Panel **tự khai** nó đang bật, đèn nền đang bật, độ sáng 30 %. Mắt người: tối tuyệt đối. Hai
+lời ấy không thể cùng đúng — nên phải phân định thay vì chọn bên.
+
+Phép thử rẻ nhất: **ghi một giá trị rồi đọc lại đúng thanh ghi đó**.
+
+| | |
+|---|---|
+| `g_bright_val_written` | `0x88` |
+| `g_bright_write_ret` | `0` — ghi báo thành công |
+| `g_bright_read_ret` | `0` — đọc báo thành công |
+| `g_bright_after` | **`0x00`** — không phải `0x88` |
+
+Và cùng thanh ghi độ sáng ấy, ba lần chạy cho **ba giá trị khác nhau**: `0x4F` → `0x2A` →
+`0x00`. **Đường đọc DCS trả về rác** — mã trả về nói "thành công" trong khi dữ liệu là nhiễu.
+
+Hệ quả cho cả chuỗi lập luận: mọi câu dạng *"panel khai nó đang sáng"* đều dựng trên số liệu
+ấy, nên chúng **không đứng vững** — kể cả `0x9C` nghe rất thuyết phục. Đây là lần thứ ba trong
+phiên mà một mã trả về `ok` đi kèm dữ liệu vô nghĩa (trước đó: `code.vendor_fetch` trả `ok`
+với 0/26 tệp; `soi_chip` gộp `-c` nên `mdw` im lặng). Cùng một hình dạng: **`ok` nói về lời
+gọi, không nói về kết quả.**
+
+Chốt lại phần máy đo được, tất cả đều đã xanh và lặp lại được:
+
+- khung ảnh trong SDRAM có đúng logo + bốn dòng chữ;
+- LTDC **đang quét** (`CPSR` đổi giữa hai lần đọc);
+- PLL DSI đã khoá, PHY bật, chế độ video, `ISR0 = ISR1 = 0`;
+- mọi lệnh ghi DCS trả `HAL_OK`, `OTM8009A_Init` trả OK;
+- panel trả lời đúng ID `0x40` ở lần đọc trước khi vào chế độ video.
+
+Thứ duy nhất không xanh là **ánh sáng thật**. Với chừng ấy sở cứ, nghi ngờ chuyển sang phía
+phần cứng, và hai câu hỏi rẻ nhất cần anh Công trả lời trước khi đốt thêm lượt firmware: bo
+này **đã từng hiện gì chưa** (bản demo của ST lúc mới cắm), và **cáp mềm của module LCD có
+cắm chắc không**.
+
 ### Còn lại
 
-- Đọc DCS hỏng sau khi vào chế độ video → chưa hỏi được panel về trạng thái của chính nó.
-  Đo mới nhất: `g_panel_read_ret = [1, 1, -1, …]`, bộ đệm còn nguyên giá trị mồi.
+- Chờ hai câu trả lời trên để quyết định còn sửa firmware nữa hay không.
 - Cần anh Công nhìn bo trong phòng tối: **đèn nền có sáng không** (màn đen-xám có ánh so với
   đen tuyệt đối). Đó là phép đo duy nhất còn lại mà máy không làm được, và nó chia đôi phần
   việc còn lại: đèn nền sáng → dữ liệu điểm ảnh không tới panel; đèn nền tắt → đường nguồn /

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+import shutil
 import re
 from typing import Any
 
@@ -972,8 +973,149 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
         nk.anh(g, "hoi-panel-dung-cho")
 
+    # ------------------------------------------- 35. đèn nền TẮT HẲN — số đo của anh Công
+    #
+    # Anh Công nhìn bo trong phòng tối: đèn nền không sáng, đen tuyệt đối. Trên bo này đèn nền
+    # do CHÍNH OTM8009A điều khiển bằng lệnh DCS (`otm8009a.c` dòng 419/424: WRDISBV đặt độ
+    # sáng, WRCTRLD bật "Brightness Control Block, Display Dimming & BackLight on") — không
+    # có GPIO đèn nền riêng.
+    #
+    # Ghép với số đo trước — sáu lệnh ĐỌC DCS đều trả LCD_ERROR sau khi vào chế độ video —
+    # câu hỏi thành rất hẹp: các lệnh GHI có tới được panel không? Và hiện không ai biết, vì
+    # mọi mã trả về đều bị vứt: bốn `HAL_DSI_ShortWrite` trong main.c, và cả
+    # `OTM8009A_Init(...)` ở `stm32469i_discovery_lcd.c:448`.
+    if lam(35):
+        nk.buoc("Đèn nền tắt hẳn — mà mọi mã trả về của lệnh ghi DCS đều đang bị vứt")
+        loi, cc = hoi(g, nk, du_an,
+                      "Anh Công vừa đo giúp một thứ máy không đo được: tắt đèn phòng, nhìn "
+                      "sát màn — **đèn nền không sáng, đen tuyệt đối**. Không phải đen-xám "
+                      "có ánh, mà tối như lúc rút điện.\n\n"
+                      "Số đo đó thu hẹp mọi thứ lại. Trên bo này **đèn nền do chính "
+                      "OTM8009A điều khiển bằng lệnh DCS**, không có chân GPIO riêng — chính "
+                      "`otm8009a.c` nói thế ở dòng 419 và 424 (`WRDISBV` đặt độ sáng, "
+                      "`WRCTRLD` bật *“Brightness Control Block, Display Dimming & BackLight "
+                      "on”*).\n\n"
+                      "Ghép với thứ bạn đã đo được: **sáu lệnh ĐỌC DCS đều trả LCD_ERROR** "
+                      "sau khi vào chế độ video. Nên câu hỏi còn lại rất hẹp: **các lệnh "
+                      "GHI có tới được panel không?**\n\n"
+                      "Và hiện không ai biết, vì mọi mã trả về đều đang bị vứt:\n"
+                      "- bốn `HAL_DSI_ShortWrite` trong `main.c` (0x11, 0x51, 0x53, 0x29)\n"
+                      "- `OTM8009A_Init(...)` ở `stm32469i_discovery_lcd.c:448` — cả chuỗi "
+                      "khởi tạo panel, gồm luôn hai lệnh bật đèn nền\n\n"
+                      "Giữ lại từng mã trả về vào biến toàn cục như bạn đã làm với phần đọc "
+                      "(nhớ mồi sẵn giá trị lạ để phân biệt “chưa ai ghi” với “trả về 0”). "
+                      "Nạp lại, rồi mình đọc ra. Có số đó thì biết ngay là lệnh không tới "
+                      "nơi, hay tới nơi mà panel không làm theo — hai cái sửa khác hẳn nhau.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_ma_tra_ve_ghi(nk, ctx, du_an)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "den-nen-tat")
+
+    # ------------------------------------------- 36. panel tự khai "đang sáng" mà tối đen
+    #
+    # Số đo lật ngược tình thế. Đọc từ RAM chip (hash đã đối chiếu):
+    #
+    #   g_dsi_write_ret     = [0, 0, 0, 0]     → cả bốn lệnh GHI DCS đều THÀNH CÔNG
+    #   g_otm8009a_init_ret = [0]              → cả chuỗi khởi tạo panel chạy hết, trả OK
+    #   g_panel_cmd_status  = 40 9C 00 07 4F 2C …
+    #                          │  │        │  └─ 0x54: BCTRL=1, BL=1  → đèn nền BẬT
+    #                          │  │        └──── 0x52: độ sáng 0x4F = 30 %
+    #                          │  └───────────── 0x0A: booster=1, sleep_out=1, DISPLAY_ON=1
+    #                          └──────────────── 0xDA: ID = 0x40, đúng OTM8009A
+    #
+    # Panel TỰ KHAI nó đang bật, đèn nền đang bật, độ sáng 30 %. Anh Công nhìn: tối tuyệt đối.
+    #
+    # Một phép thử rẻ phân định được: GHI độ sáng rồi ĐỌC LẠI. Đổi theo → lệnh ghi thật sự
+    # chạm tới thanh ghi panel, và lời khai kia đáng tin → nghi phần cứng đèn nền. Không đổi
+    # → lời khai ấy chỉ là giá trị mặc định, lệnh ghi không dính.
+    if lam(36):
+        nk.buoc("Panel tự khai đang sáng mà tối đen — ghi rồi đọc lại để phân định")
+        loi, cc = hoi(g, nk, du_an,
+                      "Số đo của bạn lật ngược mọi thứ, và nó rất tốt. Mình đọc từ RAM chip "
+                      "(đã đối chiếu hash ảnh nạp):\n\n"
+                      "```\n"
+                      "g_dsi_write_ret     = [0, 0, 0, 0]   ← cả bốn lệnh GHI đều thành công\n"
+                      "g_otm8009a_init_ret = [0]            ← chuỗi khởi tạo panel chạy hết\n"
+                      "g_panel_cmd_status  = 40 9C 00 07 4F 2C ...\n"
+                      "```\n\n"
+                      "Giải mã: `0xDA` ID = **0x40** (đúng OTM8009A) · `0x0A` = **0x9C** → "
+                      "booster bật, đã thoát ngủ, **DISPLAY ON** · `0x54` = **0x2C** → "
+                      "BCTRL=1, **BL (đèn nền) = 1** · `0x52` độ sáng = **0x4F ≈ 30 %**.\n\n"
+                      "Tức là **panel tự khai nó đang bật và đèn nền đang bật**. Còn anh Công "
+                      "nhìn bo trong phòng tối: tối tuyệt đối, không một tia sáng.\n\n"
+                      "Hai lời đó không thể cùng đúng, nên phải phân định. Phép thử rẻ nhất: "
+                      "**ghi một giá trị độ sáng khác rồi đọc lại đúng thanh ghi ấy**.\n"
+                      "- Đọc lại ra đúng giá trị vừa ghi → lệnh ghi thật sự chạm tới thanh "
+                      "ghi của panel, lời khai kia đáng tin, và nghi ngờ chuyển sang mạch "
+                      "đèn nền phía sau panel.\n"
+                      "- Không đổi → mấy con số kia chỉ là giá trị mặc định đọc được từ đâu "
+                      "đó, lệnh ghi không dính, và ta quay lại đường lệnh DSI.\n\n"
+                      "Làm phép thử ấy đi, giữ cả giá trị ghi lẫn giá trị đọc lại vào biến "
+                      "toàn cục, nạp, rồi báo mình.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_ma_tra_ve_ghi(nk, ctx, du_an)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Đèn nền đã sáng chưa? Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "ghi-roi-doc-lai")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_ma_tra_ve_ghi(nk: Any, ctx: Any, du_an: pathlib.Path) -> None:
+    """Mã trả về của các lệnh GHI DCS đã được giữ lại chưa, và chúng nói gì.
+
+    Tìm bất kỳ biến toàn cục nào tên có `write`/`ghi`/`init` kèm `ret`, đọc thẳng từ chip sau
+    khi đối chiếu hash. Không cố đoán tên tác tử sẽ đặt — liệt kê rồi báo cái tìm được.
+    """
+    from eide.build.mach_that import doc_nguoc_flash, ky_hieu_theo_ten, soi_chip
+
+    xd = du_an / ".eide" / "build"
+    if not doc_nguoc_flash(xd / "mach.bin").get("dat"):
+        nk.ket(False, "Mã trả về của lệnh GHI DCS được giữ lại và đọc được từ chip",
+               "chip không chứa bản vừa dịch — số đọc từ RAM vẫn do bản cũ sinh ra")
+        return
+    ten = [t for t in _bien_toan_cuc(xd / "mach.elf")
+           if "ret" in t.lower() and any(k in t.lower()
+                                         for k in ("write", "ghi", "init", "dcs", "cmd"))]
+    if not ten:
+        nk.ket(False, "Mã trả về của lệnh GHI DCS được giữ lại và đọc được từ chip",
+               "không thấy biến toàn cục nào giữ mã trả về của lệnh ghi")
+        return
+    k = ky_hieu_theo_ten(xd / "mach.elf", ten)
+    dong = []
+    for t, v in sorted((k.get("ky_hieu") or {}).items()):
+        d = soi_chip([v["dia_chi"]], so_tu=max(1, min(8, (v["kich_thuoc"] + 3) // 4)))
+        w = d["o_nho"].get(f"0x{v['dia_chi']:08x}") or []
+        so = [int(x, 16) - (1 << 32) if int(x, 16) >= 1 << 31 else int(x, 16) for x in w]
+        dong.append(f"{t} = {so}")
+    nk.ket(bool(dong), "Mã trả về của lệnh GHI DCS được giữ lại và đọc được từ chip",
+           " · ".join(dong) or "—")
+
+
+def _bien_toan_cuc(elf: pathlib.Path) -> list[str]:
+    """Tên mọi biến toàn cục trong ELF (mục `B`/`D` của nm)."""
+    import subprocess
+
+    nm = shutil.which("arm-none-eabi-nm")
+    if not nm or not elf.exists():
+        return []
+    try:
+        r = subprocess.run([nm, "--defined-only", str(elf)],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    ra = []
+    for l in (r.stdout or "").splitlines():
+        c = l.split()
+        if len(c) == 3 and c[1] in ("b", "B", "d", "D"):
+            ra.append(c[2])
+    return ra
 
 
 def _kiem_trang_thai_panel(nk: Any, ctx: Any, du_an: pathlib.Path) -> None:
