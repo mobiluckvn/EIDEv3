@@ -37,6 +37,17 @@ _MAGIC: tuple[tuple[bytes, str], ...] = (
     (b"{\\rtf", "rtf"),
 )
 
+# Ảnh. Tải được nhưng **không phải tài liệu**: không nạp vào kho để trích dẫn, mà để
+# `asset.image_to_c` đổi thành mảng điểm ảnh cho firmware vẽ. Thiếu nhánh này thì tác tử tìm
+# đúng logo trên Wikimedia rồi bị chính EIDE chặn ở bước tải — đo được ngày 28/09/2026.
+_MAGIC_ANH: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", "png"),
+    (b"\xff\xd8\xff", "jpeg"),
+    (b"GIF87a", "gif"), (b"GIF89a", "gif"),
+    (b"BM", "bmp"),
+    (b"II*\x00", "tiff"), (b"MM\x00*", "tiff"),
+)
+
 
 class MoUrl(Protocol):
     """Cách mở một URL. Tách ra để test chạy được mà không cần mạng."""
@@ -72,10 +83,29 @@ def _loai_theo_magic(dau: bytes) -> str:
     for mau, ten in _MAGIC:
         if dau.startswith(mau):
             return ten
+    for mau, _ten in _MAGIC_ANH:
+        if dau.startswith(mau):
+            return "anh"
+    if dau[:4] == b"RIFF" and dau[8:12] == b"WEBP":
+        return "anh"
     d = dau[:1024].lstrip().lower()
+    # SVG là văn bản XML — phải xét TRƯỚC nhánh html, nếu không một tệp logo .svg sẽ bị coi là
+    # một trang web và bị từ chối kèm câu "trên trang không có liên kết PDF nào".
+    if b"<svg" in d:
+        return "anh"
     if d.startswith((b"<!doctype html", b"<html", b"<?xml")) or b"<html" in d:
         return "html"
     return "khong_biet"
+
+
+def duoi_anh(dau: bytes) -> str:
+    """`.png`/`.jpg`/… suy từ magic byte, để tên tệp lưu ra khớp nội dung thật."""
+    for mau, ten in _MAGIC_ANH:
+        if dau.startswith(mau):
+            return {"jpeg": ".jpg"}.get(ten, f".{ten}")
+    if dau[:4] == b"RIFF" and dau[8:12] == b"WEBP":
+        return ".webp"
+    return ".svg" if b"<svg" in dau[:1024].lower() else ""
 
 
 def _la_van_ban(b: bytes) -> bool:
@@ -282,7 +312,8 @@ def tai_ve(url: str, thu_muc: Path, *, ten_tep: str = "", tran_byte: int = TRAN_
 
     thu_muc.mkdir(parents=True, exist_ok=True)
     ten = re.sub(r"[^A-Za-z0-9._-]", "-", ten_tep).strip("-.") if ten_tep else ten_tu_url(url)
-    duoi_chuan = {"pdf": ".pdf", "rtf": ".rtf"}.get(kq.loai, "")
+    duoi_chuan = ({"pdf": ".pdf", "rtf": ".rtf"}.get(kq.loai, "")
+                  or (duoi_anh(noi_dung) if kq.loai == "anh" else ""))
     if duoi_chuan and not ten.lower().endswith(duoi_chuan):
         ten += duoi_chuan
     p = thu_muc / ten

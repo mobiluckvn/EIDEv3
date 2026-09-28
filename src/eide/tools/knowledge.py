@@ -1149,6 +1149,16 @@ def register(r: Registry) -> Registry:
         ra = kq.to_dict()
         if kq.dat:
             ra["duong_dan"] = _rel(ctx, thu_muc / kq.tep)
+            if kq.loai == "anh":
+                # Ảnh KHÔNG đi vào kho tài liệu: không trích dẫn được, và `doc.load` sẽ từ
+                # chối nó. Chỉ thẳng sang đường đúng thay vì để tác tử thử doc.load rồi đọc
+                # một lỗi nói về OCR.
+                ra["note_vi"] = (
+                    f"Đã tải ẢNH về ({kq.so_byte / 1024:.0f} KB) tại {ra['duong_dan']}. "
+                    "Ảnh KHÔNG phải tài liệu — đừng gọi doc.load. Muốn hiện nó lên màn hình "
+                    "thì gọi **asset.image_to_c** để đổi thành mảng điểm ảnh; chip không có "
+                    "trình đọc PNG.")
+                return ra
             ra["note_vi"] = (
                 f"Đã có tệp {kq.loai} trên đĩa ({kq.so_byte / 1024:.0f} KB). Đây CHƯA là tài "
                 "liệu của dự án: gọi doc.load với đường dẫn này và khai `nguon` "

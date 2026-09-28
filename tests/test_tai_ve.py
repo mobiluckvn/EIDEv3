@@ -409,3 +409,89 @@ def test_html_van_bi_tu_choi_truoc_khi_toi_nhanh_van_ban(tmp_path):
                    mo_url=MayChuGia(HTML, content_type="text/html"))
     assert not kq.dat and kq.loai == "html"
     assert list(tmp_path.iterdir()) == []
+
+
+# ============================================ ảnh: tải được, nhưng KHÔNG phải tài liệu
+PNG = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + b"\x00" * 200)
+JPG = b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 200
+SVG = b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
+
+
+@pytest.mark.parametrize("noi_dung,duoi", [(PNG, ".png"), (JPG, ".jpg"),
+                                           (b"GIF89a" + b"\x00" * 100, ".gif"),
+                                           (b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 100,
+                                            ".webp")])
+def test_tai_duoc_anh_va_dat_dung_duoi(noi_dung, duoi, tmp_path):
+    """Tác tử tìm đúng logo trên Wikimedia rồi bị chính EIDE chặn ở bước tải — ca thật."""
+    kq = tv.tai_ve("https://upload.wikimedia.org/x/Logo", tmp_path,
+                   mo_url=MayChuGia(noi_dung, content_type="image/x"))
+    assert kq.dat and kq.loai == "anh"
+    assert kq.tep.endswith(duoi)
+    assert (tmp_path / kq.tep).read_bytes() == noi_dung
+
+
+def test_svg_la_ANH_chu_khong_phai_trang_web(tmp_path):
+    """SVG là văn bản XML; xét nhầm thành HTML thì logo bị từ chối kèm câu về liên kết PDF."""
+    kq = tv.tai_ve("https://x.com/logo.svg", tmp_path,
+                   mo_url=MayChuGia(SVG, content_type="image/svg+xml"))
+    assert kq.dat and kq.loai == "anh" and kq.tep.endswith(".svg")
+
+
+def test_anh_giu_ten_nguoi_dat_nhung_them_duoi_dung(tmp_path):
+    kq = tv.tai_ve("https://x.com/tai-ve?id=9", tmp_path, ten_tep="logo_ptit",
+                   mo_url=MayChuGia(PNG))
+    assert kq.dat and kq.tep == "logo_ptit.png"
+
+
+def test_html_van_khong_bi_nham_thanh_anh(tmp_path):
+    kq = tv.tai_ve("https://x.com/a", tmp_path, mo_url=MayChuGia(HTML, content_type="text/html"))
+    assert kq.loai == "html" and not kq.dat
+
+
+# ============================================ Wikimedia: backend cho thứ không phải chip
+def test_wikimedia_uu_tien_ANH_khi_truy_van_noi_ve_logo(monkeypatch):
+    import json as _json
+
+    from eide.knowledge import tim_kiem as tk
+
+    tra = {"query": {"pages": {
+        "1": {"title": "File:Bao cao.pdf",
+              "imageinfo": [{"url": "https://u/x.pdf", "mime": "application/pdf",
+                             "width": 1275, "height": 1650}]},
+        "2": {"title": "File:Logo PTIT University.png",
+              "imageinfo": [{"url": "https://u/Logo_PTIT_University.png?utm_source=x",
+                             "mime": "image/png", "width": 4251, "height": 4251}]}}}}
+
+    class R(io.BytesIO):
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    import urllib.request
+    that = urllib.request.urlopen
+    urllib.request.urlopen = lambda req, timeout=0: R(_json.dumps(tra).encode())
+    try:
+        kq = tk.tim_wikimedia("logo PTIT")
+    finally:
+        urllib.request.urlopen = that
+    assert kq.dat and kq.nguon_tim == "wikimedia"
+    assert kq.ung_vien[0].tieu_de == "Logo PTIT University.png"   # ảnh xếp trên PDF
+    assert "?" not in kq.ung_vien[0].url                         # bỏ tham số theo dõi
+    assert any("ben_thu_ba" in g for g in kq.ghi_chu)
+    assert any("giấy phép" in g for g in kq.ghi_chu)
+
+
+def test_wikimedia_khong_bi_nhan_la_nguon_hang():
+    from eide.knowledge.tim_kiem import UngVien
+
+    u = UngVien(url="https://upload.wikimedia.org/x.png", tieu_de="Logo")
+    assert u.nha_san_xuat is False
+
+
+def test_user_agent_chi_ascii():
+    """urllib mã hoá header bằng latin-1; một chữ tiếng Việt có dấu làm cả lời gọi nổ."""
+    import pathlib as _pl
+
+    chu = _pl.Path("src/eide/knowledge/tim_kiem.py").read_text("utf-8")
+    for dong in chu.splitlines():
+        if "User-Agent" in dong and ":" in dong:
+            dong.encode("latin-1")          # nổ ở đây nghĩa là lỗi đã quay lại

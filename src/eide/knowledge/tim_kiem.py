@@ -437,14 +437,99 @@ def tim_github(truy_van: str, so_luong: int = 8, *, cache: Path | None = None,
     return kq
 
 
+# ============================================================================ Wikimedia
+# Từ khoá báo rằng người dùng đang tìm MỘT TẤM ẢNH, không phải một tài liệu.
+_TU_ANH = ("logo", "ảnh", "anh", "hình", "hinh", "image", "icon", "biểu trưng", "bieu trung")
+
+_WM_API = "https://commons.wikimedia.org/w/api.php"
+
+
+def tim_wikimedia(truy_van: str, so_luong: int = 8, *, timeout: float = 25.0) -> KetQuaTim:
+    """Tìm TỆP trên Wikimedia Commons — dùng cho thứ không phải tài liệu chip.
+
+    Vì sao cần backend này: bảng `TO_CHUC_HANG` chỉ biết tìm trong GitHub của các hãng chip.
+    Đo trên bo STM32F469 ngày 28/09/2026, tác tử được giao việc tìm **logo của trường PTIT**
+    và nhận về `E3001` như thể mất mạng — trong khi máy vẫn vào mạng bình thường, chỉ là EIDE
+    không có đường nào tìm một thứ không phải chip.
+
+    Commons có API mở, không anti-bot, và nội dung có giấy phép rõ ràng. Nhưng nó **không
+    phải nguồn của hãng**: mọi thứ lấy từ đây ở tầng `ben_thu_ba`, và giấy phép từng tệp là
+    việc người dùng phải xem — nói ra cả hai điều đó trong `ghi_chu`.
+    """
+    kq = KetQuaTim(truy_van=truy_van)
+    import urllib.parse
+    import urllib.request
+
+    q = urllib.parse.urlencode({
+        "action": "query", "format": "json", "generator": "search",
+        "gsrsearch": truy_van, "gsrnamespace": "6", "gsrlimit": str(max(so_luong * 3, 12)),
+        "prop": "imageinfo", "iiprop": "url|size|mime|extmetadata"})
+    try:
+        req = urllib.request.Request(f"{_WM_API}?{q}", headers={
+            # CHỈ ASCII: urllib mã hoá header bằng latin-1, nên một chữ tiếng Việt có dấu
+            # trong User-Agent làm cả lời gọi nổ bằng UnicodeEncodeError — một lỗi trông
+            # như "không gọi được API" trong khi mạng hoàn toàn bình thường.
+            "User-Agent": "EIDE/3.0 (embedded IDE research project)"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+            d = json.loads(r.read().decode("utf-8"))
+    except Exception as e:                                    # noqa: BLE001
+        kq.vi_sao_khong_dat = f"Không gọi được API Wikimedia: {type(e).__name__}: {e}"
+        return kq
+
+    trang = ((d.get("query") or {}).get("pages") or {})
+    if not trang:
+        kq.vi_sao_khong_dat = f"Wikimedia Commons không có tệp nào khớp “{truy_van}”."
+        return kq
+
+    muon_anh = any(t in truy_van.lower() for t in _TU_ANH)
+    tu = _tu_khoa(truy_van)
+    for p in trang.values():
+        ii = (p.get("imageinfo") or [{}])[0]
+        url = str(ii.get("url") or "")
+        if not url:
+            continue
+        # Bỏ tham số theo dõi mà API gắn vào — tải tệp không cần chúng.
+        url = url.split("?", 1)[0]
+        mime = str(ii.get("mime") or "")
+        tieu_de = str(p.get("title") or "").removeprefix("File:")
+        diem = sum(20.0 for t in tu if t in tieu_de.lower())
+        if muon_anh:
+            # Truy vấn có chữ "logo"/"ảnh" mà kết quả là PDF thì gần như chắc chắn không phải
+            # thứ người ta muốn — đẩy xuống cuối thay vì loại hẳn.
+            diem += 100.0 if mime.startswith("image/") else -50.0
+        kq.ung_vien.append(UngVien(
+            url=url, tieu_de=tieu_de, nha_san_xuat=False,
+            trich=f"Wikimedia Commons · {mime} · {ii.get('width')}×{ii.get('height')}",
+            diem=diem))
+
+    kq.ung_vien.sort(key=lambda x: (-x.diem, x.url))
+    kq.ung_vien = kq.ung_vien[:so_luong]
+    kq.nguon_tim = "wikimedia"
+    kq.dat = bool(kq.ung_vien)
+    if kq.dat:
+        kq.ghi_chu.append(
+            "Nguồn là Wikimedia Commons, KHÔNG phải nhà sản xuất — nạp với "
+            "`nguon=\"ben_thu_ba\"`. Mỗi tệp trên Commons có giấy phép riêng; nếu dùng vào "
+            "sản phẩm thì nói cho người dùng biết để họ xem giấy phép.")
+    return kq
+
+
 # ============================================================================ điều phối
 def tim(truy_van: str, *, url_searxng: str = "", so_luong: int = 8,
         cache: Path | None = None,
         tim_github_fn: Callable[..., KetQuaTim] | None = None,
-        tim_searxng_fn: Callable[..., KetQuaTim] | None = None) -> KetQuaTim:
-    """Thử SearXNG trước (đúng thiết kế), rồi GitHub của hãng. Luôn khai nguồn đã trả lời."""
+        tim_searxng_fn: Callable[..., KetQuaTim] | None = None,
+        tim_wikimedia_fn: Callable[..., KetQuaTim] | None = None) -> KetQuaTim:
+    """SearXNG → GitHub của hãng → Wikimedia. Luôn khai nguồn nào đã trả lời.
+
+    Thứ tự theo độ gần với "tài liệu của hãng": SearXNG có thể trả về đúng trang của hãng;
+    GitHub của hãng là hiện vật hãng phát hành; Wikimedia là **bên thứ ba** và chỉ đứng cuối.
+    Một truy vấn không phải về chip (ví dụ "logo trường PTIT") sẽ rơi qua hai tầng đầu và
+    được tầng cuối trả lời — trước đây nó nhận `E3001` như thể mất mạng.
+    """
     g_sx = tim_searxng_fn or tim_searxng
     g_gh = tim_github_fn or tim_github
+    g_wm = tim_wikimedia_fn or tim_wikimedia
     ly_do: list[str] = []
 
     if url_searxng:
@@ -460,8 +545,15 @@ def tim(truy_van: str, *, url_searxng: str = "", so_luong: int = 8,
         kq.ghi_chu.insert(0, ly_do[0] + " → đã chuyển sang GitHub của hãng.")
         return kq
     ly_do.append(f"GitHub: {kq.vi_sao_khong_dat}")
+    het = kq.het_han_muc
 
-    ra = KetQuaTim(truy_van=truy_van, het_han_muc=kq.het_han_muc)
+    kq_wm = g_wm(truy_van, so_luong)
+    if kq_wm.dat:
+        kq_wm.ghi_chu.insert(0, " ".join(ly_do) + " → đã chuyển sang Wikimedia Commons.")
+        return kq_wm
+    ly_do.append(f"Wikimedia: {kq_wm.vi_sao_khong_dat}")
+
+    ra = KetQuaTim(truy_van=truy_van, het_han_muc=het)
     ra.vi_sao_khong_dat = " ".join(ly_do)
-    ra.ghi_chu = list(kq.ghi_chu)
+    ra.ghi_chu = list(kq.ghi_chu) + list(kq_wm.ghi_chu)
     return ra
