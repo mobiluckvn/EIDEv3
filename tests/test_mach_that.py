@@ -928,8 +928,35 @@ def test_doc_o_nho_ghep_cac_dong_4_tu_lai(monkeypatch):
     assert len(d["0x20000000"]) == 8
 
 
-def test_soi_chip_o_Thread_thi_KHONG_doc_khung_ngat(monkeypatch):
-    """Không ở trong ngắt thì không có khung ngoại lệ nào để đọc — đừng dựng một cái ra."""
+def test_soi_chip_o_Thread_thi_KHONG_doc_khung_ngat_ma_doc_DAU_VET(monkeypatch):
+    """Không ở trong ngắt thì không có khung ngoại lệ nào để đọc — đừng dựng một cái ra.
+
+    Nhưng vẫn còn một câu PC không trả lời được: **ai gọi tới đây**. Ở chế độ Thread thì câu
+    đó do dấu vết ngăn xếp trả lời.
+    """
+    import subprocess
+
+    lan: list[int] = []
+
+    def _run(cl, **k):
+        lan.append(1)
+        if len(lan) == 1:
+            return subprocess.CompletedProcess(
+                cl, 0, "[stm32f4x.cpu] halted due to debug-request, current mode: Thread\n"
+                       "xPSR: 0x01000000 pc: 0x08000200 msp: 0x2002ffd0\n", "")
+        return subprocess.CompletedProcess(
+            cl, 0, "0x2002ffd0: 00000000 20002a40 080006db 00000001 \n", "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+    d = MT.soi_chip()
+    assert "khung_ngat" not in d
+    assert d["dau_vet"]["dia_chi"] == [0x080006DA]
+
+
+def test_soi_chip_tat_doc_ngan_xep_thi_chi_dung_chip_MOT_lan(monkeypatch):
+    """Mỗi lần đọc ngăn xếp là một lần DỪNG thêm con chip đang chạy. Lấy tám mẫu mà dừng mười
+    sáu lần thì phép đo bắt đầu can thiệp vào chính thứ nó đang đo."""
     import subprocess
 
     lan: list[int] = []
@@ -942,8 +969,8 @@ def test_soi_chip_o_Thread_thi_KHONG_doc_khung_ngat(monkeypatch):
 
     monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
     monkeypatch.setattr(MT.subprocess, "run", _run)
-    d = MT.soi_chip()
-    assert len(lan) == 1 and "khung_ngat" not in d
+    d = MT.soi_chip(doc_ngan_xep=False)
+    assert len(lan) == 1 and "dau_vet" not in d
 
 
 def test_target_debug_NOI_lenh_gay_fault_TRUOC_ten_handler(make_agent, monkeypatch):
@@ -1113,33 +1140,62 @@ def _openocd_reg(monkeypatch, gia_tri: dict[int, int]):
     monkeypatch.setattr(MT.subprocess, "run", _run)
 
 
+# Số đo THẬT lấy từ bo ngày 28/09/2026. `DSI_WCR = 0x0A` = bit 1 (SHTDN) + bit 3 (DSIEN):
+# màn đang ở trạng thái TẮT, còn bọc DSI thì ĐANG BẬT.
 _DUONG_HONG = {0x40016818: 0xC0002221, 0x40016884: 1,     # LTDC bật, lớp 1 bật
                0x40016C04: 1,                             # host DSI bật
-               0x40017000: 0x0000000A,                    # DSIEN=0, SHTDN=1
-               0x40021C1C: 0x00000000}                    # XRES bit 7 = 0 → panel bị giữ reset
+               0x40017000: 0x0000000A,                    # SHTDN=1, DSIEN=1
+               0x40021C14: 1 << 7, 0x40021C10: 1 << 7}    # XRES cao → panel đã ra khỏi reset
+
+
+def test_dia_chi_va_bit_lay_tu_HEADER_cua_ST_khong_tu_tri_nho():
+    """Hai lỗi của chính phép đo, cả hai đều **tự chế ra bằng chứng**, bắt được ngày 28/09/2026:
+
+    * `GPIOH_ODR` viết theo trí nhớ là `0x40021C1C` — đó là `LCKR` (offset 0x1C); `ODR` ở
+      offset 0x14. Phép đo đọc nhầm thanh ghi rồi báo *"panel đang bị giữ trong reset"*.
+    * `DSIEN` để ở bit 2 — đúng là bit 3 (bit 2 là `LTDCEN`). Phép đo báo *"bọc DSI chưa
+      bật"* trong khi nó đang bật.
+
+    Một bằng chứng sai tệ hơn hẳn không có bằng chứng, vì người ta hành động theo nó: cả tôi
+    lẫn tác tử đều đã đi sửa hai chỗ không hỏng. Bộ kiểm này neo từng con số vào `stm32f469xx.h`.
+    """
+    assert MT.GPIOH_BASE == 0x40020000 + 0x1C00        # AHB1PERIPH_BASE + 0x1C00
+    assert (MT.GPIO_MODER, MT.GPIO_IDR, MT.GPIO_ODR) == (0x00, 0x10, 0x14)
+    assert MT.GPIOH_ODR == 0x40021C14                  # KHÔNG phải 0x40021C1C (= LCKR)
+    # stm32f469xx.h: COLM_Pos 0, SHTDN_Pos 1, LTDCEN_Pos 2, DSIEN_Pos 3
+    assert (MT._WCR_COLM, MT._WCR_SHTDN, MT._WCR_LTDCEN, MT._WCR_DSIEN) == (0, 1, 2, 3)
+    assert MT.DSI_GOC == 0x40016C00 and MT.LTDC_GOC == 0x40016800
 
 
 def test_doc_duong_hien_thi_chi_dung_mat_xich_bi_dut(monkeypatch):
-    """Bốn mắt xích hỏng theo bốn cách khác nhau và cho ra CÙNG MỘT màn hình đen.
+    """Sáu mắt xích hỏng theo sáu cách khác nhau và cho ra CÙNG MỘT màn hình đen.
 
-    Đo được trên bo STM32F469 khi khung ảnh đã vẽ đúng mà màn vẫn đen: `DSI_WCR = 0x0000000A`
-    (DSIEN = 0, SHTDN = 1) và `GPIOH_ODR` bit 7 = 0 (XRES tích cực thấp vẫn bị kéo xuống →
-    panel bị giữ trong reset). Hai số đó biến "lỗi ở đâu đó trong đường ra màn hình" thành hai
-    dòng sửa được.
+    Số đo thật trên bo STM32F469 khi khung ảnh đã vẽ đúng mà màn vẫn đen: `DSI_WCR = 0x0A` →
+    **SHTDN = 1** (bọc DSI đang ở trạng thái tắt hiển thị) trong khi DSIEN = 1 và XRES đã cao.
+    Đúng MỘT mắt đứt, và nó biến "lỗi ở đâu đó trong đường ra màn hình" thành một dòng.
     """
     _openocd_reg(monkeypatch, _DUONG_HONG)
     d = MT.doc_duong_hien_thi()
     assert d["dat"] and not d["thong_suot"]
-    assert d["dut_o"] == ["Bọc DSI bật (DSIEN)", "Hiển thị không bị tắt (SHTDN)",
-                          "Panel đã ra khỏi reset (XRES = PH7)"]
-    # Ba mắt đầu vẫn thông — phép đo phải nói ra điều đó, không gộp cả chuỗi thành "hỏng".
-    assert [m["thong"] for m in d["mat_xich"][:3]] == [True, True, True]
+    assert d["dut_o"] == ["Hiển thị không bị tắt (SHTDN)"]
+    # Năm mắt kia vẫn thông — phép đo phải nói ra điều đó, không gộp cả chuỗi thành "hỏng".
+    assert [m["thong"] for m in d["mat_xich"] if m["ten"] != "Hiển thị không bị tắt (SHTDN)"] \
+        == [True] * 5
     assert all(m["cach_sua"] for m in d["mat_xich"] if m["thong"] is False)
 
 
+def test_doc_duong_hien_thi_doc_ca_ODR_lan_IDR_cua_chan_XRES(monkeypatch):
+    """ODR nói chương trình MUỐN gì, IDR nói chân đang THỰC SỰ ở đâu. Với chân open-drain kéo
+    tải ngoài, hai cái lệch nhau được — và chính cái lệch đó là thông tin."""
+    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40021C14: 1 << 7, 0x40021C10: 0})
+    d = MT.doc_duong_hien_thi()
+    m = next(x for x in d["mat_xich"] if "XRES" in x["ten"])
+    assert m["thong"] is False, "IDR nói chân vẫn thấp → panel vẫn trong reset"
+    assert "0x40021C14" in m["so_do"] and "0x40021C10" in m["so_do"]
+
+
 def test_doc_duong_hien_thi_thong_suot_thi_chi_sang_den_nen(monkeypatch):
-    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40017000: 0x0000000C,
-                               0x40021C1C: 1 << 7})
+    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40017000: 0x00000008})   # SHTDN=0, DSIEN=1
     d = MT.doc_duong_hien_thi()
     assert d["thong_suot"] and d["dut_o"] == []
 
@@ -1147,7 +1203,7 @@ def test_doc_duong_hien_thi_thong_suot_thi_chi_sang_den_nen(monkeypatch):
 def test_doc_duong_hien_thi_chan_xres_la_cua_RIENG_TUNG_BO(monkeypatch):
     """Đọc nhầm chân thì dòng về panel là vô nghĩa — nên nó là tham số, và kết quả luôn khai
     mình đang đọc chân nào."""
-    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40020814: 1 << 3})
+    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40020814: 1 << 3, 0x40020810: 1 << 3})
     d = MT.doc_duong_hien_thi(chan_xres=3, odr_xres=0x40020814)
     assert d["chan_xres"] == "PH3" and "RIÊNG từng bo" in d["ghi_chu_chan"]
     assert "Panel đã ra khỏi reset (XRES = PH3)" not in d["dut_o"]
@@ -1196,7 +1252,7 @@ def test_target_screen_noi_thang_DUT_O_DAU(make_agent, monkeypatch):
     assert r.ok, getattr(r.error, "message_vi", r)
     n = r.data["note_vi"]
     assert "chương trình ĐÃ vẽ" in n and "ĐỨT Ở:" in n
-    assert "Panel đã ra khỏi reset" in n and "GPIO_PIN_SET" in n
+    assert "Hiển thị không bị tắt (SHTDN)" in n and "DSI->WCR" in n
     assert r.data["duong"]["dut_o"]
 
 
@@ -1221,6 +1277,7 @@ def test_lay_mau_pc_dem_so_dia_chi_KHONG_du_phai_do_KHOANG_TRAI(monkeypatch):
     monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
     monkeypatch.setattr(MT.subprocess, "run", _run)
     d = MT.lay_mau_pc(8)
+    assert len(dia) == 8, "lấy mẫu KHÔNG được tốn thêm lần dừng chip nào cho ngăn xếp"
     assert d["dat"] and d["so_dia_chi_khac_nhau"] == 5
     assert d["trai_byte"] == 42
     assert "QUANH QUẨN" in d["ket_luan"] and "reset lại" in d["ket_luan"]
@@ -1327,4 +1384,55 @@ def test_target_debug_khong_lay_mau_thi_khong_ton_them_lan_dung_chip(make_agent,
     monkeypatch.setattr(MT.subprocess, "run", _run)
     r = agent.registry.run("target.debug", {}, _ctx(agent))
     assert r.ok and r.data["nhieu_mau"] == {} and r.data["nguyen_nhan_reset"] == {}
-    assert len(dem) == 1
+    # Hai lần: một lần dừng+đọc thanh ghi, một lần đọc ngăn xếp. KHÔNG có lần nào cho lấy mẫu.
+    assert len(dem) == 2
+
+
+# ============================== hai vòng while(1) giống hệt nhau nếu chỉ nhìn PC
+def test_dau_vet_ngan_xep_phan_biet_duoc_hai_vong_while(monkeypatch):
+    """Đo được trên bo STM32F469: chip dừng trong `HAL_Delay`. Nhưng `main.c` có **hai** vòng
+    `while(1)` gọi `HAL_Delay` — vòng chính ở cuối, và vòng bắt lỗi ngay sau
+    `if (BSP_LCD_Init() != LCD_OK)`. Nghĩa của chúng ngược hẳn nhau: "chạy xong xuôi" và
+    "màn hình không khởi tạo được". Chỉ nhìn PC thì chúng giống hệt nhau.
+
+    LR không trả lời được: `HAL_Delay` gọi tiếp `HAL_GetTick`, nên LR đã bị ghi đè bằng một
+    địa chỉ bên trong chính `HAL_Delay`.
+    """
+    tu = ["00000000", "20002a40", "080006db", "00000001", "ffffffff", "080001a1"]
+    d = MT.doc_dau_vet_ngan_xep(0x2004FEF8, tu)
+    assert d["doc_duoc"] and d["la_phong_doan"]
+    assert d["dia_chi"] == [0x080006DA, 0x080001A0]     # bit Thumb đã bị bỏ
+    assert d["khung"][0]["o_lech"] == 8
+    assert d["khung"][0]["tu_dia_chi"] == "0x2004FF00"
+
+
+def test_dau_vet_ngan_xep_bo_qua_gia_tri_khong_phai_dia_chi_tro_ve():
+    """Lọc bằng hai điều kiện độc lập: nằm trong vùng Flash, và có bit Thumb. Không có chúng
+    thì mọi biến cục bộ đều thành một "khung" và dấu vết chỉ còn là nhiễu."""
+    tu = ["20000010",          # RAM — không phải mã
+          "08000100",          # trong Flash nhưng bit 0 = 0 → không phải địa chỉ trở về
+          "0a000001",          # ngoài vùng Flash
+          "deadbeef"]
+    assert MT.doc_dau_vet_ngan_xep(0x20000000, tu)["doc_duoc"] is False
+
+
+def test_dau_vet_ngan_xep_gop_dia_chi_lap_lien_nhau():
+    tu = ["080006db", "080006db", "080006db", "080001a1"]
+    d = MT.doc_dau_vet_ngan_xep(0x20000000, tu)
+    assert d["dia_chi"] == [0x080006DA, 0x080001A0]
+
+
+def test_dau_vet_ngan_xep_NOI_RO_no_la_phong_doan():
+    """Nó không đọc bảng unwind — nó nhặt những từ trông giống địa chỉ trở về. Vài cái là rác
+    còn sót từ các lần gọi trước. Một dấu vết có lẫn rác vẫn hơn không có gì, MIỄN LÀ không ai
+    trình bày nó như sự thật."""
+    d = MT.doc_dau_vet_ngan_xep(0x20000000, ["080006db"])
+    assert d["la_phong_doan"] and "PHỎNG ĐOÁN" in d["ghi_chu"]
+    assert "lẫn địa chỉ còn sót" in d["ghi_chu"]
+
+
+def test_dau_vet_ngan_xep_khong_thay_gi_thi_noi_ra(monkeypatch):
+    d = MT.doc_dau_vet_ngan_xep(0x20000000, [])
+    assert not d["doc_duoc"] and "chưa đọc được từ nào" in d["vi_sao"]
+    d = MT.doc_dau_vet_ngan_xep(0x20000000, ["00000000"] * 8)
+    assert not d["doc_duoc"] and "không từ nào" in d["vi_sao"]

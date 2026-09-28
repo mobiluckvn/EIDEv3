@@ -415,6 +415,8 @@ def dang_ky(r: Registry) -> None:
         kn = d.get("khung_ngat") or {}
         if kn.get("doc_duoc"):
             xin += [kn["pc_fault"], kn["lr_fault"] & ~1]
+        dv = d.get("dau_vet") or {}
+        xin += list(dv.get("dia_chi") or [])[:6]
         ten = MT.giai_ma_dia_chi(elf, xin)
         d["ky_hieu"] = ten.get("ky_hieu") or {}
         d["ky_hieu_vi_sao_khong_co"] = ten.get("vi_sao_khong_dat", "")
@@ -484,6 +486,20 @@ def dang_ky(r: Registry) -> None:
         # Tên hàm, kèm ĐÚNG mức tin được. Ba trạng thái, không gộp: tin được / biết là sai /
         # chưa đo được. Gộp hai cái sau thành "không tin" thì tác tử bỏ mất một manh mối thật;
         # gộp vào "tin được" thì nó đi sửa hàm của một bản firmware không còn trên chip.
+        # Dấu vết ngăn xếp: nói NGAY SAU khung ngoại lệ, vì khi chip không fault thì đây là
+        # thứ duy nhất trả lời được "ai gọi tới chỗ này".
+        cau_vet = ""
+        if dv.get("doc_duoc"):
+            ten_vet = []
+            for k in dv["khung"]:
+                v = (d["ky_hieu"] or {}).get(k["dia_chi"].lower()) or {}
+                ten_vet.append(k["dia_chi"] + (f" = {v['ham']}" if v.get("ham") else "")
+                               + (f" ({v['nguon']})" if v.get("nguon") else ""))
+            cau_vet = ("**Dấu vết ngăn xếp** (gần đỉnh trước): " + "; ".join(ten_vet) + ". "
+                       + dv["ghi_chu"] + " ")
+        elif dv:
+            cau_vet = f"Chưa dựng được dấu vết ngăn xếp: {dv.get('vi_sao', '?')} "
+
         cau_mau = ""
         nm = d.get("nhieu_mau") or {}
         if nm.get("dat"):
@@ -530,7 +546,7 @@ def dang_ky(r: Registry) -> None:
             "dang_ket_trong_ngat": trong_ngat,
             "note_vi": (
                 f"Chip đang ở chế độ **{d['che_do']}**, PC = {d['pc'] or '?'}. "
-                + cau_loi + cau_khung + cau_mau + cau_ten
+                + cau_loi + cau_khung + cau_vet + cau_mau + cau_ten
                 + ("ĐÂY LÀ MANH MỐI CHÍNH: “Handler …” nghĩa là CPU đang nằm trong một trình "
                    "phục vụ ngắt. Nếu nó ở đó mãi thì chương trình chính đã chết ở đúng chỗ "
                    "ấy — hay gặp nhất là một handler để mặc định thành `while(1){}` trong "

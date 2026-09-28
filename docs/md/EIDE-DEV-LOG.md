@@ -2948,8 +2948,61 @@ tiếp, nên sổ cái thành hai dãy số chồng nhau và chuỗi hash đứt
 Bộ kiểm cho chỗ này chạy **ba tiến trình thật**, mỗi tiến trình ghi 40 sự kiện, rồi đòi
 `seq == 1..120` và `verify()` xanh. Phá có chủ ý (bỏ đọc lại đuôi) → đỏ ở đúng bản ghi thứ ba.
 
+#### Lần 7 — phép đo tự chế ra bằng chứng, hai lần trong một hàm
+
+Ba "mắt đứt" ở lần 5 được kiểm lại, và **hai trong ba là lỗi của chính phép đo**:
+
+| mắt | báo cáo sai | sự thật | vì sao sai |
+|---|---|---|---|
+| DSIEN | ✗ chưa bật | **✓ đang bật** | để ở **bit 2**; `stm32f469xx.h` nói `DSI_WCR_DSIEN_Pos = 3` (bit 2 là `LTDCEN`) |
+| XRES panel | ✗ bị giữ reset | **✓ đã ra khỏi reset** | đọc `0x40021C1C` = **`LCKR`**; `GPIOH_ODR` ở offset `0x14` → `0x40021C14` |
+| SHTDN | ✗ đang tắt | **✗ đúng là đang tắt** | — |
+
+Cả hai đều là con số **viết theo trí nhớ** thay vì tra từ header của ST. Và hậu quả không
+dừng ở một dòng báo cáo sai: tác tử đã đi sửa hai chỗ không hỏng, và tôi đã nói với anh Công
+rằng chuỗi đứt ở ba chỗ. **Một bằng chứng sai tệ hơn hẳn không có bằng chứng, vì người ta hành
+động theo nó.**
+
+Sửa: mọi hằng số neo vào `stm32f469xx.h` và có bộ kiểm so thẳng từng giá trị
+(`GPIOH_ODR == 0x40021C14`, `(COLM, SHTDN, LTDCEN, DSIEN) == (0, 1, 2, 3)`). Đọc thêm **IDR**
+bên cạnh ODR: ODR nói chương trình *muốn* gì, IDR nói chân *đang thực sự* ở đâu — với chân
+open-drain kéo tải ngoài, hai cái lệch nhau được, và chính cái lệch đó là thông tin.
+
+Còn lại đúng một mắt, và nó thật: `DSI_WCR = 0x0A` → **SHTDN = 1**, bọc DSI đang ở trạng thái
+tắt hiển thị. Đáng chú ý: mã của tác tử **đã** xoá bit này ở ba chỗ (`DSI->WCR &= ~DSI_WCR_SHTDN`)
+mà đọc lại lúc chạy vẫn thấy 1 — tức có ai đó bật lại nó về sau. Đó là việc tác tử đang truy.
+
+#### Lần 8 — hai vòng `while(1)` giống hệt nhau nếu chỉ nhìn PC
+
+Nạp lại bản khớp rồi lấy mẫu lại: PC không ở `HAL_InitTick` như bản trước báo (tên đó lấy từ
+ELF của **bản khác** — phanh `khop_tai_dia_chi` đã cảnh báo đúng) mà ở `HAL_Delay`/`HAL_GetTick`.
+
+Nhưng `main.c` có **hai** vòng `while(1)` gọi `HAL_Delay`, nghĩa ngược hẳn nhau:
+
+```c
+if (BSP_LCD_Init() != LCD_OK) { while (1) { HAL_Delay(100); } }   /* màn hình hỏng */
+...
+while (1) { HAL_Delay(1000); }                                    /* chạy xong xuôi */
+```
+
+PC không phân biệt được. LR cũng không: `HAL_Delay` gọi tiếp `HAL_GetTick`, nên LR đã bị ghi
+đè bằng một địa chỉ bên trong chính `HAL_Delay`.
+
+→ **`doc_dau_vet_ngan_xep()`**: quét đỉnh ngăn xếp, nhặt những từ vừa nằm trong vùng Flash vừa
+có bit 0 = 1 (bit Thumb của địa chỉ trở về). Đo trên bo: **`0x080006DA` = `main` tại
+`main.c:79`** — đúng vòng `while(1)` cuối chương trình. Tức là chương trình **đã chạy hết**:
+LCD init trả về `LCD_OK`, nó vẽ xong logo và bốn dòng chữ, rồi ngồi ở vòng cuối.
+
+Hàm nói thẳng rằng đây là **phỏng đoán**, không phải chuỗi gọi dựng từ bảng unwind: vài địa
+chỉ trong đó là rác còn sót từ các lần gọi trước. Một dấu vết có lẫn rác vẫn hơn hẳn không có
+gì — miễn là không ai trình bày nó như sự thật.
+
+Và một chi tiết về giá của phép đo: đọc ngăn xếp tốn **thêm một lần dừng chip**, vì địa chỉ MSP
+chỉ biết được *sau* khi dừng. `lay_mau_pc()` vì thế tắt nó đi (`doc_ngan_xep=False`) — lấy tám
+mẫu mà dừng mười sáu lần thì phép đo bắt đầu can thiệp vào chính thứ nó đang đo.
+
 ### Còn lại
 
-- Màn hình: chương trình chưa chạy tới chỗ bật ba mắt cuối; tác tử đang sửa. Phần vẽ đã chứng minh là đúng bằng số.
+- Màn hình: còn đúng một mắt đứt (`SHTDN = 1`); tác tử đang truy xem ai bật lại bit đó. Phần vẽ đã chứng minh là đúng bằng số.
 - Chữ vỡ (dựng phông) và hộp nền đen của logo (alpha) — hai lỗi do `target.screen` lộ ra.
 - `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.

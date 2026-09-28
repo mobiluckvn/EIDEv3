@@ -658,8 +658,92 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
         nk.anh(g, "lay-mau-pc")
 
+    # ------------------------------------------- 26. chip đang chạy BẢN KHÁC bản vừa dịch
+    #
+    # Phanh `khop_tai_dia_chi` bắt được: 32 byte tại từng địa chỉ PC lấy mẫu đều KHÁC tệp vừa
+    # dịch. Nghĩa là mọi tên hàm giải ra từ ELF đều là tên của một bản khác — kể cả cái tên
+    # `HAL_InitTick` mà cả tác tử lẫn tôi vừa dựa vào.
+    #
+    # Khoảng trải 40 byte vẫn đúng: nó đọc từ chip. Tên hàm thì không. Phân biệt hai thứ đó
+    # là toàn bộ giá trị của cái phanh này.
+    if lam(26):
+        nk.buoc("Chip đang chạy bản khác bản vừa dịch — tên hàm chưa kiểm chứng được")
+        loi, cc = hoi(g, nk, du_an,
+                      "Khoan đã, mình đo thêm một thứ trước khi bạn sửa.\n\n"
+                      "`target.debug` có một phép kiểm: nó đọc ngược 32 byte tại đúng địa chỉ "
+                      "PC trên chip rồi so với tệp bạn vừa dịch. Kết quả: **KHÁC**, ở cả ba "
+                      "địa chỉ lấy mẫu. Nghĩa là con chip đang chạy **một bản khác** với bản "
+                      "trong `.eide/build/`, và mọi tên hàm giải ra từ ELF — kể cả "
+                      "`HAL_InitTick` — là tên của bản kia, không phải của mã đang chạy.\n\n"
+                      "Khoảng trải 40 byte thì vẫn đúng, vì nó đọc thẳng từ chip. Tên hàm thì "
+                      "chưa.\n\n"
+                      "Nên: nạp lại bản hiện tại cho khớp, rồi gọi lại `target.debug` với "
+                      "`lay_mau: 8` và ĐỌC câu về việc mã trên chip có khớp tệp vừa dịch "
+                      "không. Khi nó nói khớp thì tên hàm mới dùng được — lúc đó hẵng kết "
+                      "luận chương trình mắc ở đâu, rồi sửa.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_ten_ham_tin_duoc(nk, ctx)
+        _kiem_lay_mau(nk, ctx, cc)
+        _kiem_duong_hien_thi(nk, ctx)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "ban-khac")
+
+    # ------------------------------------------- 27. đính chính: hai mắt "đứt" là lỗi phép đo
+    #
+    # `doc_duong_hien_thi` bản trước đọc **sai địa chỉ** (`GPIOH_ODR` viết theo trí nhớ là
+    # 0x40021C1C — đó là `LCKR`; `ODR` ở 0x40021C14) và **sai vị trí bit** (`DSIEN` để ở bit 2,
+    # đúng là bit 3). Nó báo hai mắt đứt mà thực ra đang thông. Một bằng chứng sai tệ hơn hẳn
+    # không có bằng chứng, vì người ta hành động theo nó — và tác tử đã đi sửa hai chỗ không
+    # hỏng thật.
+    #
+    # Sửa xong thì còn đúng MỘT mắt đứt, và nó là mắt thật.
+    if lam(27):
+        nk.buoc("Đính chính: hai trong ba “mắt đứt” là lỗi của phép đo, không phải của mã")
+        loi, cc = hoi(g, nk, du_an,
+                      "Mình phải đính chính, và lỗi là của EIDE chứ không phải của bạn.\n\n"
+                      "Phép đo “đi dọc chuỗi hiển thị” của mình đọc **sai địa chỉ** thanh ghi "
+                      "GPIOH_ODR (nó đọc nhầm sang LCKR) và **sai vị trí bit** của DSIEN "
+                      "(để bit 2, đúng là bit 3). Nên nó báo hai mắt đứt mà thực ra đang "
+                      "thông. Mình đã sửa và neo từng con số vào `stm32f469xx.h`.\n\n"
+                      "Đo lại bằng bản đã sửa thì còn **đúng một mắt đứt**, và nó là thật. "
+                      "Bạn gọi `target.screen` để tự thấy.\n\n"
+                      "Thêm một thứ nữa mình vừa thêm: ở chế độ Thread, `target.debug` giờ "
+                      "dựng **dấu vết ngăn xếp** — nó trả lời được câu “ai gọi tới chỗ này”, "
+                      "mà PC thì không. Cái đó hữu ích ở đây vì `main.c` có hai vòng "
+                      "`while(1)` gọi `HAL_Delay` với nghĩa ngược hẳn nhau.\n\n"
+                      "Đọc số, tìm ra vì sao mắt còn lại vẫn đứt dù mã của bạn đã xử lý nó, "
+                      "rồi sửa. Dịch lại, nạp, đo lại.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_duong_hien_thi(nk, ctx)
+        _kiem_nhin_khung_anh(nk, ctx, cc)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "dinh-chinh-phep-do")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_ten_ham_tin_duoc(nk: Any, ctx: Any) -> None:
+    """Tên hàm giải từ ELF có nói về mã ĐANG CHẠY không — ba trạng thái, không gộp.
+
+    Đây là phép kiểm canh chính cái bẫy vừa sập: `addr2line` luôn trả về một cái tên nghe
+    thuyết phục, và không có gì trong cái tên ấy cho biết nó thuộc bản dịch nào.
+    """
+    d = (ctx.store.get("target:debug") or {}).get("canonical") or {}
+    tin = d.get("ky_hieu_tin_duoc")
+    dc = d.get("doi_chieu_tai_pc") or {}
+    nk.ket(tin is True,
+           "Tên hàm giải từ ELF nói về mã ĐANG CHẠY (chip khớp tệp vừa dịch tại PC)",
+           {True: f"khớp {dc.get('so_byte', '?')} byte tại {dc.get('dia_chi', '?')}",
+            False: f"KHÔNG khớp: {dc.get('vi_sao', '')}",
+            None: f"chưa đo được: {dc.get('vi_sao') or 'chưa gọi target.debug ở lượt này'}",
+            }[tin])
 
 
 def _kiem_lay_mau(nk: Any, ctx: Any, cc: list[dict]) -> None:
