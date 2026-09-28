@@ -56,10 +56,19 @@ def dung_khoi_resume(*, ledger: Any, store: Any, history: Any,
     cho = [e for e in su_kien if e.kind == "gate" and e.data.get("state") == "open"]
     da_tra = {e.data.get("gate_id") for e in su_kien
               if e.kind == "gate" and e.data.get("state") in ("approved", "rejected")}
+    # Thẻ mở mà chưa ai trả lời: nói nó HẾT HIỆU LỰC, đừng nói "đang chờ".
+    #
+    # Khối này chỉ được dựng khi mở lại dự án, tức là tiến trình giữ lời gọi đang treo đã
+    # chết. Nói "đang chờ người trả lời" khiến tác tử ngồi đợi một câu trả lời không bao giờ
+    # tới, và tệ hơn: khiến nó bảo người dùng đi bấm một cái nút đã không còn tác dụng. Câu
+    # đúng là nói cho nó biết phải hỏi lại.
     for g in cho:
         if g.data.get("gate_id") not in da_tra:
-            dang_do.append(f"- Thẻ cổng {g.data.get('gate')} "
-                           f"({g.data.get('gate_id')}) đang chờ người trả lời.")
+            dang_do.append(
+                f"- Thẻ cổng {g.data.get('gate')} ({g.data.get('gate_id')}) treo từ phiên "
+                "trước và ĐÃ HẾT HIỆU LỰC — lời gọi nó chặn không còn tồn tại. Đừng chờ, "
+                "đừng bảo người dùng bấm lại vào nó. Nếu việc ấy vẫn cần thì hỏi lại người "
+                "dùng rồi dựng thẻ mới.")
 
     if history is not None:
         chua_nhac = history.log.human_unacknowledged()

@@ -357,6 +357,15 @@ final class UITestChannel {
             // màn hình — người dùng mất luôn nút "Vì sao?" và không có cách nào cuộn tới.
             "rong_khoi": rongKhoi(), "nhan": nhan,
             "so_dong_hoi_thoai": s.transcript.count,
+            // Số thẻ CÒN NÚT bấm được trong dòng hội thoại — đúng thứ `ConsoleView` vẽ
+            // (`line.card != nil && !card.resolved`).
+            //
+            // Phải đếm riêng, vì `the_dang_cho` KHÔNG nói được điều này: `Card` là struct,
+            // nên dòng hội thoại giữ một bản sao riêng và `cards[i].resolved = true` không
+            // đụng tới nó. Đo được 28/09/2026: `the_dang_cho` báo 0 trong khi ảnh chụp cho
+            // thấy thẻ vẫn còn hai nút Duyệt/Từ chối. Số đo đúng, câu hỏi sai — và chỉ tấm
+            // ảnh mới bắt được.
+            "so_the_con_nut": s.transcript.filter { ($0.card.map { !$0.resolved }) == true }.count,
             // Đếm riêng dòng của TÁC TỬ: bộ đo cần biết lượt vừa rồi nó có nói gì không.
             // Thiếu con số này, một lượt mà tác tử chỉ gọi công cụ rồi im lặng sẽ bị chép
             // lại bằng lời của lượt TRƯỚC — nhật ký thành sai mà trông vẫn hợp lý.

@@ -191,6 +191,18 @@ final class AppState: ObservableObject {
         case "card.resolve", "card.expire":
             let id = c.params["card_id"]?.stringValue ?? ""
             if let i = cards.firstIndex(where: { $0.id == id }) { cards[i].resolved = true }
+            // `Card` là struct — KIỂU TRỊ. Dòng hội thoại giữ một BẢN SAO của nó
+            // (`transcript[i].card`), nên sửa `cards[i]` ở trên không đụng tới bản sao ấy, và
+            // `ConsoleView` vẽ nút Duyệt/Từ chối dựa vào chính bản sao ấy.
+            //
+            // Hậu quả, thấy bằng ảnh chụp chứ không thấy bằng số đo: sau khi người đã trả
+            // lời (hoặc thẻ đã hết hạn), hai cái nút VẪN nằm trong dòng hội thoại và VẪN bấm
+            // được, trong khi `theDangCho` báo 0. Bản đo của tôi hỏi `theDangCho` nên nó xanh
+            // — số đo đúng câu hỏi sai. Một cái nút bấm được mà không làm gì là thứ tệ nhất
+            // trong ba khả năng: người tưởng mình vừa quyết định điều gì đó.
+            for i in transcript.indices where transcript[i].card?.id == id {
+                transcript[i].card?.resolved = true
+            }
 
         case "surface.set":
             guard let name = c.params["surface"]?.stringValue,

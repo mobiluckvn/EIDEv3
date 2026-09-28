@@ -103,6 +103,9 @@ class Core:
         self._sink = on_emit or (lambda c: None)
         # Vẽ lại toàn bộ bề mặt. May–may, khong phai y chi cua nguoi (I1/I4).
         self._sync = on_sync
+        # Đã dựng lại hội thoại cũ cho giao diện chưa. Một lõi phục vụ đúng một lần mở app,
+        # nên cờ này sống đúng bằng cái Console nó đang nói chuyện cùng.
+        self._da_phat_lai = False
 
     # ------------------------------------------------------------------ gui ra
     def emit(self, cmd: UICommand, *, phat_lai: bool = False) -> None:
@@ -148,9 +151,31 @@ class Core:
         if self._sync is None:
             return {"painted": False,
                     "reason_vi": "Lõi chạy không kèm bộ vẽ bề mặt."}
-        n = self._phat_lai_transcript()
+        # Phát lại hội thoại đúng MỘT lần cho mỗi lõi. `ui.sync` còn được gọi khi người bấm
+        # "Vẽ lại" (Cmd-R) và khi giao diện mất đồng bộ — mà cả hai lúc ấy Console đang có
+        # sẵn các dòng cũ trong bộ nhớ của app. Đo được 28/09/2026: mỗi lần Cmd-R cộng thêm
+        # 15 dòng và 2 thẻ, tuyến tính, không có ai gộp trùng (15 → 30 → 45 → 60).
+        n = 0
+        if not self._da_phat_lai:
+            n = self._phat_lai_transcript()
+            self._da_phat_lai = True
         self._sync(self.emit)
         return {"painted": True, "dong_transcript": n, "seq_out": self.session.seq_out}
+
+    def _ket_cuc_the_cong(self) -> dict[str, dict[str, Any]]:
+        """Thẻ cổng nào đã được trả lời, và trả lời ra sao — đọc từ sổ cái.
+
+        Cần cho lúc phát lại: sổ cái BIẾT `gate-0001` đã được duyệt, nên dựng lại nó thành
+        một câu hỏi đang chờ là nói sai về chính lịch sử mà nó đang chiếu ra.
+        """
+        ra: dict[str, dict[str, Any]] = {}
+        for ev in self.ledger.read():
+            if ev.kind != "gate":
+                continue
+            gid = ev.data.get("gate_id")
+            if gid:
+                ra[gid] = dict(ev.data)
+        return ra
 
     def _phat_lai_transcript(self, gioi_han: int = 60) -> int:
         """Dung lai dong hoi thoai tu so cai khi mo lai du an.
@@ -165,18 +190,61 @@ class Core:
                 if ev.kind == "ui_command" and ev.data.get("method") == "console.post"]
         if not dong:
             return 0
+        from .uicommand import card_expire, card_resolve
+
+        ket = self._ket_cuc_the_cong()
         cat = len(dong) > gioi_han
         for ev in dong[-gioi_han:]:
             p = ev.data.get("params") or {}
             if p.get("_truncated"):
                 continue
+            the = p.get("card")
             self.emit(console_post(p.get("text", ""), role=p.get("role", "agent"),
-                                   card=p.get("card")), phat_lai=True)
-        if cat:
-            self.emit(notice(
-                f"Đã dựng lại {gioi_han} dòng gần nhất của phiên trước "
-                f"(tổng {len(dong)} dòng). Mở tab Nhật ký để xem đầy đủ.",
-                level="info"), phat_lai=True)
+                                   card=the), phat_lai=True)
+            # Dòng chữ thì phát lại được; CÁI NÚT thì không.
+            #
+            # Thứ trả lời được một thẻ — lời gọi công cụ đang treo, ngữ cảnh lượt chạy — nằm
+            # trong bộ nhớ của tiến trình đã chết (`pending_gates`). Dựng lại cái thẻ mà
+            # không dựng lại được thứ ấy thì người bấm Duyệt sẽ nhận `E_GATE_STALE`: một cái
+            # nút bấm được mà không làm gì, tệ hơn hẳn không có nút. Đo được 28/09/2026:
+            # mở lại dự án thì HAI thẻ đã duyệt xong hiện ra như đang chờ, bấm cả hai đều
+            # trượt.
+            #
+            # Nên mỗi thẻ phát lại phải đóng ngay, theo một trong hai lối:
+            #   · đã có quyết định trong sổ cái → đóng, và nói người đã chọn gì;
+            #   · chưa ai trả lời → HẾT HẠN, kèm lý do, vì nó không còn trả lời được nữa.
+            if not isinstance(the, dict):
+                continue
+            cid = the.get("card_id") or the.get("gate_id")
+            if not cid:
+                continue
+            q = ket.get(the.get("gate_id") or "")
+            if q and q.get("state") in ("approved", "rejected"):
+                self.emit(card_resolve(cid, by="phiên trước",
+                                       choice="Duyệt" if q["state"] == "approved"
+                                              else "Từ chối"), phat_lai=True)
+            else:
+                self.emit(card_expire(
+                    cid, why="phiên trước kết thúc trước khi thẻ này được trả lời, nên nó "
+                             "không còn hiệu lực. Nếu vẫn cần việc ấy thì nhờ lại — tác tử "
+                             "sẽ dựng một thẻ mới."), phat_lai=True)
+        # Nói thẳng hai điều mà cái Console vừa dựng lại KHÔNG tự nói được.
+        #
+        # Người nhìn thấy nguyên cuộc trò chuyện hôm qua nằm đó thì mặc định tác tử cũng đang
+        # thấy nó — hai thứ ấy là hai kho khác nhau. Tác tử bắt đầu mỗi phiên với ngữ cảnh
+        # RỖNG (`loop.py`: "không tự nạp lại transcript cũ"); nó dựng lại hiểu biết từ sổ
+        # cái, kho hiện vật và EIDE.md. Điều gì chỉ nói bằng lời mà không ai ghi xuống thì
+        # nằm trong sổ cái dưới dạng lời người nói — tra được, nhưng phải tra.
+        #
+        # Không có dòng này, cái im lặng ấy đọc như "tác tử vẫn nhớ mọi thứ", và người dùng
+        # phát hiện ra điều ngược lại vào đúng lúc đắt nhất.
+        self.emit(notice(
+            (f"Đã dựng lại {gioi_han} dòng gần nhất của phiên trước (tổng {len(dong)} dòng). "
+             if cat else f"Đã dựng lại {min(len(dong), gioi_han)} dòng của phiên trước. ")
+            + "Đây là hình chiếu của sổ cái — tác tử KHÔNG mang theo trí nhớ hội thoại qua "
+              "lần mở này. Nó làm việc lại từ sổ cái, kho hiện vật và EIDE.md; thẻ cổng cũ "
+              "đã đóng. Điều gì quan trọng mà chỉ nói bằng lời thì nhắc lại giúp.",
+            level="info"), phat_lai=True)
         return min(len(dong), gioi_han)
 
     def ping(self) -> dict[str, Any]:

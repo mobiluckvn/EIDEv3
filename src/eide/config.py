@@ -213,6 +213,15 @@ class Paths:
         return self.state_dir / "blocks"
 
     def ensure(self) -> "Paths":
+        # Đường dẫn dự án có thể do người GÕ TAY vào ô văn bản, không chỉ do bộ chọn sinh ra,
+        # nên chặn ở giao diện là chưa đủ. Không kiểm ở đây thì `mkdir` ném
+        # `NotADirectoryError: …/main.c/.eide` — đúng chỗ, nhưng người đọc không hiểu chuyện
+        # gì và cũng không biết sửa thế nào.
+        if self.project_root.exists() and not self.project_root.is_dir():
+            raise NotADirectoryError(
+                f"{self.project_root} là một TỆP, không phải thư mục. Dự án EIDE cần một "
+                "thư mục: tác tử đọc/ghi bên trong nó và `.eide/` nằm ở đó. Chọn thư mục "
+                "chứa tệp ấy, hoặc tạo một thư mục mới.")
         for d in (self.state_dir, self.blobs, self.transcripts):
             d.mkdir(parents=True, exist_ok=True)
         return self

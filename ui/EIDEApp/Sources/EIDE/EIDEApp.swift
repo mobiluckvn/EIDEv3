@@ -61,7 +61,9 @@ final class Setup: ObservableObject {
 
     var hopLe: Bool {
         let fm = FileManager.default
-        return !duAnPath.isEmpty
+        var laThuMuc: ObjCBool = false
+        let coDuAn = fm.fileExists(atPath: duAnPath, isDirectory: &laThuMuc)
+        return !duAnPath.isEmpty && coDuAn && laThuMuc.boolValue
             && fm.fileExists(atPath: pythonURL.path)
             && fm.fileExists(atPath: repoURL.appendingPathComponent("src/eide").path)
     }
@@ -75,7 +77,14 @@ final class Setup: ObservableObject {
             return "Không thấy Python ở \(pythonURL.path). Chạy: python3 -m venv .venv"
         }
         if duAnPath.isEmpty { return nil }
-        if !fm.fileExists(atPath: duAnPath) { return "Thư mục dự án không tồn tại." }
+        var laThuMuc: ObjCBool = false
+        if !fm.fileExists(atPath: duAnPath, isDirectory: &laThuMuc) {
+            return "Thư mục dự án không tồn tại."
+        }
+        if !laThuMuc.boolValue {
+            return "Đây là một TỆP, không phải thư mục. Dự án cần một thư mục — "
+                 + "tác tử sẽ đọc/ghi bên trong nó, và `.eide/` nằm ở đó."
+        }
         return nil
     }
 

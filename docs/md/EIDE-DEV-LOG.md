@@ -4061,3 +4061,115 @@ giả, mà một chuỗi băm khớp giả còn tệ hơn một chuỗi bị đ�
 không theo tên. Công cụ mới: `test.sensitivity`. Một ca cũ được **siết**:
 `test_test_run_KHONG_in_JSON_thi_khong_ket_luan` từ "thành công mang `dat=False`" thành "lỗi
 `E4014` kèm khuôn cần in".
+
+### [DEV-289] 28/09/2026 · Mở lại dự án: hội thoại dựng lại được, cái NÚT thì không
+
+**Việc người dùng giao:** *"Review tính năng cơ bản tạo dự án, mở dự án, tính năng đảm bảo tắt
+app mở lại dự án vẫn làm việc tiếp được"*.
+
+Review này không đọc mã rồi kết luận. Mỗi câu hỏi là một phép thử chạy qua app thật: trỏ vào
+thư mục rỗng · giao việc · `kill -9` (máy sập, không phải thoát tử tế) · mở lại · hỏi tiếp.
+Kịch bản ở `tools/review_ben_vung.py` và `tools/review_lam_tiep.py`, nhật ký ở
+`docs/review-mo-du-an/`.
+
+#### Phần chạy đúng
+
+- **Tạo dự án = mở một thư mục rỗng.** Trỏ app vào thư mục trống thì lõi tự dựng `.eide/`
+  (sổ cái có xích băm, `store.sqlite`, `blobs/`, `counters.json`), tự sinh `EIDE.md` từ khuôn,
+  tự `git init` và tạo `cs-0000`. Không có bước nào phải làm tay.
+- **`kill -9` không mất gì trên đĩa.** Thứ duy nhất biến mất là `store.sqlite-wal`/`-shm` —
+  WAL đã được gộp vào CSDL, tức là dữ liệu đi vào chỗ bền hơn. (Bản đầu của phép kiểm so cả
+  danh sách tệp nên báo đỏ vì đúng cái chuyển động ấy: một **báo động sai**, và một báo động
+  sai làm người đọc mất lòng tin vào những ô đỏ thật bên cạnh.)
+- **Kế hoạch sống qua cú sập.** Nó là hiện vật `plan:current` trong kho, kể cả trạng thái
+  `da_duyet` và cờ `xong` của từng bước. Mở lại, gõ đúng hai chữ *"Làm tiếp nhé"*, tác tử nói
+  *"Mình đang thực hiện Bước 2 trong kế hoạch đã duyệt"* và không gọi `plan.enter` lần nữa —
+  người **không** phải duyệt lại từ đầu. Đây là chỗ mất mát đắt nhất nếu hỏng, và nó không hỏng.
+- **Trí nhớ hội thoại mất, nhưng có đường tra.** Thử bằng một mã bí mật chỉ nói bằng lời,
+  không ghi vào đâu: sau khi tắt–mở, tác tử tra `ledger.query` và lấy lại đúng `XANH-47` từ
+  lời người nói trong sổ cái. Nó không nhớ, nhưng nó biết tra ở đâu. *(Hệ quả cần biết: mọi
+  câu gõ vào đều nằm vĩnh viễn trong sổ cái — "đừng ghi vào đâu cả" chỉ đúng với hiện vật.)*
+
+#### Ba lỗi, cùng một nguồn: phát lại dựng lại cả thứ không dựng lại được
+
+Đo trên một dự án có hai thẻ cổng **đều đã được duyệt xong**:
+
+```
+Vừa mở lại   : dòng hội thoại = 15 | thẻ đang chờ = 2      ← hai thẻ đã trả lời rồi
+Sau Cmd-R x1 : dòng hội thoại = 30 | thẻ đang chờ = 4
+Sau Cmd-R x2 : dòng hội thoại = 45 | thẻ đang chờ = 6
+Sau Cmd-R x3 : dòng hội thoại = 60 | thẻ đang chờ = 8
+```
+
+Và bấm "Duyệt" trên một thẻ dựng lại thì nhận `E_GATE_STALE`. **Một cái nút bấm được mà không
+làm gì** — tệ hơn hẳn không có nút, vì người tưởng mình vừa quyết định điều gì đó.
+
+Nguyên nhân: `_phat_lai_transcript` chiếu lại `console.post` từ sổ cái kèm nguyên trường
+`card`, còn phía Swift dựng `Card` mới với `resolved = false`. Dòng chữ chiếu lại được; thứ
+**trả lời** được một thẻ — lời gọi công cụ đang treo trong `pending_gates` — nằm trong bộ nhớ
+của tiến trình đã chết.
+
+Sửa, ở `src/eide/protocol/rpc.py`:
+
+1. Mỗi thẻ phát lại **đóng ngay**, theo trạng thái tra từ sổ cái: đã có quyết định thì
+   `card.resolve` kèm người đã chọn gì; chưa ai trả lời thì `card.expire` kèm lý do **và**
+   cách làm lại. Không chọn lối "giữ nó treo" (người mất quyền quyết mà không biết) cũng
+   không chọn lối "tự chạy lại" (một việc chưa ai đồng ý đã xảy ra).
+2. Phát lại **đúng một lần cho mỗi lõi**. `ui.sync` còn chạy khi bấm Cmd-R và khi giao diện
+   mất đồng bộ, mà lúc ấy Console đang có sẵn các dòng cũ. Bề mặt vẫn được vẽ lại — đó mới là
+   việc chính của Cmd-R.
+3. `resume.py` không còn nói *"thẻ cổng đang chờ người trả lời"* mà nói **đã hết hiệu lực**,
+   kèm dặn: đừng chờ, đừng bảo người dùng bấm lại, cần thì hỏi lại rồi dựng thẻ mới.
+
+#### Lỗi thứ tư, chỉ tấm ảnh bắt được
+
+Sau ba lần sửa trên, phép đo báo `the_dang_cho = 0`. Nhưng **ảnh chụp cửa sổ** cho thấy thẻ
+vẫn nằm trong dòng hội thoại với đủ hai nút Duyệt/Từ chối, bấm được.
+
+`Card` là **struct** — kiểu trị. Dòng hội thoại giữ một *bản sao*, nên `cards[i].resolved =
+true` không đụng tới nó, mà `ConsoleView` lại vẽ nút dựa vào chính bản sao ấy. Lỗi này **không
+phải chỉ khi mở lại**: trong một phiên bình thường, duyệt xong thì nút vẫn ở đó.
+
+Số đo đúng, câu hỏi sai — `the_dang_cho` không bao giờ nói được điều này. Nên ngoài việc sửa
+`AppState.apply`, kênh kiểm giao diện phơi thêm `so_the_con_nut`, đếm đúng thứ `ConsoleView`
+vẽ, để lần sau nó không tái phát trong im lặng.
+
+Chứng minh ngược, bằng cách cất hết bản sửa đi rồi đo lại đúng dự án ấy:
+
+```
+BẢN CHƯA SỬA : dòng = 18 | thẻ chờ = 3 | thẻ còn nút = (chưa có phép đo này)
+BẢN ĐÃ SỬA   : dòng = 18 | thẻ chờ = 0 | thẻ còn nút = 0
+```
+
+#### Một chỗ dễ hiểu lầm, nay nói thẳng
+
+Console dựng lại nguyên cuộc trò chuyện hôm trước, còn tác tử bắt đầu mỗi phiên với ngữ cảnh
+**rỗng** — hai thứ ấy là hai kho khác nhau. Cái im lặng giữa chúng đọc như *"tác tử vẫn nhớ
+mọi thứ"*, và người dùng phát hiện ra điều ngược lại vào đúng lúc đắt nhất. Nay bản phát lại
+kết thúc bằng một dòng nói rõ: đây là hình chiếu của sổ cái, tác tử làm việc lại từ sổ cái,
+kho hiện vật và `EIDE.md`; thẻ cổng cũ đã đóng; điều gì quan trọng mà chỉ nói bằng lời thì
+nhắc lại giúp.
+
+#### Chọn nhầm một TỆP làm thư mục dự án
+
+Bộ chọn để `canChooseFiles = true`, nên chọn `main.c` được, và lõi ném
+`NotADirectoryError: …/main.c/.eide` — đúng chỗ, nhưng người đọc không hiểu chuyện gì và không
+biết sửa thế nào. Vá hai phía: bộ chọn chỉ nhận thư mục, `hopLe`/`vanDe` kiểm `isDirectory`,
+và `Paths.ensure` nói bằng lời người đọc được — vì ô ấy là ô **văn bản**, gõ tay được, nên
+chặn ở giao diện là chưa đủ.
+
+#### Hai khoảng trống, chưa vá — đây là tính năng, không phải lỗi
+
+- **Không có nút "Tạo dự án".** `CommandGroup(replacing: .newItem) {}` xoá hẳn File ▸ New và
+  không có gì thay vào; màn mở chỉ có một nút "Mở dự án". Tạo dự án *chạy được* (mở một thư
+  mục rỗng) nhưng không ai nhìn vào giao diện mà đoán ra được. Bản mẫu UI có khai A14.1.1
+  *"Mở / tạo dự án"* — khối ấy chưa được dựng.
+- **Không có danh sách dự án gần đây.** Chỉ một chuỗi `duAnPath` trong UserDefaults, ghi đè
+  mỗi lần; app tự mở lại đúng dự án ấy lúc khởi động. Làm việc với hai dự án cùng lúc — đúng
+  tình huống của chính đề án này, có hai dự án trên cùng một bo — thì phải gõ lại đường dẫn.
+
+### Số đo
+
+`1221 ca đơn vị` (+7): `tests/test_mo_lai_du_an.py`. Bốn ca đầu đã được chứng minh là **đỏ
+được** bằng cách phá lại chỗ vừa vá (bỏ cờ phát-lại-một-lần → 1 ca đỏ; bỏ luôn phần đóng thẻ →
+3 ca đỏ).

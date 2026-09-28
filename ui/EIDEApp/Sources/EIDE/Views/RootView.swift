@@ -317,7 +317,11 @@ struct MoDuAnView: View {
     private func chonThuMuc(_ gia: Binding<String>) {
         let p = NSOpenPanel()
         p.canChooseDirectories = true
-        p.canChooseFiles = true
+        // Không cho chọn TỆP. Ô này tên là "Thư mục dự án", và chọn nhầm `main.c` thì lõi
+        // ném `NotADirectoryError: …/main.c/.eide` — một dòng người dùng không đọc được và
+        // không sửa được. Chặn ngay ở chỗ chọn rẻ hơn nhiều so với giải thích về sau.
+        p.canChooseFiles = false
+        p.prompt = "Chọn thư mục"
         p.allowsMultipleSelection = false
         if p.runModal() == .OK, let u = p.url { gia.wrappedValue = u.path }
     }
