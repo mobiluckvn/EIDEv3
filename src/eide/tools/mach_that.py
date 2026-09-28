@@ -162,12 +162,23 @@ def dang_ky(r: Registry) -> None:
                     "không đọc được qua SWD"))
                 + ". MDD-40 đòi nạp phải đối chiếu ID chip.",
                 hint_for_agent=(
-                    "Hai đường đi, để NGƯỜI DÙNG chọn — đừng tự chọn:\n"
-                    "1. Cài `st-info`/`st-flash` (tool.install, gói `stlink`) rồi nạp có đối "
-                    "chiếu và có verify.\n"
-                    "2. Nạp kiểu sao tệp mà KHÔNG đối chiếu ID chip: gọi lại với "
-                    "`dong_y_khong_doi_chieu_chip=true`. Nói rõ với người dùng rằng khi đó "
-                    "phép kiểm “đúng chip” chỉ dựa vào nhãn ổ đĩa"
+                    # Lời khuyên phải khớp với ĐÚNG lý do vừa nêu. Đo được trên phiên
+                    # FreeRTOS: thông điệp tự nói *"đọc được STM32F46x_F47x từ bo"* rồi
+                    # khuyên "cài st-info" — thứ đã cài rồi, và đã dùng để đọc ra chính câu
+                    # ấy. Thứ thiếu là HỘ CHIẾU của dự án. Một lời khuyên không khớp lý do
+                    # thì tệ hơn im lặng: nó gửi tác tử đi làm một việc vốn đã xong.
+                    ("Đã ĐỌC ĐƯỢC ID chip từ bo; thứ thiếu là dự án CHƯA GHIM chip nào để "
+                     "so. Ghim bằng `passport.pin` (kèm nguồn), rồi nạp lại — lúc đó phép "
+                     "đối chiếu mới có đủ hai vế.\nVẫn muốn nạp ngay mà bỏ qua phép đối "
+                     "chiếu thì gọi lại với `dong_y_khong_doi_chieu_chip=true`."
+                     if thay_that and not chip_du_an else
+                     "Hai đường đi, để NGƯỜI DÙNG chọn — đừng tự chọn:\n"
+                     "1. Cài `st-info`/`st-flash` (tool.install, gói `stlink`) rồi nạp có "
+                     "đối chiếu và có verify.\n"
+                     "2. Nạp kiểu sao tệp mà KHÔNG đối chiếu ID chip: gọi lại với "
+                     "`dong_y_khong_doi_chieu_chip=true`.")
+                    + " Nói rõ với người dùng rằng khi bỏ đối chiếu thì phép kiểm “đúng "
+                      "chip” chỉ dựa vào nhãn ổ đĩa"
                     + (f" (đang là {thay_doan})" if thay_doan else "")
                     + ", và việc nạp không hoàn tác được."),
                 details={"chip_du_an": chip_du_an, "chip_theo_nhan_o": thay_doan,

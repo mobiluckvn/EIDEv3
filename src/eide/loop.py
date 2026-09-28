@@ -172,6 +172,12 @@ class Agent:
         self.config = config
         self.llm = llm
         self.registry = registry or build_registry(self.config.features)
+        # Công cụ tác tử đã tự viết cho dự án NÀY — nạp lại khi mở, nếu không thì một năng
+        # lực nó đã xây (và người dùng đã duyệt) chỉ sống được đúng một phiên.
+        from .nang_luc import nap_cong_cu_tu_viet
+
+        self.cong_cu_tu_viet = nap_cong_cu_tu_viet(
+            self.registry, self.config.paths.project_root)
         self.policy = policy or PolicyEngine(autonomy=config.autonomy)
         self.s0 = s0 or S0Engine()
         self.hooks = register_standard_hooks(HookBus())

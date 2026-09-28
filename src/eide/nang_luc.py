@@ -160,3 +160,49 @@ from __future__ import annotations
 def test_{ham}_chua_viet():
     raise AssertionError("chưa viết ca kiểm nào cho {ten}")
 '''
+
+
+def nap_cong_cu_tu_viet(registry: Any, goc: Any) -> dict[str, Any]:
+    """Nạp lại mọi công cụ tác tử đã tự viết trong dự án này, khi MỞ dự án.
+
+    Vì sao cần: đo được trên phiên FreeRTOS — công cụ tự viết sống trong registry ở bộ nhớ,
+    nên nó **biến mất mỗi lần app khởi động lại**, và tác tử phải `tool.reload` lại từ đầu ở
+    mỗi phiên. Một năng lực biến mất khi mở lại dự án thì chưa phải một năng lực; nó là một
+    mẹo dùng được đúng một lượt.
+
+    Hai ranh giới giữ nguyên:
+
+    * chỉ nạp tệp **có bộ kiểm đi kèm** — không có test thì không có năng lực, và quy tắc ấy
+      không được lỏng ra chỉ vì đang ở đường khởi động;
+    * **không chạy lại bộ kiểm** ở đây. Chạy lại mỗi lần mở dự án thì mở dự án mất vài chục
+      giây, và người ta sẽ tắt nó đi. Bộ kiểm đã xanh lúc đăng ký; mã nằm trong changeset và
+      người dùng nhìn thấy được. Kết quả nói rõ điều đó thay vì để ai tự suy.
+    """
+    import importlib.util
+    from pathlib import Path as _P
+
+    ra: dict[str, Any] = {"da_nap": [], "bo_qua": [], "loi": []}
+    d = _P(goc) / THU_MUC
+    if not d.is_dir():
+        return ra
+    for f in sorted(d.glob("*.py")):
+        if f.name.startswith(("test_", "__")):
+            continue
+        if not (f.parent / f"test_{f.name}").exists():
+            ra["bo_qua"].append(f"{f.name} (không có bộ kiểm đi kèm)")
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location(f"eide_cong_cu_{f.stem}", f)
+            if spec is None or spec.loader is None:
+                raise ImportError("không nạp được")
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            truoc = {t.name for t in registry.all()}
+            mod.dang_ky(registry)
+            moi = sorted({t.name for t in registry.all()} - truoc)
+            ra["da_nap"] += moi or [f"{f.name} (không đăng ký thêm công cụ nào)"]
+        except Exception as e:                                # noqa: BLE001
+            # Hỏng thì BỎ QUA cái đó và nói ra, không để nó chặn việc mở dự án. Một công cụ
+            # tác tử viết hỏng không được phép làm người dùng không mở nổi dự án của mình.
+            ra["loi"].append(f"{f.name}: {type(e).__name__}: {e}")
+    return ra

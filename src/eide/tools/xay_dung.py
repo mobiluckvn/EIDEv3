@@ -216,7 +216,8 @@ def dang_ky(r: Registry) -> None:
                     "Sửa đúng những dòng dưới đây rồi biên dịch lại; đừng đoán chỗ khác.\n"
                     + "\n".join(x.vi for x in kq.loi[:12])
                     + ("\n(còn " + str(len(kq.loi) - 12) + " lỗi nữa)"
-                       if len(kq.loi) > 12 else "")),
+                       if len(kq.loi) > 12 else "")
+                    + _goi_y_fpu(kq.loi, fpu)),
                 details={"loi": [x.to_dict() for x in kq.loi[:40]],
                          "nguyen_van": kq.nguyen_van[-2000:],
                          "cong_cu": kq.cong_cu, "lenh": kq.lenh},
@@ -587,6 +588,37 @@ def dang_ky(r: Registry) -> None:
 
 
 # --------------------------------------------------------------------------- phụ trợ
+# Dấu hiệu "lỗi này là vì thiếu FPU phần cứng". Lấy từ chính câu chữ của trình dịch và của
+# FreeRTOS, không đoán theo tên tệp.
+_DAU_HIEU_FPU = ("hardware floating point", "floating point support", "__FPU_USED",
+                 "fpu is not enabled", "-mfloat-abi", "vfp")
+
+
+def _goi_y_fpu(loi: list[Any], fpu: str) -> str:
+    """Chỉ đường tới tham số `fpu=` khi lỗi biên dịch nói về dấu phẩy động phần cứng.
+
+    Vì sao cần, đo được trên phiên FreeRTOS: port `ARM_CM4F` của FreeRTOS dừng ở
+    `#error This port can only be used when the project options are configured to enable
+    hardware floating point support.` Câu ấy đúng, nhưng nó nói về *project options* của
+    FreeRTOS — trong khi thứ phải đổi nằm ở **lời gọi `build.compile`**. Tác tử đọc nó rất
+    dễ đi sửa `FreeRTOSConfig.h`, hoặc tệ hơn, đổi sang port không-FPU: cả hai đều sai, vì
+    STM32F469 **có** FPU.
+    """
+    if fpu:
+        return ""          # đã truyền rồi thì lỗi nằm ở chỗ khác, đừng chỉ nhầm đường
+    t = " ".join(str(getattr(x, "thong_diep", "") or getattr(x, "vi", "")) for x in loi[:40])
+    if not any(d in t.lower() for d in _DAU_HIEU_FPU):
+        return ""
+    return ("\n\nLỖI NÀY NÓI VỀ DẤU PHẨY ĐỘNG PHẦN CỨNG. EIDE mặc định dịch với "
+            "`-mfloat-abi=soft` — cố ý, vì bật hard-float trên một chip KHÔNG có FPU thì "
+            "chương trình hard-fault ở lệnh dấu phẩy động đầu tiên, và lỗi ấy chỉ hiện lúc "
+            "chạy thật.\n"
+            "Chip này có FPU thì truyền thẳng vào `build.compile`: `fpu=\"fpv4-sp-d16\"` "
+            "(Cortex-M4F). ĐỪNG sửa cấu hình thư viện và ĐỪNG đổi sang port không-FPU để "
+            "lách — cả hai đều giấu mất việc chip có FPU mà ta không dùng.\n"
+            "Và ghim một Fact nói chip có FPU, kèm nguồn: con số ấy sẽ được dùng lại.")
+
+
 def _ho_chieu(ctx: Any) -> dict[str, Any] | None:
     for a in ctx.store.list("passport", limit=5):
         return a.get("canonical") or {}

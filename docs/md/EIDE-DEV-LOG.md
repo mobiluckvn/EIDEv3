@@ -3785,3 +3785,76 @@ ra đã ở trước mặt tác tử ngay từ đầu.
 - Tác tử viết lại `plan.get` dùng `ctx.store` thay vì mở SQLite.
 - Màn hình + cảm ứng: đang ở bước 2/7 của kế hoạch mới.
 
+### [DEV-286] 28/09/2026 · Tác tử BỊA TÊN NGƯỜI — và bốn lời khuyên không khớp lý do
+
+Việc: màn LCD hiện logo PTIT + thông tin đề tài, nút **“Chi tiết”** chạm được, **Close** quay
+lại, LED vẫn nháy song song.
+
+#### Phát hiện nặng nhất: nội dung bị bịa
+
+Đọc khung ảnh thẳng từ SDRAM (`target.screen`). Tác tử **đã vẽ được** — bố cục ổn, chữ sắc
+nét. Nhưng trên màn hiện:
+
+| trên màn | trong lời giao việc |
+|---|---|
+| *“Sinh vien : **Nguyen Dinh Cong**”* | **Học viên: Vũ Trí Công** |
+| *“GVHD : **Nhom Nghien Cuu He Thong Nhung**”* | **Giảng viên hướng dẫn: TS. Nguyễn Trung Hiếu** |
+
+Cả hai đều **không có thật**. Bốn dòng ấy được đưa **nguyên văn** trong yêu cầu, nên không có
+chỗ nào để suy ra — chép đúng rẻ hơn nghĩ ra nhiều. Đây là N1 áp vào **chữ** thay vì vào số,
+và nó nặng hơn một Fact sai: **không ai kiểm một cái tên bằng máy được.** Ảnh sở cứ:
+`docs/stm32f469-freertos/ket-qua/anh/khung-anh-NOI-DUNG-BIA.png`.
+
+Sau khi được chỉ đúng hai dòng: sửa xong, ảnh mới ở
+`anh/khung-anh-sau-khi-sua-ten.png`. Hai thứ còn thiếu: **logo PTIT** (khung ảnh chỉ 5 màu) và
+**cảm ứng** — nó dùng nút vật lý PA0 thay vì chạm màn.
+
+#### Bốn lời khuyên của EIDE không khớp với lý do EIDE vừa nêu
+
+Cùng một họ lỗi, bốn lần trong một chặng — và mỗi lần đều đẩy tác tử đi một hướng sai:
+
+| lỗi | EIDE nói | sự thật | cái giá |
+|---|---|---|---|
+| `code.vendor_list` | *"hết hạn mức — **có thể repo không tồn tại**"* | repo đúng, chỉ hết lượt | tác tử định **tự gõ lại nhân FreeRTOS** |
+| `<pending>` | *"Kế hoạch đã duyệt: 7/8 bước xong"* | không nói kế hoạch **cho việc gì** | không lập kế hoạch cho việc mới |
+| `build.compile` | `#error ... enable hardware floating point support` | thứ phải đổi là tham số **`fpu=`** của lời gọi | dễ đi sửa `FreeRTOSConfig.h` hoặc đổi sang port không-FPU |
+| `target.flash` | *"đọc được STM32F46x_F47x từ bo…"* rồi khuyên **“cài `st-info`”** | `st-info` đã cài và vừa dùng để đọc ra câu ấy; thứ thiếu là **hộ chiếu chip** | gửi tác tử đi làm một việc vốn đã xong |
+
+Bài học chung, và nó đáng đứng riêng: **một lời khuyên không khớp với lý do vừa nêu thì tệ
+hơn im lặng** — im lặng để người ta đi tìm, còn lời khuyên sai làm người ta đi nhanh về phía
+sai. Cả bốn chỗ giờ đều chỉ đúng đường, và mỗi chỗ có một ca kiểm neo lại.
+
+#### `tool.propose` chạy thật, hai lần
+
+Lần đầu tác tử xin `plan.get`, lý do có số đo: *"đã tốn 10 lời gọi đọc (5 `ledger.query`, 3
+`fs.grep`, 1 `tool.search`, 1 `fs.glob`) vẫn chưa lấy lại được đầy đủ văn bản 7 bước"*. Vòng
+đời khép trong một lượt: `fs.write ×2 → tool.reload → plan.get`.
+
+Nhưng mã nó viết **đi vòng qua API**: mở thẳng SQLite, đoán tên bảng, dò ngược thư mục cha —
+tức đọc được kho của **dự án khác**. Lỗi ở **khuôn mẫu**: `khuon_ma()` chưa bao giờ nói `ctx`
+có gì. Sửa khuôn; tác tử viết lại dùng `ctx.store`.
+
+Và một lỗ hổng nữa: **công cụ tự viết không sống qua lần khởi động lại** — registry ở bộ nhớ,
+nên mỗi phiên phải `tool.reload` lại. *Một năng lực biến mất khi mở lại dự án thì chưa phải
+năng lực; nó là một mẹo dùng được đúng một lượt.* → `nap_cong_cu_tu_viet()` chạy khi mở dự án,
+vẫn giữ hai ranh giới: chỉ nạp tệp **có bộ kiểm đi kèm**, và hỏng thì bỏ qua cái đó chứ không
+chặn việc mở dự án.
+
+Lần hai nó xin `fs.copy` — cũng đúng: EIDE không có công cụ chép tệp, mà nó cần chuyển 18 tệp
+tham chiếu vào `firmware/`.
+
+#### Hai lỗi của chính phép kiểm tôi viết
+
+`_kiem_noi_dung_dung` so chuỗi **phân biệt hoa thường**, nên báo đỏ khi mã dùng
+`BUU CHINH VIEN THONG` viết hoa. Và trong `assemble.py`, vòng `for i, b in enumerate(b, 1)`
+**che mất** biến danh sách `b`. Cùng họ với phép kiểm chỉ nhận ra đúng lời giải mà chính nó
+nghĩ ra.
+
+### Số đo
+
+`1202 ca đơn vị` (+7). Kế hoạch màn hình: 6/7 bước.
+
+### Còn lại
+
+- Logo PTIT, cảm ứng, và DSI chưa lên (`PLLLS = 0`, `DEN = CKE = 0`).
+

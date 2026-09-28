@@ -233,3 +233,51 @@ def test_tep_don_le_thi_I_vao_thu_muc_chua_no(tmp_path):
     p = tmp_path / "mach.c"
     p.write_text("int main(void){return 0;}\n", "utf-8")
     assert TC._duong_include(p) == [f"-I{tmp_path}"]
+
+
+# ============================== lỗi FPU phải CHỈ ĐƯỜNG tới tham số `fpu=`
+def test_loi_ve_dau_phay_dong_chi_duong_toi_tham_so_fpu():
+    """Đo được trên phiên FreeRTOS: port `ARM_CM4F` dừng ở
+
+        #error This port can only be used when the project options are configured to
+        enable hardware floating point support.
+
+    Câu ấy đúng, nhưng nó nói về *project options của FreeRTOS* — trong khi thứ phải đổi nằm
+    ở **lời gọi `build.compile`**. Tác tử đọc nó rất dễ đi sửa `FreeRTOSConfig.h`, hoặc tệ
+    hơn, đổi sang port không-FPU. Cả hai đều sai: STM32F469 **có** FPU.
+    """
+    from eide.tools.xay_dung import _goi_y_fpu
+
+    class _L:
+        def __init__(self, t):
+            self.thong_diep, self.vi = t, t
+
+    loi = [_L("#error This port can only be used when the project options are configured "
+              "to enable hardware floating point support.")]
+    t = _goi_y_fpu(loi, "")
+    assert 'fpu="fpv4-sp-d16"' in t
+    assert "ĐỪNG sửa cấu hình thư viện" in t and "ĐỪNG đổi sang port không-FPU" in t
+    # Nói cả VÌ SAO mặc định là soft — nếu không, lần sau ai đó sẽ đổi mặc định cho tiện.
+    assert "hard-fault ở lệnh dấu phẩy động đầu tiên" in t
+
+
+def test_da_truyen_fpu_roi_thi_KHONG_chi_nham_duong():
+    """Đã truyền `fpu=` mà vẫn lỗi thì nguyên nhân nằm chỗ khác. Chỉ nhầm đường ở đây sẽ làm
+    tác tử quay lại sửa một thứ vốn đã đúng."""
+    from eide.tools.xay_dung import _goi_y_fpu
+
+    class _L:
+        def __init__(self, t):
+            self.thong_diep, self.vi = t, t
+
+    assert _goi_y_fpu([_L("hardware floating point support")], "fpv4-sp-d16") == ""
+
+
+def test_loi_khong_lien_quan_thi_im_lang():
+    from eide.tools.xay_dung import _goi_y_fpu
+
+    class _L:
+        def __init__(self, t):
+            self.thong_diep, self.vi = t, t
+
+    assert _goi_y_fpu([_L("undefined reference to `memset'")], "") == ""

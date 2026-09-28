@@ -1653,3 +1653,32 @@ def test_target_debug_doc_bien_theo_TEN_va_to_cao_ham_tra_hang_so(make_agent, mo
     assert "Lcd_Driver_Type @ 0x200000B0 = 0x00000001" in n
     assert "OTM8009A_ReadID" in n and "lời của MÃ" in n
     assert r.data["bien"]["OTM8009A_ReadID"]["tra_hang_so"] is True
+
+
+def test_loi_khuyen_phai_KHOP_voi_ly_do_vua_neu(make_agent, monkeypatch):
+    """Đo trên phiên FreeRTOS: `target.flash` nói *"đọc được STM32F46x_F47x từ bo nhưng dự án
+    chưa ghim chip nào để so"* — rồi khuyên **"cài `st-info`/`st-flash`"**. Thứ ấy đã cài
+    rồi, và chính nó vừa đọc ra câu trên.
+
+    Một lời khuyên không khớp lý do thì tệ hơn im lặng: nó gửi tác tử đi làm một việc vốn đã
+    xong. Thứ thiếu ở đây là **hộ chiếu chip của dự án**.
+    """
+    import subprocess
+
+    agent = make_agent([])
+    o = _o_gia(tmp_o := agent.config.paths.project_root / "V", "DIS_F469NI")
+    monkeypatch.setattr(MT, "THU_MUC_O_DIA", tmp_o / "Volumes")
+    monkeypatch.setattr(MT, "THU_MUC_DEV", agent.config.paths.project_root)
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/st-info")
+    monkeypatch.setattr(MT.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+        a[0], 0, "  dev-type:   STM32F46x_F47x\n", ""))
+    b = agent.config.paths.project_root / ".eide" / "build" / "mach.bin"
+    b.parent.mkdir(parents=True, exist_ok=True)
+    b.write_bytes(BIN)
+    assert o.exists()
+
+    r = agent.registry.run("target.flash", {"explain": _EX}, _ctx(agent))
+    assert not r.ok and r.error.code == "E4013"
+    h = r.error.hint_for_agent
+    assert "passport.pin" in h and "CHƯA GHIM" in h
+    assert "Cài `st-info`" not in h, "đừng bảo cài thứ vừa dùng để đọc ra kết quả"

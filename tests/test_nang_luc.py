@@ -239,3 +239,53 @@ def test_khuon_ma_CHI_RO_ctx_co_gi(make_agent):
     assert "ctx.store.get" in k and "ctx.config.paths.project_root" in k
     assert "ĐỪNG đi vòng qua nó" in k
     assert "đọc được kho của một dự" in k      # câu bị ngắt dòng trong khuôn
+
+
+# ===================================================== công cụ tự viết phải SỐNG qua khởi động lại
+def test_cong_cu_tu_viet_NAP_LAI_khi_mo_du_an(make_agent):
+    """Đo trên phiên FreeRTOS: công cụ tự viết sống trong registry ở bộ nhớ, nên nó **biến
+    mất mỗi lần app khởi động lại**, và tác tử phải `tool.reload` lại ở mỗi phiên.
+
+    Một năng lực biến mất khi mở lại dự án thì chưa phải một năng lực — nó là một mẹo dùng
+    được đúng một lượt.
+    """
+    from eide.loop import Agent
+    from eide.llm import ScriptedGateway
+
+    agent = make_agent([])
+    agent.registry.run("tool.propose", {**_DX, "explain": _EX}, _ctx(agent))
+    _viet(agent, "code.symbolize", _MA_THAT, _TEST_THAT)
+    assert agent.registry.run("tool.reload", {"ten": "code.symbolize"}, _ctx(agent)).ok
+
+    # "Mở lại dự án": một Agent MỚI trên cùng thư mục, registry mới tinh.
+    lai = Agent(agent.config, llm=ScriptedGateway([]), project_name="du-an-thu")
+    assert lai.registry.get("code.symbolize") is not None, "công cụ không sống qua lần mở lại"
+    assert "code.symbolize" in lai.cong_cu_tu_viet["da_nap"]
+
+
+def test_nap_lai_BO_QUA_tep_khong_co_bo_kiem(make_agent):
+    """Quy tắc "không có test thì không có năng lực" không được lỏng ra chỉ vì đang ở đường
+    khởi động."""
+    from eide.nang_luc import THU_MUC, nap_cong_cu_tu_viet
+
+    agent = make_agent([])
+    d = agent.config.paths.project_root / THU_MUC
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "len_lut.py").write_text("def dang_ky(r):\n    raise SystemExit('không nên chạy')\n",
+                                  "utf-8")
+    ra = nap_cong_cu_tu_viet(agent.registry, agent.config.paths.project_root)
+    assert ra["da_nap"] == []
+    assert any("len_lut.py" in x and "bộ kiểm" in x for x in ra["bo_qua"])
+
+
+def test_nap_lai_HONG_thi_khong_chan_viec_mo_du_an(make_agent):
+    """Một công cụ tác tử viết hỏng không được phép làm người dùng không mở nổi dự án."""
+    from eide.nang_luc import THU_MUC, nap_cong_cu_tu_viet
+
+    agent = make_agent([])
+    d = agent.config.paths.project_root / THU_MUC
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "vo.py").write_text("cú pháp sai ((((\n", "utf-8")
+    (d / "test_vo.py").write_text("def test_x():\n    assert True\n", "utf-8")
+    ra = nap_cong_cu_tu_viet(agent.registry, agent.config.paths.project_root)
+    assert ra["loi"] and "vo.py" in ra["loi"][0]

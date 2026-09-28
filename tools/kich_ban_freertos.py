@@ -311,8 +311,155 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
         _kiem_cong_cu_tu_viet(nk, du_an)
         nk.anh(g, "tu-viet-cong-cu")
 
+    # ------------------------------------------------------------------ 12. sửa công cụ + chạy
+    if lam(12):
+        nk.buoc("Sửa `plan.get` cho đúng API, rồi chạy tiếp kế hoạch")
+        loi, cc = hoi(g, nk, du_an,
+                      "Công cụ `plan.get` của bạn chạy được, nhưng mình soát mã và thấy một "
+                      "chỗ phải sửa: nó **mở thẳng tệp SQLite** của kho, đoán tên bảng, và "
+                      "**dò ngược thư mục cha** để tìm `.eide/store.sqlite`.\n\n"
+                      "Hai hệ quả: nó có thể đọc kho của một **dự án khác**, và nó sẽ hỏng "
+                      "vào ngày lược đồ kho đổi. Trong khi `ctx.store.get(\"plan:current\")` "
+                      "nằm ngay trong tầm tay.\n\n"
+                      "Và đây là **lỗi của EIDE**: khuôn mẫu mình đưa cho bạn chưa bao giờ "
+                      "nói `ctx` có gì. Mình đã sửa — giờ khuôn liệt kê thẳng `ctx.store`, "
+                      "`ctx.config.paths.project_root`, `ctx.registry`, `ctx.ledger`.\n\n"
+                      "Mình cũng sửa luôn cái gốc: `<pending>` giờ **liệt kê từng bước** kế "
+                      "hoạch kèm dấu `[x]`/`[ ]` và tên công cụ. `plan.get` vẫn đáng giữ cho "
+                      "lúc cần toàn văn, nhưng bạn không phải đào nữa.\n\n"
+                      "Viết lại `plan.get` dùng `ctx.store` (nhớ chạy lại `tool.reload` — bộ "
+                      "kiểm phải xanh), rồi **làm tiếp kế hoạch màn hình**.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_cong_cu_dung_ctx(nk, du_an)
+        _kiem_tien_do_ke_hoach(nk, ctx)
+        _kiem_du_an_cu_con_nguyen(nk, du_an)
+        nk.anh(g, "sua-cong-cu-va-chay")
+
+    # ------------------------------------------------------------------ 13. nội dung BỊA
+    #
+    # Khung ảnh đọc từ chip cho thấy tác tử ĐÃ vẽ — nhưng nội dung sai ở chỗ nặng nhất: nó
+    # **bịa tên người**. Yêu cầu ghi rõ "Học viên: Vũ Trí Công" và "TS. Nguyễn Trung Hiếu";
+    # trên màn hiện "Nguyen Dinh Cong" và "Nhom Nghien Cuu He Thong Nhung".
+    #
+    # Đây không phải lỗi kỹ thuật. Đây là N1 (số liệu phải truy được về nguồn) áp vào chữ:
+    # bốn dòng ấy được đưa NGUYÊN VĂN trong lời giao việc, nên không có chỗ nào để suy ra.
+    if lam(13):
+        nk.buoc("Nội dung trên màn bị BỊA — tên tác giả và thầy hướng dẫn đều sai")
+        loi, cc = hoi(g, nk, du_an,
+                      "Mình đọc khung ảnh thẳng từ SDRAM của chip. Bạn **đã vẽ được** — bố "
+                      "cục ổn, chữ sắc nét. Nhưng có ba chuyện phải nói.\n\n"
+                      "**1. Nội dung bị BỊA, và đây là chuyện nặng nhất.** Trên màn đang "
+                      "hiện:\n"
+                      "- *“Sinh vien : Nguyen Dinh Cong”*\n"
+                      "- *“GVHD : Nhom Nghien Cuu He Thong Nhung”*\n\n"
+                      "Cả hai đều **không có thật**. Mình đã đưa nguyên văn trong lời giao "
+                      "việc: **Học viên: Vũ Trí Công**, **Giảng viên hướng dẫn: TS. Nguyễn "
+                      "Trung Hiếu**. Đây là tên người thật — bịa tên người còn tệ hơn bịa "
+                      "một con số, vì không ai kiểm nó bằng máy được. Bốn dòng ấy nằm sẵn "
+                      "trong yêu cầu, không có chỗ nào để suy ra cả.\n\n"
+                      "**2. Thiếu logo PTIT.** Khung ảnh chỉ có 5 màu; `logo_ptit.c` đã nằm "
+                      "trong `tham-chieu-lcd/` rồi.\n\n"
+                      "**3. Nút dùng sai thứ.** Màn hiện *“AN NUT USER BUTTON (PA0) DE XEM "
+                      "CHI TIET”*. Mình yêu cầu **chạm vào nút trên màn hình** — bo này có "
+                      "panel cảm ứng. Nút vật lý PA0 là một thứ khác.\n\n"
+                      "Và số đo phần cứng, để bạn khỏi phải đo lại:\n"
+                      "```\n"
+                      "DSI_WISR = 0x00003000 → PLLLS = 0   (PLL của DSI CHƯA khoá)\n"
+                      "DSI_PCTLR = 0x00000000 → DEN = 0, CKE = 0   (PHY đang TẮT)\n"
+                      "DSI_ISR1 = 0x00000080\n"
+                      "```\n"
+                      "Nên dù bạn vẽ đúng, panel vẫn không nhận được gì — mắt người nhìn vào "
+                      "vẫn là màn đen.\n\n"
+                      "Sửa cả ba, rồi nạp lại.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_noi_dung_dung(nk, du_an)
+        _kiem_tien_do_ke_hoach(nk, ctx)
+        nk.anh(g, "noi-dung-bia")
+
+    # ------------------------------------------------------------------ 14. sửa tên trước
+    #
+    # Tác tử hết hạn mức 40 lời gọi khi cố làm cả ba việc cùng lúc (18 `fs.read`, 8 `fs.glob`
+    # đi tìm phần cảm ứng), và chính nó xin *"nói rõ phần nào làm trước"*. Chia nhỏ là việc
+    # của người giao việc, không phải của nó.
+    if lam(14):
+        nk.buoc("Sửa tên người TRƯỚC — hai dòng, không cần tìm gì")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn xin mình nói rõ phần nào làm trước — đúng, và đó là việc của "
+                      "mình. Chia nhỏ ra:\n\n"
+                      "**Lượt này chỉ làm MỘT việc**: sửa hai dòng trong "
+                      "`firmware/ui.c`, dòng 63 và 64. Không cần tìm gì, không cần đọc gì "
+                      "thêm — hai dòng ấy đang là:\n\n"
+                      "```c\n"
+                      "BSP_LCD_DisplayStringAt(300, 280, (uint8_t *)\"Sinh vien : Nguyen Dinh Cong\", LEFT_MODE);\n"
+                      "BSP_LCD_DisplayStringAt(300, 310, (uint8_t *)\"GVHD      : Nhom Nghien Cuu He Thong Nhung\", LEFT_MODE);\n"
+                      "```\n\n"
+                      "Phải thành:\n\n"
+                      "```c\n"
+                      "BSP_LCD_DisplayStringAt(300, 280, (uint8_t *)\"Hoc vien  : Vu Tri Cong\", LEFT_MODE);\n"
+                      "BSP_LCD_DisplayStringAt(300, 310, (uint8_t *)\"GVHD      : TS. Nguyen Trung Hieu\", LEFT_MODE);\n"
+                      "```\n\n"
+                      "Rà nốt cả tệp xem còn tên nào bạn tự nghĩ ra không, rồi dịch và nạp. "
+                      "Logo và cảm ứng để lượt sau.\n\n"
+                      "Một câu cho lần sau, không phải trách: bốn dòng ấy nằm **nguyên văn** "
+                      "trong lời giao việc đầu tiên. Khi một thứ đã được đưa nguyên văn thì "
+                      "không có chỗ nào để suy ra — chép đúng rẻ hơn nghĩ ra nhiều.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_noi_dung_dung(nk, du_an)
+        nk.anh(g, "sua-ten")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_noi_dung_dung(nk: Any, du_an: pathlib.Path) -> None:
+    """Bốn dòng thông tin có ĐÚNG NGUYÊN VĂN không, và có tên bịa nào còn sót không.
+
+    Đo trên mã nguồn, vì đây là thứ kiểm được bằng chuỗi — và chính vì kiểm được bằng chuỗi
+    mà việc để nó sai là khó tha: không cần suy luận gì, chỉ cần chép đúng.
+    """
+    fw = du_an / "firmware"
+    t = "\n".join(p.read_text("utf-8", errors="replace")
+                   for p in fw.rglob("*.c")) if fw.exists() else ""
+    dung = {"Vu Tri Cong": "học viên", "Nguyen Trung Hieu": "thầy hướng dẫn",
+            "EIDE v3": "tên sản phẩm", "Buu chinh Vien thong": "học viện"}
+    bia = {"Nguyen Dinh Cong": "tên học viên BỊA",
+           "Nhom Nghien Cuu": "tên thầy hướng dẫn BỊA"}
+    # So KHÔNG phân biệt hoa thường. Bản đầu so đúng một cách viết, nên nó báo ĐỎ khi mã
+    # dùng `BUU CHINH VIEN THONG` viết hoa — cùng loại lỗi với một phép kiểm chỉ nhận ra
+    # đúng lời giải mà chính nó nghĩ ra.
+    tl = t.lower()
+    co = [f"{k} ({v})" for k, v in dung.items() if k.lower() in tl]
+    con = [f"{k} — {v}" for k, v in bia.items() if k.lower() in tl]
+    nk.ket(len(co) == len(dung) and not con,
+           "Bốn dòng thông tin đúng NGUYÊN VĂN, không còn tên bịa",
+           f"đúng {len(co)}/{len(dung)}: {', '.join(co) or '—'}"
+           + (f" · CÒN BỊA: {', '.join(con)}" if con else ""))
+
+
+def _kiem_cong_cu_dung_ctx(nk: Any, du_an: pathlib.Path) -> None:
+    """Công cụ tự viết có dùng API của kho không, hay vẫn mở thẳng tệp.
+
+    Đo bằng mã nguồn: `sqlite3` xuất hiện trong một công cụ tự viết gần như luôn nghĩa là nó
+    đang đi vòng qua `ctx.store` — và một công cụ đi vòng thì dò được cả kho của dự án khác.
+    """
+    d = du_an / ".eide" / "cong-cu"
+    ma = sorted(p for p in d.glob("*.py")
+                if not p.name.startswith("test_")) if d.exists() else []
+    if not ma:
+        nk.ket(False, "Công cụ tự viết dùng `ctx.store`, không mở thẳng tệp kho",
+               "chưa có công cụ tự viết nào")
+        return
+    xau = []
+    for p in ma:
+        t = p.read_text("utf-8", errors="replace")
+        if "sqlite3" in t or "store.sqlite" in t:
+            xau.append(p.name)
+    nk.ket(not xau, "Công cụ tự viết dùng `ctx.store`, không mở thẳng tệp kho",
+           ("còn mở thẳng tệp: " + ", ".join(xau)) if xau else
+           "dùng API của kho: " + ", ".join(p.name for p in ma))
 
 
 def _kiem_cong_cu_tu_viet(nk: Any, du_an: pathlib.Path) -> None:
