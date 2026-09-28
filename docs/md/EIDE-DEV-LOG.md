@@ -2639,9 +2639,45 @@ logo + lấy 60–70 tệp driver + viết chương trình + biên dịch + nạ
 lời gọi. Việc quá lớn cho một lượt thì **chia ra là việc của người giao**, không phải lỗi của
 người làm — và tôi đã đổ cho tác tử trước khi nhìn ra điều đó.
 
+#### 16. Bốn lần thử lấy driver, và mỗi lần lộ ra một tầng sâu hơn
+
+Bước "lấy driver màn hình" mất bốn lượt. Đáng ghi vì **mỗi lần tác tử thất bại theo một kiểu
+khác, và lần nào lỗi cũng nằm ở EIDE chứ không ở suy luận của nó.**
+
+| Lần | Tác tử làm gì | EIDE thiếu gì |
+|---|---|---|
+| 1 | xin 49 tệp theo bố cục `STM32CubeF4` → 44 tệp 404 | không có cách **nhìn** repo có gì |
+| 2 | xin 26 tệp từ `stm32f4xx_hal_driver@main` → 0 tệp, mà vẫn `ok` | `vendor_list` bị ẩn; `vendor_fetch` **báo thành công giả** |
+| 3 | sửa đúng tên repo, vẫn trượt | không ai hỏi **nhánh** thật là gì |
+| 4 | — | (đang chạy) |
+
+**Báo thành công giả, trong chính công cụ tôi vừa viết để giúp tác tử.** `code.vendor_fetch`
+trả `ok` khi **0/26** tệp về được, vì tôi thiết kế nó theo lẽ "thành công một phần vẫn là
+thành công, chỉ cần liệt kê tệp hỏng". Nhưng **không có phần nào cả**, và tác tử đi tiếp như
+thể đã có driver trong tay. Đó đúng là thứ N6 tồn tại để ngăn — và tôi tái phạm ở chỗ mới
+nhất sau khi đã cẩn thận về nó ở mọi chỗ khác. Nay 0 tệp là **E3006**, và nếu **toàn bộ** là
+404 thì nói thẳng *"gần như chắc chắn TÊN REPO hoặc NHÁNH sai, không phải từng đường dẫn
+sai"*.
+
+**Một công cụ chống-đoán mà nấp sau một lần tìm thì không chặn được gì.** Tôi đặt
+`code.vendor_list` là `core=False` — ẩn tới khi tác tử tìm thấy bằng `tool.search`. Nên nó đi
+thẳng tới `vendor_fetch` với một tên repo đoán ra. Nay `core=True`.
+
+**Nhánh cũng là một phép đoán, và nó trộn lẫn thật.** Đo trên năm repo tác tử cần:
+`stm32f4xx-hal-driver` → `master`, `cmsis-device-f4` → `master`, `cmsis-core` → `master`,
+nhưng `32f469idiscovery-bsp` → `main` và `stm32-otm8009a` → `main`. Không ai đoán đúng được
+cả năm. Nên công cụ **tự hỏi**: `nhanh_mac_dinh()` hỏi GitHub `default_branch` (có nhớ đệm);
+`liet_ke` thử nhánh được nêu trước, hỏng thì hỏi mặc định và thử lại một lần rồi khai
+`doi_nhanh=True`; `lay_sdk` **thử một tệp trước** khi xin cả danh sách, vì sai nhánh thì mọi
+tệp đều 404 và người gọi chỉ biết sau khi đã xin cả chục tệp.
+
+Một phép đo phụ, để biết bước cuối khó tới đâu: ba mô-đun HAL cần cho màn hình
+(`hal_ltdc.c`, `hal_dsi.c`, `hal_sdram.c`) **không gọi hàm libc nào** — nên việc máy thiếu
+newlib ít nguy hiểm hơn tôi lo lúc đầu.
+
 ### Số đo
 
-`1018 ca đơn vị` (+93 so với DEV-277) · `99 công cụ` khi cờ sơ đồ tắt (+8: `doc.fetch`, `target.detect`,
+`1024 ca đơn vị` (+93 so với DEV-277) · `99 công cụ` khi cờ sơ đồ tắt (+8: `doc.fetch`, `target.detect`,
 `target.flash`, `target.verify`, `target.log`, `code.vendor_fetch`, `code.vendor_list`,
 `asset.image_to_c`), `108` khi bật.
 
