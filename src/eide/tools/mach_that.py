@@ -273,6 +273,84 @@ def dang_ky(r: Registry) -> None:
                 "của trình nạp — con chip đang chứa đúng bản này. Nó KHÔNG chứng minh chương "
                 "trình đang chạy đúng; muốn biết điều đó thì phải quan sát hành vi.")}
 
+    @r.tool("target.screen", "Mạch thật",
+            "ĐỌC BỘ NHỚ KHUNG ẢNH của bo và ghi ra PNG để XEM chương trình đã vẽ được gì. "
+            "Dùng khi người dùng nói màn hình đen/sai: nó tách được hai nguyên nhân hoàn toàn "
+            "khác nhau — chương trình vẽ sai, hay nó vẽ đúng mà tấm panel không hiện. Bỏ "
+            "trống tham số thì tự đọc địa chỉ/kích thước/định dạng từ thanh ghi LTDC.",
+            {"type": "object",
+             "properties": {
+                 "dia_chi": {"type": "integer",
+                             "description": "địa chỉ khung ảnh; bỏ trống = đọc từ LTDC"},
+                 "rong": {"type": "integer"}, "cao": {"type": "integer"},
+                 "dinh_dang": {"type": "string",
+                               "enum": ["ARGB8888", "RGB888", "RGB565"],
+                               "description": "bỏ trống = đọc từ LTDC_L1PFCR"},
+                 "tep": {"type": "string",
+                         "description": "nơi ghi PNG; mặc định .eide/anh-man-hinh.png"}},
+             "required": []},
+            risk="R2", core=False,
+            keywords=["màn hình", "màn hình đen", "lcd", "hiển thị", "vẽ", "framebuffer",
+                      "khung ảnh", "ltdc", "dsi", "ảnh màn hình", "screen"])
+    def target_screen(ctx: Any, dia_chi: int = 0, rong: int = 0, cao: int = 0,
+                      dinh_dang: str = "", tep: str = ""):
+        from ..build import mach_that as MT
+
+        cau = MT.doc_cau_hinh_ltdc()
+        # Thiếu số nào thì lấy từ thanh ghi. Bắt tác tử gõ tay ba con số này thì sai một cái
+        # là ảnh đọc ra lệch hàng và trông y như "chương trình vẽ sai" — phép đo tự sinh ra
+        # bằng chứng giả, đúng loại sai nguy hiểm nhất.
+        if cau["dat"]:
+            dia_chi = dia_chi or int(cau["dia_chi_khung"], 16)
+            rong = rong or cau["rong"]
+            cao = cao or cau["cao"]
+            dinh_dang = dinh_dang or cau["dinh_dang"]
+        if not (dia_chi and rong and cao and dinh_dang):
+            return ToolResult(False, error=EideError(
+                "E4019",
+                "Chưa biết khung ảnh ở đâu: " + (cau["vi_sao_khong_dat"]
+                                                 or "LTDC chưa được cấu hình."),
+                hint_for_agent=("LTDC chưa cấu hình thì chưa có gì để đọc — đó ĐÃ là một câu "
+                                "trả lời: chương trình chưa chạy tới chỗ bật màn hình. Kiểm "
+                                "bằng target.debug xem nó đang kẹt ở đâu."),
+                details=cau, alternatives=["target.debug"], blame="external"))
+
+        goc = Path(ctx.config.paths.project_root)
+        ra_tep = (goc / tep) if tep else (goc / ".eide" / "anh-man-hinh.png")
+        d = MT.doc_khung_anh(dia_chi, rong, cao, dinh_dang, ra_tep)
+        if not d["dat"]:
+            return ToolResult(False, error=EideError(
+                "E4019", f"Chưa đọc được khung ảnh: {d['vi_sao_khong_dat']}",
+                hint_for_agent=("KHÔNG đọc được khác với màn hình không có gì. Thiếu openocd "
+                                "thì đề nghị người dùng cài qua tool.install."),
+                details=d, alternatives=["tool.install", "target.debug"], blame="external"))
+
+        ctx.store.apply(
+            artefact_id="target:screen", type="target",
+            op="update" if ctx.store.get("target:screen") else "create",
+            author=f"agent:{ctx.run_id}", canonical={**d, "ltdc": cau},
+            explain={"summary": f"đọc khung ảnh {rong}×{cao} {dinh_dang}",
+                     "why": "phân biệt vẽ sai với panel không hiện",
+                     "sources": ["openocd", "LTDC"], "diff_prev": "—", "next": "—",
+                     "confidence": "VANG"},
+            view_hint={"kind": "image", "path": str(ra_tep)})
+        return {
+            **d, "ltdc": cau,
+            "note_vi": (
+                f"Đọc {d['so_byte']} byte khung ảnh tại {d['dia_chi']} ({rong}×{cao} "
+                f"{dinh_dang}) → `{d['tep']}`. "
+                + (f"Khung ảnh CHỈ CÓ MỘT MÀU ({d['mau_hay_gap'][0]['mau']}): chương trình "
+                   "chưa vẽ gì, hoặc mới xoá nền xong. Lỗi nằm ở phần VẼ — đừng đi sửa panel. "
+                   if d.get("chi_mot_mau") else
+                   f"Khung ảnh có {d.get('so_mau', '?')} màu, hay gặp nhất: "
+                   + ", ".join(f"{m['mau']} ({m['ti_le']:.1%})"
+                               for m in d.get("mau_hay_gap", []))
+                   + ". Có nhiều màu nghĩa là **chương trình ĐÃ vẽ**. Nếu người dùng vẫn thấy "
+                     "màn hình đen thì lỗi KHÔNG ở phần vẽ mà ở đường đưa ảnh ra tấm hiển "
+                     "thị: LTDC → DSI → panel (OTM8009A), hoặc đèn nền. ")
+                + f"LTDC bật: {cau.get('ltdc_bat')}, lớp 1 bật: {cau.get('lop1_bat')}. "
+                + "Đây là bộ nhớ của con chip trên bàn, không phải ảnh chụp màn hình máy tính.")}
+
     @r.tool("target.debug", "Mạch thật",
             "SOI chip đang chạy: dừng nó lại, xem nó đang ở đâu (mã thường hay trong một "
             "ngắt), đọc PC/xPSR/MSP, ĐỌC THANH GHI LỖI CFSR/HFSR và dịch từng bit thành lời, "

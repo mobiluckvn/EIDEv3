@@ -520,8 +520,70 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
         nk.anh(g, "khung-ngat")
 
+    # ------------------------------------------- 21. hết fault rồi mà màn hình vẫn đen
+    #
+    # Sau lượt 20 chip ra khỏi HardFault: PC luân phiên `HAL_Delay` ↔ `HAL_GetTick`, tức
+    # SysTick có tick và vòng lặp chính còn sống. Màn hình vẫn đen.
+    #
+    # Chỗ EIDE còn thiếu lần này không phải một phép đo nữa — mà là **con mắt**. Câu hỏi
+    # "chương trình vẽ sai, hay nó vẽ đúng mà tấm panel không hiện" có hai câu trả lời ở hai
+    # đầu khác nhau của hệ thống, cách sửa không liên quan gì nhau, và nhìn vào một màn hình
+    # đen thì không phân biệt được. → `target.screen` đọc thẳng bộ nhớ khung ảnh ra PNG.
+    if lam(21):
+        nk.buoc("Hết HardFault, chương trình chạy, mà màn hình vẫn đen")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn sửa được rồi: chip ra khỏi HardFault, mình đo thấy PC luân phiên "
+                      "giữa `HAL_Delay` và `HAL_GetTick`, nghĩa là SysTick có tick và vòng "
+                      "lặp chính còn sống. **Nhưng màn hình vẫn đen xì.**\n\n"
+                      "Mình vừa thêm cho EIDE một công cụ: **`target.screen`** — nó đọc thẳng "
+                      "bộ nhớ khung ảnh của con chip qua SWD và ghi ra PNG, nên bạn **xem "
+                      "được** chương trình đã vẽ ra cái gì. Nó tự lấy địa chỉ, kích thước và "
+                      "định dạng từ thanh ghi LTDC, bạn không phải gõ số nào.\n\n"
+                      "Gọi nó đi. Rồi trả lời mình đúng một câu trước khi sửa bất cứ thứ gì: "
+                      "**chương trình vẽ sai, hay nó vẽ đúng mà tấm panel không hiện?** Có số "
+                      "rồi mới đi sửa — và sửa đúng đầu bị hỏng.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_nhin_khung_anh(nk, ctx, cc)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "nhin-khung-anh")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_nhin_khung_anh(nk: Any, ctx: Any, cc: list[dict]) -> None:
+    """Tác tử có ĐỌC khung ảnh không, và nó thấy gì trong đó.
+
+    Phép kiểm này chép luôn tệp PNG vào thư mục kết quả: với báo cáo, một khung ảnh đọc từ
+    chính con chip là sở cứ mạnh hơn mọi câu mô tả — và nó không phải ảnh chụp màn hình máy
+    tính, nên không có gì riêng tư lọt vào.
+    """
+    import shutil as _sh
+
+    goi = [c for c in cc if c["tool"] == "target.screen"]
+    if not goi:
+        nk.ket(False, "Tác tử ĐỌC khung ảnh của bo để xem mình vẽ được gì",
+               "— không gọi target.screen lần nào, nên câu “vẽ sai hay panel không hiện” "
+               "vẫn đang bỏ ngỏ —")
+        return
+    d = (ctx.store.get("target:screen") or {}).get("canonical") or {}
+    mau = d.get("mau_hay_gap") or []
+    nk.ket(bool(mau) and not d.get("chi_mot_mau"),
+           "Khung ảnh trên chip CÓ NỘI DUNG (nhiều màu) — tức phần vẽ đã chạy",
+           (f"{d.get('so_mau')} màu · "
+            + ", ".join(f"{m['mau']} {m['ti_le']:.1%}" for m in mau[:4]))
+           if mau else "không đọc được màu nào")
+    tep = d.get("tep") or ""
+    if tep and pathlib.Path(tep).exists():
+        dich = nk.ra / "anh" / "khung-anh-doc-tu-chip.png"
+        dich.parent.mkdir(parents=True, exist_ok=True)
+        _sh.copy(tep, dich)
+        nk.ghi("Khung ảnh đọc từ bộ nhớ chip (sở cứ cho báo cáo)",
+               f"{dich.relative_to(nk.ra)} · {pathlib.Path(tep).stat().st_size} byte · "
+               f"{d.get('rong')}×{d.get('cao')} {d.get('dinh_dang')} tại {d.get('dia_chi')}")
 
 
 def _kiem_khung_ngat(nk: Any, ctx: Any) -> None:

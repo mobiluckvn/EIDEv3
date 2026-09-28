@@ -669,6 +669,156 @@ def giai_khung_ngat(tu: list[str]) -> dict[str, Any]:
     return ra
 
 
+# Định dạng điểm ảnh LTDC hiểu → (số byte mỗi điểm, cách xếp kênh). Mã số là giá trị của
+# trường PF trong thanh ghi LTDC_LxPFCR, đọc thẳng từ chip được.
+DINH_DANG_DIEM = {
+    "ARGB8888": (4, "BGRA"),        # LTDC PF=0. Trong bộ nhớ little-endian: B,G,R,A
+    "RGB888": (3, "BGR"),           # PF=1
+    "RGB565": (2, "RGB565"),        # PF=2
+}
+_PF_LTDC = {0: "ARGB8888", 1: "RGB888", 2: "RGB565"}
+
+# Trần kích thước một lần đọc framebuffer. 800×480×4 = 1,5 MB đã là cả một màn hình; đọc hơn
+# thế qua SWD thì người ta bỏ chạy trước khi nó xong.
+TRAN_BYTE_KHUNG_ANH = 4 * 1024 * 1024
+
+
+def doc_khung_anh(dia_chi: int, rong: int, cao: int, dinh_dang: str, ra_tep: Path, *,
+                  timeout: float = 300.0) -> dict[str, Any]:
+    """Đọc framebuffer từ chip qua SWD rồi ghi thành PNG. Tác tử **xem được** nó đã vẽ gì.
+
+    Vì sao năng lực này đáng có, đo được trên bo STM32F469 ngày 28/09/2026: người dùng nói
+    "màn hình đen xì". Câu hỏi đầu tiên phải trả lời là *chương trình vẽ sai, hay nó vẽ đúng
+    mà tấm panel không hiện?* Hai nguyên nhân ấy ở hai đầu khác nhau của hệ thống và cách sửa
+    không liên quan gì tới nhau — mà nhìn vào một màn hình đen thì không phân biệt được.
+
+    Đọc chính bộ nhớ khung ảnh trả lời được câu đó bằng số: có điểm màu đúng chỗ thì phần vẽ
+    xong rồi, lỗi nằm ở đường LTDC → DSI → panel.
+
+    Đây KHÔNG phải ảnh chụp màn hình máy tính. Nó đọc bộ nhớ của con chip trên bàn — không
+    liên quan gì tới cửa sổ nào đang mở trên máy, và không dùng `screencapture`.
+    """
+    ra: dict[str, Any] = {"dat": False, "vi_sao_khong_dat": "", "tep": "",
+                          "dia_chi": f"0x{dia_chi:08X}", "rong": rong, "cao": cao,
+                          "dinh_dang": dinh_dang}
+    if dinh_dang not in DINH_DANG_DIEM:
+        ra["vi_sao_khong_dat"] = (f"chưa biết định dạng điểm ảnh `{dinh_dang}`. Biết: "
+                                  + ", ".join(DINH_DANG_DIEM))
+        return ra
+    if rong <= 0 or cao <= 0:
+        ra["vi_sao_khong_dat"] = f"kích thước không hợp lệ: {rong}×{cao}."
+        return ra
+    bpp = DINH_DANG_DIEM[dinh_dang][0]
+    so_byte = rong * cao * bpp
+    if so_byte > TRAN_BYTE_KHUNG_ANH:
+        ra["vi_sao_khong_dat"] = (f"{rong}×{cao}×{bpp} = {so_byte} byte, vượt trần "
+                                  f"{TRAN_BYTE_KHUNG_ANH}. Đọc một vùng nhỏ hơn.")
+        return ra
+    oo = shutil.which("openocd")
+    if not oo:
+        ra["vi_sao_khong_dat"] = ("máy chưa có `openocd` nên không đọc được bộ nhớ khung ảnh. "
+                                  "Không đọc được KHÁC với màn hình không có gì.")
+        return ra
+    try:
+        from PIL import Image
+    except ImportError:
+        ra["vi_sao_khong_dat"] = "máy chưa có thư viện Pillow để ghi PNG."
+        return ra
+
+    import tempfile
+
+    tho = Path(tempfile.mkdtemp()) / "khung.bin"
+    # `dump_image` đọc cả khối một lần. Dùng `mdw` cho 1,5 MB thì phải phân tích hơn ba trăm
+    # nghìn dòng chữ — chậm hơn hàng chục lần và dễ mất dòng.
+    cl = [oo, "-f", "interface/stlink.cfg", "-f", "target/stm32f4x.cfg",
+          "-c", "init", "-c", "halt",
+          "-c", f"dump_image {tho} 0x{dia_chi:08x} {so_byte}",
+          "-c", "resume", "-c", "exit"]
+    try:
+        r = subprocess.run(cl, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as e:
+        ra["vi_sao_khong_dat"] = f"openocd không chạy được: {type(e).__name__}: {e}"
+        return ra
+    if not tho.exists() or tho.stat().st_size < so_byte:
+        ra["vi_sao_khong_dat"] = (
+            f"đọc được {tho.stat().st_size if tho.exists() else 0}/{so_byte} byte. "
+            + (((r.stdout or "") + (r.stderr or "")).strip()[-200:] or "không rõ lý do"))
+        return ra
+
+    byte = tho.read_bytes()[:so_byte]
+    kieu = DINH_DANG_DIEM[dinh_dang][1]
+    if kieu == "RGB565":
+        anh = Image.frombytes("RGB", (rong, cao), byte, "raw", "BGR;16")
+    else:
+        anh = Image.frombytes("RGBA" if bpp == 4 else "RGB", (rong, cao), byte, "raw", kieu)
+        if bpp == 4:
+            anh = anh.convert("RGB")     # kênh alpha của LTDC không nói gì về cái mắt thấy
+    ra_tep.parent.mkdir(parents=True, exist_ok=True)
+    anh.save(ra_tep, "PNG")
+    ra["tep"] = str(ra_tep)
+    ra["so_byte"] = so_byte
+
+    # Thống kê để nói được "có vẽ gì không" mà không cần ai mở tệp ảnh ra xem.
+    mau = anh.convert("RGB").getcolors(maxcolors=1 << 20)
+    if mau:
+        mau.sort(reverse=True)
+        tong = sum(n for n, _ in mau)
+        ra["so_mau"] = len(mau)
+        ra["mau_hay_gap"] = [{"mau": "#%02X%02X%02X" % c, "ti_le": round(n / tong, 4)}
+                             for n, c in mau[:5]]
+        # Một khung ảnh CHỈ có một màu thì chương trình chưa vẽ gì (hoặc mới xoá nền). Đây là
+        # phép phân biệt quan trọng nhất của cả hàm, nên nó được tính ra số, không để suy đoán.
+        ra["chi_mot_mau"] = len(mau) == 1
+    ra["dat"] = True
+    return ra
+
+
+def doc_cau_hinh_ltdc(*, timeout: float = 60.0) -> dict[str, Any]:
+    """Đọc từ chính thanh ghi LTDC: khung ảnh ở đâu, bao nhiêu điểm, định dạng gì.
+
+    Không bắt ai gõ tay ba con số ấy vào. Gõ tay thì sai một cái là ảnh đọc ra lệch hàng và
+    trông y như "chương trình vẽ sai" — một phép đo tự sinh ra bằng chứng giả.
+    """
+    LTDC = 0x40016800
+    ra: dict[str, Any] = {"dat": False, "vi_sao_khong_dat": ""}
+    oo = shutil.which("openocd")
+    if not oo:
+        ra["vi_sao_khong_dat"] = "máy chưa có `openocd`."
+        return ra
+    o = _doc_o_nho(oo, [(LTDC + 0x18, 1), (LTDC + 0x84, 1), (LTDC + 0x94, 1),
+                        (LTDC + 0xAC, 1), (LTDC + 0xB0, 1), (LTDC + 0xB4, 1),
+                        (LTDC + 0x88, 1), (LTDC + 0x8C, 1)], timeout=timeout)
+
+    def _lay(off: int) -> int | None:
+        v = o.get(f"0x{LTDC + off:08x}")
+        try:
+            return int(v[0], 16) if v else None
+        except ValueError:
+            return None
+
+    gcr, l1cr, pfcr = _lay(0x18), _lay(0x84), _lay(0x94)
+    cfbar, cfblr, cfblnr = _lay(0xAC), _lay(0xB0), _lay(0xB4)
+    whpcr, wvpcr = _lay(0x88), _lay(0x8C)
+    if gcr is None or cfbar is None:
+        ra["vi_sao_khong_dat"] = "không đọc được thanh ghi LTDC — chip đang bị giữ, hay cáp SWD?"
+        return ra
+    ra["dat"] = True
+    ra["ltdc_bat"] = bool(gcr & 1)
+    ra["lop1_bat"] = bool((l1cr or 0) & 1)
+    ra["dia_chi_khung"] = f"0x{cfbar:08X}"
+    ra["dinh_dang"] = _PF_LTDC.get((pfcr or 0) & 0x7, f"PF={(pfcr or 0) & 0x7} (chưa biết)")
+    ra["cao"] = (cfblnr or 0) & 0x7FF
+    bpp = DINH_DANG_DIEM.get(ra["dinh_dang"], (0,))[0]
+    # Bước dòng (pitch) nằm ở 16 bit cao của CFBLR; chiều rộng suy từ nó, không đoán.
+    buoc = ((cfblr or 0) >> 16) & 0x1FFF
+    ra["buoc_dong"] = buoc
+    ra["rong"] = buoc // bpp if bpp else 0
+    if whpcr is not None and wvpcr is not None:
+        ra["rong_cua_so"] = ((whpcr >> 16) & 0xFFF) - (whpcr & 0xFFF) + 1
+        ra["cao_cua_so"] = ((wvpcr >> 16) & 0x7FF) - (wvpcr & 0x7FF) + 1
+    return ra
+
+
 def khop_tai_dia_chi(bin_path: Path, dia_chi: int, *, so_byte: int = 32,
                      goc_flash: int = 0x08000000, timeout: float = 60.0) -> dict[str, Any]:
     """Mã tại đúng địa chỉ này trên chip có giống tệp vừa dịch không?

@@ -4022,3 +4022,169 @@ Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
 
 nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
 
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 10:00:05)*
+
+## Bước 52. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+60 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/52-mo-du-an.png)
+
+
+## Bước 53. Hết HardFault, chương trình chạy, mà màn hình vẫn đen
+
+**Anh gõ:**
+
+> Bạn sửa được rồi: chip ra khỏi HardFault, mình đo thấy PC luân phiên giữa `HAL_Delay` và `HAL_GetTick`, nghĩa là SysTick có tick và vòng lặp chính còn sống. **Nhưng màn hình vẫn đen xì.**
+> 
+> Mình vừa thêm cho EIDE một công cụ: **`target.screen`** — nó đọc thẳng bộ nhớ khung ảnh của con chip qua SWD và ghi ra PNG, nên bạn **xem được** chương trình đã vẽ ra cái gì. Nó tự lấy địa chỉ, kích thước và định dạng từ thanh ghi LTDC, bạn không phải gõ số nào.
+> 
+> Gọi nó đi. Rồi trả lời mình đúng một câu trước khi sửa bất cứ thứ gì: **chương trình vẽ sai, hay nó vẽ đúng mà tấm panel không hiện?** Có số rồi mới đi sửa — và sửa đúng đầu bị hỏng.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] **Chương trình vẽ đúng, nhưng tấm panel không hiện.**
+> 
+> ---
+> 
+> ### Số liệu thực tế từ công cụ `target.screen`
+> 
+> * **Bộ nhớ khung ảnh (SDRAM tại `0xC0000000`):** Đã đọc $1.536.000\text{ byte}$ ($800 \times 480$, ARGB8888). Bộ nhớ chứa **$200\text{ màu}$** khác nhau (trắng: $82,8\%$, đen: $12,2\%$, đỏ `#DE2019`: $2,1\%$, đỏ `#FF0000`: $0,8\%$, xanh navy `#000080`: $0,8\%$, ...), hoàn toàn không phải khung rỗng hay đơn sắc.
+> * **Trạng thái LTDC:** Thanh ghi phần cứng xác nhận `LTDC: BẬT` và `Lớp 1 (Layer 1): BẬT`, cửa sổ hiển thị khớp kích thước $800 \times 480$, bước dòng $3.200\text{ byte}$.
+> * **Kết luận nguyên nhân:** Mã xử lý đồ hoạ trong CPU và việc ghi vào bộ nhớ SDRAM hoàn toàn bình thường. Lỗi nằm ở chuỗi truyền tín hiệu ra tấm hiển thị: **cấu hình DSI Host, chuỗi lệnh khởi tạo IC điều khiển panel (OTM8009A), hoặc nguồn / chân điều khiển đèn nền (backlight/PWM).**
+> 
+> Ảnh kết xuất từ bộ nhớ khung ảnh chip đã được lưu tại: `.eide/anh-man-hinh.png`.
+> 
+> ---
+> 
+> **Báo cáo lượt chạy:**
+> 1. **Đã làm gì:** Mở khoá công cụ `target.screen` và đọc trực tiếp $1.536.000\text{ byte}$ khung ảnh từ SDRAM cùng trạng thái thanh ghi LTDC qua SWD.
+> 2. **Bỏ gì và vì sao:** Chưa can thiệp sửa mã nguồn, tuân thủ yêu cầu chẩn đoán đúng đầu lỗi trước khi sửa.
+> 3. **Giả định đang dùng:** Không có giả định suy đoán; toàn bộ số liệu lấy trực tiếp từ phần cứng.
+> 4. **Hoàn tác được tới đâu:** Trạng thái mã không đổi; tạo mới tệp ảnh kiểm tra `.eide/anh-man-hinh.png`.
+> 5. **Hết bao nhiêu:** 2 lượt gọi công cụ (`tool.search`, `target.screen`).
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. tool.search          ok  {"query": "target.screen"}
+ 2. target.screen        ok  {}
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+tool.search → target.screen
+
+✅ Khung ảnh trên chip CÓ NỘI DUNG (nhiều màu) — tức phần vẽ đã chạy
+
+```
+200 màu · #FFFFFF 82.8%, #000000 12.2%, #DE2019 2.1%, #FF0000 0.8%
+```
+
+**Khung ảnh đọc từ bộ nhớ chip (sở cứ cho báo cáo)**
+
+anh/khung-anh-doc-tu-chip.png · 16213 byte · 800×480 ARGB8888 tại 0xC0000000
+
+**Tệp trong firmware/ (61)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 129736 B ≥ logo 115200 B
+
+✅ Chip đang chứa ĐÚNG bản vừa dịch (129736 byte)
+
+```
+sha256 tệp  : 1ffd22ec2328dddb7d5bad77edf48ba3
+sha256 chip : 1ffd22ec2328dddb7d5bad77edf48ba3
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![nhin-khung-anh](anh/53-nhin-khung-anh.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+

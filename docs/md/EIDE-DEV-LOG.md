@@ -2837,7 +2837,45 @@ Phiên bo thật: bước 17–20 (`tools/phien_stm32.py --buoc 17..20`). Bướ
 mới: *"tác tử đọc thanh ghi lỗi và nhận được bit lỗi cụ thể"*, *"khung ngoại lệ chỉ ra lệnh gây
 fault"*.
 
+#### Lần 4 — thứ EIDE thiếu không phải một phép đo nữa, mà là con mắt
+
+Hết HardFault, chương trình chạy (`HAL_Delay` ↔ `HAL_GetTick`), **màn hình vẫn đen**. Câu hỏi
+tiếp theo có hai câu trả lời ở hai đầu khác nhau của hệ thống, cách sửa không liên quan gì
+nhau: *chương trình vẽ sai, hay nó vẽ đúng mà tấm panel không hiện?* Nhìn vào một màn hình đen
+thì không phân biệt được — và cả bốn lượt trước, tác tử lẫn tôi đều đang đoán giữa hai nhánh ấy.
+
+→ Công cụ mới **`target.screen`**: đọc thẳng bộ nhớ khung ảnh của chip qua SWD (`dump_image`,
+1,5 MB trong ~15 giây) và ghi ra PNG. Kèm **`doc_cau_hinh_ltdc()`** tự lấy địa chỉ, kích thước
+và định dạng từ chính thanh ghi LTDC — bắt gõ tay ba con số ấy thì sai một cái là ảnh đọc ra
+lệch hàng và trông y hệt "chương trình vẽ sai", tức là một phép đo **tự sinh ra bằng chứng giả**.
+
+Đọc từ thanh ghi: `LTDC_GCR` bit 0 = 1, `L1CR` bit 0 = 1, `L1CFBAR = 0xC0000000`,
+`L1CFBLR >> 16 = 3200` → 800 điểm ARGB8888, `L1CFBLNR = 480` dòng.
+
+Kết quả đọc ra khung ảnh: **200 màu** — trắng 82,8 %, đen 12,2 %, **`#DE2019` 2,1 %** (đúng đỏ
+logo PTIT), `#FF0000` 0,8 %, `#000080` 0,8 %. Ảnh hiện logo PTIT và bốn dòng chữ, đặt đúng chỗ.
+
+Tức là: **chương trình vẽ đúng.** Màn hình đen vì đường LTDC → DSI → panel (OTM8009A) hoặc đèn
+nền, không phải vì phần vẽ. Bốn lượt trước đi sai nhánh, và không ai biết vì không ai nhìn được.
+
+Hiệu quả đo được trên cùng một tác tử, cùng một câu hỏi:
+
+| lượt | công cụ đã có | số lời gọi | kết quả |
+|---|---|---|---|
+| 18 | `target.debug` (chỉ PC) | **40** (28 × `fs.read`) | hết hạn mức, dừng giữa việc |
+| 20 | + khung ngoại lệ | 23 | mở đúng tệp, đúng vùng |
+| 21 | + `target.screen` | **2** | `tool.search` → `target.screen`, kết luận đúng |
+
+Và ảnh ấy lộ thêm hai lỗi chất lượng mà **máy đo được** còn mắt người trước màn hình đen thì
+không: **bốn dòng chữ vỡ, glyph chồng lên nhau** (lỗi dựng phông), và **logo có hộp nền đen**
+(kênh alpha của PNG bị đổ thành đen khi đổi sang mảng điểm). Cả hai vào danh sách việc.
+
+Một ghi chú về ràng buộc bảo mật: đây **không** phải ảnh chụp màn hình máy tính. Nó đọc bộ nhớ
+của con chip trên bàn, không liên quan tới cửa sổ nào đang mở, và không dùng `screencapture` —
+lệnh đã hai lần chụp nhầm cửa sổ riêng tư trong dự án này.
+
 ### Còn lại
 
-- Màn hình: cần anh Công xác nhận bằng mắt (tầng NGƯỜI) — máy đã xanh hết phần máy đo được.
+- Màn hình: lỗi ở đường DSI → panel, tác tử đang sửa. Phần vẽ đã chứng minh là đúng bằng số.
+- Chữ vỡ (dựng phông) và hộp nền đen của logo (alpha) — hai lỗi do `target.screen` lộ ra.
 - `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.

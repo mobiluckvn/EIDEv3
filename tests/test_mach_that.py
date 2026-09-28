@@ -987,3 +987,111 @@ def test_target_debug_NOI_lenh_gay_fault_TRUOC_ten_handler(make_agent, monkeypat
     assert "OTM8009A_ReadID_Ext" in n and "otm8009a.c:472" in n
     assert "địa chỉ CHẴN" in n            # cờ T = 0 → nhảy tới địa chỉ chẵn
     assert n.index("Khung ngoại lệ") < n.index("Địa chỉ → mã nguồn")
+
+
+# ============================== target.screen — XEM chip đã vẽ gì, không chỉ đoán
+def _openocd_dump(monkeypatch, noi_dung: bytes, *, ltdc: dict | None = None):
+    """openocd giả: `mdw` cho thanh ghi LTDC, `dump_image` cho khung ảnh."""
+    import subprocess
+
+    tt = ltdc or {0x18: 0x00002221, 0x84: 1, 0x94: 0, 0xAC: 0xC0000000,
+                  0xB0: 0x0C800C83, 0xB4: 0x000001E0, 0x88: 0x03430024, 0x8C: 0x01EF0010}
+
+    def _run(cl, **k):
+        lenh = [cl[i + 1] for i, x in enumerate(cl) if x == "-c"]
+        ra = ""
+        for l in lenh:
+            if l.startswith("dump_image"):
+                _, tep, dc, n = l.split()
+                Path(tep).write_bytes(noi_dung[:int(n)])
+            elif l.startswith("mdw"):
+                d = int(l.split()[1], 16)
+                ra += f"0x{d:08x}: {tt.get(d - 0x40016800, 0):08x} \n"
+        return subprocess.CompletedProcess(cl, 0, ra, "")
+
+    monkeypatch.setattr(MT.shutil, "which", lambda x: f"/fake/{x}")
+    monkeypatch.setattr(MT.subprocess, "run", _run)
+
+
+def test_doc_cau_hinh_ltdc_suy_kich_thuoc_tu_THANH_GHI_khong_bat_go_tay(monkeypatch):
+    """Gõ tay ba con số này thì sai một cái là ảnh đọc ra lệch hàng và trông y như “chương
+    trình vẽ sai” — một phép đo tự sinh ra bằng chứng giả."""
+    _openocd_dump(monkeypatch, b"")
+    c = MT.doc_cau_hinh_ltdc()
+    assert c["dat"] and c["ltdc_bat"] and c["lop1_bat"]
+    assert c["dia_chi_khung"] == "0xC0000000" and c["dinh_dang"] == "ARGB8888"
+    assert (c["rong"], c["cao"]) == (800, 480)      # 0x0C80 / 4 byte, 0x1E0 dòng
+
+
+def test_target_screen_nhieu_mau_thi_noi_CHUONG_TRINH_DA_VE(make_agent, monkeypatch):
+    """Đo được trên bo STM32F469: người dùng thấy màn hình đen, mà khung ảnh có 200 màu —
+    #FFFFFF 82,8 %, #000000 12,2 %, **#DE2019 2,1 %** (đúng đỏ logo PTIT).
+
+    Hai nguyên nhân "vẽ sai" và "panel không hiện" ở hai đầu khác nhau của hệ thống, cách sửa
+    không liên quan gì nhau, và nhìn vào một màn hình đen thì không phân biệt được. Đây là
+    phép đo tách chúng ra.
+    """
+    agent = make_agent([])
+    khung = (bytes([0x19, 0x20, 0xDE, 0xFF]) * 4 + bytes([0xFF]) * 16) * 4
+    _openocd_dump(monkeypatch, khung)
+    r = agent.registry.run("target.screen",
+                           {"dia_chi": 0xC0000000, "rong": 4, "cao": 8,
+                            "dinh_dang": "ARGB8888"}, _ctx(agent))
+    assert r.ok, getattr(r.error, "message_vi", r)
+    assert not r.data["chi_mot_mau"]
+    assert "#DE2019" in " ".join(m["mau"] for m in r.data["mau_hay_gap"])
+    n = r.data["note_vi"]
+    assert "chương trình ĐÃ vẽ" in n and "LTDC → DSI → panel" in n
+    assert Path(r.data["tep"]).exists()
+
+
+def test_target_screen_mot_mau_thi_noi_LOI_O_PHAN_VE(make_agent, monkeypatch):
+    """Một khung ảnh chỉ có một màu là câu trả lời ngược lại, và nó phải nói ngược lại."""
+    agent = make_agent([])
+    _openocd_dump(monkeypatch, b"\x00\x00\x00\xff" * 32)
+    r = agent.registry.run("target.screen",
+                           {"dia_chi": 0xC0000000, "rong": 4, "cao": 8,
+                            "dinh_dang": "ARGB8888"}, _ctx(agent))
+    assert r.ok and r.data["chi_mot_mau"]
+    assert "Lỗi nằm ở phần VẼ" in r.data["note_vi"]
+
+
+def test_target_screen_tu_lay_thong_so_tu_LTDC_khi_khong_truyen_gi(make_agent, monkeypatch):
+    agent = make_agent([])
+    _openocd_dump(monkeypatch, b"\x10\x20\x30\xff" * (800 * 480))
+    r = agent.registry.run("target.screen", {}, _ctx(agent))
+    assert r.ok, getattr(r.error, "message_vi", r)
+    assert (r.data["rong"], r.data["cao"]) == (800, 480)
+    assert r.data["dinh_dang"] == "ARGB8888"
+
+
+def test_target_screen_LTDC_chua_bat_thi_DO_LA_MOT_CAU_TRA_LOI(make_agent, monkeypatch):
+    """LTDC chưa cấu hình → chưa có khung ảnh nào. Đó không phải thất bại của phép đo, mà là
+    kết quả của nó: chương trình chưa chạy tới chỗ bật màn hình."""
+    agent = make_agent([])
+    _openocd_dump(monkeypatch, b"", ltdc={0x18: 0, 0x84: 0, 0x94: 0, 0xAC: 0,
+                                          0xB0: 0, 0xB4: 0, 0x88: 0, 0x8C: 0})
+    r = agent.registry.run("target.screen", {}, _ctx(agent))
+    assert not r.ok and r.error.code == "E4019"
+    assert "chưa chạy tới chỗ bật màn hình" in r.error.hint_for_agent
+
+
+def test_doc_khung_anh_qua_lon_thi_tu_choi_truoc_khi_doc(tmp_path, monkeypatch):
+    """Từ chối TRƯỚC khi đọc, không phải sau — đọc 20 MB qua SWD rồi mới báo lỗi thì người
+    dùng đã bỏ đi từ lâu."""
+    monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
+    d = MT.doc_khung_anh(0xC0000000, 4000, 4000, "ARGB8888", tmp_path / "a.png")
+    assert not d["dat"] and "vượt trần" in d["vi_sao_khong_dat"]
+
+
+def test_doc_khung_anh_doc_thieu_byte_thi_KHONG_ghi_anh_cut(tmp_path, monkeypatch):
+    """Đọc thiếu mà vẫn ghi ảnh thì ra một khung lệch hàng — trông y hệt chương trình vẽ sai."""
+    _openocd_dump(monkeypatch, b"\x00" * 16)          # xin nhiều hơn số có
+    d = MT.doc_khung_anh(0xC0000000, 10, 10, "ARGB8888", tmp_path / "a.png")
+    assert not d["dat"] and "/400 byte" in d["vi_sao_khong_dat"]
+    assert not (tmp_path / "a.png").exists()
+
+
+def test_doc_khung_anh_dinh_dang_la_thi_noi_biet_nhung_gi(tmp_path):
+    d = MT.doc_khung_anh(0xC0000000, 8, 8, "YUV420", tmp_path / "a.png")
+    assert not d["dat"] and "ARGB8888" in d["vi_sao_khong_dat"]
