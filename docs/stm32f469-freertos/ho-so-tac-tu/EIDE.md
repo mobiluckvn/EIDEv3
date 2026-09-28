@@ -62,3 +62,12 @@ Quy ước từ nay ở dự án này:
 - Tệp test **dịch cùng** tệp logic thật, không chép lại nó.
 - Sau khi `test.run` xanh, chạy `test.sensitivity`. Nó phá mã sản phẩm rồi xem bộ kiểm có đỏ
   không. Không đỏ ⇒ bộ kiểm chưa đo gì, dù báo cáo có bao nhiêu ô xanh.
+
+## Vòng chạm đã được người xác nhận sau khi tách logic
+
+28/09/2026, sau khi tách `ui_state.c` và cho `ui.c` uỷ quyền: người dùng bấm nút "Chi tiet"
+trên bo thật và xác nhận vẫn chạy tốt. Đây là bằng chứng mà máy **không lấy được**: đọc khung
+ảnh chỉ nói chương trình đã vẽ, lấy mẫu PC chỉ nói nhân còn chạy — cả hai đều không đi qua
+đoạn ngón tay → I2C → `UI_State_CheckTouch` → `UI_State_Toggle` → vẽ lại, mà đó chính là đoạn
+vừa bị sửa. Lần sau đụng vào `ui_state.c` thì phải xin người bấm lại, đừng coi ba số đo kia là
+đủ.

@@ -4037,6 +4037,16 @@ Nạp lại bo sau khi tách: PC rơi vào `prvCheckTasksWaitingTermination` (nh
 11/11 mắt xích hiển thị thông, màn vẫn đúng logo PTIT + bốn dòng + nút "Chi tiet". Việc tách
 không làm hỏng sản phẩm — đo trên silicon, không suy từ mã.
 
+Nhưng ba số đo ấy **chưa đủ**, và chỗ thiếu đúng vào chỗ vừa sửa: chúng nói khung ảnh có nội
+dung và nhân còn chạy, **không** nói vòng chạm còn sống. Toàn bộ việc tách là lấy
+`UI_State_CheckTouch` và `UI_State_Toggle` ra khỏi `ui.c` — tức là đúng đoạn từ ngón tay tới
+lúc màn đổi. Đọc khung ảnh không đi qua đoạn đó một bước nào.
+
+Người dùng bấm thử nút "Chi tiet" trên bo và xác nhận **vẫn chạy tốt** (28/09/2026). Đây mới là
+bằng chứng cho phép tách: cảm ứng I2C → `touch.c` → `UI_State_CheckTouch` → `UI_State_Toggle` →
+`ui.c` vẽ lại. Trên máy chủ, tám ca kiểm chỉ chạm được khúc giữa; hai đầu chỉ bo thật nói được,
+và tác tử đã khai đúng như vậy.
+
 #### Một cái bẫy trong kịch bản phiên, do tôi đạp phải
 
 `--buoc 20` đọc như *"chạy tiếp bước 20 của phiên đang có"*, nhưng mặc định lại `rmtree` cả thư
