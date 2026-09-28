@@ -179,8 +179,29 @@ def build_pending_block(*, cards: list[dict[str, Any]], stopped_run: dict[str, A
     for a in assumptions:
         L.append(f"- Giả định đang dùng: {a}")
     if plan:
-        done = sum(1 for s in plan.get("steps", []) if s.get("done"))
-        L.append(f"- Kế hoạch đã duyệt: {done}/{len(plan.get('steps', []))} bước xong")
+        # NÓI RÕ kế hoạch ấy cho việc gì.
+        #
+        # Bản đầu chỉ in "Kế hoạch đã duyệt: 7/8 bước xong" — một con số không nội dung. Đo
+        # được trên phiên FreeRTOS: người dùng giao một việc MỚI (màn hình có nút, cảm ứng),
+        # tác tử thấy dòng ấy, tưởng mình đang chạy dưới một kế hoạch đã duyệt cho việc mới,
+        # và **không lập kế hoạch nào cả**. Cùng họ với lỗi "Lượt chạy dở: run-256": một mã
+        # số không nội dung thì người đọc tự điền nội dung vào, và thường điền sai.
+        b = plan.get("steps", []) or []
+        done = sum(1 for s in b if s.get("xong") or s.get("done"))
+        muc = str(plan.get("muc_tieu") or "").strip()
+        L.append(f"- Kế hoạch đã duyệt: {done}/{len(b)} bước xong"
+                 + (f" — CHO VIỆC: “{muc[:110]}”" if muc else ""))
+        # LIỆT KÊ luôn các bước, gọn thôi. Không có chúng, tác tử không đọc được kế hoạch
+        # của CHÍNH NÓ — đo được trên phiên FreeRTOS: nó tiêu 10 lời gọi đọc (5 ledger.query,
+        # 3 fs.grep, 1 tool.search, 1 fs.glob) để dựng lại bảy bước mà vẫn chưa đủ, rồi phải
+        # tự viết một công cụ `plan.get` chỉ để nhìn thấy thứ lẽ ra đã ở trước mặt.
+        for i, buoc in enumerate(b, 1):
+            dau = "x" if (buoc.get("xong") or buoc.get("done")) else " "
+            L.append(f"  [{dau}] {i}. {str(buoc.get('viec') or '')[:72]}"
+                     + (f" · {buoc.get('cong_cu')}" if buoc.get("cong_cu") else ""))
+        if muc:
+            L.append("  Việc người dùng vừa giao mà KHÁC việc trên thì kế hoạch này không "
+                     "phủ nó: soạn kế hoạch mới (`plan.enter`), đừng chạy tiếp cái cũ.")
     L.append("</pending>")
     out = "\n".join(L)
     cap = budget_chars(budget_tokens)

@@ -3709,3 +3709,79 @@ vẫn **chỉ công cụ đọc**: thêm mắt, không thêm tay.
 
 - `tool.propose` vẫn chưa được tác tử dùng lần nào — chưa gặp việc nào bí tới mức cần.
 
+### [DEV-285] 28/09/2026 · `tool.propose` chạy thật — tác tử tự viết công cụ cho chính nó
+
+Anh Công giao việc phức tạp hơn trên dự án FreeRTOS: màn LCD hiện logo PTIT + thông tin đề
+tài, nút **“Chi tiết”** chạm được, màn chi tiết có nút **“Close”**, và **LED vẫn nháy song
+song**. Ba chỗ khó cùng lúc — LCD là thứ tác tử đã tự đặt *ngoài phạm vi* ở kế hoạch trước,
+cảm ứng thì nó chưa từng đụng.
+
+#### Bug: kế hoạch trong ngữ cảnh không nói nó là kế hoạch CHO VIỆC GÌ
+
+Nhận việc mới, tác tử **không lập kế hoạch nào** — nó đi thẳng vào `store.req_create`. Vì
+`<pending>` in:
+
+```
+- Kế hoạch đã duyệt: 7/8 bước xong
+```
+
+Một con số, không nội dung. Tác tử thấy dòng ấy và tưởng việc mới đã nằm trong kế hoạch cũ.
+**Cùng họ với lỗi “Lượt chạy dở: run-256”**: một mã số không nội dung thì người đọc tự điền
+nội dung vào, và thường điền sai.
+
+Sửa: dòng ấy in cả **mục tiêu** của kế hoạch, kèm câu *"việc vừa giao mà khác việc trên thì kế
+hoạch này không phủ nó — soạn kế hoạch mới"*. Thêm: xong hết bước thì kế hoạch chuyển
+`hoan_thanh` và **thôi chiếm chỗ** "kế hoạch hiện tại"; và `plan.enter` **không chặn** khi kế
+hoạch cũ đã duyệt — người dùng đổi ý là chuyện bình thường, bắt tác tử chạy nốt một kế hoạch
+lỗi thời là cách chắc nhất để nó làm sai việc.
+
+Sau khi sửa: tác tử lập **kế hoạch mới 7 bước** cho việc mới, thẻ G-SCOPE nổ lại. Dự án G7 vẫn
+nguyên hash (`116e4e91de2a6632`) — nó chỉ đọc, không sửa.
+
+#### Bug: verifier đòi kiểm sau MỌI bước
+
+Hook `kiem_viec_chua_ai_kiem` nổ ở mọi lượt có ghi, nên tác tử tiêu một lượt cho verifier sau
+mỗi bước — kế hoạch bảy bước thành mười bốn lượt. Plan mode **đã** có kỷ luật từng bước
+(`plan.step_done` đòi hiện vật); kiểm chứng độc lập thuộc về **lúc kết thúc**, không phải mỗi
+chặng nghỉ giữa đường. Sửa: hoãn khi còn bước chưa xong.
+
+#### `tool.propose` nổ lần đầu, và lý do của nó có SỐ ĐO
+
+> **ten**: `plan.get`
+> **vi_sao**: *"Đã tốn 10 lời gọi đọc (5 `ledger.query`, 3 `fs.grep`, 1 `tool.search`, 1
+> `fs.glob`) vẫn chưa lấy lại được đầy đủ văn bản 7 bước của kế hoạch đã duyệt."*
+> **test**: 2 ca — có kế hoạch → trả bước + trạng thái + hiện vật; **không có kế hoạch → nói
+> ra**, đừng trả cấu trúc rỗng trông như có.
+
+Và nó **đúng**: `<pending>` in kế hoạch dưới dạng một dòng tóm tắt, nên tác tử **không đọc
+được kế hoạch của chính nó**. Vòng đời chạy trọn trong một lượt:
+
+```
+fs.write ×2 → tool.reload → plan.get → …
+```
+
+Bộ kiểm xanh, công cụ đăng ký, và tác tử **dùng ngay** thứ nó vừa viết.
+
+#### Nhưng mã nó viết đi vòng qua API — và đó là lỗi của KHUÔN MẪU
+
+`plan_get.py` mở **thẳng tệp SQLite** của kho, đoán tên bảng, và **dò ngược thư mục cha** tìm
+`.eide/store.sqlite` — tức nó đọc được kho của một **dự án khác**, và sẽ hỏng vào ngày lược đồ
+kho đổi. `ctx.store.get("plan:current")` nằm ngay trong tầm tay; nó bỏ qua `ctx` hoàn toàn.
+
+Khuôn mẫu `khuon_ma()` **chưa bao giờ nói `ctx` có gì**. Tác tử không biết thì cái nó tự nghĩ
+ra sẽ là cái đi vòng. Sửa: khuôn liệt kê thẳng `ctx.store` / `ctx.config.paths.project_root` /
+`ctx.registry` / `ctx.ledger`, kèm chính ca hỏng này làm ví dụ.
+
+Và sửa luôn gốc: `<pending>` giờ **liệt kê từng bước** kèm dấu `[x]`/`[ ]` và công cụ — thứ lẽ
+ra đã ở trước mặt tác tử ngay từ đầu.
+
+### Số đo
+
+`1195 ca đơn vị` (+6). Một lỗi tiềm ẩn của chính tôi bắt được khi viết ca kiểm: vòng lặp
+`for i, b in enumerate(b, 1)` **che mất** biến danh sách `b`.
+
+### Còn lại
+
+- Tác tử viết lại `plan.get` dùng `ctx.store` thay vì mở SQLite.
+- Màn hình + cảm ứng: đang ở bước 2/7 của kế hoạch mới.
+

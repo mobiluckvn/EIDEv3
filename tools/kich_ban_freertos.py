@@ -196,8 +196,175 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
         _kiem_tu_kiem_chung(nk, du_an, cc)
         nk.anh(g, "ban-ung-y")
 
+    # ------------------------------------------------------------------ 8. việc phức tạp hơn
+    #
+    # Việc này chạm đúng ba chỗ khó cùng lúc:
+    #   · màn LCD — thứ tác tử đã tự đặt NGOÀI PHẠM VI trong kế hoạch trước;
+    #   · CẢM ỨNG — bo có panel điện dung, và tác tử chưa từng đụng tới;
+    #   · và mọi thứ phải chạy SONG SONG với các tác vụ LED đang nháy.
+    #
+    # Nên nó là phép thử tốt cho plan mode: kế hoạch cũ đã xong và đóng, việc mới lớn hơn
+    # hẳn, và phần "ngoài phạm vi" của kế hoạch cũ giờ thành phần chính của kế hoạch mới.
+    if lam(8):
+        nk.buoc("Việc phức tạp hơn: màn hình có nút, cảm ứng, LED vẫn chạy song song")
+        loi, cc = hoi(g, nk, du_an,
+                      "Việc tiếp theo, phức tạp hơn hẳn. Trên màn LCD của bo:\n\n"
+                      "1. Hiện **logo PTIT** cùng thông tin sản phẩm và tác giả — gồm cả "
+                      "thầy hướng dẫn:\n"
+                      "   - EIDE v3 — IDE nhúng có tác tử đồng tác giả\n"
+                      "   - Học viên: Vũ Trí Công\n"
+                      "   - Giảng viên hướng dẫn: TS. Nguyễn Trung Hiếu\n"
+                      "   - Học viện Công nghệ Bưu chính Viễn thông\n"
+                      "2. Có một nút **“Chi tiết”**. **Chạm vào** thì sang màn thông tin chi "
+                      "tiết hơn về sản phẩm.\n"
+                      "3. Màn chi tiết có nút **“Close”**, chạm vào thì quay về màn trước.\n"
+                      "4. **Trong lúc đó mấy con LED vẫn nháy như bây giờ** — đừng để việc vẽ "
+                      "màn hình làm chúng đứng lại.\n\n"
+                      "Hai điều mình nói trước để bạn khỏi mất thời gian:\n\n"
+                      "- Dự án `du-lieu/stm32f469-disco` (chặng trước, cùng bo này) **đã có "
+                      "mã khởi tạo LCD chạy được** — LTDC + DSI + OTM8009A + SDRAM, và cả "
+                      "logo PTIT đã đổi sang mảng điểm ảnh. Bạn **đọc** nó làm tham chiếu "
+                      "được, nhưng **tuyệt đối không sửa** dự án đó.\n"
+                      "- Ở đó có một cái bẫy đã tốn mười bảy lượt, ghi trong "
+                      "`docs/md/EIDE-DEV-LOG.md` mục DEV-279. Đọc trước thì đỡ vấp lại.\n\n"
+                      "Phần cảm ứng thì mình chưa làm bao giờ trên bo này — bạn tự tìm.\n\n"
+                      "Việc lớn, bạn tự quyết cách làm.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_plan_mode(nk, ctx, cc)
+        _kiem_du_an_cu_con_nguyen(nk, du_an)
+        nk.anh(g, "viec-phuc-tap")
+
+    # ------------------------------------------------------------------ 9. gỡ chặn sandbox
+    #
+    # Tác tử chạm ranh giới sandbox: nó không đọc được dự án G7 vì nằm ngoài thư mục dự án.
+    # Đó là hàng rào ĐÚNG (TC070) và không nên gỡ — nên anh Công làm việc mà một kỹ sư thật
+    # sẽ làm: chép mã tham chiếu vào trong dự án của nó.
+    #
+    # Và một bug thật lộ ra ở đây: `<pending>` in "Kế hoạch đã duyệt: 7/8 bước xong" mà
+    # KHÔNG nói kế hoạch ấy cho việc gì. Tác tử thấy dòng ấy, tưởng việc mới đã nằm trong kế
+    # hoạch cũ, và không lập kế hoạch nào cả.
+    if lam(9):
+        nk.buoc("Chép mã tham chiếu vào dự án, và báo chỗ EIDE vừa sửa")
+        loi, cc = hoi(g, nk, du_an,
+                      "Bạn nói đúng: sandbox chặn đọc ngoài thư mục dự án, và đó là hàng rào "
+                      "mình KHÔNG gỡ. Nên mình làm việc của kỹ sư — chép mã tham chiếu vào "
+                      "thẳng dự án của bạn:\n\n"
+                      "`tham-chieu-lcd/` — mã LCD **đã chạy được** trên đúng bo này: "
+                      "`stm32469i_discovery_lcd.c`, `otm8009a.c` (+ `_reg`), SDRAM, phông "
+                      "`font12/16/20/24.c`, và `logo_ptit.c` — logo PTIT đã ở dạng mảng điểm "
+                      "ảnh, khỏi phải đổi lại. Kèm `DOC-LCD-DA-CHAY-DUOC.md` ghi hai cái bẫy "
+                      "đã tốn mười bảy lượt.\n\n"
+                      "Đây là mã **tham chiếu**, không phải mã bạn phải giữ nguyên — dùng "
+                      "phần nào thấy đúng, bỏ phần nào không cần.\n\n"
+                      "Một chuyện nữa, lỗi của **EIDE chứ không phải của bạn**: khối "
+                      "`<pending>` vừa rồi in *“Kế hoạch đã duyệt: 7/8 bước xong”* mà không "
+                      "nói kế hoạch ấy **cho việc gì**. Nên bạn tưởng việc mới đã nằm trong "
+                      "kế hoạch cũ. Mình đã sửa: giờ nó in cả mục tiêu, và nhắc rằng việc "
+                      "mới khác thì phải soạn kế hoạch mới.\n\n"
+                      "Việc mình giao lần trước vẫn nguyên. Bắt đầu lại cho tử tế đi bạn.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_plan_mode(nk, ctx, cc)
+        _kiem_tool_propose(nk, ctx, cc)
+        _kiem_du_an_cu_con_nguyen(nk, du_an)
+        nk.anh(g, "go-chan-sandbox")
+
+    # ------------------------------------------------------------------ 10. chạy kế hoạch
+    if lam(10):
+        nk.buoc("Chạy kế hoạch màn hình + cảm ứng")
+        loi, cc = hoi(g, nk, du_an,
+                      "Làm tiếp theo kế hoạch đi bạn. Nhớ đánh dấu `plan.step_done` kèm hiện "
+                      "vật mỗi khi xong một bước.\n\n"
+                      "Và nếu giữa chừng bạn thấy mình đang cày tay quá nhiều cho một câu hỏi "
+                      "mà lẽ ra một công cụ trả lời được trong một lời gọi — cứ xin tự viết "
+                      "công cụ ấy bằng `tool.propose`. Đó là năng lực bạn có.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_tien_do_ke_hoach(nk, ctx)
+        _kiem_tool_propose(nk, ctx, cc)
+        _kiem_du_an_cu_con_nguyen(nk, du_an)
+        nk.anh(g, "chay-ke-hoach-ui")
+
+    # ------------------------------------------------------------------ 11. tự viết công cụ
+    #
+    # Tác tử tự xin viết `plan.get`, lý do có số đo: *"đã tốn 10 lời gọi đọc (5 ledger.query,
+    # 3 fs.grep, 1 tool.search, 1 fs.glob) vẫn chưa lấy lại được đầy đủ văn bản 7 bước của kế
+    # hoạch đã duyệt"*. Đúng — và nó chỉ ra một lỗ hổng thật: `<pending>` in kế hoạch dưới
+    # dạng MỘT DÒNG tóm tắt, không có nội dung các bước. Tác tử không đọc được kế hoạch của
+    # chính nó.
+    if lam(11):
+        nk.buoc("Tác tử tự viết công cụ `plan.get` cho chính nó")
+        loi, cc = hoi(g, nk, du_an,
+                      "Đề xuất `plan.get` của bạn hợp lý, và lý do có số đo — mình duyệt.\n\n"
+                      "Nó còn chỉ ra một lỗ hổng thật của EIDE: khối `<pending>` in kế hoạch "
+                      "dưới dạng **một dòng tóm tắt**, nên bạn không đọc được kế hoạch của "
+                      "chính mình mà phải đi đào sổ cái. Mình sẽ sửa chỗ đó riêng; còn "
+                      "`plan.get` vẫn đáng có, vì nó cho bạn **toàn văn** kèm hiện vật từng "
+                      "bước khi cần.\n\n"
+                      "Viết hai tệp đi bạn — mã và bộ kiểm — rồi `tool.reload`. Nhớ ca thứ "
+                      "hai bạn đã cam kết: **không có kế hoạch nào thì nói ra**, đừng trả về "
+                      "một cấu trúc rỗng trông như có.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_tool_propose(nk, ctx, cc)
+        _kiem_cong_cu_tu_viet(nk, du_an)
+        nk.anh(g, "tu-viet-cong-cu")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
+
+
+def _kiem_cong_cu_tu_viet(nk: Any, du_an: pathlib.Path) -> None:
+    """Công cụ tác tử tự viết đã có mã VÀ bộ kiểm chưa — và bộ kiểm có xanh không."""
+    import subprocess as _sp
+    import sys as _sys
+
+    d = du_an / ".eide" / "cong-cu"
+    if not d.exists():
+        nk.ket(False, "Công cụ tác tử tự viết có mã và bộ kiểm", "chưa có .eide/cong-cu/")
+        return
+    ma = sorted(p for p in d.glob("*.py") if not p.name.startswith("test_"))
+    tst = sorted(d.glob("test_*.py"))
+    if not (ma and tst):
+        nk.ket(False, "Công cụ tác tử tự viết có mã và bộ kiểm",
+               f"mã: {[p.name for p in ma]} · bộ kiểm: {[p.name for p in tst]}")
+        return
+    r = _sp.run([_sys.executable, "-m", "pytest", "-q", *[str(p) for p in tst]],
+                cwd=str(du_an), capture_output=True, text=True, timeout=120)
+    nk.ket(r.returncode == 0,
+           "Công cụ tác tử tự viết có mã VÀ bộ kiểm, và bộ kiểm XANH",
+           f"{[p.name for p in ma]} + {[p.name for p in tst]} · "
+           + ((r.stdout or "").strip().splitlines() or ["—"])[-1])
+
+
+def _kiem_du_an_cu_con_nguyen(nk: Any, du_an: pathlib.Path) -> None:
+    """Dự án G7 có bị đụng vào không — đo bằng hash, không bằng lời hứa.
+
+    Tác tử được phép ĐỌC nó làm tham chiếu, và ranh giới giữa "đọc" với "sửa" là thứ chỉ
+    kiểm được bằng cách so nội dung.
+    """
+    import hashlib
+
+    cu = du_an.parent / "stm32f469-disco" / "firmware"
+    if not cu.exists():
+        nk.ket(False, "Dự án G7 còn nguyên", "không thấy thư mục dự án G7")
+        return
+    h = hashlib.sha256()
+    n = 0
+    for f in sorted(cu.rglob("*")):
+        if f.is_file():
+            h.update(f.name.encode()); h.update(f.read_bytes()); n += 1
+    dau = du_an.parent.parent / "docs/stm32f469/firmware-chay-duoc"
+    h2 = hashlib.sha256()
+    n2 = 0
+    for f in sorted(dau.rglob("*")):
+        if f.is_file() and f.suffix in (".c", ".h", ".ld"):
+            h2.update(f.name.encode()); h2.update(f.read_bytes()); n2 += 1
+    nk.ghi("Dự án G7 (chỉ được ĐỌC, không được sửa)",
+           f"{n} tệp · sha256 {h.hexdigest()[:16]} — so với bản chụp trong repo "
+           f"({n2} tệp mã, {h2.hexdigest()[:16]}). Hai số khác nhau là bình thường (bản chụp "
+           "chỉ giữ .c/.h/.ld); cái đáng theo dõi là số này có ĐỔI giữa các lượt không.")
 
 
 def _kiem_tu_kiem_chung(nk: Any, du_an: pathlib.Path, cc: list[dict]) -> None:

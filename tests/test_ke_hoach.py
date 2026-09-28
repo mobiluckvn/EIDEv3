@@ -280,3 +280,74 @@ def test_ke_hoach_da_duyet_hien_o_pending_moi_luot(make_agent):
     ra = build_pending_block(cards=[], stopped_run=None, assumptions=[], plan=p,
                              budget_tokens=300)
     assert "Kế hoạch đã duyệt: 0/2 bước xong" in ra
+
+
+# ============================================================ kế hoạch CỦA VIỆC NÀO
+def test_pending_NOI_RO_ke_hoach_ay_cho_viec_gi(make_agent):
+    """Đo trên phiên FreeRTOS: `<pending>` in "Kế hoạch đã duyệt: 7/8 bước xong" — một con số
+    không nội dung. Người dùng giao một việc MỚI (màn hình có nút, cảm ứng), tác tử thấy dòng
+    ấy, tưởng mình đang chạy dưới một kế hoạch đã duyệt cho việc mới, và **không lập kế hoạch
+    nào cả**.
+
+    Cùng họ với "Lượt chạy dở: run-256": một mã số không nội dung thì người đọc tự điền nội
+    dung vào, và thường điền sai.
+    """
+    from eide.context.assemble import build_pending_block
+
+    agent = make_agent([])
+    agent.registry.run("plan.enter", {"viec": "tích hợp FreeRTOS và nháy LED"}, _ctx(agent))
+    agent.registry.run("plan.exit", {"buoc": _buoc(2)}, _ctx(agent))
+    ra = build_pending_block(cards=[], stopped_run=None, assumptions=[],
+                             plan=agent._plan_cho_ngu_canh(), budget_tokens=300)
+    assert "CHO VIỆC: “tích hợp FreeRTOS và nháy LED”" in ra
+    assert "soạn kế hoạch mới" in ra
+
+
+def test_xong_HET_buoc_thi_ke_hoach_DONG_LAI(make_agent):
+    """Để nó ở `da_duyet` mãi thì nó chiếm chỗ "kế hoạch hiện tại" và làm tác tử tưởng việc
+    mới cũng nằm trong nó."""
+    from eide.ke_hoach import MA_KE_HOACH, KeHoach
+
+    agent = make_agent([])
+    agent.registry.run("plan.enter", {"viec": "x"}, _ctx(agent))
+    agent.registry.run("plan.exit", {"buoc": _buoc(2)}, _ctx(agent))
+    agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "a.md"}, _ctx(agent))
+    assert agent._plan_cho_ngu_canh() is not None, "chưa xong hết thì vẫn là kế hoạch hiện tại"
+    agent.registry.run("plan.step_done", {"so": 2, "hien_vat": "b.md"}, _ctx(agent))
+    kh = KeHoach.from_dict(agent.store.get(MA_KE_HOACH)["canonical"])
+    assert kh.trang_thai == "hoan_thanh"
+    assert agent._plan_cho_ngu_canh() is None, "xong hết rồi thì thôi chiếm chỗ"
+
+
+def test_viec_moi_duoc_phep_co_ke_hoach_moi_du_cai_cu_chua_di_het(make_agent):
+    """Người dùng đổi ý là chuyện bình thường, và bắt tác tử chạy nốt một kế hoạch đã lỗi
+    thời là cách chắc nhất để nó làm sai việc."""
+    agent = make_agent([])
+    agent.registry.run("plan.enter", {"viec": "việc cũ"}, _ctx(agent))
+    agent.registry.run("plan.exit", {"buoc": _buoc(3)}, _ctx(agent))
+    r = agent.registry.run("plan.enter", {"viec": "việc mới hẳn"}, _ctx(agent))
+    assert r.ok and r.data["muc_tieu"] == "việc mới hẳn"
+
+
+def test_pending_LIET_KE_cac_buoc_chu_khong_chi_dem(make_agent):
+    """Không có danh sách bước, tác tử không đọc được kế hoạch của CHÍNH NÓ.
+
+    Đo trên phiên FreeRTOS: nó tiêu 10 lời gọi đọc (5 `ledger.query`, 3 `fs.grep`, 1
+    `tool.search`, 1 `fs.glob`) để dựng lại bảy bước mà vẫn chưa đủ, rồi phải tự viết một
+    công cụ `plan.get` chỉ để nhìn thấy thứ lẽ ra đã ở trước mặt.
+    """
+    from eide.context.assemble import build_pending_block
+
+    agent = make_agent([])
+    agent.registry.run("plan.enter", {"viec": "làm màn hình có nút"}, _ctx(agent))
+    # Hai công cụ KHÔNG chạm cổng, để kế hoạch là "việc nhỏ" và được duyệt luôn — ca này đo
+    # cách hiển thị, không đo cổng.
+    b = [{"viec": "lấy HAL của ST", "cong_cu": "fs.read", "hien_vat": "vendor/"},
+         {"viec": "viết giao diện hai màn", "cong_cu": "fs.grep", "hien_vat": "ui.c"}]
+    agent.registry.run("plan.exit", {"buoc": b}, _ctx(agent))
+    agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "vendor/ 12 tệp"}, _ctx(agent))
+
+    ra = build_pending_block(cards=[], stopped_run=None, assumptions=[],
+                             plan=agent._plan_cho_ngu_canh(), budget_tokens=400)
+    assert "[x] 1. lấy HAL của ST · fs.read" in ra
+    assert "[ ] 2. viết giao diện hai màn · fs.grep" in ra

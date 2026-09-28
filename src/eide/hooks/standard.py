@@ -458,6 +458,16 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
     # lượt về cho người**. Đó mới là thứ ta quan tâm; cách nó viết câu kết không liên quan.
     # Chi phí có trần tự nhiên: cờ tắt khi verifier chạy, nên mỗi đợt việc tốn đúng một lần
     # kiểm, không phải mỗi lượt.
+    def _ke_hoach_dang_chay(ctx: Any) -> dict[str, Any] | None:
+        from ..ke_hoach import MA_KE_HOACH
+
+        kho = getattr(ctx, "store", None)
+        a = kho.get(MA_KE_HOACH) if kho is not None else None
+        if not a:
+            return None
+        c = a.get("canonical") or {}
+        return c if c.get("trang_thai") == "da_duyet" else None
+
     @bus.on_stop
     def kiem_viec_chua_ai_kiem(ctx: Any) -> StopResult:
         if getattr(ctx, "da_tu_kiem", False):
@@ -466,6 +476,15 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
             return StopResult()          # chưa trả lượt về thì chưa tới lúc
         if "task.run" in (getattr(ctx, "cong_cu_da_goi", []) or []):
             return StopResult(fired=["tu_kiem_da_chay"])
+        # ĐANG GIỮA một kế hoạch đã duyệt thì khoan.
+        #
+        # Đo được trên phiên FreeRTOS: hook đòi kiểm chứng ở MỌI lượt có ghi, nên tác tử
+        # tiêu một lượt cho verifier sau mỗi bước — và kế hoạch bảy bước thành mười bốn lượt.
+        # Bản thân plan mode đã có kỷ luật từng bước (`plan.step_done` đòi hiện vật); kiểm
+        # chứng ĐỘC LẬP thuộc về lúc kết thúc, không phải mỗi chặng nghỉ giữa đường.
+        kh = _ke_hoach_dang_chay(ctx)
+        if kh is not None and any(not b.get("xong") for b in kh.get("steps") or []):
+            return StopResult(fired=["tu_kiem_hoan_lai_vi_dang_theo_ke_hoach"])
         # Đọc từ SỔ CÁI, không từ một cờ trong bộ nhớ: app khởi động lại giữa các bước làm
         # việc, nên cờ ấy reset về False và việc ghi ở tiến trình trước thành vô hình — đo
         # được đúng thế trên phiên FreeRTOS, và hook im lặng suốt.

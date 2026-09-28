@@ -69,6 +69,9 @@ def dang_ky(r: Registry) -> None:
             keywords=["kế hoạch", "plan", "việc lớn", "nhiều bước", "chưa chắc cách làm"])
     def plan_enter(ctx: Any, viec: str):
         cu = _lay(ctx)
+        # `da_duyet` KHÔNG chặn: một việc mới lớn hơn có quyền có kế hoạch mới, kể cả khi
+        # kế hoạch cũ chưa đi hết — người dùng đổi ý là chuyện bình thường, và bắt tác tử
+        # chạy nốt một kế hoạch đã lỗi thời là cách chắc nhất để nó làm sai việc.
         if cu and cu.trang_thai in ("dang_soan", "cho_duyet"):
             return ToolResult(False, error=EideError(
                 "E6001", f"Đang có một kế hoạch dở ({cu.trang_thai}): {cu.muc_tieu[:80]}",
@@ -180,6 +183,11 @@ def dang_ky(r: Registry) -> None:
                                 "đo cụ thể."),
                 blame="agent"))
         kh.buoc[so - 1].xong = True
+        # Xong hết thì ĐÓNG kế hoạch. Để nó ở `da_duyet` mãi thì nó chiếm chỗ "kế hoạch hiện
+        # tại" và làm tác tử tưởng việc mới cũng nằm trong nó — đo được đúng thế trên phiên
+        # FreeRTOS.
+        if all(b.xong for b in kh.buoc):
+            kh.trang_thai = "hoan_thanh"
         kh.buoc[so - 1].ghi_chu = (kh.buoc[so - 1].ghi_chu + " · " if kh.buoc[so - 1].ghi_chu
                                    else "") + f"hiện vật: {hien_vat.strip()}"
         _ghi(ctx, kh, f"xong bước {so}/{len(kh.buoc)}", hien_vat.strip()[:120])

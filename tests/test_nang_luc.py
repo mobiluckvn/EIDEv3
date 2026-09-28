@@ -223,3 +223,19 @@ def test_dang_ky_SAI_TEN_so_voi_cai_da_duyet_thi_tu_choi(make_agent):
     r = agent.registry.run("tool.reload", {"ten": "code.symbolize"}, _ctx(agent))
     assert not r.ok and r.error.code == "E7007"
     assert "code.khac_han" in str(r.error.details)
+
+
+def test_khuon_ma_CHI_RO_ctx_co_gi(make_agent):
+    """Đo trên phiên FreeRTOS: một công cụ tác tử tự viết đã mở THẲNG tệp SQLite của kho,
+    đoán tên bảng, và dò ngược thư mục cha để tìm nó — tức nó đọc được kho của một dự án
+    KHÁC, và sẽ hỏng vào ngày lược đồ kho đổi.
+
+    `ctx.store` nằm ngay trong tầm tay. Khuôn mẫu không nói ra thì tác tử không biết, và cái
+    nó tự nghĩ ra sẽ là cái đi vòng.
+    """
+    agent = make_agent([])
+    r = agent.registry.run("tool.propose", {**_DX, "explain": _EX}, _ctx(agent))
+    k = r.data["khuon_ma"]
+    assert "ctx.store.get" in k and "ctx.config.paths.project_root" in k
+    assert "ĐỪNG đi vòng qua nó" in k
+    assert "đọc được kho của một dự" in k      # câu bị ngắt dòng trong khuôn

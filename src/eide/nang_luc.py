@@ -123,9 +123,18 @@ def dang_ky(r) -> None:
             {{"type": "object", "properties": {{}}, "required": []}},
             risk="R1", core=False, keywords=[])
     def {ham}(ctx: Any):
-        # TODO: phần thân.
+        # `ctx` cho bạn mọi thứ cần, ĐỪNG đi vòng qua nó:
         #
-        # Nhớ ba điều đã trả giá trong phiên bo STM32F469:
+        #   ctx.store.get("plan:current")   · ctx.store.list(...)  — kho hiện vật
+        #   ctx.config.paths.project_root   — thư mục dự án (đừng đi ra ngoài)
+        #   ctx.registry.get("ten.cong_cu") — hợp đồng của công cụ khác
+        #   ctx.ledger.read()               — sổ cái
+        #
+        # Đo được trên phiên FreeRTOS: một công cụ tự viết đã mở THẲNG tệp SQLite của kho,
+        # đoán tên bảng, và dò ngược thư mục cha để tìm nó — tức nó đọc được kho của một dự
+        # án KHÁC, và sẽ hỏng vào ngày lược đồ kho đổi. `ctx.store` nằm ngay trong tầm tay.
+        #
+        # Và ba điều đã trả giá ở phiên bo STM32F469:
         #   · trả về SỐ ĐO, đừng chỉ trả `ok` — `ok` nói về lời gọi, không nói về kết quả;
         #   · "không đo được" phải khác "đo được và bằng 0";
         #   · mọi hằng số phần cứng tra từ header của hãng, không dựng lại từ trí nhớ.

@@ -295,3 +295,35 @@ def test_verifier_NHIN_DUOC_ban_ung_y():
     assert "snapshot.list" in cc
     # Và vẫn CHỈ có công cụ đọc — thêm mắt, không thêm tay.
     assert not any(t.startswith(("fs.write", "fs.edit", "target.", "build.")) for t in cc)
+
+
+def test_dang_giua_ke_hoach_thi_HOAN_kiem_chung(make_agent):
+    """Đo trên phiên FreeRTOS: hook đòi kiểm chứng ở MỌI lượt có ghi, nên tác tử tiêu một
+    lượt cho verifier sau mỗi bước — kế hoạch bảy bước thành mười bốn lượt.
+
+    Plan mode đã có kỷ luật từng bước (`plan.step_done` đòi hiện vật). Kiểm chứng ĐỘC LẬP
+    thuộc về lúc kết thúc, không phải mỗi chặng nghỉ giữa đường.
+    """
+    from eide.loop import TurnContext
+
+    agent = make_agent([])
+    c = TurnContext(config=agent.config, store=agent.store, ledger=agent.ledger,
+                    eide_md=agent.eide_md, ids=agent.ids, registry=agent.registry,
+                    emit=lambda x: None, history=agent.history, run_id="run-1")
+    agent.registry.run("plan.enter", {"viec": "việc lớn"}, c)
+    agent.registry.run("plan.exit", {"buoc": [
+        {"viec": "a", "cong_cu": "fs.read", "hien_vat": "h"},
+        {"viec": "b", "cong_cu": "fs.write", "hien_vat": "h"}]}, c)
+
+    ctx = _Ctx(["đã làm xong bước 1"], da_ghi=True)
+    ctx.store = agent.store
+    r = _hook_tu_kiem().stop(ctx)
+    assert r.another_round is False
+    assert "tu_kiem_hoan_lai_vi_dang_theo_ke_hoach" in r.fired
+
+    # Xong hết bước → kế hoạch đóng → lần kết lượt sau phải kiểm.
+    agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "x"}, c)
+    agent.registry.run("plan.step_done", {"so": 2, "hien_vat": "y"}, c)
+    ctx2 = _Ctx(["xong cả kế hoạch"], da_ghi=True)
+    ctx2.store = agent.store
+    assert _hook_tu_kiem().stop(ctx2).another_round is True
