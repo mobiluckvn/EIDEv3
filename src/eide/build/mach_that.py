@@ -734,6 +734,17 @@ _WCR_COLM, _WCR_SHTDN, _WCR_LTDCEN, _WCR_DSIEN = 0, 1, 2, 3
 DSI_WCFGR = 0x400
 DSI_WCR = 0x404
 
+# Các thanh ghi còn lại, cũng chép từ dòng chú thích của `stm32f469xx.h` — sau ba lần sai vì
+# tự dựng lại con số, mọi offset ở đây đều phải tra được bằng mắt trong header:
+#
+#   MCR 0x34 · PCTLR 0xA0 · ISR[2] 0xBC–0xC3 · WISR 0x40C   (DSI_TypeDef)
+#   CPSR 0x44 · CDSR 0x48                                    (LTDC_TypeDef)
+DSI_MCR, DSI_PCTLR, DSI_ISR0, DSI_ISR1, DSI_WISR = 0x34, 0xA0, 0xBC, 0xC0, 0x40C
+LTDC_CPSR, LTDC_CDSR = 0x44, 0x48
+_MCR_CMDM = 0                 # 0 = chế độ video, 1 = chế độ lệnh
+_PCTLR_DEN, _PCTLR_CKE = 1, 2
+_WISR_PLLLS = 8
+
 
 # RCC_CSR — con chip tự khai lần khởi động vừa rồi là do đâu. Bit 24 (RMVF) để xoá cờ.
 RCC_CSR = 0x40023874
@@ -923,11 +934,16 @@ def doc_duong_hien_thi(*, chan_xres: int = CHAN_XRES_MAC_DINH,
                                   "thị không có lỗi.")
         return ra
     idr_xres = odr_xres - GPIO_ODR + GPIO_IDR
-    o = _doc_o_nho(oo, [(LTDC_GOC + 0x18, 1), (LTDC_GOC + 0x84, 1),
-                        (DSI_GOC + 0x04, 1), (DSI_GOC + DSI_WCR, 1),
-                        (DSI_GOC + DSI_WCFGR, 1),
-                        (odr_xres, 1), (idr_xres, 1)],
-                   timeout=timeout)
+    vung = [(LTDC_GOC + 0x18, 1), (LTDC_GOC + 0x84, 1),
+            (DSI_GOC + 0x04, 1), (DSI_GOC + DSI_WCR, 1), (DSI_GOC + DSI_WCFGR, 1),
+            (DSI_GOC + DSI_MCR, 1), (DSI_GOC + DSI_PCTLR, 1),
+            (DSI_GOC + DSI_ISR0, 1), (DSI_GOC + DSI_ISR1, 1), (DSI_GOC + DSI_WISR, 1),
+            (LTDC_GOC + LTDC_CPSR, 1), (odr_xres, 1), (idr_xres, 1)]
+    o = _doc_o_nho(oo, vung, timeout=timeout)
+    # CPSR là VỊ TRÍ ĐIỂM ẢNH ĐANG QUÉT. Đọc nó một lần thì chỉ được một con số vô nghĩa; đọc
+    # HAI lần rồi so mới trả lời được câu quan trọng nhất của cả chuỗi: LTDC có thật sự đang
+    # đẩy điểm ảnh ra không, hay nó chỉ "đã bật" trên giấy.
+    o2 = _doc_o_nho(oo, [(LTDC_GOC + LTDC_CPSR, 1)], timeout=timeout)
 
     def _lay(dc: int) -> int | None:
         v = o.get(f"0x{dc:08x}")
@@ -940,6 +956,15 @@ def doc_duong_hien_thi(*, chan_xres: int = CHAN_XRES_MAC_DINH,
     dsi_cr, wcr, odr = _lay(DSI_GOC + 0x04), _lay(DSI_GOC + DSI_WCR), _lay(odr_xres)
     wcfgr = _lay(DSI_GOC + DSI_WCFGR)
     idr = _lay(idr_xres)
+    mcr, pctlr = _lay(DSI_GOC + DSI_MCR), _lay(DSI_GOC + DSI_PCTLR)
+    isr0, isr1 = _lay(DSI_GOC + DSI_ISR0), _lay(DSI_GOC + DSI_ISR1)
+    wisr = _lay(DSI_GOC + DSI_WISR)
+    cpsr1 = _lay(LTDC_GOC + LTDC_CPSR)
+    try:
+        v2 = o2.get(f"0x{LTDC_GOC + LTDC_CPSR:08x}")
+        cpsr2 = int(v2[0], 16) if v2 else None
+    except ValueError:
+        cpsr2 = None
     if gcr is None and wcr is None:
         ra["vi_sao_khong_dat"] = "không đọc được thanh ghi nào — cáp SWD, hay chip đang bị giữ?"
         return ra
@@ -981,6 +1006,42 @@ def doc_duong_hien_thi(*, chan_xres: int = CHAN_XRES_MAC_DINH,
              "HAL). Ảnh vẫn được LTDC quét ra, nhưng bọc DSI không đẩy nó đi đâu cả",
              "xoá bit SHTDN SAU khi mọi bước khởi tạo đã xong — nếu mã đã xoá rồi mà đọc lại "
              "vẫn thấy 1 thì có ai đó bật lại nó về sau; tìm chỗ ghi vào DSI->WCR")
+    _mat("LTDC ĐANG QUÉT (không chỉ “đã bật”)",
+         None if cpsr1 is None or cpsr2 is None else cpsr1 != cpsr2,
+         (f"CPSR đọc hai lần: 0x{cpsr1:08X} → 0x{cpsr2:08X}"
+          if cpsr1 is not None and cpsr2 is not None else "chưa đọc được"),
+         "CPSR là vị trí điểm ảnh đang quét. Hai lần đọc ra CÙNG một giá trị nghĩa là bộ quét "
+         "đứng yên — LTDC bật mà không chạy. Đổi giá trị nghĩa là điểm ảnh đang thật sự chảy "
+         "ra đường DSI",
+         "kiểm xung nhịp điểm ảnh: PLL của DSI cấp xung cho LTDC ở chế độ video")
+    _mat("PLL của DSI đã khoá", None if wisr is None else bool(wisr & (1 << _WISR_PLLLS)),
+         f"DSI_WISR = 0x{wisr:08X}, PLLLS = {(wisr >> _WISR_PLLLS) & 1}"
+         if wisr is not None else "chưa đọc được",
+         "PLL chưa khoá thì không có xung nhịp cho cả đường DSI lẫn LTDC",
+         "HAL_DSI_Init — kiểm tham số PLL (NDIV/IDF/ODF)")
+    _mat("PHY của DSI bật (DEN + CKE)",
+         None if pctlr is None else bool(pctlr & (1 << _PCTLR_DEN))
+         and bool(pctlr & (1 << _PCTLR_CKE)),
+         f"DSI_PCTLR = 0x{pctlr:08X}, DEN = {(pctlr >> _PCTLR_DEN) & 1}, "
+         f"CKE = {(pctlr >> _PCTLR_CKE) & 1}" if pctlr is not None else "chưa đọc được",
+         "PHY là phần cứng đẩy bit ra hai làn dữ liệu; tắt thì không byte nào rời khỏi chip",
+         "HAL_DSI_Start")
+    _mat("Chế độ VIDEO (không phải chế độ lệnh)",
+         None if mcr is None else not (mcr & (1 << _MCR_CMDM)),
+         f"DSI_MCR = 0x{mcr:08X}, CMDM = {(mcr >> _MCR_CMDM) & 1}"
+         if mcr is not None else "chưa đọc được",
+         "chế độ lệnh chỉ đẩy khung khi có ai bấm nút refresh (DSI_WCR.LTDCEN); panel "
+         "OTM8009A trên bo này chạy chế độ video liên tục",
+         "HAL_DSI_ConfigVideoMode")
+    _mat("Không có lỗi trên đường DSI",
+         None if isr0 is None or isr1 is None else (isr0 == 0 and isr1 == 0),
+         f"DSI_ISR0 = 0x{isr0:08X}, DSI_ISR1 = 0x{isr1:08X}"
+         if isr0 is not None and isr1 is not None else "chưa đọc được",
+         "ISR0 gom lỗi ACK do CHÍNH PANEL báo về; ISR1 gom lỗi PHY và quá hạn. Cả hai bằng 0 "
+         "nghĩa là đường truyền sạch — và khi đó màn vẫn đen thì lỗi ở phía panel, không "
+         "phải ở đường",
+         "đọc chuỗi khởi tạo panel: nó có thật sự chạy hết không, có bị trả lỗi giữa chừng không")
+
     # ODR là thứ chương trình MUỐN, IDR là thứ chân đang THỰC SỰ ở. Với chân open-drain kéo
     # một tải ngoài, hai cái này lệch nhau được — và chính cái lệch đó là thông tin.
     _mat(f"Panel đã ra khỏi reset (XRES = PH{chan_xres})",
@@ -1000,6 +1061,16 @@ def doc_duong_hien_thi(*, chan_xres: int = CHAN_XRES_MAC_DINH,
                           "32F469IDISCOVERY (BSP_LCD_Reset trong stm32469i_discovery_lcd.c). "
                           "Bo khác thì truyền `chan_xres`/`odr_xres` khác.")
     ra["thong_suot"] = not ra["dut_o"]
+    # Cả chuỗi thông mà mắt vẫn không thấy gì → nói THẲNG phần còn lại nằm ở đâu, thay vì để
+    # câu "mọi thứ đều ổn" đứng một mình. Một kết luận toàn dấu ✓ trước một màn hình đen là
+    # kiểu báo cáo dạy người ta thôi tin báo cáo.
+    if ra["thong_suot"]:
+        ra["ket_luan"] = (
+            "Mọi mắt phía STM32 đều thông, kể cả “LTDC đang quét” và “không có lỗi trên "
+            "đường DSI”. Nếu mắt người vẫn thấy màn đen thì phần còn lại KHÔNG nằm ở cấu "
+            "hình phía chip: nghi (1) chuỗi lệnh khởi tạo panel OTM8009A chưa chạy hết hoặc "
+            "bị bỏ giữa chừng, (2) lệnh bật màn / đặt độ sáng chưa tới panel, (3) đèn nền, "
+            "(4) nhận nhầm loại panel — bo này có hai biến thể, OTM8009A và NT35510.")
     return ra
 
 

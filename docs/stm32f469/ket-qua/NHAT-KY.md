@@ -5485,3 +5485,546 @@ Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
 
 nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
 
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 11:29:15)*
+
+## Bước 68. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+60 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/68-mo-du-an.png)
+
+
+## Bước 69. Toàn bộ phía STM32 đã sạch — khoanh lỗi vào chuỗi khởi tạo panel
+
+**Anh gõ:**
+
+> Anh Công vừa nhìn bo: **vẫn chưa hiện gì**.
+> 
+> Mình đã mở rộng `target.screen`: ngoài sáu mắt cũ, nó đo thêm tầng liên kết DSI và một câu quan trọng mà trước giờ chưa ai hỏi — **LTDC có ĐANG QUÉT không**, chứ không chỉ “đã bật”. Kết quả trên bo:
+> 
+> - `CPSR` đọc hai lần ra hai giá trị khác nhau → điểm ảnh **đang thật sự chảy** ra đường DSI
+> - PLL của DSI đã khoá, PHY bật (DEN = CKE = 1), chế độ **video**
+> - `DSI_ISR0 = DSI_ISR1 = 0` → **không một lỗi nào** trên đường truyền, kể cả lỗi ACK do chính panel báo về
+> - Khung ảnh trong SDRAM có đủ logo và bốn dòng chữ
+> 
+> Tức là phía STM32 sạch từ đầu tới cuối. Lỗi nằm ở **chính tấm panel**.
+> 
+> Việc của bạn: chứng minh bằng số xem chuỗi khởi tạo OTM8009A có thật sự chạy hết và được panel chấp nhận không. Vài hướng — bạn tự chọn, đừng làm theo thứ tự mình liệt kê nếu bạn thấy hướng khác tốt hơn: `BSP_LCD_Init()` trả về gì; nó nhận ra loại panel nào (bo này có hai biến thể, OTM8009A và NT35510); lệnh bật màn và đặt độ sáng có được gửi không; đèn nền do đâu điều khiển.
+> 
+> Đo trước, kết luận sau, rồi mới sửa. Gọi `target.screen` để tự xem lại toàn bộ chuỗi bất cứ lúc nào.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] ## Báo cáo chẩn đoán hiển thị STM32F469I-Discovery
+> 
+> ### 1. Hiện trạng đo đạc từ thanh ghi phần cứng (`target.screen`)
+> 
+> | Mắt xích kiểm tra | Giá trị thanh ghi / Trạng thái | Đánh giá kỹ thuật |
+> |---|---|---|
+> | **LTDC Controller** | `LTDC_GCR = 0xC0002221`, `LTDC_L1CR = 0x00000001` | LTDC và Lớp 1 đã kích hoạt |
+> | **LTDC Pixel Stream** | `CPSR`: `0x01610088` → `0x0117002A` | **Điểm ảnh đang chảy thật sự**, bộ quét không bị treo |
+> | **DSI PLL & PHY** | `DSI_WISR = 0x00003300` (PLLLS=1), `DSI_PCTLR = 0x00000006` (DEN=1, CKE=1) | PLL đã khoá, PHY phát 2 làn dữ liệu đang mở |
+> | **DSI Wrapper** | `DSI_WCR = 0x00000008` (COLM=0, SHTDN=0, DSIEN=1) | Bọc DSI đã bật, không bị ngắt (`SHTDN = 0`) |
+> | **Lỗi đường truyền DSI** | `DSI_ISR0 = 0x00000000`, `DSI_ISR1 = 0x00000000` | **Không có bất kỳ lỗi nào** (kể cả ACK báo lỗi từ chính panel) |
+> | **Chân Reset Panel** | `GPIOH_ODR` bit 7 = 1, `GPIOH_IDR` bit 7 = 1 | Chân `PH7` (XRES) ở mức cao, panel đã thoát reset |
+> | **Vùng nhớ khung hình** | SDRAM tại `0xC0000000` (1.536.000 byte) | Đã vẽ đủ nền trắng, logo PTIT và 4 dòng chữ |
+> 
+> ---
+> 
+> ### 2. Bằng chứng số: Chuỗi khởi tạo có chạy hết không?
+> 
+> 1. **`BSP_LCD_Init()` đã chạy thành công và trả về `LCD_OK`:**
+>    - Trong `firmware/main.c` (dòng 19–25), nếu `BSP_LCD_Init() != LCD_OK`, vi điều khiển sẽ rơi vào vòng lặp vô tận `while(1) { HAL_Delay(100); }` trước khi khởi tạo layer SDRAM và vẽ logo.
+>    - Vì khung ảnh tại SDRAM `0xC0000000` đã được tô trắng (95,1%) và vẽ logo cùng chữ, chứng minh mã **đã vượt qua** `BSP_LCD_Init()` và không bị trả về `LCD_ERROR`.
+> 2. **Nhận dạng biến thể panel:**
+>    - Trong `BSP_LCD_InitEx`, nhánh `Lcd_Driver_Type` chỉ nhận `LCD_CTRL_NT35510` hoặc `LCD_CTRL_OTM8009A`. Nếu không nhận diện được một trong hai, hàm sẽ `return LCD_ERROR;`. Do đó, IC driver của panel chắc chắn đã được kích hoạt hàm Init tương ứng.
+> 3. **Đường truyền DSI hoàn toàn thông suốt:**
+>    - `DSI_ISR0 = 0` và `DSI_ISR1 = 0` chứng minh panel OTM8009A/NT35510 đã nhận luồng DSI mà không phản hồi bất kỳ cờ lỗi ACK (Acknowledge error) nào về chip.
+> 
+> ---
+> 
+> ### 3. Khoanh vùng nguyên nhân: Vì sao mắt người vẫn thấy màn đen?
+> 
+> Toàn bộ đường phát hình ảnh phía STM32 và giao tiếp DSI đã thông suốt 100%. Tấm panel không sáng lên chỉ còn hai nguyên nhân vật lý cốt lõi:
+> 
+> 1. **Đèn nền (Backlight) chưa sáng:**
+>    - Màn hình TFT IPS trên bo STM32F469I-Discovery cần đèn nền LED sáng thì mắt mới nhìn thấy nội dung tinh thể lỏng hiển thị. Nếu đèn nền tắt, màn hình sẽ đen kịt dù khung hình được quét liên tục.
+>    - Đèn nền của bo này được điều khiển qua mạch nguồn LED driver riêng hoặc thông qua bộ tạo xung PWM / lệnh DCS từ OTM8009A:
+>      - Lệnh `0x51` (`OTM8009A_CMD_WRDISBV` - Write Display Brightness) đặt độ sáng.
+>      - Lệnh `0x53` (`OTM8009A_CMD_WRCTRLD` - Write CTRL Display) bật bộ điều khiển đèn nền (bit BCTRL = 1).
+> 2. **Lệnh bật hiển thị (`0x29` - Display On) hoặc thoát ngủ (`0x11` - Sleep Out) của panel chưa được đưa ra ở mức sáng tối đa:**
+>    - Cần kiểm tra xem trong hàm `OTM8009
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. tool.search          ok  {"query": "target.screen"}
+ 2. target.screen        ok  {}
+ 3. fs.glob              ok  {"pattern": "**/*"}
+ 4. fs.glob              ok  {"pattern": "firmware/**/*"}
+ 5. fs.read              ok  {"limit": 120, "path": "firmware/main.c", "offset": 1}
+ 6. fs.grep              ok  {"pattern": "BSP_LCD_Init", "glob": "firmware/stm32469i_discovery_lcd.c"}
+ 7. fs.read              ok  {"limit": 100, "path": "firmware/stm32469i_discovery_lcd.c", "offset": 185}
+ 8. fs.read              ok  {"limit": 100, "offset": 280, "path": "firmware/stm32469i_discovery_lcd.c"}
+ 9. fs.read              ok  {"limit": 80, "offset": 380, "path": "firmware/stm32469i_discovery_lcd.c"}
+10. fs.grep              ok  {"pattern": "Lcd_Driver_Type", "glob": "firmware/stm32469i_discovery_lcd.c"}
+11. fs.grep              ok  {"glob": "firmware/stm32469i_discovery_lcd.c", "pattern": "LCD_ReadType"}
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+tool.search → target.screen → fs.glob → fs.glob → fs.read → fs.grep → fs.read → fs.read → fs.read → fs.grep → fs.grep
+
+✅ Chuỗi hiển thị THÔNG SUỐT (LTDC → lớp ảnh → host DSI → bọc DSI → panel)
+
+```
+✓ LTDC bật                               LTDC_GCR = 0xC0002221
+✓ Lớp 1 bật                              LTDC_L1CR = 0x00000001
+✓ Host DSI bật                           DSI_CR = 0x00000001
+✓ Bọc DSI bật (DSIEN)                    DSI_WCR(0x40017004) = 0x00000008 → COLM=0 SHTDN=0 LTDCEN=0 DSIEN=1
+✓ Hiển thị không bị tắt (SHTDN)          DSI_WCR(0x40017004) = 0x00000008 → COLM=0 SHTDN=0 LTDCEN=0 DSIEN=1
+✓ LTDC ĐANG QUÉT (không chỉ “đã bật”)    CPSR đọc hai lần: 0x01610088 → 0x0117002A
+✓ PLL của DSI đã khoá                    DSI_WISR = 0x00003300, PLLLS = 1
+✓ PHY của DSI bật (DEN + CKE)            DSI_PCTLR = 0x00000006, DEN = 1, CKE = 1
+✓ Chế độ VIDEO (không phải chế độ lệnh)  DSI_MCR = 0x00000000, CMDM = 0
+✓ Không có lỗi trên đường DSI            DSI_ISR0 = 0x00000000, DSI_ISR1 = 0x00000000
+✓ Panel đã ra khỏi reset (XRES = PH7)    ODR(0x40021C14) bit 7 = 1, IDR(0x40021C10) bit 7 = 1
+```
+
+✅ Khung ảnh trên chip CÓ NỘI DUNG (nhiều màu) — tức phần vẽ đã chạy
+
+```
+1301 màu · #FFFFFF 95.1%, #DE2219 0.5%, #000080 0.5%, #000000 0.4%
+```
+
+**Khung ảnh đọc từ bộ nhớ chip (sở cứ cho báo cáo)**
+
+anh/khung-anh-doc-tu-chip.png · 19342 byte · 800×480 ARGB8888 tại 0xC0000000
+
+**Tệp trong firmware/ (66)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, font12.c, font16.c, font20.c, font24.c, font8.c, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 258880 B ≥ logo 230400 B
+
+✅ Chip đang chứa ĐÚNG bản vừa dịch (258880 byte)
+
+```
+sha256 tệp  : 9fabfdab931071cab5b7b96020d17c51
+sha256 chip : 9fabfdab931071cab5b7b96020d17c51
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![khoanh-vao-panel](anh/69-khoanh-vao-panel.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 11:36:40)*
+
+## Bước 70. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+59 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/70-mo-du-an.png)
+
+
+## Bước 71. Làm tiếp cho xong việc đang dở
+
+**Anh gõ:**
+
+> Làm tiếp đi bạn. Xong việc đang dở thì dịch lại, nạp, rồi gọi `target.screen` để tự kiểm khung ảnh. Nếu còn thiếu gì thì cứ nói.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> [Tác tử] ## Cảnh báo toàn vẹn: Sổ cái bị lệch thứ tự (Chuyển sang chỉ đọc)
+> 
+> Hiện tại hệ thống phát hiện sự cố không toàn vẹn ở sổ cái dự án, do đó phiên làm việc phải **tạm chuyển sang chế độ chỉ đọc (read-only)**. Tác tử chưa thể thực hiện biên dịch lại hay nạp chip như yêu cầu cho đến khi anh xử lý xong xung đột này.
+> 
+> ---
+> 
+> ### 1. Chi tiết sự cố sổ cái
+> * **Vị trí lỗi:** Dòng `9174` ghi số thứ tự (`seq`) là `9156` (đáng lẽ phải là `9174`).
+> * **Tính toàn vẹn nội dung:** Mã băm (hash) của từng bản ghi vẫn khớp — không có dấu hiệu bị can thiệp hay sửa đổi dữ liệu.
+> * **Nguyên nhân:** Dấu hiệu rõ ràng của việc **có hai tiến trình cùng mở một dự án và cùng ghi đồng thời**.
+> * **Hệ quả:** Hệ thống tự động khoá các thao tác ghi mới để tránh làm hỏng cấu trúc sổ cái.
+> 
+> ---
+> 
+> ### 2. Các thẻ cổng và việc đang dở dang
+> * **Thẻ cổng đang chờ duyệt từ các phiên trước:**
+>   * **G-DATA:** `gate-0015`
+>   * **G-FLASH:** `gate-0025`, `gate-0027`, `gate-0032`
+> * **Trạng thái mã nguồn:**
+>   * Thay đổi gần nhất là `cs-0050` tại tệp `firmware/stm32469i_discovery_lcd.c` (đã thêm kích hoạt DSI Wrapper và kéo chân `PH7` lên mức cao ở `BSP_LCD_InitEx`).
+>   * Hiện có 6 hiện vật hạ nguồn đang ở trạng thái **STALE** (chờ biên dịch lại và cập nhật build).
+> 
+> ---
+> 
+> ### 3. Việc cần làm tiếp
+> Anh vui lòng kiểm tra và **đóng bớt cửa sổ/tiến trình EIDE hoặc terminal đang chạy song song** trên cùng thư mục dự án này, sau đó mở lại dự án để đồng bộ hoá sổ cái. Khi sổ cái trở lại trạng thái hợp lệ, tác tử sẽ thực hiện ngay chuỗi hành động: biên dịch (`build.compile`) → nạp chip (`target.flash`) → kiểm tra khung ảnh (`target.screen`).
+> 
+> ---
+> 
+> **Báo cáo 5 dòng:**
+> 1. **Đã làm gì:** Tra cứu lịch sử (`ledger.query`, `history.list`, `history.diff cs-0050`) và đối chiếu hiện trạng toàn vẹn kho.
+> 2. **Bỏ gì và vì sao:** Tạm dừng biên dịch và nạp bo vì sổ cái bị lệch thứ tự (chuyển sang chỉ đọc theo quy định an toàn).
+> 3. **Giả định đang dùng:** Không có.
+> 4. **Hoàn tác được tới đâu:** Toàn vẹn tới `cs-0050` (50 changeset hợp lệ).
+> 5. **Hết bao nhiêu:** 0 changeset mới, 0 thẻ cổng mới phát sinh.
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. ledger.query         ok  {"limit": 10, "run_id": "run-277"}
+ 2. history.list         ok  {"limit": 5}
+ 3. history.diff         ok  {"changeset": "cs-0050"}
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+ledger.query → history.list → history.diff
+
+❌ Tác tử ĐỌC khung ảnh của bo để xem mình vẽ được gì
+
+```
+— không gọi target.screen lần nào, nên câu “vẽ sai hay panel không hiện” vẫn đang bỏ ngỏ —
+```
+
+**Tệp trong firmware/ (66)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, font12.c, font16.c, font20.c, font24.c, font8.c, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 258880 B ≥ logo 230400 B
+
+✅ Chip đang chứa ĐÚNG bản vừa dịch (258880 byte)
+
+```
+sha256 tệp  : 9fabfdab931071cab5b7b96020d17c51
+sha256 chip : 9fabfdab931071cab5b7b96020d17c51
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![lam-tiep](anh/71-lam-tiep.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+
+
+
+---
+
+*(chạy tiếp lúc 28/09/2026 11:37:41)*
+
+## Bước 72. Tạo dự án mới cho bo STM32F469I-DISCO và mở EIDE trên nó
+
+**Thư mục dự án**
+
+/Users/congvt/Documents/EIDE_v3/du-lieu/stm32f469-disco
+
+**Lõi đã kết nối**
+
+59 dòng hội thoại, tab đang mở: project
+
+![mo-du-an](anh/72-mo-du-an.png)
+
+
+## Bước 73. Làm nốt theo đúng kết luận tác tử đã rút ra
+
+**Anh gõ:**
+
+> Lượt trước bạn kết luận thế này, và mình thấy hợp lý:
+> 
+> > Toàn bộ đường phát hình phía STM32 và giao tiếp DSI đã thông suốt. Tấm panel không sáng chỉ còn hai nguyên nhân: **đèn nền chưa sáng** (`0x51` WRDISBV đặt độ sáng, `0x53` WRCTRLD bật BCTRL), và **lệnh `0x11` Sleep Out / `0x29` Display On** chưa được gửi đúng.
+> 
+> Mình trả lại kết luận đó để bạn khỏi phải đi đọc sổ cái tìm lại — đừng tốn lượt cho `ledger.query`, vào việc luôn.
+> 
+> Giờ kiểm bốn lệnh ấy trong mã: chúng có được gửi không, gửi theo thứ tự nào, độ sáng đặt bằng bao nhiêu. Sửa chỗ nào thiếu. Rồi dịch lại, nạp, và gọi `target.screen` để chắc chuỗi vẫn thông. Xong thì bảo mình, anh Công sẽ nhìn bo.
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Thẻ cổng hiện ra — người dùng bấm Duyệt**
+
+G-FLASH · Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa · 2 hậu quả
+
+**Tác tử:**
+
+> **[G-FLASH] Nạp gì (hash, kích thước) → vào đâu; đã có snapshot chưa**
+> - Tác động lên phần cứng thật: flash.
+> - Chưa có bản ưng ý nào để quay về nếu việc này hỏng.
+> - **Thao tác này KHÔNG hoàn tác được.**
+> 
+> → Duyệt  ·  Từ chối
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. fs.grep              ok  {"pattern": "0x11"}
+ 2. fs.glob              ok  {"pattern": "firmware/*.c"}
+ 3. fs.grep              ok  {"pattern": "OTM8009A_CMD", "glob": "firmware/otm8009a*.c"}
+ 4. fs.read              ok  {"limit": 80, "path": "firmware/otm8009a.c", "offset": 370}
+ 5. fs.read              ok  {"offset": 430, "limit": 35, "path": "firmware/otm8009a.c"}
+ 6. fs.grep              ok  {"glob": "firmware/otm8009a.c", "pattern": "short_reg_data"}
+ 7. fs.read              ok  {"limit": 50, "offset": 145, "path": "firmware/otm8009a.c"}
+ 8. fs.read              ok  {"offset": 1, "limit": 70, "path": "firmware/main.c"}
+ 9. fs.grep              ok  {"glob": "firmware/stm32469i_discovery_lcd.c", "pattern": "BSP_LCD_"}
+10. fs.read              ok  {"path": "firmware/stm32469i_discovery_lcd.c", "offset": 193, "limit": 70}
+11. fs.grep              ok  {"glob": "firmware/stm32469i_discovery_lcd.c", "pattern": "uint8_t BSP_LCD_DisplayOn"}
+12. fs.grep              LỖI E5001 {"pattern": "BSP_LCD_DisplayOn(", "glob": "firmware/stm32469i_discovery_lcd.c"}
+13. fs.read              ok  {"limit": 50, "path": "firmware/stm32469i_discovery_lcd.h", "offset": 250}
+14. fs.read              ok  {"offset": 300, "path": "firmware/stm32469i_discovery_lcd.h", "limit": 50}
+15. fs.edit              ok  {"old_string": "    0xE0,0xF0,0x00,OTM8009A_COLMOD_RGB565,OTM8009A_COLMOD_RGB888,0x7F,0x2C
+16. fs.read              ok  {"offset": 30, "path": "firmware/main.c", "limit": 25}
+17. fs.grep              ok  {"glob": "firmware/stm32f4xx_hal_dsi.h", "pattern": "DSI_DCS_SHORT_PKT_WRITE_P0"}
+18. fs.edit              ok  {"old_string": "  /* Xoa SHTDN (bit 3) va bat DSIEN (bit 0) tren DSI Wrapper */\n  DSI->WC
+19. build.compile        ok  {"explain": {"confidence": "VANG", "diff_prev": "Biên dịch lại sau khi tăng độ sáng lên 0x
+20. target.flash         ok  {"cach": "tu_chon", "dong_y_khong_doi_chieu_chip": true, "explain": {"sources": [{"tier": 
+```
+
+**Chuỗi công cụ tác tử đã đi**
+
+fs.grep → fs.glob → fs.grep → fs.read → fs.read → fs.grep → fs.read → fs.read → fs.grep → fs.read → fs.grep → fs.grep → fs.read → fs.read → fs.edit → fs.read → fs.grep → fs.edit → build.compile → target.flash
+
+✅ Chuỗi hiển thị THÔNG SUỐT (LTDC → lớp ảnh → host DSI → bọc DSI → panel)
+
+```
+✓ LTDC bật                               LTDC_GCR = 0xC0002221
+✓ Lớp 1 bật                              LTDC_L1CR = 0x00000001
+✓ Host DSI bật                           DSI_CR = 0x00000001
+✓ Bọc DSI bật (DSIEN)                    DSI_WCR(0x40017004) = 0x00000008 → COLM=0 SHTDN=0 LTDCEN=0 DSIEN=1
+✓ Hiển thị không bị tắt (SHTDN)          DSI_WCR(0x40017004) = 0x00000008 → COLM=0 SHTDN=0 LTDCEN=0 DSIEN=1
+✓ LTDC ĐANG QUÉT (không chỉ “đã bật”)    CPSR đọc hai lần: 0x01610088 → 0x0117002A
+✓ PLL của DSI đã khoá                    DSI_WISR = 0x00003300, PLLLS = 1
+✓ PHY của DSI bật (DEN + CKE)            DSI_PCTLR = 0x00000006, DEN = 1, CKE = 1
+✓ Chế độ VIDEO (không phải chế độ lệnh)  DSI_MCR = 0x00000000, CMDM = 0
+✓ Không có lỗi trên đường DSI            DSI_ISR0 = 0x00000000, DSI_ISR1 = 0x00000000
+✓ Panel đã ra khỏi reset (XRES = PH7)    ODR(0x40021C14) bit 7 = 1, IDR(0x40021C10) bit 7 = 1
+```
+
+**Tệp trong firmware/ (66)**
+
+cmsis_compiler.h, cmsis_gcc.h, cmsis_version.h, core_cm4.h, font12.c, font16.c, font20.c, font24.c, font8.c, fonts.h, linker.ld, logo_ptit.c, logo_ptit.h, main.c, mpu_armv7.h, otm8009a.c, otm8009a.h, otm8009a_reg.c, otm8009a_reg.h, startup.c, stm32469i_discovery.c, stm32469i_discovery.h, stm32469i_discovery_lcd.c, stm32469i_discovery_lcd.h, stm32469i_discovery_sdram.c, stm32469i_discovery_sdram.h, stm32_hal_legacy.h, stm32f469xx.h, stm32f4xx.h, stm32f4xx_hal.c, stm32f4xx_hal.h, stm32f4xx_hal_conf.h, stm32f4xx_hal_cortex.c, stm32f4xx_hal_cortex.h, stm32f4xx_hal_def.h, stm32f4xx_hal_dma.c, stm32f4xx_hal_dma.h, stm32f4xx_hal_dma2d.c, stm32f4xx_hal_dma2d.h, stm32f4xx_hal_dma_ex.c, stm32f4xx_hal_dma_ex.h, stm32f4xx_hal_dsi.c, stm32f4xx_hal_dsi.h, stm32f4xx_hal_gpio.c, stm32f4xx_hal_gpio.h, stm32f4xx_hal_gpio_ex.h, stm32f4xx_hal_ltdc.c, stm32f4xx_hal_ltdc.h, stm32f4xx_hal_ltdc_ex.c, stm32f4xx_hal_ltdc_ex.h, stm32f4xx_hal_pwr.c, stm32f4xx_hal_pwr.h, stm32f4xx_hal_pwr_ex.c, stm32f4xx_hal_pwr_ex.h, stm32f4xx_hal_rcc.c, stm32f4xx_hal_rcc.h, stm32f4xx_hal_rcc_ex.c, stm32f4xx_hal_rcc_ex.h, stm32f4xx_hal_sdram.c, stm32f4xx_hal_sdram.h, stm32f4xx_ll_fmc.c, stm32f4xx_ll_fmc.h, string.c, string.h, system_stm32f4xx.c, system_stm32f4xx.h
+
+**Ảnh tải về trong dự án**
+
+```
+  tai-lieu/logo_ptit.png · 178669 byte
+```
+
+✅ Có tệp ẢNH THẬT trong dự án (không phải mảng gõ tay)
+
+```
+1 ảnh
+```
+
+❌ Mảng điểm ảnh sinh ra BẰNG CÔNG CỤ từ ảnh đó
+
+```
+—
+```
+
+**Lấy mã hãng**
+
+```
+—
+```
+
+✅ Mã có nhắc tới LTDC
+
+✅ Mã có nhắc tới DSI
+
+✅ Mã có nhắc tới OTM8009A
+
+✅ Mã có nhắc tới SDRAM
+
+✅ Bốn thông tin bắt buộc có trong mã: 4/4
+
+```
+PTIT, EIDE v3, Vũ Trí Công, TS. Nguyễn Trung Hiếu
+```
+
+✅ Mảng logo NẰM TRONG ảnh nạp: ảnh 258940 B ≥ logo 230400 B
+
+✅ Chip đang chứa ĐÚNG bản vừa dịch (258940 byte)
+
+```
+sha256 tệp  : d42932ca2a34136e05a6aa7aa6ecbf3f
+sha256 chip : d42932ca2a34136e05a6aa7aa6ecbf3f
+```
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình trên bo có hiện logo PTIT và bốn dòng thông tin không? Đây là phần duy nhất của bước này không đo được bằng mã.
+
+**CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)**
+
+Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?
+
+![lenh-dcs-panel](anh/73-lenh-dcs-panel.png)
+
+**Kết thúc phiên**
+
+nhật ký: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/NHAT-KY.md · ảnh: /Users/congvt/Documents/EIDE_v3/docs/stm32f469/ket-qua/anh
+

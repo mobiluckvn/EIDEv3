@@ -1125,15 +1125,25 @@ def test_doc_khung_anh_dinh_dang_la_thi_noi_biet_nhung_gi(tmp_path):
 
 
 # ============================== đi dọc chuỗi hiển thị: đứt ở MẮT NÀO
-def _openocd_reg(monkeypatch, gia_tri: dict[int, int]):
+def _openocd_reg(monkeypatch, gia_tri: dict[int, int], *, cpsr_dung_yen: bool = False):
+    """openocd giả. `CPSR` đổi giá trị mỗi lần đọc, vì trên bo thật bộ quét đang chạy —
+    trừ khi ca kiểm muốn dựng cảnh LTDC bật mà đứng yên."""
     import subprocess
+
+    dem = {"cpsr": 0}
+    CPSR = MT.LTDC_GOC + MT.LTDC_CPSR
 
     def _run(cl, **k):
         ra = ""
         for i, x in enumerate(cl):
             if x == "-c" and cl[i + 1].startswith("mdw"):
                 d = int(cl[i + 1].split()[1], 16)
-                ra += f"0x{d:08x}: {gia_tri.get(d, 0):08x} \n"
+                if d == CPSR and not cpsr_dung_yen:
+                    dem["cpsr"] += 0x111
+                    v = 0x01000000 + dem["cpsr"]
+                else:
+                    v = gia_tri.get(d, 0)
+                ra += f"0x{d:08x}: {v:08x} \n"
         return subprocess.CompletedProcess(cl, 0, ra, "")
 
     monkeypatch.setattr(MT.shutil, "which", lambda x: "/fake/openocd")
@@ -1147,6 +1157,10 @@ _DUONG_HONG = {0x40016818: 0xC0002221, 0x40016884: 1,     # LTDC bật, lớp 1 
                0x40016C04: 1,                             # host DSI bật
                0x40017000: 0x0000000A,                    # WCFGR — KHÔNG phải WCR
                0x40017004: 0x0000000A,                    # WCR: SHTDN=1, DSIEN=1
+               0x40016C34: 0,                             # MCR: CMDM=0 → chế độ video
+               0x40016CA0: 0b110,                         # PCTLR: DEN=1, CKE=1
+               0x40016CBC: 0, 0x40016CC0: 0,              # ISR0/ISR1: không lỗi
+               0x4001700C: 1 << 8,                        # WISR: PLL đã khoá
                0x40021C14: 1 << 7, 0x40021C10: 1 << 7}    # XRES cao → panel đã ra khỏi reset
 
 
@@ -1198,9 +1212,9 @@ def test_doc_duong_hien_thi_chi_dung_mat_xich_bi_dut(monkeypatch):
     d = MT.doc_duong_hien_thi()
     assert d["dat"] and not d["thong_suot"]
     assert d["dut_o"] == ["Hiển thị không bị tắt (SHTDN)"]
-    # Năm mắt kia vẫn thông — phép đo phải nói ra điều đó, không gộp cả chuỗi thành "hỏng".
-    assert [m["thong"] for m in d["mat_xich"] if m["ten"] != "Hiển thị không bị tắt (SHTDN)"] \
-        == [True] * 5
+    # Mọi mắt kia vẫn thông — phép đo phải nói ra điều đó, không gộp cả chuỗi thành "hỏng".
+    assert all(m["thong"] for m in d["mat_xich"]
+               if m["ten"] != "Hiển thị không bị tắt (SHTDN)")
     assert all(m["cach_sua"] for m in d["mat_xich"] if m["thong"] is False)
 
 
@@ -1214,10 +1228,46 @@ def test_doc_duong_hien_thi_doc_ca_ODR_lan_IDR_cua_chan_XRES(monkeypatch):
     assert "0x40021C14" in m["so_do"] and "0x40021C10" in m["so_do"]
 
 
-def test_doc_duong_hien_thi_thong_suot_thi_chi_sang_den_nen(monkeypatch):
+def test_doc_duong_hien_thi_thong_suot_thi_NOI_RA_phan_con_lai_o_dau(monkeypatch):
+    """Một kết luận toàn dấu ✓ đứng trước một màn hình đen là kiểu báo cáo dạy người ta thôi
+    tin báo cáo. Thông suốt thì phải nói thẳng phần chưa đo được nằm ở đâu."""
     _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40017004: 0x00000008})   # SHTDN=0, DSIEN=1
     d = MT.doc_duong_hien_thi()
     assert d["thong_suot"] and d["dut_o"] == []
+    assert "OTM8009A" in d["ket_luan"] and "đèn nền" in d["ket_luan"]
+    assert "NT35510" in d["ket_luan"], "bo này có hai biến thể panel — phải nhắc"
+
+
+def test_LTDC_bat_ma_DUNG_YEN_thi_bi_bat(monkeypatch):
+    """“Đã bật” và “đang chạy” là hai chuyện. CPSR là vị trí điểm ảnh đang quét: đọc hai lần
+    ra cùng một giá trị nghĩa là bộ quét đứng yên, dù `LTDC_GCR` bit 0 vẫn bằng 1.
+
+    Đo trên bo thật: CPSR đổi mỗi lần đọc (0x024B012B → 0x0015008F), nên phép đo này phân
+    biệt được hai trạng thái — và đó là lý do nó tồn tại.
+    """
+    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40017004: 0x00000008,
+                               MT.LTDC_GOC + MT.LTDC_CPSR: 0x00010001},
+                 cpsr_dung_yen=True)
+    d = MT.doc_duong_hien_thi()
+    assert "LTDC ĐANG QUÉT (không chỉ “đã bật”)" in d["dut_o"]
+    # Mắt "LTDC bật" vẫn phải xanh: hai mắt hỏi hai câu khác nhau.
+    assert next(m["thong"] for m in d["mat_xich"] if m["ten"] == "LTDC bật") is True
+
+
+@pytest.mark.parametrize("dia_chi,gia_tri,mat", [
+    (0x4001700C, 0, "PLL của DSI đã khoá"),
+    (0x40016CA0, 0b010, "PHY của DSI bật (DEN + CKE)"),          # DEN=1 mà CKE=0
+    (0x40016C34, 1, "Chế độ VIDEO (không phải chế độ lệnh)"),
+    (0x40016CBC, 1 << 4, "Không có lỗi trên đường DSI"),
+    (0x40016CC0, 1 << 2, "Không có lỗi trên đường DSI"),
+])
+def test_tung_mat_cua_tang_lien_ket_DSI_deu_bat_duoc_rieng(monkeypatch, dia_chi, gia_tri, mat):
+    """Năm mắt của tầng liên kết DSI hỏng theo năm cách khác nhau và cho ra cùng một màn hình
+    đen. Mỗi mắt phải tự bắt được phần của nó."""
+    _openocd_reg(monkeypatch, {**_DUONG_HONG, 0x40017004: 0x00000008, dia_chi: gia_tri})
+    d = MT.doc_duong_hien_thi()
+    assert d["dut_o"] == [mat], d["dut_o"]
+    assert "ket_luan" not in d
 
 
 def test_doc_duong_hien_thi_chan_xres_la_cua_RIENG_TUNG_BO(monkeypatch):

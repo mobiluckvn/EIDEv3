@@ -3045,8 +3045,54 @@ Sau khi sửa, cả sáu mắt đều thông:
 Và khung ảnh đọc từ chip (`docs/stm32f469/ket-qua/anh/khung-anh-doc-tu-chip.png`, 1301 màu) hiện
 đúng logo PTIT cùng bốn dòng chữ, sắc nét, nền trắng sạch.
 
+#### Lần 10 — sáu mắt "thông suốt" vẫn là điều kiện CẦN, không phải đủ
+
+Anh Công nhìn bo: vẫn đen. Nên sáu mắt xanh ở lần 9 mới chỉ nói được *"LTDC đã bật, bọc DSI
+đã bật, panel hết reset"* — toàn những câu về **cấu hình**, không câu nào về **vận hành**.
+
+Thêm năm mắt của tầng liên kết DSI, và một câu chưa ai hỏi suốt mười lượt: **LTDC có ĐANG QUÉT
+không**, chứ không chỉ "đã bật". Đọc `LTDC_CPSR` (vị trí điểm ảnh đang quét) **hai lần** rồi so:
+
+| mắt mới | đo được trên bo | |
+|---|---|---|
+| LTDC đang quét | `CPSR: 0x024B012B → 0x0015008F` | ✓ điểm ảnh đang chảy thật |
+| PLL của DSI đã khoá | `DSI_WISR = 0x3300`, PLLLS = 1 | ✓ |
+| PHY của DSI bật | `DSI_PCTLR = 0x06`, DEN = CKE = 1 | ✓ |
+| Chế độ video | `DSI_MCR = 0`, CMDM = 0 | ✓ |
+| Không lỗi đường DSI | `DSI_ISR0 = DSI_ISR1 = 0` | ✓ |
+
+`ISR0` gom lỗi ACK **do chính panel báo về**; nó bằng 0 nghĩa là panel nhận luồng DSI mà không
+kêu ca gì. Cộng với `CPSR` đổi giá trị, kết luận thu hẹp lại rất nhiều: **toàn bộ phía STM32
+sạch từ đầu tới cuối, lỗi nằm ở chính tấm panel.**
+
+Và vì một bảng toàn dấu ✓ đứng trước một màn hình đen là kiểu báo cáo dạy người ta thôi tin
+báo cáo, `doc_duong_hien_thi()` khi thông suốt sẽ **nói thẳng phần chưa đo được nằm ở đâu**:
+chuỗi khởi tạo panel, lệnh bật màn / độ sáng, đèn nền, hoặc nhận nhầm biến thể panel.
+
+Tác tử nhận kết luận ấy, tự khoanh tiếp bằng số (`BSP_LCD_Init` phải đã trả `LCD_OK`, vì nếu
+không thì mã đã kẹt ở `while(1)` trước khi vẽ — mà khung ảnh **có** hình), rồi chỉ ra bốn lệnh
+DCS còn thiếu và bổ sung chúng vào `main.c`:
+
+```c
+HAL_DSI_ShortWrite(&hdsi_eval, 0, DSI_DCS_SHORT_PKT_WRITE_P0, 0x11, 0x00);  /* Sleep Out   */
+HAL_DSI_ShortWrite(&hdsi_eval, 0, DSI_DCS_SHORT_PKT_WRITE_P1, 0x51, 0xFF);  /* độ sáng max */
+HAL_DSI_ShortWrite(&hdsi_eval, 0, DSI_DCS_SHORT_PKT_WRITE_P1, 0x53, 0x2C);  /* BCTRL = 1   */
+HAL_DSI_ShortWrite(&hdsi_eval, 0, DSI_DCS_SHORT_PKT_WRITE_P0, 0x29, 0x00);  /* Display On  */
+```
+
+#### Một lỗ hổng năng lực khác, đo được: tác tử tốn cả lượt để tự định vị
+
+Giữa hai lượt làm việc, lời nhắc chung chung *"làm tiếp đi bạn"* khiến tác tử tiêu **cả lượt**
+cho `ledger.query` → `history.list` → `history.diff` — ba lời gọi, không việc nào xong. Nó
+không có cách rẻ nào để trả lời *"lượt trước tôi đang làm gì và đã kết luận gì"*.
+
+Bước kế tiếp trả lại **kết luận của chính nó** thay vì nói "làm tiếp": cùng một tác tử, cùng
+một việc, lượt đó đi thẳng vào `fs.grep` → … → `fs.edit` → `build.compile` → `target.flash`.
+Đây là một lỗ hổng thật của EIDE (thiếu một bản tóm tắt "tôi đang ở đâu" rẻ tiền), chưa vá.
+
 ### Còn lại
 
-- Màn hình: mọi phép đo bằng máy đều xanh. Phần còn lại chỉ mắt anh Công trả lời được. Phần vẽ đã chứng minh là đúng bằng số.
+- Màn hình: đã bổ sung bốn lệnh DCS, nạp bản `d42932ca`. Chờ mắt anh Công.
+- Tóm tắt "tôi đang ở đâu" cho tác tử giữa hai lượt — lỗ hổng đo được ở trên, chưa vá. Phần vẽ đã chứng minh là đúng bằng số.
 - Chữ vỡ (dựng phông) và hộp nền đen của logo (alpha) — hai lỗi do `target.screen` lộ ra.
 - `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.

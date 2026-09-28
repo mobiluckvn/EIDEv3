@@ -725,6 +725,79 @@ def chay(nk: Any, du_an: pathlib.Path, *, chi_buoc: str = "") -> int:
                "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
         nk.anh(g, "dinh-chinh-phep-do")
 
+    # ------------------------------------------- 28. khoanh được lỗi vào đúng phía panel
+    #
+    # Anh Công nhìn bo: vẫn đen. Sáu mắt cũ đều xanh, nên chúng là ĐIỀU KIỆN CẦN chứ chưa đủ.
+    # Thêm năm mắt của tầng liên kết DSI + một phép đo "LTDC có ĐANG QUÉT không" (đọc CPSR hai
+    # lần — "đã bật" và "đang chạy" là hai chuyện). Tất cả đều xanh trên bo:
+    #
+    #   CPSR: 0x024B012B → 0x0015008F   (điểm ảnh đang chảy ra thật)
+    #   PLLLS = 1 · DEN = CKE = 1 · CMDM = 0 (video) · ISR0 = ISR1 = 0 (đường truyền sạch)
+    #
+    # Nghĩa là toàn bộ phía STM32 hoàn hảo, và lỗi nằm ở chính tấm panel. Đó là một kết luận
+    # hẹp hơn nhiều so với "màn hình đen", và nó là thứ đáng giao.
+    if lam(28):
+        nk.buoc("Toàn bộ phía STM32 đã sạch — khoanh lỗi vào chuỗi khởi tạo panel")
+        loi, cc = hoi(g, nk, du_an,
+                      "Anh Công vừa nhìn bo: **vẫn chưa hiện gì**.\n\n"
+                      "Mình đã mở rộng `target.screen`: ngoài sáu mắt cũ, nó đo thêm tầng "
+                      "liên kết DSI và một câu quan trọng mà trước giờ chưa ai hỏi — **LTDC "
+                      "có ĐANG QUÉT không**, chứ không chỉ “đã bật”. Kết quả trên bo:\n\n"
+                      "- `CPSR` đọc hai lần ra hai giá trị khác nhau → điểm ảnh **đang thật "
+                      "sự chảy** ra đường DSI\n"
+                      "- PLL của DSI đã khoá, PHY bật (DEN = CKE = 1), chế độ **video**\n"
+                      "- `DSI_ISR0 = DSI_ISR1 = 0` → **không một lỗi nào** trên đường truyền, "
+                      "kể cả lỗi ACK do chính panel báo về\n"
+                      "- Khung ảnh trong SDRAM có đủ logo và bốn dòng chữ\n\n"
+                      "Tức là phía STM32 sạch từ đầu tới cuối. Lỗi nằm ở **chính tấm "
+                      "panel**.\n\n"
+                      "Việc của bạn: chứng minh bằng số xem chuỗi khởi tạo OTM8009A có thật "
+                      "sự chạy hết và được panel chấp nhận không. Vài hướng — bạn tự chọn, "
+                      "đừng làm theo thứ tự mình liệt kê nếu bạn thấy hướng khác tốt hơn: "
+                      "`BSP_LCD_Init()` trả về gì; nó nhận ra loại panel nào (bo này có hai "
+                      "biến thể, OTM8009A và NT35510); lệnh bật màn và đặt độ sáng có được "
+                      "gửi không; đèn nền do đâu điều khiển.\n\n"
+                      "Đo trước, kết luận sau, rồi mới sửa. Gọi `target.screen` để tự xem "
+                      "lại toàn bộ chuỗi bất cứ lúc nào.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_duong_hien_thi(nk, ctx)
+        _kiem_nhin_khung_anh(nk, ctx, cc)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "khoanh-vao-panel")
+
+    # ------------------------------------------- 29. làm nốt theo kết luận của chính tác tử
+    #
+    # Lượt trước tác tử chẩn đoán đúng và tự khoanh vào bốn lệnh DCS của panel, rồi hết lượt.
+    # Lượt sau đó, với lời nhắc chung chung "làm tiếp", nó tiêu cả lượt chỉ để `ledger.query`
+    # và `history.diff` định vị lại mình đang ở đâu — ba lời gọi, không việc nào.
+    #
+    # Nên bước này nhắc lại KẾT LUẬN CỦA CHÍNH NÓ thay vì nói "làm tiếp". Không phải đưa đáp
+    # án: đáp án là của nó, mình chỉ trả lại để nó khỏi phải đi đào sổ cái tìm lại.
+    if lam(29):
+        nk.buoc("Làm nốt theo đúng kết luận tác tử đã rút ra")
+        loi, cc = hoi(g, nk, du_an,
+                      "Lượt trước bạn kết luận thế này, và mình thấy hợp lý:\n\n"
+                      "> Toàn bộ đường phát hình phía STM32 và giao tiếp DSI đã thông suốt. "
+                      "Tấm panel không sáng chỉ còn hai nguyên nhân: **đèn nền chưa sáng** "
+                      "(`0x51` WRDISBV đặt độ sáng, `0x53` WRCTRLD bật BCTRL), và **lệnh "
+                      "`0x11` Sleep Out / `0x29` Display On** chưa được gửi đúng.\n\n"
+                      "Mình trả lại kết luận đó để bạn khỏi phải đi đọc sổ cái tìm lại — "
+                      "đừng tốn lượt cho `ledger.query`, vào việc luôn.\n\n"
+                      "Giờ kiểm bốn lệnh ấy trong mã: chúng có được gửi không, gửi theo thứ "
+                      "tự nào, độ sáng đặt bằng bao nhiêu. Sửa chỗ nào thiếu. Rồi dịch lại, "
+                      "nạp, và gọi `target.screen` để chắc chuỗi vẫn thông. Xong thì bảo "
+                      "mình, anh Công sẽ nhìn bo.",
+                      giay=3600)
+        nk.ghi("Chuỗi công cụ tác tử đã đi", " → ".join(c["tool"] for c in cc) or "—")
+        _kiem_duong_hien_thi(nk, ctx)
+        _kiem_man_hinh(nk, ctx, du_an, cc)
+        nk.ghi("CẦN ANH CÔNG XÁC NHẬN (tầng NGƯỜI)",
+               "Màn hình đã hiện logo PTIT và bốn dòng chữ chưa?")
+        nk.anh(g, "lenh-dcs-panel")
+
     nk.ghi("Kết thúc phiên", f"nhật ký: {nk.md} · ảnh: {nk.ra / 'anh'}")
     return 0
 
