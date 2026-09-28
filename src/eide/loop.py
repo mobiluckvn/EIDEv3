@@ -353,6 +353,7 @@ class Agent:
             pending_cards=self.pending_cards,
             stopped_run=inv.unfinished_run,
             assumptions=self.assumptions,
+            plan=self._plan_cho_ngu_canh(),
             budget=self.config.context_budget)
         return surfaces.dong_ho_ngu_canh(asm, self.messages, self.config)
 
@@ -636,6 +637,48 @@ class Agent:
             if muc != "C0":
                 self._compact(ctx, muc)
 
+    # ------------------------------------------------------------------ plan mode
+    def _ke_hoach(self) -> Any:
+        """Kế hoạch hiện tại trong kho, bất kể trạng thái. `None` nếu chưa có."""
+        from .ke_hoach import MA_KE_HOACH, KeHoach
+
+        a = self.store.get(MA_KE_HOACH)
+        return KeHoach.from_dict(a.get("canonical") or {}) if a else None
+
+    def _plan_cho_ngu_canh(self) -> dict[str, Any] | None:
+        """Kế hoạch ĐÃ DUYỆT, để `<pending>` nhắc lại mỗi lượt.
+
+        Chỉ kế hoạch đã duyệt mới vào ngữ cảnh. Kế hoạch đang soạn không vào: nhắc lại bản
+        nháp của chính mình mỗi lượt là cách nhanh nhất để tác tử chốt vào ý đầu tiên nó
+        nghĩ ra, đúng lúc nó đang cần nghĩ rộng.
+        """
+        kh = self._ke_hoach()
+        return kh.to_dict() if kh is not None and kh.trang_thai == "da_duyet" else None
+
+    def _khoa_khi_soan_ke_hoach(self, call: Any, spec: Any) -> EideError | None:
+        """Đang soạn (hoặc chờ duyệt) kế hoạch → khoá công cụ ghi. `None` = cho qua."""
+        from .ke_hoach import cong_cu_bi_khoa
+
+        kh = self._ke_hoach()
+        if kh is None or kh.trang_thai not in ("dang_soan", "cho_duyet"):
+            return None
+        if not cong_cu_bi_khoa(spec):
+            return None
+        cho = ("đang chờ người dùng duyệt" if kh.trang_thai == "cho_duyet"
+               else "đang soạn")
+        return EideError(
+            "E6005",
+            f"`{call.tool}` là công cụ GHI, mà kế hoạch {cho} nên công cụ ghi đang bị khoá.",
+            hint_for_agent=(
+                "Đây là chế độ kế hoạch (§B5): trình cách làm trước khi tiêu lời gọi. Bạn "
+                "vẫn đọc, tìm, đo và hỏi người dùng được — dùng chúng để soạn cho đủ bước. "
+                + ("Kế hoạch đã nộp, đừng lách thẻ bằng cách làm tay; đợi người duyệt."
+                   if kh.trang_thai == "cho_duyet" else
+                   "Soạn xong thì gọi `plan.exit`; thấy việc không lớn như tưởng thì "
+                   "`plan.cancel`.")),
+            details={"trang_thai": kh.trang_thai, "muc_tieu": kh.muc_tieu},
+            alternatives=["plan.exit", "plan.cancel"], blame="agent")
+
     # ------------------------------------------------------------------ một công cụ
     def _one_tool(self, call: Any, ctx: TurnContext) -> None:
         c = {"tool": call.tool, "args": call.args, "id": call.id}
@@ -644,6 +687,14 @@ class Agent:
         self.ledger.append("tool_use", {"run_id": ctx.run_id, "tool": call.tool,
                                         "args": call.args, "call_id": call.id})
         spec = self.registry.get(call.tool)
+
+        # Plan mode: đang soạn kế hoạch thì mọi công cụ GHI bị khoá (§B5). Chặn ở ĐÂY, trước
+        # cả hook và policy, vì đây là câu hỏi về *chế độ đang ở*, không phải về *quyền với
+        # thao tác này*. Trộn hai thứ vào policy.yaml thì mỗi công cụ mới phải nhớ thêm một
+        # dòng luật — và cái quên thêm sẽ đúng là cái lọt qua.
+        chan = self._khoa_khi_soan_ke_hoach(call, spec)
+        if chan is not None:
+            return self._tool_error(call, chan, ctx, as_incident=False)
 
         pre = self.hooks.pre_tool_use(c, ctx)
         if not pre.ok and pre.error is not None:
@@ -1210,9 +1261,42 @@ class Agent:
         spec = self.registry.get(call["tool"])
         res = self.registry.run(call["tool"], call["args"], ctx)
         self.hooks.post_tool_use(call, res, ctx)
+        # Cổng G-SCOPE vừa được duyệt cho `plan.exit`: đóng dấu kế hoạch là ĐÃ DUYỆT.
+        #
+        # Phải làm ở đây chứ không trong chính công cụ, vì `plan.exit` chạy lại y hệt lần
+        # trước — nó không có cách nào biết lần này nó chạy SAU một cái gật đầu. Thiếu dấu
+        # này thì kế hoạch kẹt mãi ở `cho_duyet`, công cụ ghi khoá mãi, và người dùng bấm
+        # Duyệt xong lại thấy tác tử nói nó vẫn đang chờ duyệt.
+        if approved and call["tool"] == "plan.exit" and res.ok:
+            self._duyet_ke_hoach(ctx, gid)
         self.messages.append({"role": "tool", "tool_call_id": call.get("id", gid),
                               "tool": call["tool"], "result": res.to_model()})
         self._tool_loop(ctx, None)
+
+    def _duyet_ke_hoach(self, ctx: TurnContext, gid: str) -> None:
+        """Đóng dấu `da_duyet` lên kế hoạch và mở lại công cụ ghi."""
+        from .ke_hoach import MA_KE_HOACH
+
+        kh = self._ke_hoach()
+        if kh is None:
+            return
+        kh.trang_thai = "da_duyet"
+        self.store.apply(
+            artefact_id=MA_KE_HOACH, type="plan", op="update",
+            author=f"human:{gid}", canonical=kh.to_dict(),
+            explain={"summary": f"người dùng duyệt kế hoạch {len(kh.buoc)} bước",
+                     "why": "cổng G-SCOPE được duyệt", "sources": [gid],
+                     "diff_prev": "cho_duyet → da_duyet", "next": "chạy theo kế hoạch",
+                     "confidence": "NGUOI"},
+            view_hint={"kind": "plan", "path": "kế hoạch"})
+        self.messages.append({"role": "user", "_he_thong": True, "text": (
+            "<system-reminder>\nKế hoạch đã được duyệt. Công cụ ghi mở lại.\n\n"
+            "Từ giờ mỗi lượt bạn sẽ thấy kế hoạch này trong `<pending>`. Làm theo thứ tự, và "
+            "gọi `plan.step_done` kèm HIỆN VẬT mỗi khi xong một bước — không phải để báo "
+            "cáo, mà để lượt sau bạn (và người dùng) biết đang ở đâu mà không phải đọc lại "
+            "sổ cái.\n\nThấy kế hoạch sai khi bắt tay vào làm thì NÓI RA ngay, đừng im lặng "
+            "đi chệch: `plan.cancel` rồi soạn lại rẻ hơn nhiều so với làm xong một việc sai."
+            "\n</system-reminder>")})
 
     # ------------------------------------------------------------------ ngữ cảnh
     def _assemble(self, ctx: TurnContext, s0: Any):
@@ -1230,6 +1314,7 @@ class Agent:
             pending_cards=self.pending_cards,
             stopped_run=inv.unfinished_run,
             assumptions=self.assumptions,
+            plan=self._plan_cho_ngu_canh(),
             s0_annotations=([self.bo_nho_nguoi.khoi_ngu_canh()]
                             if self.bo_nho_nguoi.khoi_ngu_canh() else [])
                            + (getattr(s0, "annotations", None) or []),

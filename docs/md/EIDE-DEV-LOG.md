@@ -3373,3 +3373,79 @@ tử** tìm ra, không phải tôi). Cả ba đều là con số tự dựng l�
 - Tóm tắt "tôi đang ở đâu" cho tác tử giữa hai lượt — lỗ hổng đo được ở trên, chưa vá. Phần vẽ đã chứng minh là đúng bằng số.
 - Chữ vỡ (dựng phông) và hộp nền đen của logo (alpha) — hai lỗi do `target.screen` lộ ra.
 - `plan.enter`/`plan.exit` (§B5) vẫn chưa làm.
+
+### [DEV-280] 28/09/2026 · Plan mode — người dùng thấy CÁCH LÀM trước khi tác tử tiêu lời gọi
+
+Mục cuối cùng còn trống của MDD-40 (§B5). Anh Công: *"plan mode rất quan trọng"*.
+
+Lý do làm nó bây giờ không phải vì nó còn trong danh sách, mà vì phiên bo STM32F469 vừa rồi
+đo ra đúng những con số nó sinh ra để chặn:
+
+| số đo | nghĩa |
+|---|---|
+| 402 lượt · **1078 lời gọi** | quy mô một việc "hiện logo lên màn" |
+| `fs.read` 298 + `fs.grep` 210 + `fs.glob` 72 = **580 (54 %)** | tác tử dò đường bằng cách đọc, và người dùng chỉ thấy kết quả **sau khi** số lời gọi ấy đã tiêu xong |
+| `ledger.query` 82 + `history.diff` 21 | tự định vị giữa hai lượt |
+| có lượt tiêu trọn **40/40** hạn mức | rồi dừng giữa việc, không ai biết trước nó định làm gì |
+
+Và hai sự cố mà plan mode nhắm đúng vào: tác tử **vá một đầu rồi làm hỏng đầu kia** (gói DSI
+dài/ngắn) vì không có bước nào bắt liệt kê "chỗ này còn chạm tới đâu"; và một giả định sai của
+**tôi** — *"có thể panel hỏng"* — tốn hai lượt, trong khi anh Công biết ngay bo từng chạy tốt.
+Giả định nằm trên giấy thì bị bác trong ba giây.
+
+#### Luồng
+
+```
+plan.enter  → khoá mọi công cụ GHI; tác tử còn đọc, đo, hỏi
+(tìm hiểu)
+plan.exit   → kiểm bằng mã → tính plan.big → thẻ G-SCOPE nếu lớn
+(người duyệt)
+→ kế hoạch thành hiện vật `plan:current`, hiện ở <pending> mỗi lượt
+→ Stop hook đối chiếu công cụ đã gọi với công cụ trong kế hoạch
+```
+
+#### Bốn quyết định, và lý do của từng cái
+
+**1. Khoá công cụ ghi lấy từ HỢP ĐỒNG, không từ danh sách tên.** `writes_artefact` /
+`risk >= R3` là thứ mỗi công cụ tự khai. Một danh sách tên phải nhớ cập nhật, và cái quên cập
+nhật sẽ đúng là cái lọt qua. Chặn ở `_one_tool` **trước cả hook và policy**, vì đây là câu hỏi
+về *chế độ đang ở*, không phải về *quyền với thao tác này* — trộn hai thứ vào `policy.yaml`
+thì mỗi công cụ mới phải nhớ thêm một dòng luật.
+
+**2. `plan.big` tính bằng MÃ, không hỏi mô hình.** Để tác tử tự khai việc của mình có lớn
+không thì nó sẽ khai "nhỏ" đúng vào lúc nó đang định làm việc lớn — không phải vì gian, mà vì
+lúc ấy nó đang tập trung vào việc chứ không vào việc phân loại việc. Ba dấu hiệu, mỗi cái đủ
+một mình: ≥ 5 bước · có bước chạm cổng · có bước từ R3.
+
+**3. Kế hoạch là HIỆN VẬT, không phải một câu trong hội thoại.** Nén ngữ cảnh sẽ ăn mất một
+câu; hiện vật thì còn, và Stop hook đối chiếu được với nó.
+
+**4. Stop hook làm độ lệch NHÌN THẤY ĐƯỢC, không phạt.** Đi thêm việc ngoài kế hoạch thường là
+dấu hiệu kế hoạch thiếu chứ không phải tác tử sai. Một hook phạt sẽ dạy tác tử viết kế hoạch
+thật rộng cho an toàn — tức là phá đúng thứ mà plan mode sinh ra để có.
+
+Và hai phép kiểm nhỏ mà đắt nếu thiếu: **tên công cụ trong kế hoạch phải có thật** (kế hoạch
+nêu công cụ không tồn tại đọc vẫn xuôi tai, người dùng vẫn duyệt, và chỉ hỏng lúc chạy — khi
+đó thứ đã duyệt không còn là thứ đang chạy); và **mỗi bước phải nói để lại hiện vật gì** (bước
+không để lại gì thì sau không ai kiểm được nó đã làm hay chưa). `plan.step_done` cũng đòi hiện
+vật: một bước "xong" mà không để lại gì thì dấu tích ấy chỉ nói rằng *tác tử tin là* nó xong —
+đúng thứ N6 cấm.
+
+Một chi tiết dễ hụt: cổng được duyệt thì `plan.exit` **chạy lại y hệt lần trước**, nên nó
+không có cách nào tự biết lần này nó chạy sau một cái gật đầu. Dấu `da_duyet` vì thế đóng ở
+`_resolve_gate`. Thiếu nó thì kế hoạch kẹt mãi ở `cho_duyet` và người dùng bấm Duyệt xong lại
+thấy tác tử nói nó vẫn đang chờ duyệt.
+
+`memory.note` **không** bị khoá trong lúc soạn: khoá nó nghĩa là cấm tác tử ghi lại đúng thứ
+nó vừa học được để soạn kế hoạch ấy.
+
+### Số đo
+
+`1145 ca đơn vị` (+24). Bốn công cụ mới: `plan.enter`, `plan.exit`, `plan.step_done`,
+`plan.cancel`. Phá có chủ ý (bỏ dòng gọi khoá) → ca `test_LOI_chan_cong_cu_ghi…` đỏ đúng chỗ.
+
+### Còn lại
+
+- Verifier chạy cho lời tuyên "đạt" của **chính tác tử chính** (hiện 0/402 lượt).
+- `tool.propose`: tác tử tự thấy thiếu năng lực và **tự viết công cụ mới**.
+

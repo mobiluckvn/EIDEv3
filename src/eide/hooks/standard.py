@@ -385,6 +385,63 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                          "SVG; muốn mở trong KiCad thì dùng sch.export để xuất gói rồi mở ở "
                          "máy KHÁC đã có sẵn KiCad.\n</system-reminder>"))
 
+    # ================================================================== plan mode (§B5)
+    @bus.on_pre_tool
+    def plan_lon_hay_nho(call: dict[str, Any], ctx: Any) -> PreToolResult:
+        """Cấp `plan.big` cho luật `POL-SCOPE-plan`.
+
+        Tính bằng MÃ từ chính nội dung kế hoạch — số bước, và công cụ nào trong đó chạm cổng
+        hay từ R3 trở lên. Cố ý **không** hỏi mô hình "việc này có lớn không": nó sẽ khai
+        "nhỏ" đúng vào lúc nó đang định làm việc lớn, không phải vì gian mà vì lúc ấy nó
+        đang tập trung vào việc chứ không vào việc phân loại việc.
+        """
+        if call.get("tool") != "plan.exit":
+            return PreToolResult()
+        from ..ke_hoach import Buoc, KeHoach, la_viec_lon
+
+        b = (call.get("args") or {}).get("buoc") or []
+        kh = KeHoach(muc_tieu="x",
+                     buoc=[Buoc(**{k: v for k, v in x.items() if k in Buoc.__slots__})
+                           for x in b if isinstance(x, dict)])
+        lon, vi_sao = la_viec_lon(kh, ctx.registry.get)
+        return PreToolResult(facts={"plan.big": lon, "plan.steps": len(kh.buoc),
+                                    "plan.why_big": vi_sao},
+                             fired=["plan_lon_hay_nho"] if lon else [])
+
+    @bus.on_stop
+    def doi_chieu_ke_hoach(ctx: Any) -> StopResult:
+        """Stop hook §B5: tác tử có đi đúng kế hoạch đã duyệt không.
+
+        **Không** bắt chạy thêm vòng và **không** coi độ lệch là lỗi. Đi thêm việc ngoài kế
+        hoạch thường là dấu hiệu kế hoạch thiếu chứ không phải tác tử sai; việc của hook này
+        là làm độ lệch NHÌN THẤY ĐƯỢC để người dùng quyết, chứ không phải để phạt. Một hook
+        phạt sẽ dạy tác tử viết kế hoạch thật rộng cho an toàn — tức là phá đúng thứ mà plan
+        mode sinh ra để có.
+        """
+        from ..ke_hoach import MA_KE_HOACH, KeHoach, doi_chieu
+
+        kho = getattr(ctx, "store", None)
+        a = kho.get(MA_KE_HOACH) if kho is not None else None
+        if not a:
+            return StopResult()
+        kh = KeHoach.from_dict(a.get("canonical") or {})
+        if kh.trang_thai != "da_duyet":
+            return StopResult()
+        d = doi_chieu(kh, list(getattr(ctx, "cong_cu_da_goi", []) or []))
+        if not d["lech"]:
+            return StopResult(fired=["doi_chieu_ke_hoach"])
+        return StopResult(
+            fired=["doi_chieu_ke_hoach_lech"],
+            injection=("<system-reminder>\nĐối chiếu với kế hoạch đã duyệt: "
+                       f"{d['xong']}/{d['tong']} bước xong"
+                       + (" · công cụ dùng NGOÀI kế hoạch: "
+                          + ", ".join(d["ngoai_ke_hoach"][:6]) if d["ngoai_ke_hoach"] else "")
+                       + (" · bước chưa đụng tới: "
+                          + ", ".join(d["chua_lam"][:6]) if d["chua_lam"] else "")
+                       + ".\n\nLệch khỏi kế hoạch KHÔNG phải lỗi — thường là dấu hiệu kế "
+                         "hoạch thiếu. Khi báo cáo lượt, NÓI RA chỗ lệch và vì sao, để người "
+                         "dùng quyết: sửa kế hoạch, hay quay lại đúng nó.\n</system-reminder>"))
+
     return bus
 
 
