@@ -4760,3 +4760,65 @@ cụ không tồn tại. Đã viết lại không dùng nháy.
 
 `1242 ca đơn vị` (+6): `tests/test_hoi_xong_thi_lam.py`. Bộ usecase: **68/68 ca đo được đạt**
 (trước: 65/68).
+
+### [DEV-297] 29/09/2026 · Đưa tài liệu vào bằng giao diện — kéo–thả và nút ghim giấy
+
+Cả sản phẩm dựng trên *"mọi con số truy về datasheet"*. Nhưng trước chặng này, cách duy nhất
+để **đưa** một datasheet vào là mở Finder, chép tay vào thư mục dự án, rồi gõ bảo tác tử. Tìm
+khắp mã Swift chỉ có đúng một `NSOpenPanel`, và nó dùng để chọn *thư mục dự án*.
+
+Chỗ đưa datasheet vào không nên là chỗ khó nhất của một công cụ lấy datasheet làm nền.
+
+#### Việc này KHÔNG phải "gửi đường dẫn cho tác tử"
+
+Hộp cát của tác tử là **thư mục dự án**. Một tệp ở `~/Downloads` với nó là không tồn tại —
+`fs.read` từ chối, `doc.load` từ chối. Nên đưa tài liệu vào là **chép tệp vào trong dự án rồi
+mới nói tên**. Bỏ qua bước ấy thì cú kéo–thả trông như chạy mà tác tử báo "không đọc được", và
+người dùng không có cách nào đoán ra vì sao.
+
+`ui/EIDEApp/Sources/EIDE/State/ThemTaiLieu.swift`. Tệp vào `tai-lieu/` — trùng chỗ `doc.fetch`
+tải về, để chỉ có một chỗ chứa tài liệu chứ không hai.
+
+#### Ba điều nó cố ý không làm
+
+* **Không tự nạp vào kho.** Chép xong chỉ báo cho tác tử. `doc.load` là R2 và sinh hiện vật —
+  không phải việc một cú kéo–thả tự quyết thay người.
+* **Không ghi đè.** Trùng tên thì `-2`, `-3`. Người kéo nhầm một tệp cùng tên mà mất bản cũ
+  thì cú kéo ấy đắt hơn nhiều so với một tệp thừa. Đo được: kéo lại cùng tệp → thư mục có
+  `rm-spi.md` và `rm-spi-2.md`, bản đầu nguyên vẹn.
+* **Không đi vòng qua I1.** Kết quả là một `HumanAct` kiểu `upload` đi qua `console.act` như
+  mọi thứ khác — kéo–thả thay NGÓN TAY, không thay giao thức.
+
+Một phát hiện phụ: `upload` **đã có sẵn** trong giao thức (`HUMAN_ACT_KINDS`, bắt buộc trường
+`files`, có sẵn dòng dựng *"Nạp tệp: …"*) nhưng **chưa ai gửi nó** — một đường khai rồi bỏ đó
+từ đầu. Không phải viết mới, chỉ phải nối vào.
+
+#### Vùng thả là CẢ bàn giao tiếp
+
+Người kéo một datasheet vào thì họ nhắm vào *"chỗ nói chuyện với tác tử"*, không nhắm vào một
+ô nhập cao 30 điểm ở đáy. Vùng thả hẹp là vùng thả trượt. Kèm viền nét đứt + chữ *"Thả để
+thêm tài liệu cho tác tử"* khi đang kéo — không có phản hồi ấy thì người ta không biết thả
+được hay không.
+
+Và app **nói ra** việc đã chép: *"Đã chép vào tai-lieu/: … — tác tử chỉ đọc được tệp nằm trong
+thư mục dự án."* Người kéo một tệp từ Desktop mà không biết nó vừa được nhân bản vào dự án sẽ
+ngạc nhiên đúng lúc họ dọn thư mục.
+
+#### Đo qua giao diện thật
+
+Kênh kiểm thêm lệnh `them_tai_lieu` — nó gọi **đúng hàm** mà cú kéo và nút ghim giấy gọi, nên
+phần chép vào hộp cát và `HumanAct.upload` đều là đường thật.
+
+| Phép thử | Kết quả |
+|---|---|
+| Kéo một tệp nằm NGOÀI dự án | Chép vào `tai-lieu/`, tác tử nhận và **tự nạp vào kho** (`RM-SPI-TRICH`), qua kiểm chứng độc lập |
+| Kéo lại cùng tên | `rm-spi-2.md` — bản đầu nguyên vẹn |
+| Hỏi câu chỉ trả lời được nếu ĐỌC THẬT | *"`TXDMAEN` (bit 1) trong `SPI_CR2`"*, kèm tên tệp và dòng 7–10 |
+
+Phép thử thứ ba mới là phép đo thật: hai phép đầu chỉ chứng minh tệp đã đi đúng chỗ.
+
+### Số đo
+
+`1246 ca đơn vị` (+4): `tests/test_them_tai_lieu.py`. Ca ở đó canh **hợp đồng phía lõi** —
+`upload` là act hợp lệ, bắt buộc `files`, và dựng được thành câu đọc được; thiếu điều cuối thì
+mô hình nhận một chuỗi rỗng và cú kéo–thả trôi đi trong im lặng.

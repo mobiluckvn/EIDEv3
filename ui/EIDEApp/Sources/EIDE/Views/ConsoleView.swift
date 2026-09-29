@@ -6,6 +6,7 @@ import SwiftUI
 /// Nhờ vậy transcript là hình chiếu của sổ cái và phát lại được.
 struct ConsoleView: View {
     @EnvironmentObject var state: AppState
+    @State private var dangKeo = false
     @FocusState private var focusInput: Bool
 
     var body: some View {
@@ -112,6 +113,15 @@ struct ConsoleView: View {
             }
 
             HStack(alignment: .bottom, spacing: 6) {
+                Button {
+                    state.themTaiLieu(ThemTaiLieu.chon())
+                } label: {
+                    Image(systemName: "paperclip").font(.system(size: 15))
+                }
+                .buttonStyle(.plain)
+                .help("Thêm tài liệu cho tác tử đọc (PDF, Office, netlist, mã nguồn…)")
+                .disabled(!state.connection.ok || state.busy)
+
                 TextField("Nói với tác tử…", text: $state.draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...6)
@@ -132,6 +142,25 @@ struct ConsoleView: View {
             .padding(.horizontal, 8).padding(.bottom, 8)
         }
         .onAppear { focusInput = true }
+        // Kéo–thả lên BẤT KỲ chỗ nào của bàn giao tiếp, không chỉ lên ô nhập.
+        //
+        // Người kéo một datasheet vào thì họ nhắm vào "chỗ nói chuyện với tác tử", không
+        // nhắm vào một ô cao 30 điểm ở đáy. Vùng thả hẹp là vùng thả trượt.
+        .dropDestination(for: URL.self) { tep, _ in
+            state.themTaiLieu(tep)
+            return !tep.isEmpty
+        } isTargeted: { dangKeo = $0 }
+        .overlay {
+            if dangKeo {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .background(Color.accentColor.opacity(0.06))
+                    .overlay(Label("Thả để thêm tài liệu cho tác tử", systemImage: "paperclip")
+                        .font(.system(size: 12, weight: .medium)))
+                    .padding(4)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }
 

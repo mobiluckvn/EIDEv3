@@ -93,6 +93,16 @@ struct HumanAct: Codable {
                  origin: .init(surface: surface))
     }
 
+    /// Người kéo–thả hoặc chọn tệp để đưa vào cho tác tử đọc.
+    ///
+    /// `files` là đường dẫn TƯƠNG ĐỐI so với gốc dự án. Tuyệt đối thì vô dụng với tác tử —
+    /// hộp cát của nó là thư mục dự án, nên một tệp ở `~/Downloads` với nó là không tồn tại.
+    static func upload(files: [String]) -> HumanAct {
+        HumanAct(kind: .upload,
+                 data: ["files": .array(files.map { .string($0) })],
+                 origin: .init(surface: "console"))
+    }
+
     static func stopNow() -> HumanAct {
         HumanAct(kind: .stop, text: "dừng", origin: .init(surface: "console"))
     }

@@ -80,6 +80,11 @@ class GiaoDien:
         self._gui({"ui": "be_rong", "muc": muc})
         return self._doi_mot_trong(("da_doi_be_rong", "loi"), 20)
 
+    def them_tai_lieu(self, tep: list) -> dict:
+        """Kéo–thả (hoặc bấm nút ghim giấy) để đưa tài liệu vào cho tác tử."""
+        self._gui({"ui": "them_tai_lieu", "tep": [str(x) for x in tep]})
+        return self._doi("da_them_tai_lieu", 25)
+
     def menu(self) -> dict:
         """App tự khai thanh menu: mục nào, phím tắt nào."""
         self._gui({"ui": "menu"})

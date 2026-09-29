@@ -195,6 +195,15 @@ final class UITestChannel {
                 } else {
                     ghi(["su_kien": "loi", "ghi_chu": "bề rộng lạ: \(v["muc"] ?? .null)"])
                 }
+            case "them_tai_lieu":
+                // Thay CÚ KÉO của người, không thay giao thức: nó gọi đúng hàm mà cú kéo và
+                // nút ghim giấy gọi, nên phần chép vào hộp cát và `HumanAct.upload` đều là
+                // đường thật.
+                if let ds = v["tep"]?.arrayValue {
+                    let u = ds.compactMap { $0.stringValue }.map { URL(fileURLWithPath: $0) }
+                    s.themTaiLieu(u)
+                    ghi(["su_kien": "da_them_tai_lieu", "so_tep": u.count])
+                }
             case "menu":
                 // App tự khai thanh menu của nó: có những mục nào, phím tắt nào.
                 //

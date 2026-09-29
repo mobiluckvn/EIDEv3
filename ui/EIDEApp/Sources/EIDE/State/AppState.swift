@@ -135,6 +135,29 @@ final class AppState: ObservableObject {
         connection = .chuaKetNoi
     }
 
+    /// Đưa tệp người dùng vừa kéo–thả (hoặc vừa chọn) vào dự án rồi báo cho tác tử.
+    ///
+    /// Chép vào trong dự án TRƯỚC khi báo: hộp cát của tác tử là thư mục dự án, nên một
+    /// đường dẫn ở `~/Downloads` với nó là không tồn tại. Xem `ThemTaiLieu`.
+    func themTaiLieu(_ nguon: [URL]) {
+        guard let goc = duAnDir, connection.ok else { return }
+        let kq = ThemTaiLieu.dua(nguon, vaoDuAn: goc)
+        for l in kq.loi {
+            notices.append(.init(level: "warn", text: "Không thêm được \(l)", code: nil))
+        }
+        guard !kq.duong.isEmpty else { return }
+        if !kq.daChep.isEmpty {
+            // Nói ra việc đã chép. Người kéo một tệp từ Desktop mà không biết nó vừa được
+            // nhân bản vào dự án sẽ ngạc nhiên đúng lúc họ dọn thư mục.
+            notices.append(.init(
+                level: "info",
+                text: "Đã chép vào \(ThemTaiLieu.THU_MUC)/: " + kq.daChep.joined(separator: ", ")
+                    + " — tác tử chỉ đọc được tệp nằm trong thư mục dự án.",
+                code: nil))
+        }
+        gui(.upload(files: kq.duong))
+    }
+
     /// Xin lõi vẽ lại toàn bộ bề mặt. Máy–máy: không phải ý chí của người, nên không
     /// đi qua console.act và không để lại dòng nào trong transcript (I1, I2).
     func veLai() {
