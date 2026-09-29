@@ -221,10 +221,38 @@ tiếp đúng bước, không bắt duyệt lại (DEV-289).
 
 ### 11 · Tự kiểm chứng và tự bù năng lực
 
-`task.run` giao việc cho **6 tác tử con** ngữ cảnh sạch, tool giới hạn: `datasheet-ingest`
-(14 công cụ) · `firmware` (13) · `design-review` (9) · `sim-runner` (9) · `verifier` (10) ·
-`hardware` (5). Hook `SubagentStop` **tự gọi verifier** khi một tác tử con tuyên "đạt" —
-verifier chỉ đọc, và nó kết luận `đạt` / `không đạt` / `chưa đủ dữ kiện`.
+`task.run` giao việc cho **6 tác tử con**. Mỗi cái có **ngữ cảnh sạch** — nó *không thấy* cuộc
+trò chuyện giữa người dùng và tác tử chính, để nó **đọc dữ kiện chứ không đọc kỳ vọng** — và
+một tập công cụ hẹp, cắt đúng theo việc nó làm.
+
+| Tác tử con | Việc | Công cụ | Trần | Luật riêng nặng nhất |
+|---|---|---|---|---|
+| **`datasheet-ingest`** | nạp tài liệu, trích Fact và bản đồ chân | 14 | 12 | *"Tài liệu không viết thì kho không có"* — cấm điền bằng tri thức chung về chip |
+| **`firmware`** | viết và biên dịch mã, sửa tới khi sạch lỗi | 13 | 12 | `dat` **chỉ khi** `build.compile` trả về có tệp ảnh — biên dịch xong mới được nói là xong |
+| **`design-review`** | soi bản đồ mạch và sơ đồ | 9 | 12 | tìm chỗ **sai**, không khen chỗ đúng; mỗi phát hiện nêu sai ở đâu · vì sao biết · hậu quả nếu để nguyên |
+| **`sim-runner`** | nêu tiêu chí, chạy mô phỏng và test | 9 | 12 | *"đo, không phải thuyết phục"* — **không sửa ngưỡng** để một phép thử thành đạt |
+| **`verifier`** | kiểm chứng báo cáo của tác tử khác | 10 | 10 | **không biết đề bài** (cố ý), chỉ có công cụ đọc |
+| **`hardware`** | việc chạm bo thật | 5 | 12 | thao tác chạm bo phải người duyệt; thiếu công cụ thì trả `chua_du_du_kien` **kèm tên thao tác còn thiếu** |
+
+**Mọi tác tử con kết thúc bằng đúng một dòng JSON** — `tom_tat` · `da_lam` · `bang_chung` ·
+`chua_lam` · `ket_luan` · `do_tin` — và lược đồ ấy được kiểm bằng mã. Hai luật cứng trong đó:
+
+* `bang_chung` phải trỏ tới thứ **người khác mở ra xem được**: mã hiện vật, tệp:dòng, mã
+  changeset, dòng sổ cái. *"Tôi đã kiểm"* không phải bằng chứng.
+* Thiếu dữ kiện thì `ket_luan` là **`chua_du_du_kien`**, không phải `dat`. Ba trạng thái, không
+  hai — gộp *"chưa đo được"* vào *"không đạt"* là nói sai về hai tình huống khác hẳn nhau.
+* `chua_lam` là phần **cố ý** không làm; để trống nghĩa là khẳng định đã làm hết.
+
+**Hook `SubagentStop` tự gọi `verifier`** khi `firmware` hoặc `sim-runner` tuyên `dat` — hai
+cái này tuyên đạt về thứ chạy được, nên chúng là chỗ đậu giả đắt nhất. Verifier mở từng mục
+`bang_chung` ra xem nó **có nói đúng thứ báo cáo bảo nó nói không**; bằng chứng không mở được,
+không tồn tại, hoặc nói điều khác là phát hiện quan trọng nhất nó có thể tìm ra.
+
+Verifier có `snapshot.list` vì một lý do **đo được**, không vì cho đủ bộ: nó từng được giao
+kiểm một bản ưng ý, thử `store.get("snap-01")` và nhận `E5005` — snapshot nằm ở cây riêng,
+không nằm trong kho hiện vật chung. Nó kết luận `khong_dat` **vì không có công cụ để nhìn**,
+chứ không vì có gì sai. Một người kiểm chứng bị bịt mắt đúng chỗ cần nhìn thì mọi kết luận của
+họ đều nói về cái bịt mắt, không nói về sản phẩm.
 
 `tool.propose` + `tool.reload`: khi tác tử thấy EIDE **thiếu một năng lực**, nó xin viết một
 công cụ mới cho chính mình (R3, cổng G-TOOL). `tool.reload` **chạy bộ kiểm của công cụ ấy**
