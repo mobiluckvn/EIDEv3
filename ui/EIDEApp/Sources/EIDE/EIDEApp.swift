@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 struct EIDEApp: App {
@@ -51,6 +52,10 @@ struct EIDEApp: App {
                     }
                     if setup.ganDay.isEmpty { Text("Chưa có dự án nào") }
                 }
+                Divider()
+                Button("Xuất dự án…") { xuatGoi() }
+                    .disabled(!state.connection.ok || state.busy)
+                Button("Nhập dự án…") { nhapGoi() }
                 Divider()
                 Button("Đóng dự án") { state.dong() }
                     .keyboardShortcut("w", modifiers: [.command, .shift])
@@ -124,6 +129,57 @@ struct EIDEApp: App {
         } catch {
             state.notices.append(.init(level: "error",
                                        text: error.localizedDescription, code: nil))
+        }
+    }
+
+    /// Xuất dự án đang mở thành một tệp `.zip` do người chọn chỗ đặt.
+    ///
+    /// Bảo TÁC TỬ làm thay vì gọi thẳng Python: việc này sinh một hiện vật và phải vào sổ
+    /// cái như mọi việc khác. Một đường tắt từ menu xuống đĩa là một đường không ai thấy
+    /// trong lịch sử.
+    @MainActor private func xuatGoi() {
+        let p = NSSavePanel()
+        p.title = "Xuất dự án"
+        p.prompt = "Xuất"
+        p.nameFieldStringValue = (setup.duAnURL.lastPathComponent) + ".zip"
+        p.allowedContentTypes = [.zip]
+        guard p.runModal() == .OK, let u = p.url else { return }
+        state.gui(.say("Xuất dự án này ra tệp `goi/\(u.lastPathComponent)` giúp mình "
+                       + "(bỏ phần dựng lại được), rồi cho mình biết gói nằm ở đâu và "
+                       + "nặng bao nhiêu."))
+        state.notices.append(.init(
+            level: "info",
+            text: "Tác tử sẽ ghi gói vào trong dự án (hộp cát của nó). Xong thì chép ra "
+                + u.deletingLastPathComponent().path,
+            code: nil))
+    }
+
+    /// Nhập một gói `.zip` ra thư mục rỗng rồi mở luôn.
+    @MainActor private func nhapGoi() {
+        let chon = NSOpenPanel()
+        chon.title = "Chọn gói dự án (.zip)"
+        chon.prompt = "Chọn"
+        chon.allowedContentTypes = [.zip]
+        chon.canChooseDirectories = false
+        guard chon.runModal() == .OK, let goi = chon.url else { return }
+
+        let noi = NSSavePanel()
+        noi.title = "Giải nén ra thư mục nào"
+        noi.prompt = "Nhập"
+        noi.nameFieldStringValue = goi.deletingPathExtension().lastPathComponent
+        guard noi.runModal() == .OK, let den = noi.url else { return }
+
+        Task { @MainActor in
+            let kq = GoiDuAn.nhap(goi: goi, den: den, python: setup.pythonURL,
+                                  repo: setup.repoURL)
+            switch kq {
+            case .dat(let vi):
+                setup.duAnPath = den.path
+                state.notices.append(.init(level: "info", text: vi, code: nil))
+                await moRoiGhiNho()
+            case .hong(let vi):
+                state.notices.append(.init(level: "error", text: vi, code: nil))
+            }
         }
     }
 

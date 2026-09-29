@@ -4822,3 +4822,59 @@ Phép thử thứ ba mới là phép đo thật: hai phép đầu chỉ chứng 
 `1246 ca đơn vị` (+4): `tests/test_them_tai_lieu.py`. Ca ở đó canh **hợp đồng phía lõi** —
 `upload` là act hợp lệ, bắt buộc `files`, và dựng được thành câu đọc được; thiếu điều cuối thì
 mô hình nhận một chuỗi rỗng và cú kéo–thả trôi đi trong im lặng.
+
+### [DEV-298] 29/09/2026 · Xuất / nhập dự án — `project.export` và File ▸ Xuất/Nhập
+
+Chép thư mục **là** cách mang dự án đi, và nó đúng. Lệnh này tồn tại vì làm tay thì hai chuyện
+hay xảy ra, và cả hai chỉ lộ ra về sau:
+
+* **Chép cả đống.** Dự án FreeRTOS 14,4 MB, trong đó `.eide/build/` chiếm 3,0 MB dựng lại
+  được bằng một lệnh biên dịch.
+* **Lọc bằng cảm giác rồi bỏ mất sổ cái.** `.eide/` là thư mục ẩn, tên không gợi gì, và trong
+  dự án còn bị `.gitignore`. Người gọn gàng sẽ bỏ nó — **mất im lặng**: bản chép vẫn mở được,
+  chỉ là không còn quá khứ, không còn changeset, không hoàn tác được nữa.
+
+`src/eide/goi_du_an.py` không nghĩ ra luật mới: nó **đọc phân hạng đã có** trong `du-an.json`
+(DEV-295) rồi làm theo. Đo được: **14,4 MB → gói 2,0 MB**, nhập lại sổ cái toàn vẹn 2 315 sự
+kiện, mở ra chạy tiếp được ngay.
+
+#### Nhập thì KIỂM trước khi nói xong
+
+Gói mang sổ cái có chuỗi hash. Giải nén xong mà không kiểm thì một gói hỏng — hoặc bị sửa —
+mở ra như bình thường và chỉ lộ ra ở một lúc rất xa, đúng lúc người dùng đang tin vào một lịch
+sử không còn nguyên vẹn. `nhap()` chạy `ledger.verify()` trước khi trả về, gãy thì nói gãy ở
+đâu.
+
+Hai lối vào cũng bị chặn, mỗi lối một lý do:
+
+* **Nhập vào thư mục đang có dự án** → từ chối. Trộn hai lịch sử là hỏng cả hai, và hỏng theo
+  cách không ai gỡ được.
+* **Gói có mục trỏ `../` ra ngoài** → không giải nén. Một gói dựng bằng tay có thể ghi đè tệp
+  **ngoài** thư mục đích.
+
+#### Một con lặp tự ăn chính mình
+
+Công cụ `project.export` bắt buộc ghi gói **vào trong dự án** — để không ghi ra ngoài hộp cát.
+Nhưng vòng quét `rglob` trong lúc đang ghi **bắt gặp chính tệp gói** và gói nó vào chính nó.
+Đo được: lệnh chạy mãi không dừng, tệp phình cho tới khi hết đĩa. Một vòng lặp không có ai
+chặn, và nó chỉ lộ ra khi đã muộn.
+
+Đây là đường đi **thường gặp nhất**, không phải một ca hiếm — nên nó có ca kiểm riêng, và ca
+ấy kiểm cả kích thước gói: *"gói phình bất thường — nhiều khả năng đã tự gói chính nó"*.
+
+#### Giao diện
+
+File ▸ **Xuất dự án…** và **Nhập dự án…**.
+
+Xuất thì **bảo tác tử làm** thay vì gọi thẳng Python: việc này sinh một hiện vật và phải vào
+sổ cái như mọi việc khác. Một đường tắt từ menu xuống đĩa là một đường **không ai thấy trong
+lịch sử**.
+
+Nhập thì gọi thẳng lõi, và đó là chỗ **duy nhất** giao diện làm vậy — có lý do: chưa có dự án
+nào đang mở thì chưa có lõi nào đang chạy để mà gửi `HumanAct` vào. Nhưng nó gọi đúng
+`eide.goi_du_an.nhap`, nên phép kiểm sổ cái vẫn chạy; không tự `unzip` cho nhanh.
+
+### Số đo
+
+`1252 ca đơn vị` (+6): `tests/test_goi_du_an.py`. Gồm ca cho con lặp tự-gói-chính-mình, ca
+chặn `../` thoát ra ngoài, và ca từ chối nhập đè lên một dự án đang có.

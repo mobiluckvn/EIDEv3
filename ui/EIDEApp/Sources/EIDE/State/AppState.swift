@@ -93,6 +93,10 @@ final class AppState: ObservableObject {
     var moDuAnKhac: ((String) async -> Void)?
     var duAnGanDay: (() -> [String])?
 
+    /// Xuất dự án đang mở thành `.zip` — lớp App gắn vào, vì nó cần bảng chọn tệp.
+    var xuatGoi: (() -> Void)?
+    var nhapGoi: (() -> Void)?
+
     func mo(python: URL, repo: URL, duAn: URL) async {
         client.onCommand = { [weak self] c in self?.apply(c) }
         client.onStderr = { [weak self] s in

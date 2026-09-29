@@ -9,6 +9,7 @@ sáu tháng sau không ai dùng được.
 
 from __future__ import annotations
 
+import pathlib
 from typing import Any
 
 from ..errors import EideError
@@ -80,6 +81,54 @@ def register(r: Registry) -> Registry:
         ctx.awaiting_human = True
         return {"da_de_xuat": True, "card_id": card_id,
                 "note_vi": "Đã hỏi người dùng. KẾT THÚC lượt và chờ họ đặt tên."}
+
+    @r.tool("project.export", "Lịch sử",
+            "Đóng gói CẢ dự án thành một tệp .zip để mang sang máy khác hoặc gửi đi. Mặc "
+            "định bỏ thứ dựng lại được (bản biên dịch) — gói nhỏ hơn nhiều mà không mất gì. "
+            "Dùng khi người dùng nói muốn sao lưu, bàn giao, chuyển máy.",
+            {"type": "object",
+             "properties": {
+                 "ra": {"type": "string",
+                        "description": "Đường dẫn tệp .zip sẽ ghi, trong dự án"},
+                 "gon": {"type": "boolean",
+                         "description": "true (mặc định): bỏ bản biên dịch và tệp tạm. "
+                                        "false: gói y hệt, dùng khi cần dò lỗi"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["ra", "explain"]},
+            risk="R2", needs_explain=True,
+            keywords=["xuất dự án", "sao lưu", "đóng gói", "bàn giao", "chuyển máy", "zip"])
+    def project_export(ctx: Any, ra: str, explain: dict[str, Any], gon: bool = True):
+        """Xuất gói. Không sinh changeset: nó không đổi gì trong dự án, chỉ đọc.
+
+        Đo được 29/09/2026 trên dự án FreeRTOS: 14,4 MB → **2,0 MB**, và phần bỏ lại đúng là
+        `.eide/build/` (3,0 MB) — thứ dựng lại được bằng một lệnh biên dịch.
+        """
+        from ..goi_du_an import xuat
+
+        goc = ctx.config.paths.project_root
+        dich = (goc / ra) if not str(ra).startswith("/") else pathlib.Path(ra)
+        try:
+            dich.relative_to(goc)
+        except ValueError:
+            return ToolResult(False, error=EideError(
+                "E7010", f"{ra} nằm ngoài thư mục dự án.",
+                hint_for_agent="Ghi gói vào trong dự án; người dùng tự chép ra ngoài sau.",
+                blame="agent"))
+        kq = xuat(goc, dich, gon=gon)
+        if not kq.dat:
+            return ToolResult(False, error=EideError(
+                "E7011", f"Không xuất được: {kq.vi_sao_khong_dat}",
+                hint_for_agent="Kiểm đường dẫn rồi thử lại.", blame="agent"))
+        bo = sum(n for _, n in kq.da_bo)
+        return {
+            **kq.to_dict(),
+            "note_vi": (
+                f"Đã gói {kq.so_tep} tệp thành {dich.name} ({kq.byte_goi / 1024 / 1024:.1f} "
+                f"MB)."
+                + (f" Bỏ lại {bo / 1024 / 1024:.1f} MB thứ dựng lại được: "
+                   + ", ".join(d for d, _ in kq.da_bo) + "." if kq.da_bo else "")
+                + " Gói này mở được bằng bất kỳ trình giải nén nào; giải ra một thư mục rỗng "
+                  "rồi mở bằng EIDE là chạy tiếp được, cả lịch sử lẫn phép hoàn tác.")}
 
     @r.tool("snapshot.create", "Lịch sử",
             "Ghi một bản ưng ý với cái tên NGƯỜI DÙNG đã nói ra. Chỉ dùng khi họ đã đặt "
