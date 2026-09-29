@@ -5189,3 +5189,45 @@ Hai chỗ đứt tìm được khi đo:
 
 `1291 ca đơn vị` · bộ quét giao diện **124/124** · `tools/thu_so_do.py` **18/18** ·
 `tools/thu_xuat_tai_lieu.py` **13/13** · bộ dò tài liệu **0 chỗ lệch** · hiến pháp 3 696/3 700.
+
+---
+
+### [DEV-304] 29/09/2026 · "Thư mục Agent sinh ra tài liệu nằm ở đâu?" — tệp làm ra phải TÌM ĐƯỢC
+
+**Câu hỏi của anh Công**, nguyên văn: *"Mình tìm mà không biết thư mục Agent sinh ra tài liệu
+nằm ở đâu nhỉ?"*
+
+Đó không phải câu hỏi của người chưa quen. Đó là một lỗi, và đo ra thì nó nằm ở ba chỗ:
+
+| Chỗ | Trạng thái trước |
+|---|---|
+| Lời đáp của tác tử | chỉ có đường **tương đối** (`trinh-tu-cham.pptx`) |
+| Tab *Tài liệu & Nguồn* | tệp làm ra **lẫn vào bảng datasheet đã nạp**, cột Phiên bản · Trang · Nhà phát hành đều trống — vì nó không phải datasheet |
+| Bất kỳ đâu khác | không có |
+
+Tệp vẫn luôn nằm **trong thư mục dự án** — `_resolve()` chặn ghi ra ngoài hộp cát, và chuyện
+đó đúng. Nhưng *nằm đúng chỗ* khác hẳn *tìm được*. Một tệp người dùng không tìm thấy thì cũng
+bằng chưa làm.
+
+#### Sửa
+
+* Khối riêng **A3.2 "Tài liệu tác tử đã tạo"** trên tab *Tài liệu & Nguồn*: tên tệp · dạng ·
+  cỡ đọc được (`56 KB`, không phải `57160`) · **đường dẫn đầy đủ**, kèm thư mục dự án ngay ở
+  dòng tóm tắt.
+* `doc.render` trả thêm `duong_day_du`, và câu báo cho người đọc nói thẳng *"Tệp nằm ở: …"*.
+
+Phân biệt hai loại bằng **cấu trúc, không bằng đuôi tệp**: `doc.render` đăng ký qua
+`history.ghi_tep` nên canonical chỉ có `{path, sha, bytes}`, còn tài liệu nạp vào có `title`,
+`pages`, `publisher`. Dò theo đuôi sẽ nhầm — một datasheet cũng đuôi `.pdf`.
+
+#### Chỗ suýt sai khi đo
+
+Bản kiểm đầu dùng một kho giả trả **cùng một danh sách cho mọi loại hiện vật**, nên khối A3.6
+(*Nạp & trích xuất theo định dạng*) trông như cũng dính lỗi. Nó không dính: A3.6 đọc
+`store.list("classification")`, một loại khác. Kho giả sai làm ra một lỗi không có thật — suýt
+nữa thì sửa một chỗ đang đúng.
+
+### Số đo
+
+`1294 ca đơn vị` · quét giao diện **124/124** · bộ dò tài liệu **0 chỗ lệch** · ba ca mới,
+trong đó một ca bắt đúng chuyện datasheet `.pdf` không được đọc nhầm thành tệp tác tử tạo.

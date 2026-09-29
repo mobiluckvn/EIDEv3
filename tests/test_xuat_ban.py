@@ -207,3 +207,56 @@ def test_cong_cu_tao_tep_va_sinh_changeset(du_an):
     assert ra["do_lai"]["so_doan"] >= 1
     # Câu báo phải mang SỐ ĐO, không mang chữ "đã ghi xong".
     assert "đoạn" in ra["note_vi"] and "mở lại" in ra["note_vi"]
+
+
+def test_tep_tao_ra_phai_NOI_RO_NAM_O_DAU(du_an):
+    """Tác tử làm ra một tệp mà người dùng không tìm thấy thì cũng bằng chưa làm.
+
+    Anh Công hỏi ngày 29/09/2026: *"thư mục Agent sinh ra tài liệu nằm ở đâu?"* — tệp vẫn nằm
+    trong thư mục dự án (hộp cát chặn ghi ra ngoài), nhưng lời đáp chỉ có đường TƯƠNG ĐỐI và
+    giao diện thì trộn nó vào bảng datasheet đã nạp với mọi cột trống.
+    """
+    ra = _goi(du_an, nguon="docs/ghi-chu.md", ra="bao-cao.docx", dinh_dang="docx")
+    assert ra["duong_day_du"] == str(du_an / "bao-cao.docx")
+    assert str(du_an) in ra["note_vi"], "lời đáp phải nói đường dẫn đầy đủ"
+
+
+def test_tab_tai_lieu_tach_TEP_TAO_RA_khoi_datasheet_da_nap():
+    """Hai thứ khác hẳn nhau: tài liệu NGƯỜI nạp vào, và tệp TÁC TỬ làm ra.
+
+    Trộn chung thì tệp tác tử tạo hiện với cột Phiên bản · Trang · Nhà phát hành đều trống —
+    vì nó không phải datasheet.
+    """
+    from eide.surfaces import documents
+
+    class _Kho:
+        def list(self, loai, limit=100):
+            if loai != "doc":
+                return []
+            return [
+                {"id": "bao-cao.pptx", "version": "v1", "explain": {},
+                 "canonical": {"path": "bao-cao.pptx", "sha": "a", "bytes": 57160}},
+                {"id": "DOC-01", "version": "v1", "explain": {},
+                 "canonical": {"title": "STM32F469 datasheet", "pages": 300,
+                               "publisher": "ST", "hash": "b"}},
+            ]
+
+    m = documents(_Kho(), None, "/nha/du-an")
+    khoi = {b["id"]: b for b in m["blocks"]}
+    assert "A3.1" in khoi and "A3.2" in khoi
+    assert [r[0] for r in khoi["A3.1"]["rows"]] == ["DOC-01"]
+    tao = khoi["A3.2"]
+    assert [r[0] for r in tao["rows"]] == ["bao-cao.pptx"]
+    assert tao["rows"][0][1] == "PPTX" and tao["rows"][0][2] == "56 KB"
+    assert tao["rows"][0][3] == "/nha/du-an/bao-cao.pptx"
+    assert "/nha/du-an" in tao["summary"]
+
+
+def test_pdf_datasheet_da_nap_khong_bi_doc_nham_thanh_tep_tao_ra():
+    """Phân biệt bằng CẤU TRÚC, không bằng đuôi tệp — datasheet cũng đuôi `.pdf`."""
+    from eide.surfaces import _tac_tu_lam_ra
+
+    assert _tac_tu_lam_ra({"canonical": {"path": "bao-cao.pdf", "bytes": 1}}) is True
+    assert _tac_tu_lam_ra(
+        {"canonical": {"title": "DS", "pages": 9, "path": "ds.pdf"}}) is False
+    assert _tac_tu_lam_ra({"canonical": {"path": "main.c", "bytes": 1}}) is False

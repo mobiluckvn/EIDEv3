@@ -130,11 +130,13 @@ def dang_ky(r: Registry) -> None:
             "tep": rel, "dinh_dang": dinh_dang, "nguon": _rel(ctx, p_nguon),
             "changeset": cs.id, "tao_moi": not co_truoc,
             "do_lai": kq.do_lai,
-            "note_vi": _noi(rel, dinh_dang, kq.do_lai, _rel(ctx, p_nguon)),
+            "duong_day_du": str(p_ra),
+            "note_vi": _noi(rel, dinh_dang, kq.do_lai, _rel(ctx, p_nguon), str(p_ra)),
         }
 
 
-def _noi(tep: str, dinh_dang: str, do_lai: dict[str, Any], nguon: str) -> str:
+def _noi(tep: str, dinh_dang: str, do_lai: dict[str, Any], nguon: str,
+         day_du: str = "") -> str:
     """Câu báo cho người đọc. Nói SỐ ĐO ĐỌC LẠI TỪ TỆP, không nói 'đã ghi xong'.
 
     `ok` nói về lời gọi, không nói về kết quả: `python-docx` không ném ngoại lệ mới chỉ chứng
@@ -155,6 +157,12 @@ def _noi(tep: str, dinh_dang: str, do_lai: dict[str, Any], nguon: str) -> str:
                           for k, v in (do_lai.get("sheet") or {}).items()))
     else:
         do = f"{do_lai.get('so_trang', 0)} trang"
+    # Đường dẫn ĐẦY ĐỦ, không chỉ đường tương đối.
+    #
+    # Anh Công hỏi ngày 29/09/2026: *"thư mục Agent sinh ra tài liệu nằm ở đâu?"* — tệp nằm
+    # trong thư mục dự án, nhưng không chỗ nào nói ra cả đường dẫn, nên người dùng làm ra một
+    # tệp rồi đi tìm không thấy. Một tệp không tìm thấy thì cũng bằng chưa làm.
+    o_dau = f"\n\nTệp nằm ở: `{day_du}`" if day_du else ""
     return (f"`{tep}` — **{do}** (đếm bằng cách mở lại chính tệp vừa tạo, không phải bằng số "
-            f"byte đã ghi).\n\nNguồn là `{nguon}`: sửa ở đó rồi render lại, đừng sửa trong "
-            "Word — bản render là thứ dựng lại được, nguồn mới là thứ giữ lịch sử.")
+            f"byte đã ghi).{o_dau}\n\nNguồn là `{nguon}`: sửa ở đó rồi render lại, đừng sửa "
+            "trong Word — bản render là thứ dựng lại được, nguồn mới là thứ giữ lịch sử.")

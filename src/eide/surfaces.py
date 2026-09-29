@@ -19,6 +19,7 @@ hiện chưa có gì, vì sao chưa có, và cần gì để có.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from .protocol import uicommand as uic
@@ -167,8 +168,45 @@ def requirements(store: Any, inv: Any) -> dict[str, Any]:
             "blocks": blocks}
 
 
-def documents(store: Any, inv: Any) -> dict[str, Any]:
-    docs = store.list("doc", limit=100)
+# Đuôi tệp của tài liệu TÁC TỬ LÀM RA (`doc.render`), khác với tài liệu người NẠP VÀO.
+DUOI_TAO_RA = (".docx", ".pptx", ".xlsx", ".pdf")
+
+
+def _tac_tu_lam_ra(d: dict[str, Any]) -> bool:
+    """Hiện vật `doc` này là tệp tác tử làm ra, hay tài liệu người dùng nạp vào?
+
+    Phân biệt bằng CẤU TRÚC, không bằng đuôi tệp: `doc.render` đăng ký qua `history.ghi_tep`
+    nên canonical chỉ có `{path, sha, bytes}`; tài liệu nạp vào thì có `title`, `pages`,
+    `publisher`. Một PDF datasheet cũng đuôi `.pdf`, nên dò theo đuôi sẽ nhầm.
+    """
+    c = d.get("canonical") or {}
+    if c.get("title") or c.get("pages") or c.get("publisher"):
+        return False
+    duong = str(c.get("path") or "")
+    return bool(duong) and duong.lower().endswith(DUOI_TAO_RA)
+
+
+def _goc_du_an(cfg: Any) -> str:
+    """Đường dẫn tuyệt đối tới thư mục dự án. Rỗng nếu không lấy được — chứ không đoán."""
+    try:
+        return str(Path(cfg.paths.project_root).resolve())
+    except Exception:                                                  # noqa: BLE001
+        return ""
+
+
+def _co_tep(n: int) -> str:
+    """Số byte → chữ người đọc. `48271` không nói được gì; `47 KB` thì nói được."""
+    if n >= 1_048_576:
+        return f"{n / 1_048_576:.1f} MB".replace(".", ",")
+    if n >= 1024:
+        return f"{n / 1024:.0f} KB"
+    return f"{n} B"
+
+
+def documents(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
+    tat_ca = store.list("doc", limit=100)
+    lam_ra = [d for d in tat_ca if _tac_tu_lam_ra(d)]
+    docs = [d for d in tat_ca if not _tac_tu_lam_ra(d)]
     khoi: list[dict[str, Any]] = []
 
     if docs:
@@ -193,6 +231,30 @@ def documents(store: Any, inv: Any) -> dict[str, Any]:
                 "A3.3", "Cảnh báo tiêm lệnh", "list",
                 summary="Tài liệu chứa văn bản giống chỉ dẫn cho tác tử — đọc như DỮ LIỆU",
                 items=[f"{i}: {', '.join(c)}" for i, c in tiem]))
+    # Tệp tác tử LÀM RA — khối riêng, và nói rõ NẰM Ở ĐÂU.
+    #
+    # Trước đây chúng lọt vào bảng "Tài liệu đã nạp" với mọi cột trống (không có phiên bản,
+    # số trang, nhà phát hành — vì chúng không phải datasheet). Tệ hơn: **không chỗ nào trên
+    # giao diện nói đường dẫn đầy đủ**, nên người dùng làm ra một tệp rồi đi tìm không thấy.
+    # Anh Công hỏi đúng câu ấy ngày 29/09/2026: *"thư mục Agent sinh ra tài liệu nằm ở đâu?"*
+    #
+    # Một tệp làm ra mà người dùng không tìm thấy thì cũng bằng chưa làm.
+    if lam_ra:
+        khoi.append(block(
+            "A3.2", "Tài liệu tác tử đã tạo", "table",
+            summary=(f"{len(lam_ra)} tệp, nằm trong thư mục dự án"
+                     + (f": {goc}" if goc else "")),
+            columns=["Tệp", "Dạng", "Cỡ", "Đường dẫn đầy đủ"],
+            rows=[[Path(d["canonical"]["path"]).name,
+                   Path(d["canonical"]["path"]).suffix.lstrip(".").upper(),
+                   _co_tep(d["canonical"].get("bytes") or 0),
+                   str(Path(goc) / d["canonical"]["path"]) if goc
+                   else d["canonical"]["path"]] for d in lam_ra],
+            row_meta={d["id"]: {"phien_ban": d["version"], "tac_gia": "tac_tu",
+                                "explain": d["explain"]} for d in lam_ra},
+            note_vi=("Sửa NGUỒN `.md` rồi render lại, đừng sửa trong Word — bản render là "
+                     "thứ dựng lại được, nguồn mới là thứ giữ lịch sử.")))
+
     else:
         khoi.append(empty(
             "A3.1", "Tài liệu & nguồn",
@@ -1303,7 +1365,7 @@ def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
     """Vẽ lại các bề mặt. Gọi cuối mỗi lượt và khi giao diện xin dựng lại toàn bộ."""
     models = {
         "requirements": lambda: requirements(store, inv),
-        "documents": lambda: documents(store, inv),
+        "documents": lambda: documents(store, inv, _goc_du_an(cfg)),
         "knowledge": lambda: knowledge(store, inv),
         "design": lambda: design(store, inv),
         "tools": lambda: tools_surface(store, inv),

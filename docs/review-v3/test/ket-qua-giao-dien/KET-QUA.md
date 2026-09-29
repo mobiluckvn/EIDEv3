@@ -9,7 +9,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | Kết quả | Điều được kiểm | Bằng chứng |
 |---|---|---|
 | ✅ | Đủ 11 tab, đúng thứ tự tài liệu | ['requirements', 'documents', 'knowledge', 'design', 'tools', 'code', 'simulation', 'hardware', 'journal', 'history', 'project'] |
-| ✅ | Đọc được khung cửa sổ để đo tràn | {'cao': 1018, 'rong': 1700, 'so': 28286, 'x': 28, 'y': 33} |
+| ✅ | Đọc được khung cửa sổ để đo tràn | {'cao': 1018, 'rong': 1700, 'so': 28436, 'x': 28, 'y': 33} |
 | ✅ | Ba nút Hẹp / Vừa / Rộng của Console cho ba bề rộng KHÁC nhau | {'Hẹp': 320, 'Vừa': 460, 'Rộng': 640} |
 | ✅ | Bấm nút bề rộng thì trạng thái đổi theo | Vừa |
 ## Bề mặt requirements — Yêu cầu & Giải pháp
@@ -180,12 +180,12 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 
 | Kết quả | Điều được kiểm | Bằng chứng |
 |---|---|---|
-| ✅ | Ở khổ nhỏ nhất (1100×720) vẫn không khối nào tràn ngang | khung {'cao': 752, 'rong': 1100, 'so': 28286, 'x': 28, 'y': 331} · tràn: — |
+| ✅ | Ở khổ nhỏ nhất (1100×720) vẫn không khối nào tràn ngang | khung {'cao': 752, 'rong': 1100, 'so': 28436, 'x': 28, 'y': 331} · tràn: — |
 ## Thanh trạng thái
 
 | Kết quả | Điều được kiểm | Bằng chứng |
 |---|---|---|
-| ✅ | Thanh trạng thái có dữ liệu | {'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3696, 'tran': 3700, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 293, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 205030, 'ty_le': 0.205}, 'stale': 4} |
+| ✅ | Thanh trạng thái có dữ liệu | {'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3696, 'tran': 3700, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 302, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 205039, 'ty_le': 0.205}, 'stale': 4} |
 | ✅ | Không ô nào trên thanh trạng thái bỏ trống câm | ô rỗng: — · đủ: ['chang', 'chip', 'du_an', 'fact', 'mo_hinh', 'ngu_canh', 'stale'] |
 | ✅ | Thanh trạng thái không lộ giá trị thô | — |
 ## Widget sửa tay (§E2 — người sửa được gì)

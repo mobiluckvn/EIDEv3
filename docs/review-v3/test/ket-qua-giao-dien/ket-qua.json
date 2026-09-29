@@ -9,7 +9,7 @@
   "phan": "Khung chung",
   "dat": true,
   "cau": "Đọc được khung cửa sổ để đo tràn",
-  "bang_chung": "{'cao': 1018, 'rong': 1700, 'so': 28286, 'x': 28, 'y': 33}"
+  "bang_chung": "{'cao': 1018, 'rong': 1700, 'so': 28436, 'x': 28, 'y': 33}"
  },
  {
   "phan": "Khung chung",
@@ -699,13 +699,13 @@
   "phan": "Cửa sổ nhỏ nhất",
   "dat": true,
   "cau": "Ở khổ nhỏ nhất (1100×720) vẫn không khối nào tràn ngang",
-  "bang_chung": "khung {'cao': 752, 'rong': 1100, 'so': 28286, 'x': 28, 'y': 331} · tràn: —"
+  "bang_chung": "khung {'cao': 752, 'rong': 1100, 'so': 28436, 'x': 28, 'y': 331} · tràn: —"
  },
  {
   "phan": "Thanh trạng thái",
   "dat": true,
   "cau": "Thanh trạng thái có dữ liệu",
-  "bang_chung": "{'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3696, 'tran': 3700, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 293, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 205030, 'ty_le': 0.205}, 'stale': 4}"
+  "bang_chung": "{'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3696, 'tran': 3700, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 302, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 205039, 'ty_le': 0.205}, 'stale': 4}"
  },
  {
   "phan": "Thanh trạng thái",
