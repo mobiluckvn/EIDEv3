@@ -195,6 +195,26 @@ final class UITestChannel {
                 } else {
                     ghi(["su_kien": "loi", "ghi_chu": "bề rộng lạ: \(v["muc"] ?? .null)"])
                 }
+            case "menu":
+                // App tự khai thanh menu của nó: có những mục nào, phím tắt nào.
+                //
+                // Câu "Cmd+C/Cmd+V trong ô nhập có chạy không" trả lời được bằng ĐO chứ
+                // không cần suy: nếu menu Edit chuẩn của macOS còn nguyên thì các lệnh sửa
+                // văn bản còn nguyên. Suy từ mã thì chỉ biết mình KHÔNG xoá nó — không biết
+                // nó có thật sự ở đó không.
+                Task { @MainActor in
+                    var ra: [[String: Any]] = []
+                    for m in NSApp.mainMenu?.items ?? [] {
+                        let muc = (m.submenu?.items ?? []).compactMap { x -> [String: Any]? in
+                            if x.isSeparatorItem { return nil }
+                            return ["ten": x.title,
+                                    "phim": x.keyEquivalent.isEmpty ? "" :
+                                        self.moTaPhim(x)]
+                        }
+                        ra.append(["ten": m.title, "muc": muc])
+                    }
+                    self.ghi(["su_kien": "menu", "thanh_menu": ra])
+                }
             case "co_cua_so":
                 // Đổi khổ cửa sổ để đo giao diện ở nhiều kích thước màn hình.
                 Task { @MainActor in
@@ -503,4 +523,15 @@ final class UITestChannel {
             try? s.write(to: f, atomically: true, encoding: .utf8)
         }
     }
+
+    /// Phím tắt dạng người đọc: ⌘⇧W thay vì "w" + một bitmask.
+    private func moTaPhim(_ x: NSMenuItem) -> String {
+        var t = ""
+        if x.keyEquivalentModifierMask.contains(.control) { t += "⌃" }
+        if x.keyEquivalentModifierMask.contains(.option) { t += "⌥" }
+        if x.keyEquivalentModifierMask.contains(.shift) { t += "⇧" }
+        if x.keyEquivalentModifierMask.contains(.command) { t += "⌘" }
+        return t + x.keyEquivalent.uppercased()
+    }
+
 }
