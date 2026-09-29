@@ -138,7 +138,7 @@ graph TB
         HOOK["<b>hooks/standard.py</b><br/>PreToolUse · PostToolUse · Stop"]
     end
 
-    subgraph Nang["Năng lực — 118 công cụ / 10 nhóm"]
+    subgraph Nang["Năng lực — 119 công cụ / 10 nhóm"]
         REG["<b>tools/registry.py</b><br/>hợp đồng · nạp trễ · rủi ro R1–R4"]
         T1["tools/knowledge · ckm · design<br/>xay_dung · mach_that · snapshots"]
         T2["tools/ke_hoach — chế độ kế hoạch<br/>tools/nang_luc — tác tử TỰ VIẾT công cụ<br/>tools/dieu_phoi — tác tử con · skill"]

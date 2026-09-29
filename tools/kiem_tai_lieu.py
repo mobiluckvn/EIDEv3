@@ -146,6 +146,14 @@ def main() -> int:
         # một cái bảng không có chỗ nào để nhét chữ "lúc thiết kế" vào từng hàng.
         for vung in re.findall(r"<!--\s*lich-su\s*-->(.*?)<!--\s*/lich-su\s*-->", t, re.S):
             cu_trong_dong |= set(re.findall(r"`?([a-z_]+\.[a-z_*\\]+)`?", vung))
+        # Vùng nói về công cụ do TÁC TỬ TỰ VIẾT trong một dự án (`.eide/cong-cu/`). Những
+        # tên ấy có thật — chúng đã chạy, đã sinh ra tệp — nhưng chúng KHÔNG nằm trong sổ
+        # đăng ký của EIDE, và không được nằm: sổ đăng ký là năng lực EIDE mang sẵn, còn đây
+        # là năng lực một dự án tự mọc thêm. Thiếu dấu vùng này thì bộ dò báo `doc.pptx` là
+        # "công cụ không có trong kho đăng ký" — đúng về chữ, sai về việc.
+        for vung in re.findall(r"<!--\s*tac-tu-viet\s*-->(.*?)<!--\s*/tac-tu-viet\s*-->",
+                               t, re.S):
+            cu_trong_dong |= set(re.findall(r"`?([a-z_]+\.[a-z_*\\]+)`?", vung))
         # Bảng ánh xạ "tên cũ → tên nay": chỉ CỘT TRÁI là tên cũ; cột phải là tên hiện tại và
         # PHẢI được kiểm. Đọc theo cấu trúc bảng thay vì đuổi theo cách diễn đạt của cột lý
         # do — đuổi theo từ ngữ là cách chắc chắn để bỏ sót một cách nói mới.

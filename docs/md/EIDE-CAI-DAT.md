@@ -252,7 +252,7 @@ hoặc đọc `<dự án>/.eide/ledger.jsonl`.
 
 | Tài liệu | Nói về |
 |---|---|
-| [`README.md`](../../README.md) | Tác tử làm được những gì — 118 công cụ theo việc |
+| [`README.md`](../../README.md) | Tác tử làm được những gì — 119 công cụ theo việc |
 | [EIDE-C4-46](EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md) | Kiến trúc theo mô hình C4 |
 | [EIDE-MDD-40](../review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md) | Thiết kế tổng thể — nguồn sự thật |
 | [EIDE-DEV-LOG](EIDE-DEV-LOG.md) | Mọi lệch mã ↔ tài liệu, theo thời gian |

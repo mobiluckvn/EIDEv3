@@ -9,7 +9,7 @@
   "phan": "Khung chung",
   "dat": true,
   "cau": "Đọc được khung cửa sổ để đo tràn",
-  "bang_chung": "{'cao': 1018, 'rong': 1700, 'so': 24585, 'x': 28, 'y': 33}"
+  "bang_chung": "{'cao': 1018, 'rong': 1700, 'so': 26530, 'x': 28, 'y': 33}"
  },
  {
   "phan": "Khung chung",
@@ -393,7 +393,7 @@
   "phan": "Bề mặt simulation — Mô phỏng",
   "dat": true,
   "cau": "Bề mặt có khối để hiện",
-  "bang_chung": "3 khối"
+  "bang_chung": "5 khối"
  },
  {
   "phan": "Bề mặt simulation — Mô phỏng",
@@ -471,7 +471,7 @@
   "phan": "Bề mặt hardware — Mạch thật",
   "dat": true,
   "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
-  "bang_chung": "1 khối trống, câm: —"
+  "bang_chung": "0 khối trống, câm: —"
  },
  {
   "phan": "Bề mặt hardware — Mạch thật",
@@ -687,7 +687,7 @@
   "phan": "Tổng các bề mặt",
   "dat": true,
   "cau": "Tổng số khối đã soi qua 11 bề mặt",
-  "bang_chung": "27 khối"
+  "bang_chung": "29 khối"
  },
  {
   "phan": "Bảng Giới thiệu",
@@ -699,13 +699,13 @@
   "phan": "Cửa sổ nhỏ nhất",
   "dat": true,
   "cau": "Ở khổ nhỏ nhất (1100×720) vẫn không khối nào tràn ngang",
-  "bang_chung": "khung {'cao': 752, 'rong': 1100, 'so': 24585, 'x': 28, 'y': 331} · tràn: —"
+  "bang_chung": "khung {'cao': 752, 'rong': 1100, 'so': 26530, 'x': 28, 'y': 331} · tràn: —"
  },
  {
   "phan": "Thanh trạng thái",
   "dat": true,
   "cau": "Thanh trạng thái có dữ liệu",
-  "bang_chung": "{'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3598, 'tran': 3600, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 202, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 204841, 'ty_le': 0.205}, 'stale': 0}"
+  "bang_chung": "{'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3676, 'tran': 3700, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 294, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 205011, 'ty_le': 0.205}, 'stale': 4}"
  },
  {
   "phan": "Thanh trạng thái",

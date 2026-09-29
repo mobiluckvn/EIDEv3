@@ -39,12 +39,16 @@ _DX = {"ten": "code.symbolize", "nhom": "Mã nguồn",
 # ===================================================== hàng rào 1: đề xuất phải nói được gì
 def test_vi_sao_PHAI_co_so_do_khong_phai_cam_giac(make_agent):
     """Phần `vi_sao` là phần người dùng đọc để quyết. "Tôi thấy hơi chậm" không đủ để ai
-    quyết; "tôi gọi fs.read 28 lần rồi hết hạn mức" thì đủ."""
+    quyết; "tôi gọi fs.read 28 lần rồi hết hạn mức" thì đủ.
+
+    Lời từ chối phải kể ra CẢ HAI kiểu bằng chứng được nhận — nói "thiếu bằng chứng" mà không
+    nói bằng chứng là gì thì tác tử chỉ còn cách đoán.
+    """
     agent = make_agent([])
     d = dict(_DX, vi_sao="tôi thấy việc này hơi chậm và bất tiện khi làm bằng tay")
     r = agent.registry.run("tool.propose", {**d, "explain": _EX}, _ctx(agent))
     assert not r.ok and r.error.code == "E7001"
-    assert "SỐ ĐO" in r.error.message_vi
+    assert "số đo" in r.error.message_vi and "công cụ đã kiểm" in r.error.message_vi
 
 
 def test_test_chua_noi_kiem_ca_nao_thi_bi_chan(make_agent):
@@ -289,3 +293,64 @@ def test_nap_lai_HONG_thi_khong_chan_viec_mo_du_an(make_agent):
     (d / "test_vo.py").write_text("def test_x():\n    assert True\n", "utf-8")
     ra = nap_cong_cu_tu_viet(agent.registry, agent.config.paths.project_root)
     assert ra["loi"] and "vo.py" in ra["loi"][0]
+
+
+def test_tim_khong_thay_thi_phai_nhac_toi_tool_propose():
+    """Lối tự viết công cụ phải được NÓI RA đúng lúc nó dùng được.
+
+    Đo 29/09/2026 qua giao diện thật: xin một tệp PowerPoint, tác tử `tool.search` ba lần,
+    không thấy gì, rồi viết dàn ý cho người dùng tự chép tay. `tool.propose` chưa nổ lần nào
+    trong lượt chạy thật — vì câu hướng dẫn lúc tìm-không-thấy chỉ có một lối: dừng lại.
+
+    Cơ chế có sẵn mà đường dẫn tới nó đứt thì đúng bằng không có.
+    """
+    from eide.tools import build_registry
+
+    class _Ctx:
+        registry = build_registry()
+
+    ra = _Ctx.registry.get("tool.search").fn(_Ctx(), query="xuất ra tệp powerpoint pptx")
+    # Phép tìm là tìm MỜ: nó trả về 8 công cụ gần giống, không cái nào xuất được .pptx. Đúng
+    # lúc ấy lời nhắc phải có mặt — bản đầu chỉ nói khi `count == 0`, mà `count` gần như không
+    # bao giờ bằng 0, nên lời nhắc coi như không tồn tại.
+    assert ra["count"] > 0, "phép tìm mờ vẫn trả về thứ gì đó — đó chính là vấn đề"
+    assert "tool.propose" in ra["note_vi"]
+    assert "tìm MỜ" in ra["note_vi"]
+    # Và khi thật sự không có gì thì lời nhắc vẫn còn.
+    rong = _Ctx.registry.get("tool.search").fn(_Ctx(), query="zzzqqq không có thật")
+    assert "tool.propose" in rong["note_vi"]
+    # Và vẫn giữ chỗ cấm cũ: không được thay bằng một việc gần giống (N6).
+    assert "gần giống" in ra["note_vi"]
+
+
+def test_khong_co_duong_cay_tay_van_de_xuat_duoc():
+    """Khoảng trống kiểu "không có đường nào" phải đề xuất được, không chỉ kiểu "quá đắt".
+
+    Đo 29/09/2026 qua giao diện thật: xin một tệp `.pptx`. Không công cụ nào ghi được tệp nhị
+    phân ấy — không phải chậm, mà là KHÔNG CÓ. Tác tử đọc lược đồ thấy đòi số đo, không có số
+    nào để điền, nên không đề xuất và bảo người dùng tự chép tay sang PowerPoint. Hai lượt
+    chạy liên tiếp đều 1/7.
+
+    Cửa thứ hai phải mở bằng thứ KIỂM ĐƯỢC: kể tên ít nhất hai công cụ đã xem.
+    """
+    from eide.nang_luc import kiem_de_xuat
+
+    co = lambda _t: False                                              # noqa: E731
+    chung = dict(ten="doc.pptx", viec="Sinh tệp PowerPoint từ Markdown, mỗi mục một slide",
+                 test="ca có slide; ca nguồn rỗng; ca nó phải IM LẶNG khi đã có công cụ khác")
+
+    # Cửa cũ: số đo cày tay.
+    assert kiem_de_xuat(vi_sao="Đã gọi fs.read 28 lần trong 3 lượt mà vẫn chưa ra",
+                        co_cong_cu=co, **chung) == []
+    # Cửa mới: kể tên công cụ đã kiểm.
+    assert kiem_de_xuat(
+        vi_sao=("Đã kiểm doc.render (chỉ nhận docx/xlsx/pdf) và fs.write (chỉ ghi được chữ, "
+                "mà pptx là tệp nén nhị phân) — không cái nào sinh được slide."),
+        co_cong_cu=co, **chung) == []
+    # Vẫn chặn văn xuôi rỗng: không số, không tên công cụ nào.
+    loi = kiem_de_xuat(vi_sao="EIDE thiếu năng lực này nên tôi muốn tự viết một cái cho nhanh",
+                       co_cong_cu=co, **chung)
+    assert loi and "bằng chứng" in loi[0]
+    # Một cái tên thôi thì chưa phải đi tìm.
+    assert kiem_de_xuat(vi_sao="Đã kiểm doc.render, nó không sinh được slide nào cả đâu",
+                        co_cong_cu=co, **chung)

@@ -52,6 +52,26 @@ def _rel(ctx: Any, p: Path) -> str:
 _S_PATH = {"type": "string", "description": "Đường dẫn tương đối tới gốc dự án"}
 
 
+def _khong_hop_thi_sao(found: list[Any]) -> str:
+    """Lời nhắc kèm mọi kết quả `tool.search`. Xem docstring của `tool_search`.
+
+    Ngắn có chủ ý: một lời nhắc dài đi kèm mọi lần tìm sẽ thành tiếng ồn, mà tiếng ồn thì bị
+    bỏ qua — kể cả lần nó đáng đọc.
+    """
+    if not found:
+        dau = "Không công cụ nào khớp việc này."
+    else:
+        dau = ("Danh sách trên là kết quả tìm MỜ — có thể không cái nào thật sự làm được việc "
+               "bạn hỏi. Nếu đúng thế:")
+    return (f"{dau} Hai lối đi, và không có lối thứ ba là làm một việc gần giống rồi báo "
+            "xong (N6):\n\n"
+            "1. **Nói thẳng** rằng EIDE chưa làm được — đúng khi việc nằm ngoài phạm vi, "
+            "hoặc chỉ cần đúng một lần.\n"
+            "2. **`tool.propose`** — tự viết lấy công cụ, khi khoảng trống là thật và sẽ còn "
+            "gặp lại. Bạn viết mã kèm bộ kiểm, người dùng duyệt, bộ kiểm xanh thì nó thành "
+            "công cụ chính thức. Đừng bỏ lối này chỉ vì nó dài hơn.")
+
+
 def build_registry(features: Any = None) -> Registry:
     """Dựng bộ công cụ. `features` quyết định nhóm nào được ĐĂNG KÝ (SCH-44 §2.1).
 
@@ -434,19 +454,37 @@ def build_registry(features: Any = None) -> Registry:
              "required": ["query"]},
             risk="R1", keywords=["công cụ", "tool", "tìm"])
     def tool_search(ctx: Any, query: str):
+        """Tìm không thấy thì nói ra CẢ HAI lối đi, không chỉ lối dừng lại.
+
+        Bản đầu chỉ có một câu: *"nói thẳng với người dùng rằng EIDE chưa làm được việc đó"*.
+        Câu ấy đúng, nhưng nó **đóng luôn lối thứ hai** — và lối thứ hai là thứ EIDE đã dựng
+        sẵn cả một cơ chế để đi: `tool.propose` cho tác tử tự viết lấy công cụ.
+
+        Đo được 29/09/2026 qua giao diện thật: xin một tệp PowerPoint, tác tử gọi
+        `tool.search` ba lần, không thấy gì, rồi viết một dàn ý để người dùng tự chép sang
+        PowerPoint bằng tay. `tool.propose` chưa từng nổ trong bất kỳ lượt chạy thật nào —
+        không phải vì nó hỏng, mà vì **không câu nào trên đường đi nhắc tới nó**. Cơ chế có
+        sẵn, đường dẫn tới nó đứt.
+
+        Và lời nhắc ấy phải ra **cả khi tìm thấy thứ gì đó**. Phép tìm ở đây là tìm mờ: hỏi
+        "xuất ra tệp powerpoint" thì nó trả 8 công cụ — `doc.to_pdf`, `fs.read`, `build.map`
+        — không cái nào làm được việc ấy. Bản đầu chỉ nói gì đó khi `count == 0`, mà `count`
+        gần như không bao giờ bằng 0. Nghĩa là đúng lúc cần hướng dẫn nhất, tác tử nhận một
+        danh sách vô dụng và **không một chữ nào**.
+
+        Vẫn giữ nguyên chỗ cấm cũ: không được thay bằng một việc gần giống. Đó là N6.
+        """
         found = ctx.registry.search(query)
-        return {"count": len(found), "tools": found,
-                "note_vi": "" if found else
-                "Không có công cụ nào cho việc này. Nói thẳng với người dùng rằng EIDE chưa "
-                "làm được việc đó — đừng thay bằng một việc gần giống."}
+        return {"count": len(found), "tools": found, "note_vi": _khong_hop_thi_sao(found)}
 
     from . import (ckm, design, dieu_phoi, ke_hoach, khoi, knowledge, mach_that,
-                   nang_luc, sch, snapshots, writing, xay_dung)  # noqa: E501
+                   nang_luc, sch, snapshots, tai_lieu, writing, xay_dung)  # noqa: E501
     writing.register(r)
     ke_hoach.register(r)
     nang_luc.register(r)
     design.register(r)
     knowledge.register(r)
+    tai_lieu.register(r)
     snapshots.register(r)
     ckm.register(r)
     khoi.register(r)

@@ -4966,3 +4966,143 @@ Kèm số công cụ cập nhật khắp nơi: **117 → 118** (thêm `project.e
 
 `1252 ca đơn vị` · bộ dò tài liệu **0 chỗ lệch**. README trỏ sang hướng dẫn ở hai chỗ: đầu
 tệp và ngay trên khối lệnh cài rút gọn.
+
+---
+
+### [DEV-301] 29/09/2026 · Tác tử viết được tài liệu — `doc.render` (Word · Excel · PDF)
+
+**Yêu cầu:** *"review năng lực viết tài liệu của Agent… Mình muốn Agent có khả năng viết tài
+liệu xuất ra docx, excel, pdf (tốt nhất là Agent có thể tự code ra phần mềm để ghi file theo
+yêu cầu)."*
+
+#### Đo trước đã: năng lực hiện có bằng không
+
+| Câu hỏi | Số đo |
+|---|---|
+| Công cụ nào ghi byte ra tệp? | **Không cái nào.** `grep "write_bytes\|'wb'"` trong `src/eide/tools/` → trống |
+| `fs.write` ghi được gì? | `write_text` — **chỉ chữ**. `.docx` là ZIP nhị phân, không đường nào |
+| 7 công cụ `doc.*` làm gì? | `load · read · figures · language · fetch · search_web · to_pdf` — **tất cả là ĐỌC** |
+
+Đối lại, vật liệu thì đã đủ sẵn từ lâu: `python-docx`, `openpyxl`, `python-pptx`, `pypdf` nằm
+trong `.venv` (đang dùng để *đọc* tài liệu), LibreOffice có trên máy, và `office.chuyen_doi()`
+đã bọc nó — chỉ đang dùng một chiều. **Cơ chế có sẵn, đường dẫn tới nó đứt.**
+
+#### Vì sao một công cụ, không phải ba
+
+`doc.to_docx` + `doc.to_xlsx` + `doc.to_pdf` sẽ là ba công cụ mà mỗi cái chỉ đẻ ra được đúng
+một hình dạng tài liệu người viết công cụ nghĩ sẵn — mà "theo yêu cầu" nghĩa là hình dạng của
+người dùng. Nên: **hình dạng nằm trong nguồn Markdown** tác tử tự viết, `doc.render` chỉ dựng.
+
+Và nguồn là Markdown chứ không ghi thẳng nhị phân, vì hai lẽ: *(a)* một thay đổi không xem
+được là một thay đổi không duyệt được — sổ cái giữ được nhị phân nhưng người duyệt chỉ thấy
+"12 KB đổi thành 13 KB"; *(b)* phân hạng `ben`/`dung_lai_duoc`/`tam` trong `du-an.json` đã có
+sẵn chỗ: nguồn là `ben`, bản render là `dung_lai_duoc` nên gói mang đi không cõng theo.
+
+#### Bốn lỗi mà SỐ ĐO không thấy, chỉ NHÌN mới thấy
+
+Bản đầu chạy trót lọt cả ba định dạng: 79 đoạn · 6 bảng · 6 trang — mọi con số đều hợp lý. Mở
+tệp PDF ra nhìn thì:
+
+| Chỗ | Bản in cho ra | Nguyên nhân |
+|---|---|---|
+| `*Đề tài: **…*** ` | `*Đề tài: Phát triển…` — dấu sao **lọt ra giấy** | một `finditer` cho cả ba kiểu: nhánh hai-sao khớp trước, cặp một-sao bọc ngoài mất cặp đóng |
+| Gạch đầu dòng dài | vỡ làm hai đoạn, kèm `**từ chối…**` nguyên dấu | dòng nối tiếp của một mục bị đọc thành đoạn mới |
+| `---` | một gạch cụt lủn | `─`×40 không có trong phông mặc định của LibreOffice |
+| `[…](#neo)` | in cả `(#dữ-liệu-dự-án-nằm-ở-đâu)` | neo nội bộ vô nghĩa trên giấy |
+
+Lần thứ tư trong dự án này một tấm ảnh bắt được thứ mọi con số bỏ qua. *Số đo đúng, câu hỏi
+sai.*
+
+#### Và một lỗi MẤT DỮ LIỆU, lộ ra ở tệp bên cạnh
+
+`sang_pdf` viết bản docx trung gian vào `ra.parent/<cùng tên>.docx` rồi xoá sau khi đổi xong.
+Nghĩa là render `bao-cao.pdf` trong thư mục đang có `bao-cao.docx` sẽ **đè rồi xoá luôn tệp của
+người dùng**. Đo được ngay lần chạy thử đầu: dựng cả ba định dạng vào một thư mục, xong thì
+`.docx` không còn ở đó. Nay bản trung gian nằm trong `tempfile.TemporaryDirectory()`, và ca
+hồi quy kiểm **tệp bên cạnh** chứ không kiểm tệp nó tạo ra.
+
+#### Hai chỗ cố ý nói KHÔNG
+
+* **Excel từ văn xuôi** → `E2013`, không đổ cả đoạn văn vào ô `A1`. Một `.xlsx` mở lên được
+  nhưng vô dụng **trông giống thành công**, mà thứ trông giống thành công đắt hơn một lỗi thẳng.
+* **PDF khi máy không có LibreOffice** → báo thiếu kèm đường khác, không tự vẽ một PDF thô sơ
+  để người nhận tưởng là bản in được.
+
+#### E2E qua giao diện thật — `tools/thu_xuat_tai_lieu.py`, 9/9
+
+Ba ca, và ca thứ ba lại dạy đúng bài cũ. Bản đầu của nó hỏi *"tác tử có từ chối không"* rồi
+chấm bằng việc chữ `bảng` có mặt trong lời đáp — **xanh**, nhưng cái thật sự xảy ra khác hẳn:
+`doc.render` từ chối, tác tử **đọc gợi ý trong lỗi, tự thêm một bảng thật vào tệp nguồn**, rồi
+xuất lại thành một bảng 7 hàng dùng được. Hành vi ấy đúng hơn cái tôi định đo (§4 hiến pháp:
+*hỏi không phải là dừng*). Nhãn ca kiểm mới là cái sai. Nay ca 3 hỏi ba câu khớp với thứ đáng
+quan tâm: hàng rào có **nổ** không (`E2013` trong sổ cái) · tệp ra có phải **bảng thật** không
+(≥2 cột, ≥3 hàng, không ô nào dài quá 400 ký tự) · tác tử có **nói ra** là đã sửa tệp nguồn
+không. Cả hai nhánh — từ chối, và tự thêm bảng — đều được nhận.
+
+### Số đo
+
+`doc.render` · **119 công cụ** (110 mặc định) · 16 ca đơn vị mới · E2E giao diện **9/9**.
+Dựng lại `docs/md/EIDE-CAI-DAT.md` sang cả ba định dạng: 75 đoạn · 6 sheet · 6 trang, chữ
+tiếng Việt có dấu đúng.
+
+---
+
+### [DEV-302] 29/09/2026 · `tool.propose` chưa từng nổ — hai chỗ chặn, và cách gỡ
+
+Đây là khoản đáng kể nhất trong ngày, và nó **không phải một tính năng mới**: cơ chế "tác tử
+tự viết lấy công cụ" đã có từ DEV-2xx, có bốn hàng rào, có bộ kiểm đơn vị. Nhưng
+`tool.propose` **chưa nổ trong bất kỳ lượt chạy thật nào**. Một cơ chế như thế đúng bằng không
+có — y hệt bộ dò độ nhạy kiểm thử từng chạy 0/402 lượt trong khi mã của nó vẫn xanh.
+
+Bài đo: xin một tệp **PowerPoint**. `doc.render` cố ý chỉ nhận `docx`/`xlsx`/`pdf`, còn
+`python-pptx` thì nằm sẵn trong môi trường. Không ai gợi ý tên `tool.propose` cho tác tử.
+
+**Lượt 1 — 1/7.** Tác tử gọi `tool.search` ba lần, không thấy gì, rồi **lịch sự bỏ cuộc**:
+viết một dàn ý để người dùng tự chép sang PowerPoint bằng tay.
+
+#### Chỗ chặn thứ nhất: một câu do chính tôi viết ra
+
+`tool.search` khi không thấy gì trả về đúng một lời khuyên:
+
+> *"Không có công cụ nào cho việc này. Nói thẳng với người dùng rằng EIDE chưa làm được việc
+> đó — đừng thay bằng một việc gần giống."*
+
+Câu ấy đúng, và nó **đóng luôn lối thứ hai**. `tool.propose` không được nhắc ở bất kỳ đâu —
+không trong hiến pháp, không trong skill, không trong lời khuyên này.
+
+Tệ hơn: lời khuyên chỉ nổ khi `count == 0`, mà phép tìm là tìm **mờ**. Hỏi *"xuất ra tệp
+powerpoint"* thì nó trả về **8 công cụ** — `doc.to_pdf`, `fs.read`, `build.map` — không cái nào
+làm được việc ấy. Nên đúng lúc cần hướng dẫn nhất, tác tử nhận một danh sách vô dụng và
+**không một chữ nào**.
+
+Nay lời nhắc đi kèm **mọi** kết quả tìm, nói ra cả hai lối và giữ nguyên chỗ cấm cũ (N6: không
+thay bằng một việc gần giống).
+
+**Lượt 2 — vẫn 1/7.** Lời nhắc đã có mà tác tử vẫn không đề xuất.
+
+#### Chỗ chặn thứ hai: luật chỉ mở một cánh cửa
+
+`kiem_de_xuat` đòi `vi_sao` phải kèm **số đo**: bao nhiêu lời gọi đã tốn, bao lâu, mấy lần thử.
+Đúng cho ca sinh ra cơ chế này — `addr2line`, nơi tác tử đã cày `fs.read` 28 lần rồi hết hạn
+mức. Ở đó **có** một đường làm tay, chỉ là nó đắt, nên đếm được.
+
+Nhưng "làm một tệp `.pptx`" thì **không có đường cày tay nào để mà đo**. Không phải chậm — là
+*không có*. Tác tử đọc lược đồ, thấy đòi số đo, không có số nào để điền, nên không đề xuất. Nó
+làm đúng theo luật; **luật mới là chỗ thiếu**.
+
+Cửa thứ hai mở bằng thứ **kiểm được**, không bằng văn xuôi: kể ra ít nhất **hai công cụ đã
+xem** kèm lý do từng cái không làm được. Viết nổi hai cái tên đúng dạng `nhom.viec` nghĩa là đã
+đi tìm thật — khác hẳn một câu *"EIDE thiếu năng lực này"*.
+
+**Lượt 3 — 8/8.** Tác tử `tool.search` → `tool.propose` → thẻ **G-TOOL** cho người duyệt →
+`fs.write` mã + bộ kiểm → `tool.reload` chạy bộ kiểm → gọi công cụ mới của chính nó. Sản phẩm:
+`.eide/cong-cu/doc_pptx.py` (4 497 B) + `test_doc_pptx.py` (1 271 B), và `bao-cao.pptx` 4
+slide mở lại được, có chữ.
+
+Đây là lần đầu tiên trong đời dự án mà một công cụ do **tác tử viết** được nạp và chạy trong
+một lượt thật.
+
+### Số đo
+
+`tools/thu_tu_viet_cong_cu.py` **8/8** (từ 1/7) · 3 ca đơn vị mới cho hai chỗ chặn ·
+`1275 ca đơn vị` toàn bộ · bộ dò tài liệu **0 chỗ lệch**.

@@ -34,10 +34,12 @@ def register(r: Registry) -> Registry:
 
 def dang_ky(r: Registry) -> None:
     @r.tool("tool.propose", "Điều phối",
-            "XIN TỰ VIẾT một công cụ mới cho chính mình, khi bạn thấy EIDE thiếu một năng "
-            "lực và việc cày tay đang quá tốn. Nói rõ: công cụ trả lời câu hỏi nào, số đo "
-            "chứng minh cày tay không đủ, và sẽ kiểm bằng ca nào. Người dùng duyệt thì bạn "
-            "viết mã + bộ kiểm, rồi `tool.reload`.",
+            "XIN TỰ VIẾT một công cụ mới cho chính mình, khi EIDE thiếu một năng lực — vì "
+            "cày tay quá tốn, HOẶC vì không công cụ nào làm được việc ấy (ví dụ: người dùng "
+            "cần một định dạng tệp EIDE chưa sinh ra được). Nói rõ: công cụ trả lời câu hỏi "
+            "nào, bằng chứng (số đo cày tay, hoặc tên các công cụ đã kiểm và vì sao từng cái "
+            "không làm được), và sẽ kiểm bằng ca nào. Người dùng duyệt thì bạn viết mã + bộ "
+            "kiểm, rồi `tool.reload`.",
             {"type": "object",
              "properties": {
                  "ten": {"type": "string",
@@ -46,8 +48,10 @@ def dang_ky(r: Registry) -> None:
                  "viec": {"type": "string",
                           "description": "công cụ này trả lời câu hỏi nào, một câu"},
                  "vi_sao": {"type": "string",
-                            "description": ("vì sao cày tay không đủ — PHẢI có số đo: bao "
-                                            "nhiêu lời gọi đã tốn, bao lâu, thử mấy lần")},
+                            "description": ("bằng chứng, một trong hai: SỐ ĐO cày tay (bao "
+                                            "nhiêu lời gọi đã tốn, bao lâu, thử mấy lần), "
+                                            "hoặc ÍT NHẤT HAI công cụ đã kiểm kèm lý do từng "
+                                            "cái không làm được")},
                  "test": {"type": "string",
                           "description": "sẽ kiểm những ca nào, kể cả ca nó phải IM LẶNG"},
                  "explain": EXPLAIN_SCHEMA},

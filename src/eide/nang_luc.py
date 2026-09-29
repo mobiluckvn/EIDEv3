@@ -67,6 +67,31 @@ NHOM_HOP_LE = ("Tệp & lệnh", "Mã nguồn", "Tri thức", "Mạch thật", "
                "Thiết kế", "Kiểm chứng")
 
 
+def _co_bang_chung(vi_sao: str) -> bool:
+    """Lời biện minh cho một công cụ mới đã đủ bằng chứng chưa.
+
+    ## Vì sao có kiểu bằng chứng thứ hai
+
+    Bản đầu chỉ nhận **số đo**: bao nhiêu lời gọi đã tốn, bao lâu. Đúng cho ca sinh ra cơ chế
+    này — `addr2line`, nơi tác tử đã cày `fs.read` 28 lần rồi hết hạn mức. Ở đó có một đường
+    làm tay, chỉ là nó đắt, nên đếm được.
+
+    Nhưng có loại khoảng trống **không có đường làm tay nào để mà đếm**. Đo được 29/09/2026
+    qua giao diện thật: người dùng xin một tệp `.pptx`. Không công cụ nào ghi được tệp nhị
+    phân ấy — không phải "chậm", mà là *không có*. Tác tử đọc lược đồ, thấy đòi số đo, không
+    có số nào để điền, nên **không đề xuất** và viết một dàn ý cho người dùng tự chép tay.
+    Nó làm đúng theo luật; luật mới là chỗ thiếu. Hai lần chạy liên tiếp cho cùng kết quả
+    1/7 — lần thứ hai đã có lời nhắc `tool.propose` mà vẫn thế.
+
+    Nên mở cửa thứ hai, và mở bằng thứ **kiểm được**, không bằng văn xuôi: kể ra ít nhất
+    **hai công cụ đã xem** và vì sao từng cái không làm được. Tác tử phải đi tìm thật thì mới
+    viết nổi hai cái tên đúng dạng `nhom.viec` — khác hẳn một câu "EIDE thiếu năng lực này".
+    """
+    if _CO_SO.search(vi_sao):
+        return True
+    return len(set(re.findall(r"\b[a-z][a-z_]*\.[a-z][a-z_]*\b", vi_sao))) >= 2
+
+
 def kiem_de_xuat(ten: str, viec: str, vi_sao: str, test: str,
                  co_cong_cu) -> list[str]:
     """Những chỗ đề xuất chưa dùng được. Rỗng = trình cho người dùng được."""
@@ -77,9 +102,11 @@ def kiem_de_xuat(ten: str, viec: str, vi_sao: str, test: str,
         loi.append(f"đã có công cụ tên `{ten}` rồi — đọc lại nó trước khi viết cái mới.")
     if len((viec or "").strip()) < 20:
         loi.append("`viec` quá ngắn: nói rõ công cụ này trả lời câu hỏi nào.")
-    if len((vi_sao or "").strip()) < 30 or not _CO_SO.search(vi_sao or ""):
-        loi.append("`vi_sao` phải kèm SỐ ĐO — bao nhiêu lời gọi đã tốn, bao lâu, bao nhiêu "
-                   "lần thử. Một cảm giác (“hơi chậm”) không đủ để ai quyết.")
+    if len((vi_sao or "").strip()) < 30 or not _co_bang_chung(vi_sao or ""):
+        loi.append("`vi_sao` chưa có bằng chứng. Hai kiểu được nhận: **số đo** (bao nhiêu lời "
+                   "gọi đã tốn, bao lâu, mấy lần thử), hoặc **danh sách công cụ đã kiểm** "
+                   "(ít nhất hai tên dạng `nhom.viec`, kèm vì sao từng cái không làm được). "
+                   "Một cảm giác (“hơi chậm”, “chắc là thiếu”) không đủ để ai quyết.")
     if len((test or "").strip()) < 20:
         loi.append("`test` chưa nói sẽ kiểm những ca nào. Một công cụ mới là một lời hứa; "
                    "test là thứ duy nhất biến lời hứa thành sự kiện.")

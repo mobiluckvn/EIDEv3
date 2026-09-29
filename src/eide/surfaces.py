@@ -913,7 +913,7 @@ def simulation(store: Any, inv: Any) -> dict[str, Any]:
             pairs=[["Kết luận", ("ĐẠT — theo đúng tiêu chí mà chương trình mô phỏng tự kiểm"
                                 if dat else
                                 f"CHƯA ĐẠT — {c.get('vi_sao_khong_dat', '')}")],
-                   *[[str(k), str(v)] for k, v in sorted(kq.items()) if k != "dat"],
+                   *[[str(k), _loi_nguoi(v)] for k, v in sorted(kq.items()) if k != "dat"],
                    ["Chạy trên mã nào", ", ".join(c.get("tep_nguon") or []) or "—"],
                    ["Giới hạn",
                     "Đây là kết quả trên MÔ HÌNH: nó nói mã điều khiển tự nhất quán và ổn "
@@ -921,6 +921,45 @@ def simulation(store: Any, inv: Any) -> dict[str, Any]:
                     "thật phải đo trên bo."]]))
     return _don_gian("simulation", "A8", "Mô phỏng", khoi)
 
+
+
+def _loi_nguoi(v: Any) -> str:
+    """Một giá trị bất kỳ → một dòng NGƯỜI đọc được. Không bao giờ trả `str(dict)`.
+
+    Đo được ngày 29/09/2026 bằng bộ quét giao diện: khối `sim_result:can-bang` hiện nguyên
+    một danh sách dict Python lên màn — `[{'ten': 'A1 khoi tao…', 'dat': True, …}]`. Chỗ hỏng
+    là một dòng dựng bảng gọi `str(v)` cho MỌI giá trị, nên giá trị vô hướng thì đẹp còn giá
+    trị có cấu trúc thì lộ nguyên ruột.
+
+    Đây đúng thứ N8 cấm: mọi thứ tác tử làm ra phải có **dạng người hiểu được**. Một dòng
+    `{'do_duoc': False, 'vi_sao': '…'}` không phải một dạng người hiểu được — nó là dạng máy
+    bị bỏ quên trên đường ra màn hình.
+
+    Quy ước: danh sách ca kiểm thì nói **bao nhiêu đạt trên bao nhiêu**, vì đó là câu người
+    đọc muốn biết; danh sách khác thì đếm; dict thì trải các trường vô hướng.
+    """
+    if v is None:
+        return "—"
+    if isinstance(v, bool):
+        return "có" if v else "không"
+    if isinstance(v, (int, float, str)):
+        return str(v)
+    if isinstance(v, (list, tuple)):
+        if not v:
+            return "—"
+        if all(isinstance(x, (str, int, float)) for x in v):
+            return ", ".join(str(x) for x in v)
+        if all(isinstance(x, dict) for x in v) and any("dat" in x for x in v):
+            n = sum(1 for x in v if x.get("dat") is True)
+            return f"{n}/{len(v)} đạt"
+        return f"{len(v)} mục"
+    if isinstance(v, dict):
+        if not v:
+            return "—"
+        vo_huong = [f"{k}: {v[k]}" for k in sorted(v)
+                    if isinstance(v[k], (str, int, float, bool)) and str(v[k]).strip()]
+        return " · ".join(vo_huong) if vo_huong else f"{len(v)} trường"
+    return str(v)
 
 def hardware(store: Any, inv: Any) -> dict[str, Any]:
     """Tab Mạch thật — §E7 dòng "Dò board / nạp / verify".

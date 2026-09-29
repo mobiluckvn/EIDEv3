@@ -15,7 +15,7 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 
 ## Tác tử làm được những gì
 
-**118 công cụ** trong 10 nhóm (109 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ `EIDE_FEATURE_SCHEMATIC`), **6 tác tử con**, **6 skill**, **10 cổng duyệt**. Dưới đây là
+**119 công cụ** trong 10 nhóm (110 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ `EIDE_FEATURE_SCHEMATIC`), **6 tác tử con**, **6 skill**, **10 cổng duyệt**. Dưới đây là
 năng lực theo *việc người dùng cần*, không theo cây mã.
 
 Ba điều xuyên suốt, và chúng quan trọng hơn danh sách công cụ:
@@ -54,6 +54,30 @@ theo một luật kỹ thuật và **từ chối kết luận** khi thiếu dữ
 `passport.pin` chỉ ghim được hộ chiếu chip khi đã có tài liệu cho chip đó — ghim khan thì mọi
 thứ dựng trên nó đều không truy vết được. `config.load` đọc `.ioc`/`sdkconfig`/`.dts`/`.ld`/
 `.map` thành Fact tầng CẤU HÌNH và nói ra chỗ lệch với datasheet.
+
+**Chiều ngược lại — tác tử VIẾT tài liệu cho người đọc.** `doc.render` sinh **Word (`.docx`) ·
+Excel (`.xlsx`) · PDF** từ một tệp Markdown tác tử tự viết bằng `fs.write`. Nguồn nằm trong sổ
+cái nên **xem được diff và hoàn tác được**; tệp render ra là thứ dựng lại được, nên gói dự án
+mang đi không phải cõng theo. Hai chỗ nó nói **không** thay vì làm cho có:
+
+* nguồn không có bảng mà đòi Excel → từ chối, vì một `.xlsx` chứa cả đoạn văn trong ô `A1` mở
+  lên được nhưng vô dụng, mà thứ vô dụng **trông giống thành công** thì đắt hơn một lỗi thẳng;
+* máy không có LibreOffice mà đòi PDF → báo thiếu kèm đường khác, không tự vẽ một PDF thô sơ
+  để người nhận tưởng là bản in được.
+
+Xong thì nó **mở lại chính tệp vừa tạo** và đếm — bao nhiêu đoạn, bao nhiêu hàng, bao nhiêu
+trang — rồi báo con số ấy, chứ không báo "đã ghi 12 KB". *`ok` nói về lời gọi, không nói về
+kết quả.*
+
+**Định dạng EIDE chưa sinh được thì tác tử TỰ VIẾT LẤY công cụ.** `tool.propose` →
+người duyệt qua cổng **G-TOOL** (thẻ hiện **mã nguồn**, không hiện lời hứa) → tác tử viết mã
+kèm bộ kiểm vào `.eide/cong-cu/` → `tool.reload` **chạy bộ kiểm**, xanh mới nạp. Đo được
+29/09/2026 qua giao diện thật: xin một tệp **PowerPoint**, tác tử tự viết
+<!-- tac-tu-viet -->`doc.pptx`<!-- /tac-tu-viet --> (4,5 KB mã + bộ kiểm) rồi xuất ra bản
+trình chiếu 4 slide — [`tools/thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py), 8/8.
+Công cụ ấy sống trong `.eide/cong-cu/` của **dự án đó**, không vào sổ đăng ký của EIDE: năng
+lực EIDE mang sẵn và năng lực một dự án tự mọc thêm là hai thứ khác nhau, và ranh giới ấy phải
+nhìn thấy được.
 
 ### 3 · Thiết kế mạch
 

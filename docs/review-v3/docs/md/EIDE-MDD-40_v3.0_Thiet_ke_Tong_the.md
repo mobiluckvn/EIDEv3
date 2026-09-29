@@ -160,7 +160,7 @@ Một vòng lặp, LLM là bộ điều phối duy nhất; mọi năng lực là
 **B3. Công cụ**
 
 > **Cập nhật 29/09/2026 — đã hiện thực.** Bảng dưới là danh sách **lúc thiết kế** (≈40 công
-> cụ). Mã hiện có **118 công cụ trong 10 nhóm** (109 đăng ký mặc định + 9 công cụ `sch.*` nằm
+> cụ). Mã hiện có **119 công cụ trong 10 nhóm** (110 đăng ký mặc định + 9 công cụ `sch.*` nằm
 > sau cờ `EIDE_FEATURE_SCHEMATIC`). Danh sách đầy đủ kèm rủi ro và cổng lấy từ chính kho đăng
 > ký, xem [EIDE-C4-46](../../../md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md) §C3 và
 > `README.md` §"Tác tử làm được những gì".
@@ -190,7 +190,9 @@ Một vòng lặp, LLM là bộ điều phối duy nhất; mọi năng lực là
 > `plan.step_done`/`plan.cancel` · `tool.propose`/`tool.reload` (tác tử tự viết công cụ cho
 > chính nó) · `test.sensitivity` (đo xem bộ kiểm có đo gì không) · `target.screen` (đọc bộ nhớ
 > khung ảnh ra PNG) · `code.vendor_list`/`vendor_fetch` · `asset.image_to_c` ·
-> `doc.figures`/`doc.language`/`doc.to_pdf` · `config.load` · `fact.cross_check` ·
+> `doc.figures`/`doc.language`/`doc.to_pdf` · `doc.render` (tác tử VIẾT ra tài liệu
+> Word/Excel/PDF cho người đọc — chiều ngược với bảy công cụ `doc.*` còn lại, vốn đều
+> là đọc) · `config.load` · `fact.cross_check` ·
 > `khoi.*` (thư viện khối) · `memory.*` (9 công cụ bộ nhớ) · `sch.*` (9 công cụ sơ đồ) ·
 > `stale.accept` · `snapshot.propose`/`release` · `ledger.query`/`verify` · `blob.read` ·
 > `history.undo_30s` · `inventory.get` · `board.check`.
