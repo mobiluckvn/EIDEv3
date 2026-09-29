@@ -331,3 +331,23 @@ def test_hien_phap_khong_duoc_phinh_qua_tran():
     n = approx_tokens(CONSTITUTION_PATH.read_text("utf-8"))
     assert n <= ContextBudget().constitution, (
         f"hiến pháp {n} token, vượt trần {ContextBudget().constitution}")
+
+
+def test_tim_skill_khop_tung_chu_khong_doi_ca_cum():
+    """`tim_skill("vẽ sơ đồ")` từng trả RỖNG dù skill có cả `sơ đồ` lẫn `vẽ` trong từ khoá.
+
+    Bản đầu đòi cả cụm nằm nguyên trong chuỗi mô tả, nên mọi truy vấn nhiều chữ đều trượt —
+    lỗi có từ đầu, chạm tới mọi skill, và hỏng IM LẶNG: trả rỗng trông y như "không có skill
+    nào cho việc này".
+    """
+    from eide.skills import tim_skill
+
+    ten = [s["ten"] for s in tim_skill("vẽ sơ đồ")]
+    assert "trinh-bay-bang-hinh" in ten, ten
+    assert ten[0] == "trinh-bay-bang-hinh", f"khớp nhiều chữ nhất phải đứng đầu: {ten}"
+    # Truy vấn một chữ vẫn chạy như cũ.
+    assert "hardfault-analysis" in [s["ten"] for s in tim_skill("hardfault")]
+    # Không từ khoá thì trả hết.
+    assert len(tim_skill()) >= 7
+    # Chữ không dính gì thì trả rỗng, chứ không trả bừa.
+    assert tim_skill("zzzqqq") == []

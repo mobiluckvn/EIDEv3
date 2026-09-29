@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 
 /// Kênh kiểm thử giao diện — gõ vào app và đọc ra app đang hiện gì.
 ///
@@ -102,6 +103,20 @@ final class UITestChannel {
                 }
             case "dump":
                 ghi(anhChup(nhan: v["nhan"]?.stringValue ?? "dump"))
+            case "so_do_thu":
+                // Hỏi thẳng BỘ DỰNG: một đoạn markdown ra những khối gì, sơ đồ có vẽ được
+                // không, và vẽ ra những nhãn nào.
+                //
+                // Cố ý KHÔNG bơm một dòng giả vào hội thoại. I2 nói hội thoại là hình chiếu
+                // của sổ cái; một móc thử phá bất biến ấy sẽ che lỗi chứ không tìm ra lỗi.
+                // Ở đây chỉ hỏi hàm thuần, và nó đúng là thứ đang cần đo.
+                ghi(soDoThu(v["md"]?.stringValue ?? ""))
+            case "anh_so_do":
+                // App tự vẽ CHÍNH KHỐI SƠ ĐỒ ra PNG, để người đọc báo cáo nhìn được hình chứ
+                // không chỉ đọc con số. Cùng lý do với `anh`: không dùng `screencapture`.
+                if let tep = v["tep"]?.stringValue {
+                    ghi(anhSoDo(md: v["md"]?.stringValue ?? "", tep: tep))
+                }
             case "quyet":
                 // Bấm nút trên thẻ cổng.
                 if let gid = v["gate_id"]?.stringValue {
@@ -509,10 +524,57 @@ final class UITestChannel {
         case .trichDan: return "trích-dẫn"
         case .duongKe: return "đường-kẻ"
         case .congThuc: return "công-thức"
+        // Phân biệt "sơ-đồ" với "khối-mã" là điều kiện để BỘ QUÉT đo được việc mermaid đã
+        // thành hình hay còn nằm dạng mã. Không có tên riêng thì không có phép đo.
+        case .soDo: return "sơ-đồ"
         }
     }
 
     // MARK: - Ghi ra
+
+    /// Đo bộ dựng trên một đoạn markdown bất kỳ. Xem lệnh `so_do_thu`.
+    private func soDoThu(_ md: String) -> [String: Any] {
+        let khoi = Markdown.tach(md)
+        var soDo: [[String: Any]] = []
+        for k in khoi {
+            guard case .soDo(let nguon) = k else { continue }
+            let d = DocSoDo.doc(nguon)
+            soDo.append([
+                "kieu": DocSoDo.kieu(nguon),
+                "ve_duoc": d != nil,
+                "tom_tat": d?.tomTat ?? "",
+                "nhan": DocSoDo.nhanNguoiThay(nguon)
+                    .components(separatedBy: .newlines).filter { !$0.isEmpty },
+            ])
+        }
+        return ["su_kien": "so_do_thu", "khoi": khoi.map(tenKhoi), "so_do": soDo,
+                "chu_thuan": Markdown.chuThuan(md)]
+    }
+
+    /// Vẽ khối sơ đồ ra tệp PNG.
+    @MainActor
+    private func anhSoDo(md: String, tep: String) -> [String: Any] {
+        let nguon = Markdown.tach(md).compactMap { k -> String? in
+            if case .soDo(let n) = k { return n }
+            return nil
+        }
+        guard let dau = nguon.first else {
+            return ["su_kien": "anh_so_do", "tep": "", "vi_sao": "không có khối mermaid nào"]
+        }
+        let r = ImageRenderer(content: SoDoHinh(nguon: dau).padding(12))
+        r.scale = 2
+        guard let anh = r.nsImage,
+              let tiff = anh.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else {
+            return ["su_kien": "anh_so_do", "tep": "", "vi_sao": "không dựng được ảnh"]
+        }
+        let u = URL(fileURLWithPath: tep)
+        try? FileManager.default.createDirectory(at: u.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        try? png.write(to: u)
+        return ["su_kien": "anh_so_do", "tep": tep]
+    }
 
     private func ghi(_ o: [String: Any]) {
         guard let d = thuMuc else { return }

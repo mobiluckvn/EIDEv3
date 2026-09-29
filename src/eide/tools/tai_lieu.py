@@ -40,7 +40,7 @@ from .writing import EXPLAIN_SCHEMA, _rel, _sandbox
 
 # Đuôi tệp bắt buộc cho từng định dạng — sai đuôi thì Word/Excel từ chối mở, và người dùng sẽ
 # nghĩ tệp hỏng chứ không nghĩ tên sai.
-DUOI = {"docx": ".docx", "xlsx": ".xlsx", "pdf": ".pdf"}
+DUOI = {"docx": ".docx", "xlsx": ".xlsx", "pdf": ".pdf", "pptx": ".pptx"}
 
 
 def register(r: Registry) -> Registry:
@@ -50,9 +50,11 @@ def register(r: Registry) -> Registry:
 
 def dang_ky(r: Registry) -> None:
     @r.tool("doc.render", "Tri thức",
-            "Làm ra một tệp tài liệu cho NGƯỜI ĐỌC — Word (.docx), Excel (.xlsx) hoặc PDF — "
-            "từ một tệp Markdown bạn đã viết bằng fs.write. Dùng khi người dùng cần một tệp "
-            "gửi đi, in ra hoặc nộp, chứ không phải chữ trong khung chat.",
+            "Làm ra một tệp tài liệu cho NGƯỜI ĐỌC — Word (.docx), PowerPoint (.pptx), "
+            "Excel (.xlsx) hoặc PDF — từ một tệp Markdown bạn đã viết bằng fs.write. Dùng khi "
+            "người dùng cần một tệp gửi đi, in ra hoặc nộp, chứ không phải chữ trong khung "
+            "chat. Khối ```mermaid trong nguồn được VẼ THÀNH HÌNH trong tệp (sequenceDiagram "
+            "và graph/flowchart), không in ra cú pháp. PowerPoint: mỗi tiêu đề một slide.",
             {"type": "object",
              "properties": {
                  "nguon": {"type": "string",
@@ -60,7 +62,9 @@ def dang_ky(r: Registry) -> None:
                                           "fs.write"},
                  "ra": {"type": "string",
                         "description": "Đường dẫn tệp sẽ tạo, kèm đuôi đúng định dạng"},
-                 "dinh_dang": {"type": "string", "enum": ["docx", "xlsx", "pdf"]},
+                 "dinh_dang": {"type": "string", "enum": ["docx", "pptx", "xlsx", "pdf"],
+                               "description": "pptx: mỗi tiêu đề một slide; xlsx: cần có "
+                                              "bảng Markdown trong nguồn"},
                  "tieu_de": {"type": "string",
                              "description": "Tên in trên trang bìa; bỏ trống nếu nguồn đã có "
                                             "tiêu đề mức 1"},
@@ -68,8 +72,9 @@ def dang_ky(r: Registry) -> None:
              "required": ["nguon", "ra", "dinh_dang", "explain"]},
             risk="R2", gate="G-FILE", writes_artefact=True, needs_explain=True,
             produces=["doc"],
-            keywords=["xuất word", "xuất excel", "xuất pdf", "docx", "xlsx", "pdf",
-                      "làm tài liệu", "viết báo cáo", "in ra", "nộp", "gửi file"],
+            keywords=["xuất word", "xuất excel", "xuất pdf", "xuất powerpoint", "docx",
+                      "xlsx", "pdf", "pptx", "slide", "trình chiếu", "làm tài liệu",
+                      "viết báo cáo", "in ra", "nộp", "gửi file", "sơ đồ trong tài liệu"],
             returns_vi="Đường dẫn tệp và SỐ ĐO đọc lại từ chính tệp ấy")
     def doc_render(ctx: Any, nguon: str, ra: str, dinh_dang: str, explain: dict[str, Any],
                    tieu_de: str = ""):
@@ -140,6 +145,9 @@ def _noi(tep: str, dinh_dang: str, do_lai: dict[str, Any], nguon: str) -> str:
                 "Tệp có thể hỏng — thử mở bằng tay trước khi gửi đi.")
     if dinh_dang == "docx":
         do = (f"{do_lai.get('so_doan', 0)} đoạn · {do_lai.get('so_bang', 0)} bảng · "
+              f"{do_lai.get('so_ky_tu', 0)} ký tự")
+    elif dinh_dang == "pptx":
+        do = (f"{do_lai.get('so_slide', 0)} slide · {do_lai.get('so_hinh', 0)} hình · "
               f"{do_lai.get('so_ky_tu', 0)} ký tự")
     elif dinh_dang == "xlsx":
         do = (f"{do_lai.get('so_sheet', 0)} sheet · {do_lai.get('tong_hang', 0)} hàng: "

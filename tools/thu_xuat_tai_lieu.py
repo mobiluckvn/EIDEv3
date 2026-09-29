@@ -199,6 +199,28 @@ def chay() -> int:
             "; ".join(f"{x.name}: {_mo_lai(x)}" for x in moi_ra) or "không tạo thêm tệp nào")
     bo.kiem("NÓI RA là đã sửa tệp nguồn", (not moi_ra) or ("y-tuong.md" in loi), loi[:300])
 
+    # ------------------------------------------------------- ca 4: sơ đồ vào bản trình chiếu
+    #
+    # Ca này đo cả hai chiều một lúc: tác tử có TỰ VẼ khi cần cho thấy một trình tự không, và
+    # sơ đồ ấy có vào tệp thành HÌNH không. Trước 29/09/2026 nó vào thành khối mã — một trang
+    # slide đầy cú pháp `A->>B:` là thứ không ai trình bày được.
+    bo.phan("Ca 4 — sơ đồ tuần tự vào bản trình chiếu")
+    g.go("Bạn mô tả giúp tôi trình tự lúc người dùng chạm vào màn hình cảm ứng rồi giao diện "
+         "đổi trang, vẽ sơ đồ cho dễ hiểu. Xong xuất ra file PowerPoint để tôi trình bày nhé.")
+    a = g.doi_xong(600)
+    loi = a.get("loi_tac_tu_cuoi") or ""
+    bo.kiem("Tác tử tự vẽ bằng ```mermaid", "```mermaid" in loi, loi[:200])
+    bo.kiem("Khối sơ đồ trên màn hình là `sơ-đồ`, không phải `khối-mã`",
+            "sơ-đồ" in (a.get("khoi_markdown") or []),
+            str(a.get("khoi_markdown"))[:200])
+    pptx = [x for x in DU_AN.rglob("*.pptx") if ".eide" not in x.parts]
+    bo.kiem("Có tệp .pptx", bool(pptx), str([x.name for x in pptx]))
+    if pptx:
+        from eide.xuat_ban import doc_lai_pptx
+
+        do = doc_lai_pptx(pptx[0])
+        bo.kiem("Slide có HÌNH, không phải mã mermaid", do.get("so_hinh", 0) >= 1, str(do))
+
     g.chup_man_hinh(REPO / "docs/review-v3/test/ket-qua-tai-lieu/man-hinh.png", "xuat-tai-lieu")
     return bo.tong()
 

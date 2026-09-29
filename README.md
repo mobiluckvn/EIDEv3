@@ -56,7 +56,9 @@ thứ dựng trên nó đều không truy vết được. `config.load` đọc `
 `.map` thành Fact tầng CẤU HÌNH và nói ra chỗ lệch với datasheet.
 
 **Chiều ngược lại — tác tử VIẾT tài liệu cho người đọc.** `doc.render` sinh **Word (`.docx`) ·
-Excel (`.xlsx`) · PDF** từ một tệp Markdown tác tử tự viết bằng `fs.write`. Nguồn nằm trong sổ
+PowerPoint (`.pptx`) · Excel (`.xlsx`) · PDF** từ một tệp Markdown tác tử tự viết bằng
+`fs.write`. PowerPoint cắt **mỗi tiêu đề một slide** — chỗ cắt do người viết nguồn quyết, không
+do một phép đếm dòng. Nguồn nằm trong sổ
 cái nên **xem được diff và hoàn tác được**; tệp render ra là thứ dựng lại được, nên gói dự án
 mang đi không phải cõng theo. Hai chỗ nó nói **không** thay vì làm cho có:
 
@@ -66,8 +68,21 @@ mang đi không phải cõng theo. Hai chỗ nó nói **không** thay vì làm c
   để người nhận tưởng là bản in được.
 
 Xong thì nó **mở lại chính tệp vừa tạo** và đếm — bao nhiêu đoạn, bao nhiêu hàng, bao nhiêu
-trang — rồi báo con số ấy, chứ không báo "đã ghi 12 KB". *`ok` nói về lời gọi, không nói về
-kết quả.*
+trang, bao nhiêu hình — rồi báo con số ấy, chứ không báo "đã ghi 12 KB". *`ok` nói về lời gọi,
+không nói về kết quả.*
+
+### Sơ đồ là HÌNH, ở cả hai nơi
+
+Khối ```mermaid tác tử viết ra **được vẽ thành hình** — trên Console (kèm nút *Xem mã* để đọc
+nguyên văn hoặc chép đi) và thành **ảnh** trong tệp Word · PowerPoint · PDF · Excel. Hai kiểu:
+`sequenceDiagram` (ai gọi ai, theo thứ tự nào) và `graph`/`flowchart` (khối nào nối khối nào,
+kể cả `subgraph`). Kiểu chưa vẽ được thì hiện mã **kèm một câu nói rõ là chưa vẽ được** — im
+lặng hiện mã thô sẽ để người dùng tự đoán xem app hỏng hay sơ đồ sai.
+
+Bộ vẽ **tự viết**, không nhúng `mermaid.js`: EIDE không mở cổng mạng nào và chạy được khi máy
+không có Internet. Cái giá là hai bộ đọc cho một cú pháp (SwiftUI cho giao diện, Pillow cho tài
+liệu), và cái giá ấy được trả bằng một ca kiểm bắt cả hai phải đọc **cùng một tập sơ đồ thật**
+ra cùng số vai, cùng số khối.
 
 **Định dạng EIDE chưa sinh được thì tác tử TỰ VIẾT LẤY công cụ.** `tool.propose` →
 người duyệt qua cổng **G-TOOL** (thẻ hiện **mã nguồn**, không hiện lời hứa) → tác tử viết mã

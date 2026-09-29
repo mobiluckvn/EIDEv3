@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-DINH_DANG = ("docx", "xlsx", "pdf")
+DINH_DANG = ("docx", "xlsx", "pdf", "pptx")
 
 # Ảnh chèn vào tài liệu rộng tối đa ngần này (inch) — vừa khổ A4 lề 2,5 cm.
 RONG_ANH_TOI_DA = 6.0
@@ -53,7 +53,7 @@ RONG_ANH_TOI_DA = 6.0
 class Khoi:
     """Một khối Markdown đã đọc xong. `loai` quyết định các trường nào có nghĩa."""
 
-    loai: str                       # tieu_de | doan | gach_dau | so_thu_tu | bang | ma | anh | ngan | trich
+    loai: str                       # tieu_de | doan | gach_dau | so_thu_tu | bang | ma | anh | ngan | trich | so_do
     chu: str = ""
     muc: int = 0                    # bậc tiêu đề, hoặc bậc thụt của gạch đầu dòng
     hang: list[list[str]] = field(default_factory=list)   # bảng: hàng đầu là tiêu đề cột
@@ -130,7 +130,11 @@ def doc_markdown(md: str) -> list[Khoi]:
                 than.append(dong[i])
                 i += 1
             i += 1                                   # bỏ hàng rào đóng
-            khoi.append(Khoi("ma", "\n".join(than), ngon_ngu=ng))
+            # `mermaid` là SƠ ĐỒ, không phải mã để đọc. Trước đây nó in nguyên cú pháp vào
+            # giữa trang Word — đúng thứ người nhận không đọc được, và đúng chỗ người ta
+            # chờ một hình.
+            khoi.append(Khoi("so_do" if ng.lower() == "mermaid" else "ma",
+                             "\n".join(than), ngon_ngu=ng))
             dang_mo = None
             continue
 
@@ -208,6 +212,49 @@ def doc_markdown(md: str) -> list[Khoi]:
 
     xa_doan()
     return khoi
+
+
+# Công thức `$$…$$` — đổi cú pháp TeX hay gặp sang ký hiệu Unicode.
+#
+# Không phải một bộ dựng TeX, và không giả vờ là: chỉ đổi những lệnh xuất hiện thật trong tài
+# liệu tác tử viết. Trước đây một dòng `$$\text{PLLM} = 8, \quad \frac{8}{2}$$` in nguyên
+# cú pháp vào giữa trang PDF — người đọc thấy mã chứ không thấy công thức.
+# Thứ tự có nghĩa: gỡ `\text{…}` TRƯỚC `\frac{…}{…}`. Ngược lại thì `\frac{8\text{ MHz}}{8}`
+# không khớp — mẫu của `\frac` không nhận ngoặc lồng, nên nó bỏ qua và cú pháp TeX lọt ra
+# trang giấy. Đo trên chính tài liệu kiến trúc: một phân số giữ nguyên `\frac{...}{...}`.
+_TEX = (
+    (re.compile(r"\\(?:text|mathrm|mathbf|operatorname)\{([^{}]*)\}"), r"\1"),
+    (re.compile(r"\\frac\{([^{}]*)\}\{([^{}]*)\}"), r"(\1)/(\2)"),
+    (re.compile(r"\\(?:quad|qquad|,|;|!)"), " "),
+    (re.compile(r"\\left|\\right"), ""),
+    (re.compile(r"_\{([^{}]*)\}"), r"_\1"),
+    (re.compile(r"\^\{([^{}]*)\}"), r"^\1"),
+)
+_TEX_KY_HIEU = {
+    r"\\times": "×", r"\\cdot": "·", r"\\div": "÷", r"\\pm": "±",
+    r"\\implies": "⇒", r"\\Rightarrow": "⇒", r"\\rightarrow": "→", r"\\to": "→",
+    r"\\leq": "≤", r"\\geq": "≥", r"\\neq": "≠", r"\\approx": "≈",
+    r"\\alpha": "α", r"\\beta": "β", r"\\mu": "µ", r"\\Omega": "Ω",
+    r"\\omega": "ω", r"\\pi": "π", r"\\Delta": "Δ", r"\\delta": "δ",
+    r"\\infty": "∞", r"\\sum": "∑", r"\\sqrt": "√",
+}
+
+
+def cong_thuc_nguoi_doc(s: str) -> str:
+    """`$$…$$` → một dòng người đọc được. Đổi được chừng nào hay chừng ấy, phần còn lại giữ
+    nguyên — giữ nguyên còn hơn nuốt mất một ký hiệu mà không ai biết là đã mất."""
+    t = s.strip()
+    for boc in ("$$", "$", "\\[", "\\]"):
+        t = t.strip().removeprefix(boc).removesuffix(boc).strip()
+    for _ in range(3):                        # ngoặc lồng nhau: lặp vài lượt cả bộ
+        truoc = t
+        for mau, thay in _TEX:
+            t = mau.sub(thay, t)
+        if t == truoc:
+            break
+    for mau, ky in _TEX_KY_HIEU.items():
+        t = re.sub(mau + r"\b", ky, t)
+    return re.sub(r"\s+", " ", t).strip()
 
 
 # ------------------------------------------------------------------- chữ trong dòng
@@ -298,6 +345,50 @@ def chu_tran(s: str) -> str:
     return "".join(c for c, _ in tach_chu(s))
 
 
+def _anh_so_do(nguon: str) -> tuple[Path | None, str]:
+    """Vẽ một khối mermaid ra PNG tạm. Trả `(đường dẫn, lý do nếu không vẽ được)`.
+
+    Ảnh nằm trong thư mục tạm của hệ điều hành, không nằm cạnh tài liệu: nó là thứ dựng lại
+    được từ nguồn, và để nó lại cạnh tệp `.docx` thì người dùng sẽ thấy một đống PNG lạ mà
+    không ai nói cho biết chúng ở đâu ra.
+    """
+    import tempfile
+
+    from .so_do import ve_png
+
+    d = Path(tempfile.mkdtemp(prefix="eide-sodo-"))
+    return ve_png(nguon, d / "so-do.png")
+
+
+def _chen_so_do(tl: Any, nguon: str, Inches: Any, CANH: Any, Pt: Any, _chu: Any) -> None:
+    """Chèn sơ đồ vào tài liệu Word. Không vẽ được thì in mã KÈM LỜI GIẢI THÍCH."""
+    from .so_do import tom_tat
+
+    anh, vi_sao = _anh_so_do(nguon)
+    if anh is None:
+        # Nói rõ vì sao, ngay trong tài liệu. Im lặng in mã thô sẽ để người nhận tự đoán
+        # xem tác tử viết sai hay phần mềm thiếu — và đoán thì thường đoán nhầm.
+        p = tl.add_paragraph()
+        r = p.add_run(f"[sơ đồ chưa vẽ được: {vi_sao} — dưới đây là nguyên văn mã]")
+        r.italic = True
+        r.font.size = Pt(9.5)
+        m = tl.add_paragraph()
+        rm = m.add_run(nguon)
+        rm.font.name = "Menlo"
+        rm.font.size = Pt(9)
+        return
+    try:
+        tl.add_picture(str(anh), width=Inches(RONG_ANH_TOI_DA))
+        tl.paragraphs[-1].alignment = CANH.CENTER
+    except Exception:                                                  # noqa: BLE001
+        return
+    c = tl.add_paragraph()
+    c.alignment = CANH.CENTER
+    rc = c.add_run(tom_tat(nguon))
+    rc.italic = True
+    rc.font.size = Pt(9.5)
+
+
 # ============================================================================ → .docx
 def sang_docx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
               goc_anh: Path | None = None) -> KetQuaRender:
@@ -336,7 +427,13 @@ def sang_docx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
         if k.loai == "tieu_de":
             tl.add_heading(chu_tran(k.chu), min(max(k.muc, 1), 6))
         elif k.loai == "doan":
-            _chu(tl.add_paragraph(), k.chu)
+            if k.chu.startswith("$$") and k.chu.endswith("$$"):
+                p = tl.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                r = p.add_run(cong_thuc_nguoi_doc(k.chu))
+                r.italic = True
+            else:
+                _chu(tl.add_paragraph(), k.chu)
         elif k.loai in ("gach_dau", "so_thu_tu"):
             kieu = "List Bullet" if k.loai == "gach_dau" else "List Number"
             p = tl.add_paragraph(style=kieu)
@@ -378,6 +475,8 @@ def sang_docx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
                     if i == 0:
                         for r in p.runs:
                             r.bold = True
+        elif k.loai == "so_do":
+            _chen_so_do(tl, k.chu, Inches, WD_ALIGN_PARAGRAPH, Pt, _chu)
         elif k.loai == "anh":
             p = Path(k.chu)
             if not p.is_absolute() and goc_anh is not None:
@@ -464,6 +563,17 @@ def sang_xlsx(khoi: list[Khoi], ra: Path) -> KetQuaRender:
             ws.column_dimensions[get_column_letter(j)].width = min(max(rong + 2, 10), 60)
         ws.freeze_panes = "A2"
 
+    # Sơ đồ: mỗi cái một sheet riêng, chèn ảnh. Không nhét vào sheet bảng — một tấm ảnh nằm
+    # đè lên dữ liệu là thứ không ai lọc hay sắp xếp được.
+    for idx, k in enumerate([x for x in khoi if x.loai == "so_do"], start=1):
+        anh, _vi = _anh_so_do(k.chu)
+        if anh is None:
+            continue
+        from openpyxl.drawing.image import Image as AnhXl
+
+        ws = wb.create_sheet(f"Sơ đồ {idx}")
+        ws.add_image(AnhXl(str(anh)), "B2")
+
     ra.parent.mkdir(parents=True, exist_ok=True)
     try:
         wb.save(str(ra))
@@ -473,6 +583,115 @@ def sang_xlsx(khoi: list[Khoi], ra: Path) -> KetQuaRender:
     kq.tep = ra
     kq.do_lai = doc_lai_xlsx(ra)
     return kq
+
+
+def sang_pptx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
+              goc_anh: Path | None = None) -> KetQuaRender:
+    """Bản trình chiếu: **mỗi tiêu đề một slide**.
+
+    Quy ước ấy là quy ước duy nhất đọc được từ một tệp Markdown. Cắt theo số dòng hay số chữ
+    sẽ cắt giữa câu; cắt theo tiêu đề thì chỗ cắt do người viết nguồn quyết, và họ biết bài
+    của họ chia làm mấy phần.
+
+    Bảng và sơ đồ đi vào slide của phần chứa nó. Slide quá dài thì **vẫn để nguyên, không cắt
+    bớt** — mất một dòng trong bản trình chiếu thì người trình bày không biết là đã mất.
+    """
+    kq = KetQuaRender(dinh_dang="pptx")
+    try:
+        from pptx import Presentation
+        from pptx.util import Emu, Inches, Pt
+    except ImportError as e:                                           # pragma: no cover
+        kq.vi_sao_khong_dat = f"Thiếu thư viện python-pptx: {e}"
+        return kq
+
+    tr = Presentation()
+    tr.slide_width, tr.slide_height = Inches(13.333), Inches(7.5)      # 16:9
+    trang_bia = tr.slide_layouts[0]
+    trang_noi_dung = tr.slide_layouts[1]
+    trang_trong = tr.slide_layouts[6]
+
+    dau = next((k for k in khoi if k.loai != "ngan"), None)
+    ten = tieu_de or (chu_tran(dau.chu) if dau is not None and dau.loai == "tieu_de" else "")
+    if ten:
+        s = tr.slides.add_slide(trang_bia)
+        s.shapes.title.text = ten
+        if len(s.placeholders) > 1:
+            s.placeholders[1].text = ""
+
+    def slide_moi(tieu: str):
+        s = tr.slides.add_slide(trang_noi_dung)
+        s.shapes.title.text = chu_tran(tieu)
+        return s, s.placeholders[1].text_frame
+
+    hien: Any = None
+    than: Any = None
+    bo_qua_dau = bool(ten)
+    for k in khoi:
+        if k.loai == "tieu_de":
+            if bo_qua_dau and chu_tran(k.chu).strip().casefold() == ten.strip().casefold():
+                bo_qua_dau = False
+                continue
+            hien, than = slide_moi(k.chu)
+            continue
+        if hien is None:
+            hien, than = slide_moi(ten or "Nội dung")
+
+        if k.loai in ("doan", "gach_dau", "so_thu_tu", "trich"):
+            p = than.add_paragraph() if than.text or len(than.paragraphs[0].runs) else \
+                than.paragraphs[0]
+            p.text = chu_tran(k.chu)
+            p.level = min(k.muc, 4)
+            p.font.size = Pt(18)
+        elif k.loai == "ma":
+            p = than.add_paragraph()
+            p.text = k.chu
+            p.font.name = "Menlo"
+            p.font.size = Pt(12)
+        elif k.loai == "bang" and k.hang:
+            _bang_pptx(tr, trang_trong, k, Inches, Pt)
+            hien = than = None
+        elif k.loai == "so_do":
+            anh, vi_sao = _anh_so_do(k.chu)
+            s = tr.slides.add_slide(trang_trong)
+            if anh is None:
+                h = s.shapes.add_textbox(Inches(0.6), Inches(0.6), Inches(12), Inches(6))
+                h.text_frame.text = f"[sơ đồ chưa vẽ được: {vi_sao}]\n\n{k.chu}"
+                h.text_frame.paragraphs[0].font.size = Pt(12)
+            else:
+                from PIL import Image as _I
+
+                with _I.open(anh) as im:
+                    tl = im.width / im.height
+                rong = min(Inches(12), Emu(int(Inches(6.2) * tl)))
+                cao = Emu(int(rong / tl))
+                s.shapes.add_picture(str(anh), int((tr.slide_width - rong) / 2),
+                                     int((tr.slide_height - cao) / 2),
+                                     width=int(rong))
+            hien = than = None
+
+    ra.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        tr.save(str(ra))
+    except OSError as e:
+        kq.vi_sao_khong_dat = f"Không ghi được {ra.name}: {e}"
+        return kq
+    kq.tep = ra
+    kq.do_lai = doc_lai_pptx(ra)
+    return kq
+
+
+def _bang_pptx(tr: Any, trang: Any, k: Khoi, Inches: Any, Pt: Any) -> None:
+    s = tr.slides.add_slide(trang)
+    cot = max(len(h) for h in k.hang)
+    b = s.shapes.add_table(len(k.hang), cot, Inches(0.5), Inches(0.6),
+                           Inches(12.3), Inches(0.4) * len(k.hang)).table
+    for i, hang in enumerate(k.hang):
+        for j in range(cot):
+            o = b.cell(i, j)
+            o.text = chu_tran(hang[j]) if j < len(hang) else ""
+            for p in o.text_frame.paragraphs:
+                p.font.size = Pt(14)
+                p.font.bold = i == 0
 
 
 # ============================================================================ → .pdf
@@ -554,6 +773,25 @@ def doc_lai_xlsx(p: Path) -> dict[str, Any]:
         return {"khong_doc_lai_duoc": str(e), "byte": p.stat().st_size if p.exists() else 0}
 
 
+def doc_lai_pptx(p: Path) -> dict[str, Any]:
+    try:
+        from pptx import Presentation
+
+        tr = Presentation(str(p))
+        chu = 0
+        anh = 0
+        for s in tr.slides:
+            for sh in s.shapes:
+                if sh.has_text_frame:
+                    chu += len(sh.text_frame.text)
+                if sh.shape_type == 13:                    # PICTURE
+                    anh += 1
+        return {"so_slide": len(tr.slides), "so_ky_tu": chu, "so_hinh": anh,
+                "byte": p.stat().st_size}
+    except Exception as e:                                             # noqa: BLE001
+        return {"khong_doc_lai_duoc": str(e), "byte": p.stat().st_size if p.exists() else 0}
+
+
 def doc_lai_pdf(p: Path) -> dict[str, Any]:
     try:
         from pypdf import PdfReader
@@ -589,4 +827,6 @@ def render(md: str, ra: Path, dinh_dang: str, *, tieu_de: str = "",
         return sang_docx(khoi, ra, tieu_de=tieu_de, goc_anh=goc_anh)
     if dinh_dang == "xlsx":
         return sang_xlsx(khoi, ra)
+    if dinh_dang == "pptx":
+        return sang_pptx(khoi, ra, tieu_de=tieu_de, goc_anh=goc_anh)
     return sang_pdf(khoi, ra, tieu_de=tieu_de, goc_anh=goc_anh)

@@ -38,18 +38,36 @@ def _doc_dau_de(chu: str) -> tuple[str, str, list[str]]:
 
 
 def tim_skill(tu_khoa: str = "") -> list[dict[str, str]]:
-    """Danh sách skill, lọc theo từ khoá nếu có. Trả tóm tắt, không trả nội dung."""
-    q = (tu_khoa or "").lower().strip()
+    """Danh sách skill, lọc theo từ khoá nếu có. Trả tóm tắt, không trả nội dung.
+
+    Khớp theo **từng chữ**, không theo cả cụm, và xếp cái khớp nhiều chữ lên trước.
+
+    Bản đầu đòi cả cụm phải nằm nguyên trong chuỗi mô tả. Nghĩa là mọi truy vấn nhiều chữ đều
+    trượt: `tim_skill("vẽ sơ đồ")` trả **rỗng** trong khi skill `trinh-bay-bang-hinh` có cả
+    `sơ đồ` lẫn `vẽ` trong từ khoá — chỉ vì chúng không đứng liền nhau. Đo được 29/09/2026;
+    lỗi này có từ đầu và chạm tới mọi skill, không riêng skill mới.
+
+    Cách nói của người không bao giờ trùng khít cách viết trong tệp. Một bộ tìm đòi trùng khít
+    là một bộ tìm không ai dùng được — và nó hỏng **im lặng**: trả rỗng trông y như "không có
+    skill nào cho việc này".
+    """
+    chu_q = [x for x in re.split(r"[\s,;/]+", (tu_khoa or "").lower().strip()) if x]
     ra: list[dict[str, str]] = []
     for p in sorted(THU_MUC.glob("*.md")):
         chu = p.read_text("utf-8", errors="replace")
         ten, khi_nao, tk = _doc_dau_de(chu)
         ten = ten or p.stem
-        if q and q not in (ten + " " + khi_nao + " " + " ".join(tk)
-                           + " " + chu[:800]).lower():
+        # Từ khoá KHAI BÁO nặng hơn chữ tình cờ có trong thân bài. Không phân biệt thì
+        # `tim_skill("vẽ sơ đồ")` cho `design-review-checklist` đứng trước
+        # `trinh-bay-bang-hinh` — cả hai khớp hai chữ, và thứ tự quyết bởi bảng chữ cái.
+        khai = (ten + " " + " ".join(tk)).lower()
+        than = (khi_nao + " " + chu[:800]).lower()
+        khop = sum(3 for x in chu_q if x in khai) + sum(1 for x in chu_q if x in than)
+        if chu_q and khop == 0:
             continue
         ra.append({"ten": ten, "khi_nao": khi_nao, "tep": p.name, "tu_khoa": tk,
-                   "so_dong": str(len(chu.splitlines()))})
+                   "so_dong": str(len(chu.splitlines())), "_khop": khop})
+    ra.sort(key=lambda d: (-d.pop("_khop"), d["ten"]))
     return ra
 
 

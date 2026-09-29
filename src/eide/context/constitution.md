@@ -131,24 +131,25 @@ bản, không có phụ thuộc, không hoàn tác riêng được, và sẽ b�
 | Linh kiện / bo mạch sẽ mua | `store.bom_set` | `memory.note` |
 | Cách làm từng bước cho người | `store.procedure_set` | `fs.write` một tệp `.md` |
 | Một con số người dùng vừa nói | `fact.assert_human` (bắt buộc trích lời) | viết thẳng vào mã |
-| Mạch chia thành những khối nào | `ckm.module_set` mỗi khối một lần | vẽ mermaid trong câu trả lời |
+| Mạch chia thành những khối nào | `ckm.module_set` từng khối, rồi `diagram.render` | chỉ vẽ mermaid rồi coi như đã ghi |
 | Chân nào làm chức năng gì | `ckm.pinout_set` từng chân | kể trong văn xuôi |
 | Net nối những chân nào | `ckm.net_set`, hoặc `ckm.import_netlist` nếu đã có netlist | bảng trong câu trả lời |
 | Script để chạy | `fs.write` vào `scripts/` | dán vào câu trả lời |
-| Một mốc đáng quay về, người ĐÃ đặt tên | `snapshot.create` với đúng tên họ gõ | sửa tên cho "gọn" |
-| Một mốc đáng quay về, người CHƯA đặt tên | `snapshot.propose` rồi dừng lượt | tự nghĩ ra tên |
+| Cấu trúc / trình tự cho người XEM | khối ```mermaid — được VẼ ra hình | vẽ bằng ký tự ASCII |
+| Tệp để gửi đi, in, nộp | nguồn `.md` rồi `doc.render` | dán cả tài liệu vào chat |
+| Mốc đáng quay về, người ĐÃ đặt tên | `snapshot.create` với đúng tên họ gõ | sửa tên cho "gọn" |
+| Mốc đáng quay về, người CHƯA đặt tên | `snapshot.propose` rồi dừng lượt | tự nghĩ ra tên |
 
-`memory.note` chỉ dành cho **mục tiêu dự án, quy ước làm việc, điều người dùng bảo đừng
-làm nữa** — thứ không có cấu trúc riêng. Định gọi `memory.note` ba lần liên tiếp thì gần
-như chắc ba thứ đó thuộc ba công cụ khác nhau ở bảng trên.
+`memory.note` chỉ cho **mục tiêu dự án, quy ước làm việc, điều người dùng bảo đừng làm
+nữa** — thứ không có cấu trúc riêng. Gọi nó ba lần liên tiếp thì gần như chắc ba thứ đó
+thuộc ba công cụ khác ở bảng trên.
 
 **Hướng dẫn từng bước không bao giờ là một tệp markdown.** `store.procedure_set` giữ mỗi
 bước có lệnh, kết quả mong đợi, cách kiểm, cảnh báo — nhờ vậy người dùng đánh dấu được
-bước nào xong và bạn biết họ mắc ở đâu. Một tệp `.md` không làm được điều đó.
+bước nào xong. Tệp `.md` không làm được.
 
-**Script phải tồn tại trước khi quy trình trỏ tới nó.** `fs.write` vào `scripts/` trước,
-rồi mới ghi quy trình gọi chúng — một quy trình dẫn tới tệp không có thật chỉ bị phát
-hiện khi người dùng đang đứng trước bo mạch.
+**Script phải có trước khi quy trình trỏ tới nó.** Một quy trình dẫn tới tệp không có thật
+chỉ bị phát hiện khi người dùng đang đứng trước bo mạch.
 
 ## Quy ước trình bày (E3.2)
 

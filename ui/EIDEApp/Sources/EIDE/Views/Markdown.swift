@@ -19,6 +19,7 @@ enum MdKhoi: Identifiable {
     case danhSach([(String, Bool, Int)])     // (nội dung, có đánh số, mức thụt)
     case bang([String], [[String]])
     case ma(String, String?)                 // nội dung, ngôn ngữ
+    case soDo(String)                        // nguồn mermaid — vẽ thành hình, có nút xem mã
     case trichDan([String])
     case duongKe
     case congThuc(String, Bool)              // đã đổi Unicode, có trọn vẹn không
@@ -30,6 +31,7 @@ enum MdKhoi: Identifiable {
         case .danhSach(let x): return "l\(x.map(\.0).joined().hashValue)"
         case .bang(let h, let r): return "t\(h.joined().hashValue)\(r.count)"
         case .ma(let s, _): return "c\(s.hashValue)"
+        case .soDo(let s): return "d\(s.hashValue)"
         case .trichDan(let x): return "q\(x.joined().hashValue)"
         case .duongKe: return "hr\(UUID().uuidString)"
         case .congThuc(let s, _): return "m\(s.hashValue)"
@@ -76,7 +78,14 @@ enum Markdown {
                     i += 1
                 }
                 i += 1
-                ra.append(.ma(than.joined(separator: "\n"), ngonNgu.isEmpty ? nil : ngonNgu))
+                let noiDung = than.joined(separator: "\n")
+                // `mermaid` là sơ đồ, không phải mã để đọc. Vẽ nó ra hình; `SoDoView` tự lo
+                // phần kiểu nào chưa vẽ được và phần nút xem mã.
+                if ngonNgu.lowercased() == "mermaid" {
+                    ra.append(.soDo(noiDung))
+                } else {
+                    ra.append(.ma(noiDung, ngonNgu.isEmpty ? nil : ngonNgu))
+                }
                 continue
             }
 
@@ -258,6 +267,10 @@ extension Markdown {
                 }).joined(separator: "\n")
             case .ma(let than, _):
                 return than                 // khối mã cố ý giữ nguyên văn
+            case .soDo(let nguon):
+                // Trả NHÃN trong sơ đồ, không trả cả mã mermaid. Hàm này là "thứ người thật
+                // sự nhìn thấy", mà thứ người nhìn thấy là hình — mã chỉ hiện khi bấm nút.
+                return DocSoDo.nhanNguoiThay(nguon)
             case .trichDan(let d):
                 return d.map { String(inline($0).characters) }.joined(separator: "\n")
             case .duongKe:
@@ -334,6 +347,9 @@ private struct KhoiView: View {
             }
             .background(Color(nsColor: .underPageBackgroundColor),
                         in: RoundedRectangle(cornerRadius: 5))
+
+        case .soDo(let nguon):
+            SoDoView(nguon: nguon, co: co)
 
         case .trichDan(let dong):
             HStack(alignment: .top, spacing: 8) {

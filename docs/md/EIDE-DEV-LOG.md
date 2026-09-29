@@ -5106,3 +5106,86 @@ một lượt thật.
 
 `tools/thu_tu_viet_cong_cu.py` **8/8** (từ 1/7) · 3 ca đơn vị mới cho hai chỗ chặn ·
 `1275 ca đơn vị` toàn bộ · bộ dò tài liệu **0 chỗ lệch**.
+
+---
+
+### [DEV-303] 29/09/2026 · Sơ đồ mermaid thành HÌNH — trên Console và trong tài liệu xuất ra
+
+**Yêu cầu:** *"Phần tương tác view với markdown, sequen, các sơ đồ… hiện tại vẫn đang để dạng
+code. Nên render ra và có thêm nút cho hiện code"* → *"Cả phần xuất ra docx, pptx, xlsx, pdf
+cũng cần render ra như vậy"* → *"Toàn bộ năng lực view và chỉnh sửa này hãy cập nhật cho Agent"*.
+
+#### Đo trước: có những kiểu sơ đồ nào
+
+Quét toàn bộ `docs/` và `du-lieu/`: **8 `graph`** (do `ckm.mermaid()` của lõi sinh, nên còn dài
+dài) và **1 `sequenceDiagram`** (tác tử viết, có `autonumber`, `loop`, `Note over`, `<br/>`).
+Không kiểu nào khác. Cả hai đều rơi vào `case .ma` của `Markdown.swift` — vẽ ra khối chữ đơn
+sắc, không phân biệt với `bash`.
+
+#### Tự vẽ, không nhúng `mermaid.js`
+
+Ba lẽ, lẽ thứ ba nặng nhất: EIDE **không mở cổng mạng nào** và chạy được offline; mỗi ô hội
+thoại một `WKWebView` là một tiến trình trình duyệt; và mermaid vẽ vài chục kiểu trong khi EIDE
+sinh ra **hai**. Dựng cỗ máy đa dụng cho hai ca đã biết là trả giá cho thứ không dùng tới.
+
+Cái giá phải trả thay: **hai bộ đọc cho một cú pháp** — `Views/SoDo.swift` (SwiftUI `Canvas`)
+và `src/eide/so_do.py` (Pillow). Lõi là tiến trình con, chiều gọi chỉ có một, nên nó không nhờ
+app vẽ hộ được. Ràng buộc giữ hai bên khớp: `test_hai_bo_doc_ra_cung_mot_thu` bắt cả hai đọc
+**cùng một tập sơ đồ thật** ra cùng số vai, cùng số khối.
+
+#### Bốn lỗi, và cả bốn đều chỉ NHÌN mới thấy
+
+| Lỗi | Ô kiểm lúc ấy | Vì sao số đo im lặng |
+|---|---|---|
+| `ImageRenderer` trả về **khung xám trơn** — hình mất sạch, thanh tiêu đề vẫn đủ | **18/18 xanh** | mọi ô hỏi bộ ĐỌC, không ô nào hỏi bộ VẼ. Thủ phạm: `ScrollView` bọc ngoài |
+| Đồ thị có vòng `Kỹ sư ⇄ EIDE` làm hai nút **đẩy tầng của nhau lên mãi** — mọi khối xếp một hàng | 18/18 xanh | phép xếp tầng chỉ chặn số vòng lặp cho khỏi treo; nó không treo, nó **sai theo kiểu khó thấy hơn** |
+| Nhãn đường nối **đè lên hộp khối** (`VCC / GND` nằm trên chữ `Khối vi điều khiển`) | 18/18 xanh | phép tránh nhau chỉ tránh nhãn khác, không tránh nút |
+| `A <--> B` đẻ ra một khối tên **`MOD_MCU <`** | 18/18 xanh | `<-->` chứa `-->`; cắt ở giữa, phần trái `"A <"` rơi xuống nhánh mặc định |
+
+Ba lỗi đầu bắt được bằng cách **mở ảnh ra nhìn**; lỗi thứ tư bắt được trên ảnh chụp cửa sổ thật
+sau một lượt tác tử vừa vẽ. Lần thứ năm trong dự án này *số đo đúng, câu hỏi sai*.
+
+Cách xếp tầng nay: **cắt cạnh lùi bằng duyệt sâu trước**, rồi xếp tầng trên đồ thị không vòng,
+rồi **căn giữa theo con** từ tầng cuối ngược lên. Nhãn đặt sau cùng, thử vài vị trí dọc đường và
+lấy chỗ đầu tiên không chạm nút hay nhãn đã đặt — không chỗ nào trống thì **vẫn vẽ**, vì một
+nhãn hơi chồng còn đọc mò được, một nhãn biến mất thì người đọc không biết là đã mất.
+
+#### Nút *Xem mã*
+
+Sơ đồ do tác tử sinh, nên nó là hiện vật: người dùng phải xem được thứ tác tử **thật sự viết**,
+không chỉ thứ giao diện vẽ lại. Ba lý do cụ thể: bố cục này không giống mermaid (ai nghi hình
+sai phải đọc được nguồn); chép đi chỗ khác (GitHub, tài liệu); và bộ đọc có tập con, nếu nó bỏ
+sót một dòng thì chỉ nguồn mới cho thấy.
+
+#### Tài liệu xuất ra
+
+`doc.render` thêm **`pptx`** (mỗi tiêu đề một slide) và vẽ sơ đồ thành **ảnh** trong cả bốn định
+dạng. Hai chỗ phụ cũng sửa: sơ đồ quá bè thì **xoay hướng chảy** rồi chọn bản vuông vắn hơn
+(một `graph LR` 12 khối ra tỉ lệ 6:1, thu cho vừa trang A4 thì chữ không đọc được — một hình
+không đọc được cũng bằng không có); và `$$…$$` đổi sang ký hiệu Unicode thay vì in nguyên cú
+pháp TeX vào giữa trang.
+
+Emoji bị **bỏ** trước khi vẽ ở phía Python: phông có dấu tiếng Việt trên macOS không có chúng,
+nên Pillow vẽ ra một ô vuông rỗng — mà ô vuông rỗng trông như lỗi phông.
+
+#### Cập nhật cho chính tác tử — và hai đường dẫn đứt tìm được ở đó
+
+Thêm skill `trinh-bay-bang-hinh`, hai dòng trong bảng "ghi cái gì bằng công cụ nào" của hiến
+pháp, và mô tả `doc.render` nói rõ mermaid được vẽ thành hình. **Hiến pháp giữ nguyên trần
+3 700** — nén ba đoạn cũ thay vì nâng trần; nay 3 696.
+
+Hai chỗ đứt tìm được khi đo:
+
+1. **`tim_skill("vẽ sơ đồ")` trả RỖNG** dù skill có cả `sơ đồ` lẫn `vẽ` trong từ khoá — phép
+   lọc đòi **cả cụm** nằm nguyên trong chuỗi mô tả, nên mọi truy vấn nhiều chữ đều trượt. Lỗi
+   này có từ đầu và chạm tới **mọi skill**. Nay khớp theo từng chữ, và từ khoá khai báo nặng
+   hơn chữ tình cờ có trong thân bài.
+2. **Tác tử vẽ sơ đồ vào tệp nguồn nhưng không đưa lên Console.** Người dùng bảo *"vẽ cho dễ
+   hiểu"* rồi nhận về một tệp `.pptx` — muốn xem thứ mình vừa xin thì phải mở tệp. Ca kiểm
+   2/4. Nói thẳng trong skill: hình phải hiện **trong lời đáp**, không chỉ trong tệp. Chạy
+   lại: **4/4**.
+
+### Số đo
+
+`1291 ca đơn vị` · bộ quét giao diện **124/124** · `tools/thu_so_do.py` **18/18** ·
+`tools/thu_xuat_tai_lieu.py` **13/13** · bộ dò tài liệu **0 chỗ lệch** · hiến pháp 3 696/3 700.
