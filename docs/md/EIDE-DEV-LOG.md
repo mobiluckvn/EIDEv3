@@ -4918,3 +4918,51 @@ lối thường của tiếng Việt. Nếu anh muốn giữ đúng dạng dính
 
 `1252 ca đơn vị` (không đổi — chặng này là hồ sơ). Bộ dò tài liệu: **0 chỗ lệch chắc chắn**.
 Bảng Giới thiệu đã chụp lại bằng chính app: `docs/anh/gioi-thieu-eide.png`.
+
+### [DEV-300] 29/09/2026 · Hướng dẫn cài đặt — `docs/md/EIDE-CAI-DAT.md`
+
+Từ máy trắng tới lượt chạy đầu tiên. Mỗi lệnh trong tài liệu là **lệnh tôi vừa chạy thật** —
+không có bước nào chép từ trí nhớ.
+
+#### Ba điều viết ra vì đã đo, không vì đoán
+
+**Lõi chạy được KHÔNG cần giao diện.** Đặt ngay đầu tài liệu, vì nó cắt phân nửa công sức cho
+người chỉ muốn xem tác tử làm việc: dừng ở Bước 3 là đủ, không cần Xcode.
+
+**Công cụ phần cứng: đừng cài trước.** Thiếu cái nào thì `env.check` nói thiếu gì và cài bằng
+lệnh nào, qua cổng `G-TOOL` để người duyệt. Bảng trong tài liệu để người *biết trước mình sẽ
+được hỏi gì*, không phải một danh sách phải làm.
+
+**Cái bẫy newlib.** `arm-none-eabi-gcc` bản Homebrew không kèm newlib, nên `memset`/`memcpy`
+báo `undefined reference` **kể cả khi không ai gọi chúng** — trình biên dịch tự sinh chúng cho
+phép gán cấu trúc và khởi tạo mảng. Chặng G7 mất thời gian ở đúng chỗ này. Một dòng trong
+hướng dẫn cài đặt đáng giá hơn một buổi chiều.
+
+#### Hai chỗ tài liệu suýt nói sai, bắt được vì chạy thử
+
+**`python -m eide` hỏng trên chính máy này.** Gói `eide` chưa bao giờ được cài vào venv — mọi
+thứ chạy được suốt mấy tháng vì `tools/*.py` tự `sys.path.insert(0,'src')` và app thì tự đặt
+`PYTHONPATH`. Lệnh README ghi (`pip install -e ".[dev]"`) **đúng**, chỉ là chưa ai chạy nó ở
+đây. Chạy xong thì `python -m eide --help` in ra bình thường — nhưng nếu tôi viết hướng dẫn mà
+không thử, người cài đầu tiên sẽ là người phát hiện.
+
+**Con số 124/124 là con số của dự án KHÁC.** Tài liệu bảo chạy `quet_giao_dien.py` trên dự án
+vừa tạo ở Bước 3 rồi hứa 124/124 — mà 124/124 đo trên dự án FreeRTOS đã có nội dung. Chạy thật
+trên dự án trống: **123/124**, ô đỏ là *"có ít nhất một khối cho người sửa bằng widget"* — đỏ
+vì **chưa có hiện vật nào để sửa**, không phải vì cài sai.
+
+Nay tài liệu ghi 123/124 và giải thích ô đỏ ấy. *Một hướng dẫn hứa 124 rồi người cài thấy 123
+sẽ đi tìm một lỗi không tồn tại.*
+
+#### Mục trục trặc lấy từ những chỗ đã thật sự vấp
+
+Không phải bảng lỗi tưởng tượng: `No module named eide` (vừa gặp) · cắm nhầm cổng USB OTG ·
+`undefined reference to memcpy` · kéo tệp nằm ngoài dự án vào thì tác tử không đọc được
+(DEV-297) · `⌘Z` là Undo của ô văn bản chứ không của dự án (DEV-295).
+
+Kèm số công cụ cập nhật khắp nơi: **117 → 118** (thêm `project.export` ở DEV-298).
+
+### Số đo
+
+`1252 ca đơn vị` · bộ dò tài liệu **0 chỗ lệch**. README trỏ sang hướng dẫn ở hai chỗ: đầu
+tệp và ngay trên khối lệnh cài rút gọn.

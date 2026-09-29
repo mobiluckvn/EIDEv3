@@ -4,6 +4,7 @@ Môi trường phát triển nhúng có một tác tử làm việc **cùng** k�
 hai tác giả bình đẳng trên cùng một bộ hiện vật; mọi con số dùng để quyết định phải
 truy vết được tới datasheet; mọi thay đổi là một changeset hoàn tác được.
 
+- **Cài đặt:** [`docs/md/EIDE-CAI-DAT.md`](docs/md/EIDE-CAI-DAT.md)
 - **Kiến trúc theo mô hình C4 (mã đang thế nào):** [`docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md`](docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md)
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
@@ -14,7 +15,7 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 
 ## Tác tử làm được những gì
 
-**117 công cụ** trong 10 nhóm (108 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ `EIDE_FEATURE_SCHEMATIC`), **6 tác tử con**, **6 skill**, **10 cổng duyệt**. Dưới đây là
+**118 công cụ** trong 10 nhóm (109 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ `EIDE_FEATURE_SCHEMATIC`), **6 tác tử con**, **6 skill**, **10 cổng duyệt**. Dưới đây là
 năng lực theo *việc người dùng cần*, không theo cây mã.
 
 Ba điều xuyên suốt, và chúng quan trọng hơn danh sách công cụ:
@@ -190,6 +191,10 @@ nhau, và trộn chúng vào một cột là nói sai về sản phẩm.
 | **Tự bù năng lực** | `tool.propose`/`tool.reload` — tác tử tự viết công cụ cho chính nó, chỉ nạp khi bộ kiểm của nó xanh · `test.sensitivity` đo xem bộ kiểm có đo gì không | xong |
 
 ## Cài và chạy
+
+> **Cài lần đầu?** Đọc [**Hướng dẫn cài đặt đầy đủ**](docs/md/EIDE-CAI-DAT.md) — từ máy trắng
+> tới lượt chạy đầu tiên, kèm bảng công cụ phần cứng (chỉ cài khi cần) và mục xử lý trục trặc.
+> Phần dưới đây là bản rút gọn cho người đã quen.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"

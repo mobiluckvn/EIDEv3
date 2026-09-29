@@ -138,7 +138,7 @@ graph TB
         HOOK["<b>hooks/standard.py</b><br/>PreToolUse · PostToolUse · Stop"]
     end
 
-    subgraph Nang["Năng lực — 117 công cụ / 10 nhóm"]
+    subgraph Nang["Năng lực — 118 công cụ / 10 nhóm"]
         REG["<b>tools/registry.py</b><br/>hợp đồng · nạp trễ · rủi ro R1–R4"]
         T1["tools/knowledge · ckm · design<br/>xay_dung · mach_that · snapshots"]
         T2["tools/ke_hoach — chế độ kế hoạch<br/>tools/nang_luc — tác tử TỰ VIẾT công cụ<br/>tools/dieu_phoi — tác tử con · skill"]
@@ -275,6 +275,7 @@ sai, và gộp nó vào "đạt" là nói dối.
 
 | Tài liệu | Nói về | Trạng thái |
 |---|---|---|
+| [EIDE-CAI-DAT](EIDE-CAI-DAT.md) | Cài đặt từ máy trắng tới lượt chạy đầu tiên | Đang hiệu lực |
 | [EIDE-MDD-40 v3.0](../review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md) | Thiết kế tổng thể — nguồn sự thật | Đang hiệu lực |
 | **EIDE-C4-46** (tài liệu này) | Mã đang thế nào, bốn độ phóng | Đang hiệu lực |
 | [EIDE-MEM-42](EIDE-MEM-42_Quan_ly_Bo_nho_va_Nen_Bo_nho.md) | Bộ nhớ và nén ngữ cảnh | Đang hiệu lực |
