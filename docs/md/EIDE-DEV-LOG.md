@@ -4878,3 +4878,43 @@ nào đang mở thì chưa có lõi nào đang chạy để mà gửi `HumanAct`
 
 `1252 ca đơn vị` (+6): `tests/test_goi_du_an.py`. Gồm ca cho con lặp tự-gói-chính-mình, ca
 chặn `../` thoát ra ngoài, và ca từ chối nhập đè lên một dự án đang có.
+
+### [DEV-299] 29/09/2026 · Tên đề tài vào toàn bộ hồ sơ
+
+**Tên đề tài:** *Phát triển phần mềm nhúng có ứng dụng trí tuệ nhân tạo (AI)*
+
+Bo mạch **đã mang tên này** từ trước — `firmware/ui.c` hiện `DT: PHAT TRIEN PHAN MEM NHUNG /
+CO UNG DUNG TRI TUE NHAN TAO(AI)` trên màn LCD. Thứ tụt lại là hồ sơ trong git: README, chín
+tài liệu thiết kế, bảng Giới thiệu của app, và `Info.plist`.
+
+Đưa vào **15 chỗ**, mỗi chỗ một dạng phù hợp: README có dòng riêng; tài liệu thiết kế thêm một
+hàng `**Đề tài**` ngay trên hàng `**Khung**`; bảng Giới thiệu có một dòng in đậm đứng đầu;
+`Info.plist` ghi trong `NSHumanReadableCopyright`.
+
+#### Bản chụp firmware trong `docs/` đã cũ, và cũ đúng chỗ quan trọng
+
+`docs/stm32f469-freertos/firmware-chay-duoc/ui.c` vẫn giữ tên đề tài **trước đó**:
+
+```
+-   "DT: PHAT TRIEN PHAN MEM NHUNG"          ← đang chạy trên bo
+-   "CO UNG DUNG TRI TUE NHAN TAO(AI)"
++   "DT: Nghien cuu & Trien khai EIDE Agent"  ← bản chụp trong git
++   "tren Bo STM32F469I-Discovery"
+```
+
+Và cả một lỗi chính tả đã sửa trên bo mà bản chụp còn giữ: `DO AN TOT NGHIEP` → `DE AN TOT
+NGHIEP`.
+
+Đây đúng loại lệch mà `du-lieu/` bị gitignore sinh ra: thứ chạy thật và thứ được cất giữ trôi
+khỏi nhau trong im lặng. Bản chụp mới chép từ chính mã đang chạy, kèm `mach.bin` hiện tại.
+
+#### Một chỗ tôi tự quyết, nói ra để anh sửa nếu không đúng ý
+
+Anh viết `TRÍ TUỆ NHÂN TẠO(AI)` — dính, không dấu cách. Trên màn LCD cũng vậy, nhưng ở đó là
+phông cố định và chỗ hẹp. Trong hồ sơ tôi viết **`trí tuệ nhân tạo (AI)`** có dấu cách, theo
+lối thường của tiếng Việt. Nếu anh muốn giữ đúng dạng dính thì nói, sửa một lệnh.
+
+### Số đo
+
+`1252 ca đơn vị` (không đổi — chặng này là hồ sơ). Bộ dò tài liệu: **0 chỗ lệch chắc chắn**.
+Bảng Giới thiệu đã chụp lại bằng chính app: `docs/anh/gioi-thieu-eide.png`.

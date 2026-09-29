@@ -44,7 +44,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleIconFile</key><string>EIDE</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSHumanReadableCopyright</key>
-    <string>EIDE v3 — luận văn ThS Kỹ thuật Điện tử, Học viện Công nghệ Bưu chính Viễn thông. Học viên: Vũ Trí Công. Giảng viên hướng dẫn: TS. Nguyễn Trung Hiếu.</string>
+    <string>EIDE v3 — đề tài “Phát triển phần mềm nhúng có ứng dụng trí tuệ nhân tạo (AI)”, luận văn Thạc sĩ Kỹ thuật Điện tử, Học viện Công nghệ Bưu chính Viễn thông. Học viên: Vũ Trí Công. Giảng viên hướng dẫn: TS. Nguyễn Trung Hiếu.</string>
 </dict>
 </plist>
 PLIST

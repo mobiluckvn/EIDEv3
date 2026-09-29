@@ -9,7 +9,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
 - **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1231 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
 - **Kết quả đo mới nhất (29/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
-- Đề án tốt nghiệp ThS Kỹ thuật Điện tử — PTIT · Vũ Trí Công · GVHD: TS. Nguyễn Trung Hiếu
+- **Đề tài:** PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)
+- Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — Học viện Công nghệ Bưu chính Viễn thông (PTIT) · Học viên: Vũ Trí Công · GVHD: TS. Nguyễn Trung Hiếu
 
 ## Tác tử làm được những gì
 

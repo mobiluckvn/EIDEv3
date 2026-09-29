@@ -12,6 +12,7 @@ Nguyên tắc · Kiến trúc vòng lặp · Nền tri thức · Giao thức gia
 | **Thay thế**        | EIDE-AGD-32 v1.0, EIDE-AAD-33 v1.0/v2.0, EIDE-UIP-34 v1.0 — nội dung được hợp nhất, sửa và bổ sung trong tài liệu này; các tài liệu cũ chỉ còn giá trị tham khảo lịch sử                         |
 | **Ngày**            | 25/09/2026                                                                                                                                                                                       |
 | **Dự án**           | EIDE — Embedded IDE có tác tử (github.com/mobiluckvn/EIDE)                                                                                                                                       |
+| **Đề tài**          | PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)                                |
 | **Khung**           | Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — PTIT                                                                                                                                           |
 | **Người hướng dẫn** | TS. Nguyễn Trung Hiếu                                                                                                                                                                            |
 | **Tác giả**         | Vũ Trí Công                                                                                                                                                                                      |

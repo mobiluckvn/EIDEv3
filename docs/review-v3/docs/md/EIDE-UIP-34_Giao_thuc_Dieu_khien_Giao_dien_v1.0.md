@@ -10,6 +10,7 @@
 | **Tên tài liệu**       | Giao thức điều khiển giao diện của tác tử — UI-as-Actuator Protocol (UAP) v1                                                  |
 | **Phiên bản**          | v1.0 — áp dụng cho EIDE v1.4                                                                                                  |
 | **Ngày**               | 24/09/2026                                                                                                                    |
+| **Đề tài**          | PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)                                |
 | **Khung**              | Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — PTIT                                                                        |
 | **Người hướng dẫn**    | TS. Nguyễn Trung Hiếu                                                                                                         |
 | **Tác giả**            | Vũ Trí Công                                                                                                                   |

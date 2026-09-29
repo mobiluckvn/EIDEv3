@@ -1,5 +1,7 @@
 # EIDE-C4-46 — Kiến trúc theo mô hình C4
 
+*Đề tài: **PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)***
+
 *v1.0 · 29/09/2026 · Vũ Trí Công · GVHD: TS. Nguyễn Trung Hiếu*
 
 | | |

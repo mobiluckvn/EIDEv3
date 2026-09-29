@@ -11,6 +11,7 @@
 | **Phiên bản**          | v1.0 — áp dụng cho sản phẩm EIDE v1.4                                                                                                                                                       |
 | **Ngày**               | 24/09/2026                                                                                                                                                                                  |
 | **Dự án**              | EIDE — Embedded IDE có tác tử (github.com/mobiluckvn/EIDE)                                                                                                                                  |
+| **Đề tài**          | PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)                                |
 | **Khung**              | Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — PTIT                                                                                                                                      |
 | **Người hướng dẫn**    | TS. Nguyễn Trung Hiếu                                                                                                                                                                       |
 | **Tác giả**            | Vũ Trí Công                                                                                                                                                                                 |

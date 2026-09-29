@@ -10,6 +10,7 @@
 | **Tên tài liệu**       | Kiến trúc tác tử Kỹ sư Nhúng theo vòng lặp tác tử (agent loop) — LLM tham gia sâu vào mọi tương tác                                                                                                      |
 | **Phiên bản**          | v2.0 — thay thế AAD-33 v1.0 (máy trạng thái S0–S6). Áp dụng cho EIDE v1.4                                                                                                                                |
 | **Ngày**               | 25/09/2026                                                                                                                                                                                               |
+| **Đề tài**          | PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)                                |
 | **Khung**              | Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — PTIT                                                                                                                                                   |
 | **Người hướng dẫn**    | TS. Nguyễn Trung Hiếu                                                                                                                                                                                    |
 | **Tác giả**            | Vũ Trí Công                                                                                                                                                                                              |

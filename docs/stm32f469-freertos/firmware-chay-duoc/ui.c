@@ -91,13 +91,13 @@ void UI_ShowMainScreen(void)
 
     BSP_LCD_SetTextColor(LCD_COLOR_DARKBLUE);
     BSP_LCD_SetFont(&Font20);
-    BSP_LCD_DisplayStringAt(300, 130, (uint8_t *)"DO AN TOT NGHIEP", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(300, 130, (uint8_t *)"DE AN TOT NGHIEP", LEFT_MODE);
     BSP_LCD_DisplayStringAt(300, 160, (uint8_t *)"HE THONG TAC TU EIDE v3", LEFT_MODE);
 
     BSP_LCD_SetTextColor(LCD_COLOR_BLACK);
     BSP_LCD_SetFont(&Font16);
-    BSP_LCD_DisplayStringAt(300, 210, (uint8_t *)"DT: Nghien cuu & Trien khai EIDE Agent", LEFT_MODE);
-    BSP_LCD_DisplayStringAt(300, 240, (uint8_t *)"tren Bo STM32F469I-Discovery", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(300, 210, (uint8_t *)"DT: PHAT TRIEN PHAN MEM NHUNG", LEFT_MODE);
+    BSP_LCD_DisplayStringAt(300, 240, (uint8_t *)"CO UNG DUNG TRI TUE NHAN TAO(AI)", LEFT_MODE);
     BSP_LCD_DisplayStringAt(300, 280, (uint8_t *)"Hoc vien  : Vu Tri Cong", LEFT_MODE);
     BSP_LCD_DisplayStringAt(300, 310, (uint8_t *)"GVHD      : TS. Nguyen Trung Hieu", LEFT_MODE);
 

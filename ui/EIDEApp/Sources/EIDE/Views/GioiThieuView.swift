@@ -39,6 +39,7 @@ struct GioiThieuView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 14) {
+                dong_muc("Đề tài", "Phát triển phần mềm nhúng có ứng dụng trí tuệ nhân tạo (AI)", nhan_manh: true)
                 dong_muc("Đề án", "Luận văn Thạc sĩ Kỹ thuật Điện tử")
                 dong_muc("Học viện", "Học viện Công nghệ Bưu chính Viễn thông (PTIT)")
                 dong_muc("Học viên thực hiện", "Vũ Trí Công", nhan_manh: true)
