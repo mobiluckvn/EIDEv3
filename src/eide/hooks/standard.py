@@ -61,6 +61,27 @@ _DUOI_LA_MA = {".c", ".h", ".cpp", ".cc", ".hpp", ".s", ".asm", ".ino", ".py", "
                ".toml", ".dts", ".dtsi", ".conf"}
 
 
+
+def _gia_dinh_neu_bo_qua(ctx: Any) -> str:
+    """Câu "nếu bỏ qua tôi sẽ…" của lần `ask_user` gần nhất trong lượt này.
+
+    Đọc từ sổ cái vì `ctx.cong_cu_da_goi` chỉ giữ TÊN công cụ, không giữ tham số. Không có
+    thì trả chuỗi rỗng — lời nhắc vẫn dùng được, chỉ kém sắc hơn.
+    """
+    lg = getattr(ctx, "ledger", None)
+    run = getattr(ctx, "run_id", None)
+    if lg is None or not run:
+        return ""
+    try:
+        for ev in reversed(list(lg.read())):
+            d = ev.data or {}
+            if (ev.kind == "tool_use" and d.get("tool") == "ask_user"
+                    and d.get("run_id") == run):
+                return str((d.get("args") or {}).get("assumption_if_skipped") or "")[:400]
+    except Exception:                                                  # noqa: BLE001
+        return ""
+    return ""
+
 def register_standard_hooks(bus: HookBus) -> HookBus:
 
     # ================================================================== PreToolUse
@@ -349,6 +370,70 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                        "người dùng. Hãy trả lời họ: bạn đã làm gì, thấy gì, và đề nghị việc "
                        "tiếp theo. Nếu không làm được việc họ nhờ, nói thẳng là không làm "
                        "được và vì sao.\n</system-reminder>"))
+
+    @bus.on_stop
+    def hoi_xong_thi_lam_tiep(ctx: Any) -> StopResult:
+        """Hỏi xong mà chưa làm gì thì nhắc: phần nào KHÔNG phụ thuộc câu trả lời?
+
+        Đo được ngày 29/09/2026 trên ba ca Happy của bộ usecase — TC006, TC008, TC052 — và
+        đây là thứ DUY NHẤT cả 76 ca nói là sai với sản phẩm. Cả ba đều kết thúc bằng một câu
+        hỏi hợp lý và **không một hiện vật nào**.
+
+        TC052 lộ rõ nhất. Người nhờ viết unit test. Tác tử đọc mã, thấy `main.c` gắn cứng
+        thanh ghi AVR nên không chạy được trên máy chủ, **đề xuất đúng cách sửa** (tách logic
+        sang `control.c` rồi viết test cho nó), in ra giả định sẽ dùng nếu người bỏ qua…
+        rồi dừng. Mà việc tách `control.c` **không phụ thuộc câu trả lời nào** — nó làm được
+        ngay, và làm rồi thì câu hỏi còn lại hẹp hơn hẳn.
+
+        ## Vì sao luật là "làm phần không phụ thuộc" chứ không phải "hỏi ít đi"
+
+        Hạ ngưỡng hỏi là đi ngược N4 (hỏi khi thiếu thông tin) và mở đường cho đạt giả: tác
+        tử đoán bừa rồi báo xong. Luật này không đụng vào chuyện *có nên hỏi không* — nó chỉ
+        nói rằng một lượt kết thúc bằng câu hỏi mà **không để lại gì** là một lượt tiêu token
+        không đổi lấy gì. Hỏi vẫn hỏi; chỉ là hỏi sau khi đã làm phần làm được.
+
+        ## Ba cửa thoát, và vì sao cần cả ba
+
+        * `ctx.da_ghi_gi_do` — đã ghi được gì rồi thì thôi. Lấy từ **hợp đồng công cụ**
+          (`writes_artefact`), không từ tên, nên công cụ mới tự động tính.
+        * Nhắc **đúng một lần một lượt** (`da_nhac_rong`) — nhắc vòng hai là ép làm cho có.
+        * Lời nhắc nói thẳng rằng **"mọi thứ đều phụ thuộc" là một câu trả lời hợp lệ**.
+          Thiếu câu ấy thì luật này biến thành áp lực đẻ ra hiện vật rác — mà một hiện vật
+          rác còn tệ hơn một lượt trắng, vì nó trông như tiến độ.
+        """
+        goi = list(getattr(ctx, "cong_cu_da_goi", []) or [])
+        if "ask_user" not in goi:
+            return StopResult()
+        if getattr(ctx, "da_ghi_gi_do", False):
+            return StopResult()
+        nhac = getattr(ctx, "da_nhac_rong", None)
+        if nhac is None or "hoi_xong_chua_lam" in nhac:
+            return StopResult()
+        nhac.add("hoi_xong_chua_lam")
+        # Trích lại CHÍNH LỜI tác tử vừa nói nó sẽ làm nếu người bỏ qua.
+        #
+        # Đo được: lời nhắc chung chung ("phần nào không phụ thuộc?") nổ đúng lúc nhưng
+        # không đổi hành vi — tác tử chỉ hỏi lại một câu gọn hơn. Mà ngay trong thẻ nó vừa
+        # dựng đã có câu trả lời: *"nếu anh bỏ qua, em sẽ tách logic sang control.c rồi
+        # chạy test"*. Chỉ vào đúng câu ấy thì việc cần làm hết mơ hồ, và không phải ai áp
+        # đặt một việc mới — đó là việc chính nó vừa chọn.
+        gd = _gia_dinh_neu_bo_qua(ctx)
+        return StopResult(
+            another_round=True, reason_vi="hỏi xong nhưng chưa làm phần không phụ thuộc",
+            fired=["hoi_xong_thi_lam_phan_khong_phu_thuoc"],
+            injection=(
+                "<system-reminder>\nLượt này bạn đã hỏi người dùng nhưng chưa tạo ra hiện "
+                "vật nào.\n\n"
+                + (f"Chính bạn vừa viết: nếu người dùng bỏ qua thì bạn sẽ — “{gd}”.\n\n"
+                   "**Phần nào của việc ấy làm được NGAY mà không cần câu trả lời?** Làm "
+                   "phần ấy trước, rồi hỏi phần còn lại. Câu hỏi sẽ hẹp hơn và người dùng "
+                   "đỡ mất một lượt.\n\n" if gd else
+                   "Trước khi dừng, tự hỏi: **phần nào của việc này KHÔNG phụ thuộc câu trả "
+                   "lời?** Làm phần ấy đi, rồi hỏi phần còn lại.\n\n")
+                + "Mọi thay đổi đều hoàn tác được (N9), nên làm rồi mà người dùng muốn khác "
+                "thì lùi lại một lệnh — rẻ hơn hẳn một lượt trắng.\n\nNếu thật sự MỌI THỨ "
+                "đều phụ thuộc câu trả lời thì nói thẳng điều đó ra rồi dừng. Đó là câu trả "
+                "lời hợp lệ — đừng tạo một hiện vật cho có.\n</system-reminder>"))
 
     # SCH-44 SCH-09 — "không đề nghị cài KiCad ở BẤT KỲ thông điệp nào".
     #

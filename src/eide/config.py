@@ -82,7 +82,24 @@ class ContextBudget:
     # Nen: dat tran theo so THAT + mot khoang tho, va them mot ca do chan no phinh tiep
     # (`test_hien_phap_khong_duoc_phinh_qua_tran`). Mot cai tran khong ai canh thi khong
     # phai la tran — xem DEV-254.
-    constitution: int = 3600
+    # 3600 → 3700 ngày 29/09/2026, có chủ ý và có lý do.
+    #
+    # Ca `test_hien_phap_khong_duoc_phinh_qua_tran` đỏ khi hiến pháp thêm luật "hỏi không
+    # phải là dừng" (§4). Chính ca ấy nói nó là một ĐIỂM QUYẾT ĐỊNH chứ không phải lệnh cấm:
+    # *"đỏ nghĩa là ai đó vừa thêm vào hiến pháp — hãy quyết định có đáng không, đừng lặng lẽ
+    # nâng trần."*
+    #
+    # Quyết định: đáng. Luật ấy làm ba ca Happy đang trượt của bộ usecase chuyển sang đạt
+    # (TC006 · TC008 · TC052) — ba ca DUY NHẤT mà 76 ca nói là sai với sản phẩm. Trước khi
+    # nâng đã tìm chỗ cắt: §10 dài nhất (721 token) nhưng cả bảng đều chịu lực.
+    #
+    # Nâng đúng 100, không nâng nhiều hơn. Hiến pháp nay 3676 token, nên lần thêm sau vẫn
+    # chạm trần và vẫn phải mở lại đúng cuộc trò chuyện này. Nâng dư ra là tắt cái phanh.
+    #
+    # Chỗ này KHÁC với "sửa tiêu chí cho vừa kết quả" mà N6 cấm: N6 cấm hạ ngưỡng ĐẠT để một
+    # phép thử hỏng thành đạt. Đây là một ngân sách token, và nó vừa mua được một hành vi đo
+    # được — không phải một ô xanh.
+    constitution: int = 3700
     tool_schema: int = 4000          # khoi 2 — luoc do tool hien thi
     eide_md: int = 3000
     inventory: int = 800

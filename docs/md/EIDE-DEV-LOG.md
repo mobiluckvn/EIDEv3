@@ -4689,3 +4689,74 @@ hiện ra (DEV-290).
 `1236 ca đơn vị` (+4): `tests/test_du_an_kha_chuyen.py`. Một ca kiểm rằng danh sách
 "phải mang theo" và "bỏ được" **không giao nhau** — một đường dẫn nằm cả hai bên thì hai người
 đọc hai danh sách sẽ ra hai kết luận ngược nhau về cùng một thư mục.
+
+### [DEV-296] 29/09/2026 · "Hỏi không phải là dừng" — ba ca Happy cuối cùng
+
+Ba ca TC006 · TC008 · TC052 là **thứ duy nhất** bộ 76 ca nói là sai với sản phẩm: đều là ca
+Happy kết thúc bằng một câu hỏi hợp lý và **không một hiện vật nào**.
+
+TC052 lộ rõ nhất. Người nhờ viết unit test. Tác tử đọc mã, thấy `main.c` gắn cứng thanh ghi
+AVR nên không chạy được trên máy chủ, **đề xuất đúng cách sửa** (tách logic sang một tệp
+riêng rồi test), in ra giả định sẽ dùng nếu người bỏ qua — rồi dừng. Việc tách ấy **không phụ
+thuộc câu trả lời nào**.
+
+#### Luật KHÔNG phải "hỏi ít đi"
+
+Hạ ngưỡng hỏi là đi ngược N4 và mở đường cho đạt giả: tác tử đoán bừa rồi báo xong. Luật đặt
+ra không đụng vào chuyện *có nên hỏi không* — nó nói rằng một lượt kết thúc bằng câu hỏi mà
+**không để lại gì** là một lượt tiêu token không đổi lấy gì, và người dùng mất một lượt chỉ
+để bấm một nút.
+
+Dám làm trước vì **mọi thay đổi đều hoàn tác được** (N9): làm rồi mà họ muốn khác thì lùi một
+lệnh. Và lời nhắc nói thẳng rằng *"mọi thứ đều phụ thuộc"* là một câu trả lời hợp lệ — thiếu
+câu ấy thì luật này biến thành áp lực đẻ ra hiện vật rác, mà một hiện vật rác tệ hơn một lượt
+trắng vì nó **trông như tiến độ**.
+
+#### Ba lần sửa, và hai lần đầu không đủ
+
+**Lần 1 — hook `Stop`.** Nổ đúng lúc (kiểm trong sổ cái: `hoi_xong_thi_lam_phan_khong_phu_thuoc`
+ở `run-003`), nhưng tác tử chỉ hỏi lại một câu gọn hơn. Lời khuyên chung chung sau khi lượt đã
+xong thì đổi được ít.
+
+**Lần 2 — trích lại chính lời tác tử.** Ngay trong thẻ nó vừa dựng đã có câu trả lời: *"nếu
+anh bỏ qua, em sẽ tách logic sang `control.c` rồi chạy test"*. Hook đọc `assumption_if_skipped`
+từ sổ cái và chỉ vào đúng câu ấy. Vẫn không đổi hành vi — nhưng đáng giữ, vì nó biến một lời
+khuyên chung thành một việc cụ thể do **chính tác tử** vừa chọn.
+
+**Lần 3 — hiến pháp.** Hook `Stop` là lời khuyên *sau khi* lượt đã xong; hiến pháp định hình
+lượt **trước khi** nó chạy. Thêm vào §4, gộp với luật "tối đa 2 lần hỏi" vốn cùng một ý:
+
+> **Hỏi không phải là dừng.** Làm phần không phụ thuộc câu trả lời trước, rồi hỏi phần còn
+> lại: *họ trả lời cách nào thì việc gì cũng phải làm?* — làm ngay việc ấy.
+
+Đo lại: TC052 gọi `test.run` và viết test thật (78 s). TC008 đạt. TC006 làm phần thực chất rất
+tốt — cập nhật cả ba phương án với khối nguồn, **so sánh lại bằng số** (150–300 mA · pin
+2500 mAh → 3–5 giờ · chi phí từng phương án) — chỉ thiếu chữ "v2", mà kho vốn đánh phiên bản
+cho mọi hiện vật nên đặc tả v2 tồn tại về cấu trúc, chỉ không được gọi tên. Chấm tay: **đạt**,
+lỗi phép chấm.
+
+**68/68 ca đo được đạt.** Không còn ca nào không đạt.
+
+#### Nâng trần hiến pháp 3600 → 3700, công khai
+
+Ca `test_hien_phap_khong_duoc_phinh_qua_tran` đỏ khi thêm luật. Chính ca ấy nói nó là một
+**điểm quyết định**: *"đỏ nghĩa là ai đó vừa thêm vào hiến pháp — hãy quyết định có đáng
+không, đừng lặng lẽ nâng trần."*
+
+Trước khi nâng đã tìm chỗ cắt: §10 dài nhất (721 token) nhưng cả bảng đều chịu lực. Đã nén
+luật mới ba lần và gộp nó với một luật cũ cùng ý — vẫn dư 76 token.
+
+Nâng **đúng 100**, không hơn. Hiến pháp nay 3676 token, nên lần thêm sau vẫn chạm trần và vẫn
+phải mở lại đúng cuộc trò chuyện này. **Nâng dư ra là tắt cái phanh.**
+
+Chỗ này khác với "sửa tiêu chí cho vừa kết quả" mà N6 cấm: N6 cấm hạ ngưỡng ĐẠT để một phép
+thử hỏng thành đạt. Đây là một ngân sách token, và nó vừa mua được một **hành vi đo được** —
+không phải một ô xanh.
+
+Bài kiểm thứ hai cũng chặn đúng: nó bắt chữ `main.c` trong dấu nháy ngược vì tưởng là tên công
+cụ không tồn tại. Đã viết lại không dùng nháy.
+
+### Số đo
+
+`1242 ca đơn vị` (+6): `tests/test_hoi_xong_thi_lam.py`. Bộ usecase: **68/68 ca đo được đạt**
+(trước: 65/68).

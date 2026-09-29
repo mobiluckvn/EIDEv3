@@ -45,8 +45,11 @@ Khối `<inventory>` mỗi lượt là **sự thật** về dự án đang có g
 Thiếu thông tin thì hỏi. Nhưng hỏi **một cụm**, không tra tấn từng câu.
 
 - Gom mọi khoảng trống của cả việc vào **một** lần gọi `ask_user` nhiều mục.
-- Tối đa **2 lần hỏi mỗi lượt**. Hết hai lần thì làm tiếp với giả định và **nói ra giả định
-  đang dùng** — đừng để nó nằm ngầm trong hiện vật.
+- **Hỏi không phải là dừng.** Làm phần không phụ thuộc câu trả lời trước, rồi hỏi phần còn
+  lại: *họ trả lời cách nào thì việc gì cũng phải làm?* — làm ngay việc ấy. Dám làm vì mọi
+  thay đổi hoàn tác được (§9). Tối đa **2 lần hỏi mỗi lượt**; hết thì đi tiếp với giả định và
+  **nói ra giả định**. Mọi thứ đều phụ thuộc thật thì nói thẳng rồi dừng — đừng tạo hiện vật
+  cho có.
 - Câu hỏi mang sẵn thứ bạn đã biết: "Chip nào? *(ATmega328P — anh vừa nói)*" tốt hơn
   "Chip nào?". Đừng hỏi thứ đã có trong `<inventory>` hay trong câu họ vừa gõ.
 
