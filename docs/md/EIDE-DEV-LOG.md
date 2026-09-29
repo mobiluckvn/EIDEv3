@@ -4612,3 +4612,80 @@ tồn tại.
 `1232 ca đơn vị` (không đổi). **0 chỗ lệch chắc chắn** giữa 14 tệp tài liệu và mã. Bốn tài
 liệu chuyên đề đã đọc và đối chiếu nội dung: MEM-42 khớp · ING-43 sửa bảng mã lỗi · SCH-44 bổ
 sung công cụ thứ chín · HIER-45 đúng, README sai theo.
+
+### [DEV-295] 29/09/2026 · Quy hoạch dữ liệu dự án để chép đi được · `du-an.json` · ba chỗ menu
+
+#### Đo trước: chép thư mục đi thì cái gì vỡ
+
+Câu này không đoán được, phải đếm. Trong `du-lieu/stm32f469-freertos`:
+
+| Nơi | Số đường dẫn TUYỆT ĐỐI |
+|---|---|
+| `.eide/store.sqlite` | **169** |
+| `.eide/ledger.jsonl` | 41 |
+| `.eide/sessions/` | 57 |
+| `EIDE.md` · `changesets.jsonl` · `counters.json` | 0 |
+
+Soi tiếp theo cột thì ra hai nhóm khác hẳn nhau:
+
+* **168 chỗ nằm trong `events.payload` và `artefacts.canonical`** — kết quả công cụ (lệnh biên
+  dịch, đường dẫn tệp test). Chúng chỉ *lộ bố cục máy cũ*; không ai đọc chúng để chạy.
+* **Đúng MỘT chỗ hỏng thật:** `artefacts.view_hint.path` của `target.screen` ghi đường dẫn
+  tuyệt đối tới ảnh khung hình. Chép sang máy khác thì ảnh không mở được. Đã sửa thành đường
+  dẫn tương đối so với gốc dự án.
+
+Một hiện vật **sống lâu hơn cái máy sinh ra nó** — đó là toàn bộ lý do chỗ này đáng sửa.
+
+#### `du-an.json` — thẻ căn cước nằm ngay trong thư mục
+
+`src/eide/du_an.py`. Ghi khi mở dự án và cuối mỗi lượt. Trước nó, người cầm thư mục không có
+cách nào biết ba điều mà không mở EIDE lên: đây có phải dự án EIDE không · nó đang ở đâu ·
+**chép đi thì phải mang theo cái gì**.
+
+Câu thứ ba đắt nhất. Thư mục đo được 14,5 MB, trong đó `.eide/build/` chiếm **3,0 MB** và
+dựng lại được. Không nói ra thì người ta hoặc chép cả đống, hoặc — tệ hơn — lọc bằng cảm giác
+và bỏ mất sổ cái.
+
+**Ba hạng**, và phân hạng nằm trong chính tệp chứ không trong đầu người viết công cụ sao lưu:
+
+| Hạng | Mất thì sao |
+|---|---|
+| `ben` | **Mất là mất hẳn** — sổ cái · kho · changeset · blob · EIDE.md · `.git` · công cụ tự viết |
+| `dung_lai_duoc` | Tốn thời gian, không mất thông tin — `.eide/build/` |
+| `tam` | Bỏ được ngay — kênh kiểm giao diện, ảnh nháp |
+
+**Bài kiểm bắt một lỗ hổng trong thiết kế đầu của tôi.** Bản đầu chỉ liệt kê mục *đang tồn
+tại*, nên một dự án vừa mở (chưa ghi sổ cái lần nào) sinh ra `du-an.json` **không nhắc tới
+`ledger.jsonl`** — người đọc tệp ấy để biết phải chép gì sẽ không chép nó. Danh sách
+"phải mang theo" là một **hợp đồng**, không phải ảnh chụp hiện trạng: thiếu một dòng ở đây là
+mất một thứ ở kia. Nay liệt kê đủ bảng, mục chưa có thì đánh `co: false`.
+
+**Kiểm bằng cách làm thật:** chép dự án sang `/tmp` theo đúng danh sách của chính tệp ấy, rồi
+mở bản chép. Sổ cái toàn vẹn 2 315 sự kiện · 6 hiện vật mã nguồn + 2 mạch thật · EIDE.md 73
+dòng · `git log` nguyên. Bỏ lại 3,0 MB.
+
+#### Ba chỗ menu
+
+**`⌘Z` gây hiểu nhầm.** Đo bằng cách bảo app **tự khai thanh menu** của nó (lệnh `menu` mới
+của kênh kiểm): `Edit ▸ Undo ⌘Z` có sẵn, và nó lùi **chữ vừa gõ**, không lùi việc tác tử vừa
+làm. Người bấm ⌘Z mong lùi một thay đổi của dự án sẽ nhận một kết quả hợp lý mà sai — loại
+nhầm khó phát hiện nhất, vì không có thông báo nào. Nay `Tác tử ▸ Hoàn tác việc vừa làm ⌥⌘Z`
+nằm ngay trên `Dừng khẩn`, tên khác và phím khác để đọc là thấy khác.
+
+**Hai menu rỗng.** `View` và `Help` do macOS tự thêm cho một `WindowGroup`; app không có
+sidebar, không thanh công cụ, không tệp trợ giúp. Một menu rỗng là một lời hứa không có gì sau
+lưng — cùng họ với thẻ cổng bấm được mà không làm gì (DEV-289) và nhãn "không còn ở đây" không
+hiện ra (DEV-290).
+
+`Help` bỏ được. `View` thì SwiftUI **dựng lại sau mỗi lần gỡ** — đo được: gọi gỡ một lần không
+ăn, gọi lặp 6 nhịp vẫn còn. Thay vì đuổi theo khung nhìn bằng một cái đồng hồ mỗi lúc một dài,
+**đổ vào đó thứ vốn thuộc về nó**: ba bề rộng Console, trước nay chỉ bấm được bằng chuột. Dọn
+được một menu rỗng và thêm một đường cho bàn phím, bằng cùng một thay đổi.
+
+Đo lại sau khi sửa: `Menu RỖNG còn lại: KHÔNG CÒN CÁI NÀO`.
+
+### Số đo
+
+`1236 ca đơn vị` (+4): `tests/test_du_an_kha_chuyen.py`. Một ca kiểm rằng danh sách
+"phải mang theo" và "bỏ được" **không giao nhau** — một đường dẫn nằm cả hai bên thì hai người
+đọc hai danh sách sẽ ra hai kết luận ngược nhau về cùng một thư mục.

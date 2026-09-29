@@ -17,6 +17,7 @@ struct EIDEApp: App {
                 .task {
                     // Mở cửa sổ nằm trọn trong màn hình đang dùng (xem `DatCuaSo`).
                     DatCuaSo.motLan()
+                    MenuDon.boMenuRong()
                     state.taoDuAnTai = { try setup.taoDuAn(tai: URL(fileURLWithPath: $0)) }
                     state.moDuAnKhac = { d in
                         setup.duAnPath = d
@@ -63,12 +64,44 @@ struct EIDEApp: App {
                 Button("Giới thiệu EIDE") { GioiThieuCuaSo.hien() }
             }
             CommandMenu("Tác tử") {
+                // ⌘Z của macOS là Undo của Ô VĂN BẢN, không phải của dự án.
+                //
+                // Đo được 29/09/2026 bằng cách bảo app tự khai thanh menu: Edit ▸ Undo ⌘Z có
+                // sẵn và nó lùi chữ vừa gõ. Người bấm ⌘Z mong lùi việc tác tử vừa làm sẽ
+                // được một kết quả hợp lý mà sai — loại nhầm khó phát hiện nhất, vì không có
+                // thông báo nào.
+                //
+                // Nên việc lùi DỰ ÁN có phím riêng và tên riêng, đặt cạnh nhau để đọc là
+                // thấy khác nhau.
+                Button("Hoàn tác việc vừa làm") {
+                    state.gui(.say("Hoàn tác việc bạn vừa làm giúp mình."))
+                }
+                .keyboardShortcut("z", modifiers: [.command, .option])
+                .disabled(!state.connection.ok || state.busy)
+                Divider()
                 Button("Dừng khẩn") { state.gui(.stopNow()) }
                     .keyboardShortcut(".", modifiers: .command)
-                Divider()
                 Button("Vẽ lại bề mặt") { Task { await state.veLai() } }
                     .keyboardShortcut("r", modifiers: .command)
             }
+            // `View` và `Help` là hai menu macOS tự thêm cho một `WindowGroup`. App này
+            // không có sidebar, không có thanh công cụ, không có tệp trợ giúp — nên bỏ ba
+            // nhóm lệnh ấy đi.
+            //
+            // `Help` biến mất hẳn. `View` thì SwiftUI dựng lại sau mỗi lần gỡ, nên thay vì
+            // đuổi theo nó bằng một cái đồng hồ mỗi lúc một dài, ĐỔ VÀO ĐÓ thứ vốn thuộc về
+            // nó: ba bề rộng Console. Trước đây chúng chỉ bấm được bằng chuột, không có phím
+            // tắt nào — nên đây vừa dọn được một menu rỗng vừa thêm một đường cho bàn phím.
+            CommandGroup(replacing: .sidebar) {
+                Picker("Bề rộng bàn giao tiếp", selection: $state.consoleWidth) {
+                    Text("Hẹp").tag(AppState.ConsoleWidth.hep)
+                    Text("Vừa").tag(AppState.ConsoleWidth.vua)
+                    Text("Rộng").tag(AppState.ConsoleWidth.rong)
+                }
+                .pickerStyle(.inline)
+            }
+            CommandGroup(replacing: .toolbar) {}
+            CommandGroup(replacing: .help) {}
         }
     }
 
@@ -109,6 +142,41 @@ struct EIDEApp: App {
     @MainActor private func moRoiGhiNho() async {
         await state.mo(python: setup.pythonURL, repo: setup.repoURL, duAn: setup.duAnURL)
         if state.connection.ok { setup.ghiNho(setup.duAnPath) }
+    }
+}
+
+
+/// Bỏ khỏi thanh menu những menu KHÔNG có mục nào.
+///
+/// macOS tự thêm `View` và `Help` cho một `WindowGroup`. App này không có sidebar, không có
+/// thanh công cụ, không có tệp trợ giúp — nên sau khi thay chúng bằng nhóm rỗng, hai cái tên
+/// ấy vẫn nằm trên thanh menu với **không mục nào bên trong**.
+///
+/// Một menu rỗng là một lời hứa không có gì sau lưng: người bấm vào, thấy trống, và không
+/// biết đó là lỗi hay là chưa làm. Cùng họ với thẻ cổng bấm được mà không làm gì (DEV-289)
+/// và nhãn "không còn ở đây" không hiện ra (DEV-290).
+///
+/// Lọc theo **số mục**, không theo tên: tên menu đổi theo ngôn ngữ hệ thống, còn "rỗng" thì
+/// không.
+@MainActor
+enum MenuDon {
+    /// Gọi lặp vài nhịp, không gọi một lần.
+    ///
+    /// SwiftUI dựng thanh menu SAU khi `.task` của khung gốc chạy, nên một lần gọi duy nhất
+    /// không đụng được vào gì — đo được đúng như vậy: gọi một lần thì `View` và `Help` vẫn
+    /// còn nguyên với 0 mục. Và nó còn dựng lại menu mỗi khi `commands` đổi, nên phải quét
+    /// thêm vài nhịp nữa thay vì tin lần đầu.
+    static func boMenuRong(soLan: Int = 6) {
+        guard soLan > 0 else { return }
+        let thanh = NSApp.mainMenu
+        if let thanh {
+            for m in thanh.items.reversed() where (m.submenu?.items.isEmpty ?? false) {
+                thanh.removeItem(m)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            boMenuRong(soLan: soLan - 1)
+        }
     }
 }
 

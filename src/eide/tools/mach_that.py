@@ -349,7 +349,16 @@ def dang_ky(r: Registry) -> None:
                      "why": "phân biệt vẽ sai với panel không hiện",
                      "sources": ["openocd", "LTDC"], "diff_prev": "—", "next": "—",
                      "confidence": "VANG"},
-            view_hint={"kind": "image", "path": str(ra_tep)})
+            # Đường dẫn TƯƠNG ĐỐI so với gốc dự án.
+            #
+            # Hiện vật sống lâu hơn cái máy sinh ra nó: chép thư mục dự án sang máy khác thì
+            # một đường dẫn tuyệt đối trỏ về chỗ cũ, và ảnh không mở được. Đo được ngày
+            # 29/09/2026 — đây là chỗ DUY NHẤT trong kho ghim đường dẫn tuyệt đối vào một
+            # hiện vật (169 chỗ còn lại đều nằm trong kết quả công cụ, chỉ lộ bố cục máy cũ
+            # chứ không ai đọc để chạy).
+            view_hint={"kind": "image",
+                       "path": str(ra_tep.relative_to(goc)
+                                   if ra_tep.is_relative_to(goc) else ra_tep)})
         cau_duong = ""
         if duong.get("dat"):
             cau_duong = "Đi dọc chuỗi hiển thị: " + " · ".join(

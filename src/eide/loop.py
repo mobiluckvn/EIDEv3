@@ -33,6 +33,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from .du_an import ThongTinDuAn
 from .config import Config
 from .context import assemble
 from .errors import EideError, budget_exhausted, gate_pending
@@ -201,6 +202,12 @@ class Agent:
         self.session_id = self.ids.next("ses")
         self.transcript = self.phien.transcript(self.session_id)
         self.phuc_hoi = self._doc_phien_do()
+        # Tấm thẻ căn cước của dự án, ghi ngay khi mở — xem `du_an.py`.
+        #
+        # Ghi ở ĐÂY chứ không chỉ ở cuối lượt: một dự án vừa mở rồi đóng ngay cũng phải có
+        # tệp ấy, nếu không thì thư mục nhìn từ ngoài vẫn là một mớ không tên.
+        self.thong_tin = ThongTinDuAn(p.project_root)
+        self._ghi_thong_tin()
         self.bo_nen = mem.BoNen(llm=llm, ledger=self.ledger, store=self.store,
                                 eide_md=self.eide_md, transcript=self.transcript)
         self.nhat_ky_nen: list[dict[str, Any]] = []
@@ -248,6 +255,14 @@ class Agent:
                                f"lời gọi công cụ không có kết quả, {bc.dong_hong} dòng hỏng."),
                 "goi_dang_do": bc.goi_dang_do})
         return bc
+
+    def _ghi_thong_tin(self) -> None:
+        """Cập nhật `du-an.json`. Không được làm hỏng lượt chạy — xem `ThongTinDuAn.ghi`."""
+        try:
+            self.thong_tin.ghi(ten=self.project_name, store=self.store,
+                               ledger=self.ledger, eide_md=self.eide_md)
+        except Exception:                                              # noqa: BLE001
+            pass
 
     def dong_phien(self) -> None:
         """Đánh dấu phiên kết thúc sạch — để lần mở sau biết không cần phục hồi."""
@@ -314,6 +329,7 @@ class Agent:
             report = self._report(ctx)
             self.last_report = report
             self.ledger.append("turn.end", {"run_id": run_id, **report})
+            self._ghi_thong_tin()
             if not im_lang:
                 emit(uic.run_update(
                     run_id, status="waiting" if ctx.awaiting_human else "done",
