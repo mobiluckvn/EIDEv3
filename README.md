@@ -8,7 +8,8 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 - **Kiến trúc theo mô hình C4 (mã đang thế nào):** [`docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md`](docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md)
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
-- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1339 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
+- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1344 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
+- **Việc thật tác tử đã làm xong:** [một RTOS viết từ số không thay FreeRTOS trên STM32F469I-DISCO](docs/rtos-tu-viet/) — [báo cáo 12 trang](docs/rtos-tu-viet/bao-cao/BAO-CAO-RTOS.docx) kèm thiết kế C4, thời gian, chi phí và ước lượng nếu thuê người
 - **Kết quả đo mới nhất (30/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
 - **Đề tài:** PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)
 - Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — Học viện Công nghệ Bưu chính Viễn thông (PTIT) · Học viên: Vũ Trí Công · GVHD: TS. Nguyễn Trung Hiếu
@@ -23,6 +24,7 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **Việc lớn nhiều chặng** | Chia bước → mỗi bước để lại hiện vật **mở ra xem được** → `plan.merge` ráp lại, kê rõ phần nào không gộp được | [§11](#11--việc-lớn-chia-nhiều-chặng-ghi-từng-chặng-rồi-hợp-nhất) |
 | **Nhánh gộp được** | `branch.merge`: tệp bằng git (xung đột thì **huỷ phép gộp**), hiện vật so ba bên; cả hai bên cùng đổi thì **không tự trộn** | [§10](#10--lịch-sử-nhánh-bản-ưng-ý--ba-mức-lùi-lại) |
 | **Tác tử tự viết công cụ** | `tool.propose` đã **nổ thật**: xin một tệp PowerPoint, nó tự viết `doc.pptx` kèm bộ kiểm rồi dùng | [§12](#12--tự-kiểm-chứng-và-tự-bù-năng-lực) |
+| **Một RTOS viết từ số không** | Thay hẳn FreeRTOS trên STM32F469I-DISCO: nhân 689 dòng, tiền định đa mức ưu tiên, **chạy thật trên bo** — LCD 800×480 và cảm ứng lên đúng như bản cũ, tốn **ít hơn 22 828 B RAM** | [§18](#18--bài-kiểm-lớn-nhất-một-rtos-viết-từ-số-không) |
 
 Và một việc không thêm tính năng nào nhưng đáng kể hơn cả: rà toàn bộ sổ cái thấy **31/121
 công cụ chưa nổ lần nào**. Bảy đường dẫn bị đứt đã nối, phần còn lại được giao đúng loại việc
@@ -413,6 +415,91 @@ dùng là đã sửa tệp của họ**.
 * **Ảnh chụp do chính app tự vẽ**, không dùng `screencapture` theo vùng — chụp theo vùng đã hai
   lần lọt cửa sổ khác vào ảnh, một lần có cả tệp `.env` kèm khoá API.
 
+### 18 · Bài kiểm lớn nhất: một RTOS viết từ số không
+
+Mười bảy mục trên là *năng lực*. Mục này là **một việc thật đã làm xong**, vì một danh sách
+năng lực không nói được điều quan trọng nhất: tác tử có gánh nổi một khối lượng phức tạp có
+thật hay không.
+
+Đề bài: **bỏ FreeRTOS, viết một hệ điều hành thời gian thực mới** cho bo STM32F469I-DISCO,
+chạy được tới khi màn hình LCD và cảm ứng lên đúng như bản cũ. Không phải bài tập — cùng một
+bo, cùng một tệp driver, và **cùng một cái màn hình phải sáng lên**.
+
+#### Nó đã làm gì
+
+| | |
+|---|---|
+| Nhân RTOS viết mới | **689 dòng** — `rtos_core.c` 223 · `rtos_port.c` 166 · `rtos_queue.c` 122 · `rtos_types.h` 178 |
+| Ứng dụng viết mới | `main.c` **340 dòng**, 6 tác vụ chạy song song |
+| Mã **dùng lại không sửa một dòng** | 757 dòng driver (`ui.c` · `touch.c` · `startup.c` · `libc_stub.c`) |
+| Kiến trúc | Tiền định đa mức ưu tiên, chuyển ngữ cảnh bằng `PendSV`, bitmap chọn tác vụ O(1), TCB cấp phát **tĩnh** |
+| Chọn kiến trúc thế nào | Tự nêu **ba phương án**, so bằng số, người chốt qua cổng `G-DESIGN` |
+| Bằng chứng chạy thật | [ảnh màn hình đọc ngược từ khung hình của chip](docs/rtos-tu-viet/ket-qua/man-hinh-rtos-tu-viet.png) — không phải ảnh chụp mô phỏng |
+
+#### So với bản FreeRTOS trên cùng bo
+
+| | RTOS tự viết | FreeRTOS | |
+|---|---|---|---|
+| Flash | 260 204 B | 263 740 B | **−3 536 B** |
+| RAM tĩnh (`.bss`) | **13 596 B** | 36 424 B | **−22 828 B** (−63 %) |
+| Ký hiệu **nhân** FreeRTOS trong tệp ảnh | **0** | 14 | thay thật, không phải bọc lại |
+| LCD 800×480 · cảm ứng · 6 tác vụ | đạt | đạt | mắt người xác nhận |
+
+Ít hơn **22 828 B RAM** không phải vì viết khéo hơn: FreeRTOS cấp stack cho mọi tác vụ từ một
+heap chung có cấu hình dư, còn nhân này cấp tĩnh đúng bằng con số đã tính. Đó là **một đánh
+đổi**, không phải một chiến thắng — đổi mềm dẻo lúc chạy lấy chỗ nhớ.
+
+Một chỗ dễ đọc nhầm, nói trước: chạy `nm` trên tệp ảnh mới vẫn thấy **6 ký hiệu tên `vTask…`**
+— `vTaskLED1`, `vTaskLCD`, `vTaskButton`… Đó là **hàm tác vụ của ứng dụng**, giữ nguyên lối đặt
+tên từ bản cũ để đối chiếu cho dễ, không phải mã FreeRTOS. Mười bốn ký hiệu nhân thật
+(`xTaskCreate` · `vTaskSwitchContext` · `pxCurrentTCB` · `xQueueGenericSend` …) thì **không còn
+cái nào**.
+
+#### Điều đáng nói hơn cả con số
+
+Bốn tệp nhân, **mỗi tệp đúng một lần ghi** — viết xong biên dịch được ngay, không sửa lại lần
+nào. `main.c` thì 6 changeset, và cả 6 đều là **sửa lỗi phần cứng**, không phải sửa lỗi nhân.
+
+Ba lỗi phần cứng ấy là phần thật sự khó, và không lỗi nào tìm ra bằng cách đọc mã:
+
+1. **Màn đen, LED vẫn nháy** — tác tử đọc ngược thanh ghi từ chip: `DSI_WISR` có `PLLLS=0`.
+   `HAL_Delay()` đã bị nối vào `rtos_delay_ms()`, nên bộ khởi tạo DSI *nhường quyền* giữa
+   chừng và PLL không bao giờ khoá. Lỗi nằm ở **chỗ hai thứ gặp nhau**, không nằm trong tệp nào.
+2. **Cảm ứng không ăn** — vòng `NOP` cố định trong `i2c_delay()` viết cho 168 MHz, chạy ở
+   180 MHz thì vượt 600 kHz.
+3. **Biên dịch "thành công" mà tệp ảnh 1 416 byte** — không có ký hiệu LCD nào. `build.compile`
+   nay nói thẳng tệp nguồn nào **không vào tệp ảnh**, ngay đầu câu trả lời.
+
+Lỗi 3 là lỗi của **EIDE**, không phải của tác tử — làm việc thật mới lộ ra. *`ok` nói về lời
+gọi, không nói về kết quả.*
+
+#### Giá phải trả
+
+| | |
+|---|---|
+| Thời gian | **81,2 phút** (46 lượt: 21 lần người gõ · 9 lần quyết cổng · 15 lần xem · 1 lần chọn) |
+| Tiền mô hình | **≈ 34 000 đồng** — 351 lời gọi (307 vòng chính + 44 của tác tử con), chỉ `gemini-3.8-flash` |
+| Nếu thuê người làm | **31,7 ngày công ±2,3**, 4–5 tuần lịch, **≈ 111 triệu đồng** — ước lượng PERT, kiểm chéo COCOMO |
+
+Ba điều bảng này **không** chứng minh, nói ra để không bị đọc quá tay: nhân mới chưa qua thử
+nghiệm dài hạn và chưa đo độ trễ bằng máy, nên **chưa phải cùng một sản phẩm** với FreeRTOS đã
+mười năm tuổi; người vẫn nằm trên **đường găng** — cả ba lỗi phần cứng đều bắt đầu từ việc
+người nhìn vào bo; và tiền mô hình không phải toàn bộ chi phí.
+
+#### Mở ra xem được
+
+Toàn bộ dấu vết đã đẩy lên git, không chỉ kết quả:
+
+* [`docs/rtos-tu-viet/firmware-chay-duoc/`](docs/rtos-tu-viet/firmware-chay-duoc/) — mã nguồn
+  và tệp ảnh **đúng bản đang chạy trên bo**
+* [`docs/rtos-tu-viet/ho-so-tac-tu/`](docs/rtos-tu-viet/ho-so-tac-tu/) — 3 915 sự kiện sổ cái,
+  20 changeset, 13 transcript phiên
+* [`docs/rtos-tu-viet/nhat-ky-llm/`](docs/rtos-tu-viet/nhat-ky-llm/) — **351 lời gọi mô hình,
+  mỗi lời gọi kèm nguyên văn gửi đi và nguyên văn trả về** (`EIDE_GHI_LLM=1`)
+* [`BAO-CAO-RTOS.docx`](docs/rtos-tu-viet/bao-cao/BAO-CAO-RTOS.docx) ·
+  [`.pdf`](docs/rtos-tu-viet/bao-cao/BAO-CAO-RTOS.pdf) — báo cáo 12 trang, thiết kế C4 bốn mức,
+  **do chính `doc.render` của EIDE dựng ra**
+
 ### Đã đo được gì
 
 | Phép đo | Kết quả | Nguồn |
@@ -427,6 +514,7 @@ dùng là đã sửa tệp của họ**.
 | Mã ↔ tài liệu thiết kế | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
 | Ca đơn vị | **1339** | `pytest tests/ -q` |
 | Bo thật STM32F469I-DISCO | LCD 800×480 + cảm ứng + FreeRTOS đa tác vụ, đã xác nhận bằng mắt | [`docs/stm32f469-freertos/`](docs/stm32f469-freertos/) |
+| **RTOS tự viết thay FreeRTOS** trên cùng bo | nhân **689 dòng** chạy thật · LCD + cảm ứng + 6 tác vụ đạt · **0** ký hiệu nhân FreeRTOS · **−22 828 B** RAM | [§18](#18--bài-kiểm-lớn-nhất-một-rtos-viết-từ-số-không) · [`docs/rtos-tu-viet/`](docs/rtos-tu-viet/) |
 
 Mỗi ca kiểm có một tệp log riêng kèm **bảng từng lời gọi công cụ, tham số đầy đủ và mã lỗi**:
 [`ket-qua-chay-lai/nhat-ky/`](docs/review-v3/test/ket-qua-chay-lai/nhat-ky/).
@@ -474,6 +562,7 @@ nhau, và trộn chúng vào một cột là nói sai về sản phẩm.
 | **Việc nhiều chặng** | `plan.step_done` đòi hiện vật **mở ra xem được** (tệp/hiện vật/changeset), không nhận một câu kể lại · `plan.merge` ráp các phần theo đúng thứ tự bước, sinh mục lục, hạ cấp tiêu đề, **kê phần không gộp được ngay trong tài liệu** · kế hoạch mới không làm mất kế hoạch cũ · `plan.exit` cảnh báo khi nhiều bước cùng ghi một tệp | xong |
 | **Quy trình lập trình** | **`E4020`** không ghi đè tệp chưa đọc trọn · **mốc lùi tự động** ở lần sửa đầu mỗi lượt · **`E6009`** kế hoạch viết mã mới phải chọn kiến trúc + nói cấu trúc mã, kế hoạch sửa mã phải có `code.analyze` · `code.analyze` tách **dữ kiện** (mã quét: ai đang gọi) khỏi **nhận định** (tác tử con `code-analyst`) | xong |
 | **Nhánh gộp được** | `branch.merge` — tệp gộp bằng git (**xung đột thì huỷ phép gộp**, không để lại cây làm việc dở), hiện vật so ba bên và chỉ lấy phần một bên đổi; cả hai bên cùng đổi thì để nguyên và kê ra · `chuyen_nhanh` nay khôi phục **cả kho hiện vật**, không chỉ tệp | xong |
+| **RTOS viết từ số không** | Tác tử thay hẳn FreeRTOS trên STM32F469I-DISCO: tự nêu **ba phương án kiến trúc** → người chốt qua `G-DESIGN` → nhân **689 dòng** (`PendSV` · bitmap O(1) · TCB tĩnh) → **LCD 800×480 + cảm ứng chạy thật trên bo** · bốn tệp nhân mỗi tệp **đúng một lần ghi** · ba lỗi phần cứng dò tới thanh ghi `DSI_WISR` · toàn bộ 351 lời gọi mô hình ghi nguyên văn | xong |
 | **Đường dẫn tới công cụ** | Rà toàn bộ sổ cái: **31/121 công cụ chưa nổ lần nào** → nối bảy đường đứt (`skill.load` · `history.undo_30s` · `store.req_update` · `stale.accept` · `memory.undo_compact` · `plan.step_done` · `code.analyze`) rồi giao đúng loại việc cho phần còn lại → **110/121 đã nổ thật** | xong |
 
 ## Cài và chạy

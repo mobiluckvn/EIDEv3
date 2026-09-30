@@ -5776,3 +5776,71 @@ Cả ba đều thuộc loại **số đo không bắt được**: `so_bang`, `so
 ### Số đo
 
 **1 344 ca đơn vị** (+3) · báo cáo 12 trang / 15 bảng / 4 sơ đồ · bộ dò tài liệu **0 chỗ lệch**.
+
+---
+
+### [DEV-314] 30/09/2026 · README nói về RTOS tự viết — và năm con số sai bắt được khi đi kiểm
+
+Anh Công bảo đẩy mã RTOS lên git rồi mô tả nó trên README "để biết giá trị của agent này".
+Mã thì **đã ở trên git từ `f8d9d7b`** — việc còn lại là kể cho đúng. Nhưng để kể, phải tra lại
+từng con số định viết ra. Năm con số không trụ được.
+
+#### Năm con số sai, và vì sao chúng sai
+
+| Định viết | Thật ra | Vì sao lệch |
+|---|---|---|
+| Flash **259 488 B** | **260 204 B** | số của bản dựng **trước** khi vá lỗi DSI; bản vá thêm 716 B |
+| "**1 029 dòng nhân RTOS**" | nhân **689**, còn 340 là `main.c` | 1 029 là nhân **cộng** ứng dụng — câu chữ gộp hai thứ làm một |
+| "**0 ký hiệu** FreeRTOS" | `nm` cho **6** khớp | 6 ấy là hàm tác vụ của ứng dụng (`vTaskLED1`…) giữ lối đặt tên cũ; nhân FreeRTOS thật là **14** ký hiệu, nay bằng 0 |
+| "184 ký hiệu" ở bản cũ | **20** khớp, trong đó **14** là nhân | con số nhớ nhầm, chưa từng chạy `nm` |
+| "**311** lời gọi mô hình" | **351** ghi được | 311 là `llm_call` ở **vòng chính**; nhật ký có thêm **44 của tác tử con** |
+
+Con số thứ ba là cái đáng nói nhất. Viết "0 ký hiệu FreeRTOS" thì **người đọc chạy `nm` sẽ thấy
+6 và nghĩ là nói dối**. Nay README nói trước chỗ dễ đọc nhầm ấy, kèm tên bốn ký hiệu nhân đã
+biến mất. *Một câu đúng mà người kiểm chứng thấy khác là một câu hỏng.*
+
+Con số thứ năm cũng vậy: 351 ≠ 311 nhìn như log bị thiếu. Hoá ở giữa là tác tử con — phân bố
+độ dài lời nhắc hệ thống chia đôi rất sạch (**307 bản ghi ~11 000 ký tự** vòng chính · **44 bản
+ghi ~1 000 ký tự** tác tử con), nên con số ấy giải thích được chứ không phải chắp vá.
+
+#### Hai chỗ bằng chứng trên git không khớp báo cáo
+
+**Hồ sơ đã đẩy là bản chụp sớm.** Sổ cái trong `ho-so-tac-tu/` có 3 809 sự kiện, còn báo cáo
+ghi 3 915 — vì hồ sơ được gói **giữa chừng**, trước 4 lời gọi cuối. Báo cáo đúng, bằng chứng
+thiếu. Đã làm tươi từ dự án sống: **3 915 sự kiện · 367 lời gọi**, khớp báo cáo. *Bằng chứng
+đẩy lên phải đỡ được đúng con số đã công bố, nếu không thì nó phản chứng chính mình.*
+
+**Nhật ký LLM có 12 tệp rác.** Đếm ra 363 bản ghi, 12 cái không parse được JSON — tưởng là lời
+gọi lỗi mạng, suýt viết vậy vào README. Mở ra xem thì đó là **tệp `._*` AppleDouble của macOS**
+lọt vào `tar`. Số thật là **351, tất cả đều có nguyên văn trả về**. Đã gói lại với
+`COPYFILE_DISABLE=1`.
+
+#### Một lần nữa phép đo suýt phá bằng chứng của chính nó
+
+Đồng bộ transcript bằng `rsync -a --delete` từ `.eide/transcripts/` — thư mục ấy **rỗng**, tên
+thật là `sessions/`. `--delete` xoá sạch **12 transcript đã đẩy git**. Khôi phục được bằng
+`git checkout` vì chúng đã được commit.
+
+Đây là lần thứ hai trong dự án (lần đầu: `thu_18_cong_cu.py` tự xoá sổ cái của chính nó). Cùng
+một hình dạng: **một thao tác dọn dẹp chạy trên một đường dẫn chưa kiểm tra là có thật**.
+`--delete` với nguồn rỗng không phải là đồng bộ, nó là xoá.
+
+#### Bộ kiểm neo cũng sai
+
+Viết nhanh một đoạn kiểm neo `#...` trong README: nó báo **8 neo hỏng trên 7 neo** — nhiều lỗi
+hơn cả số neo, dấu hiệu chắc chắn là bộ kiểm hỏng chứ không phải README. Hàm tạo slug bỏ `·`
+**sau** khi đổi khoảng trắng nên mất dấu `--` kép. Sửa lại: **0 neo hỏng / 7**, 0 đường dẫn
+hỏng / 29.
+
+#### README thêm gì
+
+Mục **§18 "Bài kiểm lớn nhất: một RTOS viết từ số không"** — bảng khối lượng, bảng so với
+FreeRTOS trên cùng bo, ba lỗi phần cứng, giá phải trả, và **ba điều bảng ấy không chứng minh**
+(chưa thử nghiệm dài hạn nên chưa cùng một sản phẩm · người vẫn trên đường găng · tiền mô hình
+không phải toàn bộ chi phí). Thêm một hàng ở bảng "Mới trong bản này", một hàng ở "Đã đo được
+gì", một hàng ở "Trạng thái", và sửa số ca đơn vị 1339 → 1344 ở đầu trang.
+
+### Số đo
+
+**1 344 ca đơn vị** · bộ dò tài liệu **0 chỗ lệch** · README 0 neo hỏng / 0 đường dẫn hỏng ·
+báo cáo dựng lại **12 trang / 15 bảng**, kiểm bằng mắt trang bảng số đo.

@@ -65,7 +65,7 @@ graph TB
 
 ```mermaid
 graph TB
-    subgraph Anh["Tệp ảnh firmware — 259 488 B Flash"]
+    subgraph Anh["Tệp ảnh firmware — 260 204 B Flash"]
         UD["Ứng dụng<br/>main.c · 6 tac vu"]
         NHAN["Nhân RTOS<br/>rtos_core · rtos_port · rtos_queue"]
         DRV["Driver<br/>ui.c · ui_state.c · touch.c"]
@@ -168,14 +168,17 @@ nhường CPU đúng chỗ không được nhường.
 
 | Chỉ số | Giá trị |
 |---|---|
-| Lượt trao đổi người ↔ tác tử | 46 |
+| Lượt trao đổi người ↔ tác tử | 46 — trong đó **21 lần anh gõ**, 9 lần quyết cổng duyệt, 15 lần xem, 1 lần chọn phương án |
 | Lời gọi công cụ | 367 (31 loại khác nhau) |
 | Công cụ dùng nhiều nhất | `fs.read` ×102 · `fs.glob` ×43 · `fs.grep` ×40 · `ledger.query` ×32 |
 | Changeset (thay đổi hoàn tác được) | 20 |
 | Hiện vật trong kho | 18 |
-| Sự kiện sổ cái | 3 915 |
-| Mã nhân viết ra | **1 029 dòng** |
-| Flash chiếm | **259 488 B** (bản FreeRTOS: ~263 KB) |
+| Sự kiện sổ cái | 3 915 — trong đó 311 lời gọi mô hình ở vòng chính |
+| Lời gọi mô hình ghi được nguyên văn | **351** = 307 vòng chính + **44 của tác tử con** |
+| Mã tác tử viết ra | **1 029 dòng** = nhân 689 + ứng dụng `main.c` 340 |
+| Mã dùng lại không sửa | 757 dòng driver (`ui.c` · `touch.c` · `startup.c` · `libc_stub.c`) |
+| Flash chiếm | **260 204 B** (bản FreeRTOS: 263 740 B — ít hơn 3 536 B) |
+| RAM tĩnh (`.bss`) | **13 596 B** (bản FreeRTOS: 36 424 B — ít hơn 22 828 B) |
 
 ---
 
@@ -221,7 +224,7 @@ Kho không lưu bảng giá, nên chi phí trình bày dưới dạng **công th
 | C — mức cao | 0,30 | 0,075 | 2,50 | **≈ 2,96 USD** |
 
 Quy đổi theo kịch bản B: **≈ 34 000 đồng** cho toàn bộ phiên — gồm phân tích, ba phương án
-kiến trúc, 1 029 dòng nhân RTOS, sáu lần biên dịch, bốn lần nạp bo, và ba lần dò lỗi phần cứng
+kiến trúc, 1 029 dòng mã, sáu lần biên dịch, bốn lần nạp bo, và ba lần dò lỗi phần cứng
 tới tận thanh ghi DSI.
 
 ---
@@ -366,7 +369,7 @@ Cách đọc đúng bảng này: tác tử **không thay thế** 31,7 ngày côn
 
 Ba điều phiên này chứng minh được, mỗi điều có bằng chứng kèm theo:
 
-1. **Tác tử gánh được khối lượng phức tạp.** 1 029 dòng nhân RTOS có chuyển ngữ cảnh
+1. **Tác tử gánh được khối lượng phức tạp.** 689 dòng nhân RTOS có chuyển ngữ cảnh
    assembly, chạy thật trên chip, giao diện lên đúng như bản cũ.
 2. **Quy trình có cổng chặn được việc làm ẩu.** Kế hoạch viết mã mới bị chặn cho tới khi có
    bước chọn kiến trúc; lệnh ghi đè một tệp chưa đọc bị từ chối.

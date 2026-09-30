@@ -20,3 +20,6 @@ ui/EIDEApp/.build/
 ui/EIDEApp/EIDE.app/
 *.xcuserdatad/
 .swiftpm/
+
+# tệp khoá tạm của Word/Excel khi người dùng đang mở tệp
+~$*
