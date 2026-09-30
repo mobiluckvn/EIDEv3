@@ -9,9 +9,24 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
 - **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1339 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
-- **Kết quả đo mới nhất (29/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
+- **Kết quả đo mới nhất (30/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
 - **Đề tài:** PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)
 - Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — Học viện Công nghệ Bưu chính Viễn thông (PTIT) · Học viên: Vũ Trí Công · GVHD: TS. Nguyễn Trung Hiếu
+
+## Mới trong bản này
+
+| Năng lực | Điều đáng nói nhất | Chi tiết |
+|---|---|---|
+| **Viết tài liệu cho người đọc** | Word · PowerPoint · Excel · PDF từ nguồn Markdown nằm trong sổ cái — xem được diff, hoàn tác được. Xong thì **mở lại chính tệp vừa tạo mà đếm**, không báo "đã ghi 12 KB" | [§3](#3--viết-tài-liệu-cho-người-đọc-word--powerpoint--excel--pdf) |
+| **Sơ đồ thành HÌNH** | Khối ```mermaid được **vẽ** trên Console (kèm nút *Xem mã*) và thành ảnh trong cả bốn định dạng tệp. Bộ vẽ tự viết — EIDE không mở cổng mạng nào | [§4](#4--sơ-đồ-là-hình-ở-cả-hai-nơi) |
+| **Quy trình lập trình** | Không ghi đè tệp chưa đọc (`E4020`) · **mốc lùi tự động** trước lần sửa đầu mỗi lượt · kế hoạch viết mã phải chọn kiến trúc trước (`E6009`) | [§6](#6--viết-mã-phân-tích-trước--đánh-mốc-trước--thiết-kế-trước) |
+| **Việc lớn nhiều chặng** | Chia bước → mỗi bước để lại hiện vật **mở ra xem được** → `plan.merge` ráp lại, kê rõ phần nào không gộp được | [§11](#11--việc-lớn-chia-nhiều-chặng-ghi-từng-chặng-rồi-hợp-nhất) |
+| **Nhánh gộp được** | `branch.merge`: tệp bằng git (xung đột thì **huỷ phép gộp**), hiện vật so ba bên; cả hai bên cùng đổi thì **không tự trộn** | [§10](#10--lịch-sử-nhánh-bản-ưng-ý--ba-mức-lùi-lại) |
+| **Tác tử tự viết công cụ** | `tool.propose` đã **nổ thật**: xin một tệp PowerPoint, nó tự viết `doc.pptx` kèm bộ kiểm rồi dùng | [§12](#12--tự-kiểm-chứng-và-tự-bù-năng-lực) |
+
+Và một việc không thêm tính năng nào nhưng đáng kể hơn cả: rà toàn bộ sổ cái thấy **31/121
+công cụ chưa nổ lần nào**. Bảy đường dẫn bị đứt đã nối, phần còn lại được giao đúng loại việc
+để kiểm — nay **110/121 đã chạy thật**. *Một công cụ không bao giờ nổ thì đúng bằng không có.*
 
 ## Tác tử làm được những gì
 
@@ -454,6 +469,12 @@ nhau, và trộn chúng vào một cột là nói sai về sản phẩm.
 | **G7-B** | `target.debug` (giải mã CFSR/HFSR 17 bit · khung ngắt · dấu vết ngăn xếp · lấy mẫu PC theo span · nguyên nhân reset · tra ký hiệu ba trạng thái) · `target.screen` (khung ảnh → PNG + 11 mắt xích LTDC→DSI→panel) · subagent `hardware` | xong |
 | **Plan mode** | `plan.enter` khoá mọi công cụ ghi · `plan.exit` kiểm bằng mã rồi người duyệt qua G-SCOPE · kế hoạch là hiện vật, sống qua `kill -9` | xong |
 | **Tự bù năng lực** | `tool.propose`/`tool.reload` — tác tử tự viết công cụ cho chính nó, chỉ nạp khi bộ kiểm của nó xanh · `test.sensitivity` đo xem bộ kiểm có đo gì không | xong |
+| **Tài liệu ra** | `doc.render` bốn định dạng **Word · PowerPoint · Excel · PDF** từ nguồn Markdown trong sổ cái · PowerPoint cắt mỗi tiêu đề một slide · từ chối Excel-từ-văn-xuôi và PDF-thiếu-LibreOffice · **mở lại tệp vừa tạo mà đếm**, báo kèm đường dẫn đầy đủ · khối riêng "Tài liệu tác tử đã tạo" trên tab A3 | xong |
+| **Sơ đồ thành hình** | Khối ```mermaid **được VẼ** — trên Console (nút *Xem mã*) và thành ảnh trong cả bốn định dạng tệp · `sequenceDiagram` + `graph`/`flowchart` kể cả `subgraph` · bộ vẽ **tự viết**, không nhúng `mermaid.js` (EIDE không mở cổng mạng nào) · kiểu chưa vẽ được thì hiện mã **kèm câu nói rõ là chưa vẽ được** | xong |
+| **Việc nhiều chặng** | `plan.step_done` đòi hiện vật **mở ra xem được** (tệp/hiện vật/changeset), không nhận một câu kể lại · `plan.merge` ráp các phần theo đúng thứ tự bước, sinh mục lục, hạ cấp tiêu đề, **kê phần không gộp được ngay trong tài liệu** · kế hoạch mới không làm mất kế hoạch cũ · `plan.exit` cảnh báo khi nhiều bước cùng ghi một tệp | xong |
+| **Quy trình lập trình** | **`E4020`** không ghi đè tệp chưa đọc trọn · **mốc lùi tự động** ở lần sửa đầu mỗi lượt · **`E6009`** kế hoạch viết mã mới phải chọn kiến trúc + nói cấu trúc mã, kế hoạch sửa mã phải có `code.analyze` · `code.analyze` tách **dữ kiện** (mã quét: ai đang gọi) khỏi **nhận định** (tác tử con `code-analyst`) | xong |
+| **Nhánh gộp được** | `branch.merge` — tệp gộp bằng git (**xung đột thì huỷ phép gộp**, không để lại cây làm việc dở), hiện vật so ba bên và chỉ lấy phần một bên đổi; cả hai bên cùng đổi thì để nguyên và kê ra · `chuyen_nhanh` nay khôi phục **cả kho hiện vật**, không chỉ tệp | xong |
+| **Đường dẫn tới công cụ** | Rà toàn bộ sổ cái: **31/121 công cụ chưa nổ lần nào** → nối bảy đường đứt (`skill.load` · `history.undo_30s` · `store.req_update` · `stale.accept` · `memory.undo_compact` · `plan.step_done` · `code.analyze`) rồi giao đúng loại việc cho phần còn lại → **110/121 đã nổ thật** | xong |
 
 ## Cài và chạy
 
@@ -611,8 +632,20 @@ src/eide/
 ├── deps.py              Đồ thị phụ thuộc + đánh dấu STALE
 ├── vcs.py               Git cho tệp: commit có cấu trúc, revert, 3-way merge
 ├── surfaces.py          Dựng SurfaceModel cho 11 bề mặt
+├── ke_hoach.py          Việc nhiều chặng: chia bước · kiểm thiết kế trước khi tách việc
+├── phan_tich_ma.py      Đọc mã đang có: ký hiệu · phụ thuộc · AI ĐANG DÙNG nó
+├── xuat_ban.py          Markdown → Word · PowerPoint · Excel · PDF
+├── so_do.py             Vẽ mermaid ra PNG cho tài liệu (Pillow, không cần mạng)
+├── du_an.py             `du-an.json` — thẻ căn cước dự án, ba hạng dữ liệu
+├── goi_du_an.py         Xuất/nhập gói `.zip`, kiểm sổ cái trước khi mở
+├── subagent.py          7 tác tử con, ngữ cảnh sạch, tool giới hạn
 ├── tools/               Sổ đăng ký + bộ công cụ (đọc + ghi)
 └── llm/                 Cổng mô hình (Gemini) + kịch bản/ghi–phát lại
+
+ui/EIDEApp/Sources/EIDE/Views/
+├── Markdown.swift       Bộ dựng markdown khối cho Console và mọi bề mặt
+├── SoDo.swift           Đọc mermaid: sequenceDiagram · graph/flowchart
+└── SoDoView.swift       Vẽ sơ đồ bằng `Canvas`, kèm nút *Xem mã*
 ```
 
 ### Mọi thay đổi đều hoàn tác được (N9)
