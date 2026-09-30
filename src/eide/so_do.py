@@ -591,6 +591,124 @@ def _ve_tuan_tu(so: TuanTu, Image, ImageDraw, f):
     return anh
 
 
+
+def xep_cho(so: Luong, kt: list[tuple[int, int]], cho: list[tuple[int, int]],
+            tang: list[int], lui: set[int] | None = None) -> tuple[list[Any], int, int]:
+    """Tính khung của MỌI nút, tách khỏi phép vẽ để đo được bằng bộ kiểm.
+
+    Trước khi tách, hình học của sơ đồ chỉ kiểm được bằng cách nhìn ảnh — và đúng thế nên
+    hai cụm chồng lên nhau sống sót qua mọi lượt chạy: `ve_png` vẫn trả về một tệp PNG hợp
+    lệ, `so_khoi`/`so_noi` vẫn đúng. Một hình sai vẫn là một hình vẽ được.
+
+    Trả về (khung mỗi nút, bề rộng, bề cao). `kt` là cỡ hộp, `cho` là chỗ chừa cho nhãn cạnh.
+    """
+    lui = lui or set()
+    theo_tang: list[list[int]] = [[] for _ in range(max(tang) + 1)]
+    for i, t in enumerate(tang):
+        theo_tang[t].append(i)
+
+    le, dem_ngang = 20, (26 if so.ngang else 44)
+
+    def o_ngang(i: int) -> int:
+        return max(kt[i][1], cho[i][1]) if so.ngang else max(kt[i][0], cho[i][0])
+
+    # Nút cùng một `subgraph` phải nằm LIỀN NHAU trong mỗi tầng — khung cụm là hợp của các ô
+    # thành viên, nên hai cụm đan xen sẽ cho hai khung chồng lên nhau, và người đọc thấy một
+    # tệp nằm trong thư mục không phải của nó. Nút không thuộc cụm nào xếp cuối, không cắt đôi
+    # một cụm; sơ đồ không có cụm thì mọi khoá bằng nhau và phép xếp theo tâm quyết định như cũ.
+    def _cum(i: int) -> int:
+        c = so.nut[i].cum
+        return c if c is not None else 1 << 30
+
+    giua = [0] * len(so.nut)
+    if theo_tang:
+        x = le
+        for i in sorted(theo_tang[-1], key=lambda i: (_cum(i), i)):
+            giua[i] = x + o_ngang(i) // 2
+            x += o_ngang(i) + dem_ngang
+
+    con: list[list[int]] = [[] for _ in so.nut]
+    for i, c in enumerate(so.canh):
+        if i not in lui and c.tu < len(so.nut) and c.den < len(so.nut):
+            con[c.tu].append(c.den)
+
+    for li in range(len(theo_tang) - 2, -1, -1):
+        muon = []
+        for i in theo_tang[li]:
+            ds = [d for d in con[i] if tang[d] > li]
+            muon.append((i, sum(giua[d] for d in ds) / len(ds) if ds else float("inf")))
+        muon.sort(key=lambda p: (_cum(p[0]), p[1], p[0]))
+        x = le
+        for i, m in muon:
+            nua = o_ngang(i) // 2
+            tam = int(max(x + nua, m if m != float("inf") else x + nua))
+            giua[i] = tam
+            x = tam + nua + dem_ngang
+
+    # --- Dải riêng cho từng cụm -----------------------------------------------------------
+    #
+    # Xếp nút cùng cụm liền nhau TRONG MỘT TẦNG vẫn chưa đủ: một cụm trải qua nhiều tầng thì
+    # hộp bao của nó là hợp các ô ở mọi tầng, và hai hộp như vậy vẫn đan vào nhau. Đo được
+    # trên chính sơ đồ mô-đun RTOS: khung `firmware` và `firmware/rtos` chồng một nửa lên
+    # nhau, `rtos_types.h` nhìn ra như nằm trong cả hai thư mục.
+    #
+    # Nên mỗi cụm nhận một **dải toạ độ ngang dùng chung cho mọi tầng**: dồn các nút của một
+    # cụm về đúng dải của nó, giữ nguyên thứ tự tương đối bên trong. Sơ đồ không có cụm nào
+    # thì vòng này không chạy và bố cục không đổi một pixel.
+    if so.cum:
+        # Bề rộng mỗi dải = tầng nào cần nhiều nhất thì lấy theo tầng ấy.
+        rong: dict[int, int] = {}
+        for hang in theo_tang:
+            theo_cum: dict[int, int] = {}
+            for i in hang:
+                theo_cum[_cum(i)] = theo_cum.get(_cum(i), 0) + o_ngang(i) + dem_ngang
+            for c, w in theo_cum.items():
+                rong[c] = max(rong.get(c, 0), w)
+        # Thứ tự dải: theo vị trí trung bình hiện có, để không đảo lộn bố cục đã căn theo cạnh.
+        tam_cum: dict[int, list[float]] = {}
+        for i in range(len(so.nut)):
+            tam_cum.setdefault(_cum(i), []).append(giua[i])
+        thu_tu = sorted(rong, key=lambda c: sum(tam_cum[c]) / len(tam_cum[c]))
+        bat_dau: dict[int, int] = {}
+        chay_dai = le
+        for c in thu_tu:
+            bat_dau[c] = chay_dai
+            chay_dai += rong[c] + dem_ngang
+        # Dồn từng tầng vào dải của cụm, giữ thứ tự tương đối trong tầng.
+        for hang in theo_tang:
+            trong_dai: dict[int, int] = {}
+            for i in sorted(hang, key=lambda i: (_cum(i), giua[i], i)):
+                c = _cum(i)
+                x = trong_dai.get(c, bat_dau[c])
+                giua[i] = x + o_ngang(i) // 2
+                trong_dai[c] = x + o_ngang(i) + dem_ngang
+
+    doi = min((giua[i] - o_ngang(i) // 2 for i in range(len(so.nut))), default=le) - le
+    khung = [None] * len(so.nut)
+    chay, toi_da_ngang = le, 0
+    for hang in theo_tang:
+        day = max((kt[i][0] if so.ngang else kt[i][1]) for i in hang)
+        dem_tang = max((cho[i][0] if so.ngang else cho[i][1]) for i in hang)
+        dem_tang = int(dem_tang * (2.4 if any(con[i] for i in hang) else 1))
+        for i in hang:
+            t = giua[i] - doi
+            if so.ngang:
+                khung[i] = (chay + (day - kt[i][0]) // 2, t - kt[i][1] // 2, *kt[i])
+            else:
+                khung[i] = (t - kt[i][0] // 2, chay + (day - kt[i][1]) // 2, *kt[i])
+            toi_da_ngang = max(toi_da_ngang, t + o_ngang(i) // 2 + le)
+        chay += day + dem_ngang + dem_tang
+
+    # Chừa chỗ cho NHÃN cụm: khung cụm vươn lên trên nút cao nhất 24 px để nhét nhãn, mà khổ
+    # ảnh chỉ tính tới lề `le`. Thiếu chỗ thì nhãn `firmware` bị cắt mất nửa trên ở mép ảnh.
+    de_nhan = 0 if not so.cum else 24
+    if de_nhan:
+        khung = [(k[0], k[1] + de_nhan, k[2], k[3]) if k else k for k in khung]
+
+    w = (chay if so.ngang else toi_da_ngang) + le
+    h = (toi_da_ngang if so.ngang else chay) + le + de_nhan
+    return khung, w, h
+
 def _ve_luong(so: Luong, Image, ImageDraw, f):
     do = ImageDraw.Draw(Image.new("RGB", (1, 1)))
     f_nho = _phong(12) or f
@@ -646,58 +764,7 @@ def _ve_luong(so: Luong, Image, ImageDraw, f):
             if i < len(cho):
                 cho[i] = (max(cho[i][0], w), max(cho[i][1], h))
 
-    theo_tang: list[list[int]] = [[] for _ in range(max(tang) + 1)]
-    for i, t in enumerate(tang):
-        theo_tang[t].append(i)
-
-    le, dem_ngang = 20, (26 if so.ngang else 44)
-
-    def o_ngang(i: int) -> int:
-        return max(kt[i][1], cho[i][1]) if so.ngang else max(kt[i][0], cho[i][0])
-
-    giua = [0] * len(so.nut)
-    if theo_tang:
-        x = le
-        for i in theo_tang[-1]:
-            giua[i] = x + o_ngang(i) // 2
-            x += o_ngang(i) + dem_ngang
-
-    con: list[list[int]] = [[] for _ in so.nut]
-    for i, c in enumerate(so.canh):
-        if i not in lui and c.tu < len(so.nut) and c.den < len(so.nut):
-            con[c.tu].append(c.den)
-
-    for li in range(len(theo_tang) - 2, -1, -1):
-        muon = []
-        for i in theo_tang[li]:
-            ds = [d for d in con[i] if tang[d] > li]
-            muon.append((i, sum(giua[d] for d in ds) / len(ds) if ds else float("inf")))
-        muon.sort(key=lambda p: (p[1], p[0]))
-        x = le
-        for i, m in muon:
-            nua = o_ngang(i) // 2
-            tam = int(max(x + nua, m if m != float("inf") else x + nua))
-            giua[i] = tam
-            x = tam + nua + dem_ngang
-
-    doi = min((giua[i] - o_ngang(i) // 2 for i in range(len(so.nut))), default=le) - le
-    khung = [None] * len(so.nut)
-    chay, toi_da_ngang = le, 0
-    for hang in theo_tang:
-        day = max((kt[i][0] if so.ngang else kt[i][1]) for i in hang)
-        dem_tang = max((cho[i][0] if so.ngang else cho[i][1]) for i in hang)
-        dem_tang = int(dem_tang * (2.4 if any(con[i] for i in hang) else 1))
-        for i in hang:
-            t = giua[i] - doi
-            if so.ngang:
-                khung[i] = (chay + (day - kt[i][0]) // 2, t - kt[i][1] // 2, *kt[i])
-            else:
-                khung[i] = (t - kt[i][0] // 2, chay + (day - kt[i][1]) // 2, *kt[i])
-            toi_da_ngang = max(toi_da_ngang, t + o_ngang(i) // 2 + le)
-        chay += day + dem_ngang + dem_tang
-
-    w = (chay if so.ngang else toi_da_ngang) + le
-    h = (toi_da_ngang if so.ngang else chay) + le
+    khung, w, h = xep_cho(so, kt, cho, tang, lui)
     anh = Image.new("RGB", (max(w, 240), max(h, 120)), MAU_NEN[:3])
     ve = ImageDraw.Draw(anh)
 

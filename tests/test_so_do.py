@@ -190,3 +190,100 @@ def test_mui_ten_hai_chieu_khong_de_ra_khoi_ma():
     for bien in ("<-.->", "<==>"):
         l2 = doc(f'graph LR\n  A["a"] {bien} B["b"]\n')
         assert sorted(n.ma for n in l2.nut) == ["A", "B"], bien
+
+
+# ==================================================== khung cụm `subgraph` không được chồng
+#
+# Lỗi thấy ngày 30/09/2026 trên chính sơ đồ mô-đun RTOS ở tab Thiết kế: khung `firmware` và
+# `firmware/rtos` chồng một nửa lên nhau, nên `main.c` nhìn ra như nằm trong thư mục `rtos`.
+#
+# Không con số nào của bộ quét bắt được — `ve_png` trả về PNG hợp lệ, số khối và số nối đều
+# đúng. **Một hình sai vẫn là một hình vẽ được.** Nên `xep_cho` được tách ra khỏi phép vẽ, để
+# hình học đo được bằng số thay vì bằng mắt.
+
+_HAI_CUM = """graph TB
+    subgraph g0["firmware"]
+        n0["main.c"]
+        n1["stm32f4xx_hal.h"]
+    end
+    subgraph g1["firmware/rtos"]
+        n3["rtos_core.c"]
+        n4["rtos_port.c"]
+        n2["rtos_queue.c"]
+        n5["rtos_types.h"]
+    end
+    n0 --> n5
+    n0 --> n1
+    n3 --> n5
+    n4 --> n5
+    n2 --> n5"""
+
+
+def _hop_cum(so, khung):
+    """Hộp bao của từng cụm — đúng phép hợp mà `_ve_luong` dùng để vẽ khung."""
+    ra = {}
+    for i, n in enumerate(so.nut):
+        if n.cum is None or not khung[i]:
+            continue
+        x, y, w, h = khung[i]
+        cu = ra.get(n.cum)
+        ra[n.cum] = (x, y, x + w, y + h) if cu is None else (
+            min(cu[0], x), min(cu[1], y), max(cu[2], x + w), max(cu[3], y + h))
+    return ra
+
+
+def _chong(a, b) -> bool:
+    return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+
+
+def _xep(nguon):
+    from eide.so_do import _luong, xep_cho
+    so = _luong(nguon)
+    kt = [(max(len(n.nhan) * 8 + 30, 90), 44) for n in so.nut]
+    cho = [(0, 0)] * len(so.nut)
+    tang = [0] * len(so.nut)
+    for _ in range(len(so.nut)):
+        for c in so.canh:
+            tang[c.den] = max(tang[c.den], tang[c.tu] + 1)
+    return so, xep_cho(so, kt, cho, tang)[0]
+
+
+def test_hai_khung_subgraph_KHONG_chong_len_nhau():
+    so, khung = _xep(_HAI_CUM)
+    hop = _hop_cum(so, khung)
+    assert len(hop) == 2
+    a, b = hop[0], hop[1]
+    assert not _chong(a, b), f"khung cụm chồng nhau: {a} ∩ {b}"
+
+
+def test_moi_nut_nam_TRONG_khung_cum_cua_chinh_no():
+    """Phép kiểm thật sự người đọc quan tâm: tệp có hiện đúng trong thư mục của nó không."""
+    so, khung = _xep(_HAI_CUM)
+    hop = _hop_cum(so, khung)
+    for i, n in enumerate(so.nut):
+        if n.cum is None:
+            continue
+        x, y, w, h = khung[i]
+        k = hop[n.cum]
+        assert k[0] <= x and k[1] <= y and x + w <= k[2] and y + h <= k[3]
+        for ci, kc in hop.items():
+            if ci != n.cum:
+                assert not _chong((x, y, x + w, y + h), kc), \
+                    f"{n.nhan} (cụm {n.cum}) nằm lọt vào khung cụm {ci}"
+
+
+def test_chua_cho_cho_NHAN_cum_o_mep_tren():
+    """Khung cụm vươn lên trên nút cao nhất 24 px để nhét nhãn — thiếu chỗ thì nhãn bị cắt."""
+    so, khung = _xep(_HAI_CUM)
+    assert min(k[1] for k in khung if k) >= 24
+
+
+def test_so_do_KHONG_cum_giu_nguyen_bo_cuc():
+    """Chống hồi quy: phép chia dải chỉ được chạy khi có cụm."""
+    from eide.so_do import _luong, xep_cho
+    nguon = "graph TB\n    A[\"một\"] --> B[\"hai\"]\n    B --> C[\"ba\"]"
+    so = _luong(nguon)
+    assert not so.cum
+    kt = [(90, 44)] * len(so.nut)
+    khung, w, h = xep_cho(so, kt, [(0, 0)] * len(so.nut), [0, 1, 2])
+    assert min(k[1] for k in khung if k) < 24, "không có cụm thì không được chừa lề nhãn"

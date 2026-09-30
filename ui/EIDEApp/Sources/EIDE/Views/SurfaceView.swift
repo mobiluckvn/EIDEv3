@@ -185,6 +185,7 @@ struct BlockView: View {
         case "timeline": KhoiDongThoiGian(block: block)
         case "changesets": KhoiChangeset(block: block)
         case "procedure": KhoiQuyTrinh(block: block)
+        case "ke_hoach": KhoiKeHoach(block: block)
         case "snapshots": KhoiSnapshot(block: block)
         case "log":      KhoiLog(block: block)
         case "list":     KhoiDanhSach(block: block)
@@ -1090,9 +1091,110 @@ struct KhoiDanhSach: View {
     }
 }
 
+/// Kế hoạch chia việc (A2.5) — CHỈ ĐỌC, cố ý.
+///
+/// `KhoiQuyTrinh` ở trên có ba nút "Xong / Không được / Bỏ qua" và trông rất giống thứ dùng
+/// được ở đây. Nhưng bước kế hoạch chỉ được đánh dấu xong bằng `plan.step_done`, mà công cụ
+/// ấy **đòi một hiện vật mở ra xem được** — không nhận một câu kể lại. Đặt nút ở đây là mở
+/// đường vòng qua đúng cái đòi hỏi làm nên giá trị của kế hoạch.
+///
+/// Thứ khối này tồn tại để giữ là hai danh sách dễ mất nhất: **giả định** và **ngoài phạm
+/// vi**. Chúng nói ra lúc lập kế hoạch rồi trôi khỏi Console, và tới lúc nghiệm thu thì không
+/// ai nhớ tác tử đã tuyên bố không làm những gì.
+struct KhoiKeHoach: View {
+    let block: SurfaceBlock
+
+    private var buoc: [JSONValue] { block.arr("buoc") }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            if let m = block.str("muc_tieu"), !m.isEmpty {
+                TextMd(m).font(.system(size: 12, weight: .medium)).textSelection(.enabled)
+            }
+            danhSach("Giả định", block.arr("gia_dinh").compactMap(\.stringValue),
+                     "questionmark.circle", .secondary)
+            danhSach("Tác tử tuyên bố KHÔNG làm trong lần này",
+                     block.arr("ngoai_pham_vi").compactMap(\.stringValue),
+                     "minus.circle", Color.staleAmber)
+
+            ForEach(Array(buoc.enumerated()), id: \.offset) { _, b in
+                buocView(b)
+            }
+        }
+    }
+
+    @ViewBuilder private func danhSach(_ nhan: String, _ xs: [String],
+                                       _ icon: String, _ mau: Color) -> some View {
+        if !xs.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Label(nhan, systemImage: icon)
+                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(mau)
+                ForEach(xs, id: \.self) { x in
+                    TextMd("• \(x)").font(.system(size: 11)).textSelection(.enabled)
+                }
+            }
+            .padding(7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .underPageBackgroundColor),
+                        in: RoundedRectangle(cornerRadius: 5))
+        }
+    }
+
+    private func buocView(_ b: JSONValue) -> some View {
+        let xong = b["xong"]?.boolValue ?? false
+        return HStack(alignment: .top, spacing: 9) {
+            Image(systemName: xong ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(xong ? Color.green : Color.secondary)
+                .font(.system(size: 13)).frame(width: 18).padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("Bước \(b["so"]?.intValue ?? 0)")
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+                    if let cc = b["cong_cu"]?.stringValue, !cc.isEmpty {
+                        Text(cc).font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    if let c = b["cong"]?.stringValue, !c.isEmpty {
+                        Text(c).font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color.gateRed)
+                    }
+                }
+                TextMd(b["viec"]?.stringValue ?? "").font(.system(size: 12))
+                    .textSelection(.enabled)
+                if let hv = b["hien_vat"]?.stringValue, !hv.isEmpty {
+                    // Hiện vật là thứ phân biệt một bước ĐÃ LÀM với một bước được kể là đã làm.
+                    Label(hv, systemImage: "doc.badge.arrow.up")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary).textSelection(.enabled)
+                }
+                if let g = b["ghi_chu"]?.stringValue, !g.isEmpty {
+                    Text(g).font(.system(size: 10)).foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: xong ? .underPageBackgroundColor : .controlBackgroundColor),
+                    in: RoundedRectangle(cornerRadius: 6))
+    }
+}
+
 struct KhoiMuc: View {
     let block: SurfaceBlock
     @State private var mo: Set<String> = []
+    @State private var daDatMoSan = false
+
+    /// Mục lõi bảo mở sẵn. Không có thì gập hết như cũ.
+    ///
+    /// Vì sao cần: khối A5.6 có sáu mục, mục đầu chứa sơ đồ mô-đun — thứ đáng xem nhất. Gập
+    /// hết thì mở tab Thiết kế ra vẫn chỉ thấy sáu dòng tiêu đề, tức vẫn chưa trả lời được
+    /// câu *"phần thiết kế của tác tử đâu?"*. Người gập/mở sau đó thì ý họ thắng, nên chỉ đặt
+    /// MỘT lần (`daDatMoSan`) chứ không ép lại mỗi lần vẽ.
+    private var moSan: Set<String> {
+        Set(block.arr("mo_san").compactMap(\.stringValue))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -1114,6 +1216,11 @@ struct KhoiMuc: View {
                     TextMd(ten).font(.system(size: 12, weight: .medium))
                 }
             }
+        }
+        .onAppear {
+            guard !daDatMoSan else { return }
+            daDatMoSan = true
+            mo.formUnion(moSan)
         }
     }
 }

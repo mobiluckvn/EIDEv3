@@ -9,7 +9,7 @@
   "phan": "Khung chung",
   "dat": true,
   "cau": "Đọc được khung cửa sổ để đo tràn",
-  "bang_chung": "{'cao': 1018, 'rong': 1700, 'so': 28436, 'x': 28, 'y': 33}"
+  "bang_chung": "{'cao': 1018, 'rong': 1450, 'so': 33227, 'x': 28, 'y': 33}"
  },
  {
   "phan": "Khung chung",
@@ -33,7 +33,7 @@
   "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
   "dat": true,
   "cau": "Bề mặt có khối để hiện",
-  "bang_chung": "3 khối"
+  "bang_chung": "4 khối"
  },
  {
   "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
@@ -75,7 +75,7 @@
   "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt requirements — Yêu cầu & Giải pháp",
@@ -135,7 +135,7 @@
   "phan": "Bề mặt documents — Tài liệu & Nguồn",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt documents — Tài liệu & Nguồn",
@@ -153,7 +153,7 @@
   "phan": "Bề mặt knowledge — Tri thức mạch",
   "dat": true,
   "cau": "Bề mặt có khối để hiện",
-  "bang_chung": "2 khối"
+  "bang_chung": "3 khối"
  },
  {
   "phan": "Bề mặt knowledge — Tri thức mạch",
@@ -171,7 +171,7 @@
   "phan": "Bề mặt knowledge — Tri thức mạch",
   "dat": true,
   "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
-  "bang_chung": "2 khối trống, câm: —"
+  "bang_chung": "1 khối trống, câm: —"
  },
  {
   "phan": "Bề mặt knowledge — Tri thức mạch",
@@ -195,7 +195,7 @@
   "phan": "Bề mặt knowledge — Tri thức mạch",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt knowledge — Tri thức mạch",
@@ -213,7 +213,7 @@
   "phan": "Bề mặt design — Thiết kế",
   "dat": true,
   "cau": "Bề mặt có khối để hiện",
-  "bang_chung": "2 khối"
+  "bang_chung": "3 khối"
  },
  {
   "phan": "Bề mặt design — Thiết kế",
@@ -231,7 +231,7 @@
   "phan": "Bề mặt design — Thiết kế",
   "dat": true,
   "cau": "Ô trống nói đủ: chưa có gì · vì sao · cần gì để có",
-  "bang_chung": "2 khối trống, câm: —"
+  "bang_chung": "3 khối trống, câm: —"
  },
  {
   "phan": "Bề mặt design — Thiết kế",
@@ -255,7 +255,7 @@
   "phan": "Bề mặt design — Thiết kế",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt design — Thiết kế",
@@ -315,7 +315,7 @@
   "phan": "Bề mặt tools — Công cụ",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt tools — Công cụ",
@@ -333,7 +333,7 @@
   "phan": "Bề mặt code — Mã nguồn",
   "dat": true,
   "cau": "Bề mặt có khối để hiện",
-  "bang_chung": "3 khối"
+  "bang_chung": "4 khối"
  },
  {
   "phan": "Bề mặt code — Mã nguồn",
@@ -375,7 +375,7 @@
   "phan": "Bề mặt code — Mã nguồn",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt code — Mã nguồn",
@@ -435,7 +435,7 @@
   "phan": "Bề mặt simulation — Mô phỏng",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt simulation — Mô phỏng",
@@ -495,7 +495,7 @@
   "phan": "Bề mặt hardware — Mạch thật",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt hardware — Mạch thật",
@@ -555,7 +555,7 @@
   "phan": "Bề mặt journal — Nhật ký",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt journal — Nhật ký",
@@ -615,7 +615,7 @@
   "phan": "Bề mặt history — Lịch sử",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt history — Lịch sử",
@@ -675,7 +675,7 @@
   "phan": "Bề mặt project — Dự án & Bộ nhớ",
   "dat": true,
   "cau": "Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn)",
-  "bang_chung": "khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: —"
+  "bang_chung": "khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: —"
  },
  {
   "phan": "Bề mặt project — Dự án & Bộ nhớ",
@@ -687,7 +687,7 @@
   "phan": "Tổng các bề mặt",
   "dat": true,
   "cau": "Tổng số khối đã soi qua 11 bề mặt",
-  "bang_chung": "29 khối"
+  "bang_chung": "33 khối"
  },
  {
   "phan": "Bảng Giới thiệu",
@@ -699,13 +699,13 @@
   "phan": "Cửa sổ nhỏ nhất",
   "dat": true,
   "cau": "Ở khổ nhỏ nhất (1100×720) vẫn không khối nào tràn ngang",
-  "bang_chung": "khung {'cao': 752, 'rong': 1100, 'so': 28436, 'x': 28, 'y': 331} · tràn: —"
+  "bang_chung": "khung {'cao': 752, 'rong': 1100, 'so': 33227, 'x': 28, 'y': 331} · tràn: —"
  },
  {
   "phan": "Thanh trạng thái",
   "dat": true,
   "cau": "Thanh trạng thái có dữ liệu",
-  "bang_chung": "{'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3696, 'tran': 3700, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 302, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 205039, 'ty_le': 0.205}, 'stale': 4}"
+  "bang_chung": "{'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {'NGUOI': 1}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3693, 'tran': 3700, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 380, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 205114, 'ty_le': 0.205}, 'stale': 7}"
  },
  {
   "phan": "Thanh trạng thái",
@@ -723,7 +723,7 @@
   "phan": "Widget sửa tay (§E2 — người sửa được gì)",
   "dat": true,
   "cau": "Có ít nhất một khối cho người sửa trực tiếp bằng widget",
-  "bang_chung": "simulation/criteria:sim-01: Ngưỡng"
+  "bang_chung": "requirements/A2.1: Yêu cầu,Tiêu chí đo; simulation/criteria:sim-01: Ngưỡng"
  },
  {
   "phan": "Thông báo và hội thoại",

@@ -86,7 +86,47 @@ def empty(code: str, title: str, *, chua_co: str, vi_sao: str, can_gi: str,
 
 
 # =========================================================================== từng bề mặt
-def requirements(store: Any, inv: Any) -> dict[str, Any]:
+def _cong_da_duyet(ledger: Any) -> set[str]:
+    """Các cổng người ĐÃ bấm duyệt, đọc từ sổ cái.
+
+    Dùng cho cột "Ai quyết" ở A2.4. `quyet_boi` trong ADR cố tình khắt khe: nó chỉ ghi "người"
+    khi `_kiem_nguoi_that_su_chon` chứng minh được người tự chọn (§design.py). Người bấm *Duyệt*
+    trên thẻ cổng G-DESIGN thì chưa đủ để gọi là người chọn — và đúng như vậy.
+
+    Nhưng hiện mỗi chữ "Tác tử" thì lại nói THIẾU về phía kia: đo trên dự án `rtos-ptit`, tác
+    tử đề xuất nhân RTOS, người bấm duyệt `gate-0001` lúc 09:06:37, mà tab chỉ hiện "Tác tử" —
+    đọc ra thành "tác tử tự quyết, không ai xem". Ba trạng thái khác nhau thì phải hiện ba chữ
+    khác nhau.
+    """
+    if ledger is None:
+        return set()
+    duyet: set[str] = set()
+    mo: dict[str, str] = {}
+    try:
+        su_kien = list(ledger.read())
+    except Exception:                                        # sổ cái hỏng không được làm sập tab
+        return set()
+    for e in su_kien:
+        d = getattr(e, "data", None) or {}
+        if getattr(e, "kind", "") == "gate" and d.get("gate_id") and d.get("gate"):
+            mo[str(d["gate_id"])] = str(d["gate"])
+        if getattr(e, "kind", "") == "human_act" and d.get("kind") == "decide":
+            dd = d.get("data") or {}
+            if dd.get("approved") and dd.get("gate_id"):
+                duyet.add(str(dd["gate_id"]))
+    return {mo[g] for g in duyet if g in mo}
+
+
+def _ai_quyet(a: dict[str, Any], cong: set[str]) -> str:
+    c = a.get("canonical") or {}
+    if c.get("quyet_boi") == "nguoi":
+        return "Anh quyết"
+    if "G-DESIGN" in cong:
+        return "Tác tử đề xuất · anh duyệt qua cổng G-DESIGN"
+    return "Tác tử tự quyết — chưa ai duyệt"
+
+
+def requirements(store: Any, inv: Any, ledger: Any = None) -> dict[str, Any]:
     reqs = store.list("req", limit=200)
     opts = store.list("option", limit=20)
     blocks: list[dict[str, Any]] = []
@@ -147,13 +187,14 @@ def requirements(store: Any, inv: Any) -> dict[str, Any]:
 
     adrs = store.list("adr", limit=50)
     if adrs:
+        cong = _cong_da_duyet(ledger)        # đọc sổ cái MỘT lần, không phải mỗi dòng một lần
         blocks.append(block(
             "A2.4", "Quyết định (ADR)", "table",
             summary=f"{len(adrs)} quyết định đã chốt — mỗi cái ghi ai quyết và hệ quả gì",
             columns=["Mã", "Quyết định", "Chọn", "Ai quyết", "Trích lời anh", "Hệ quả"],
             rows=[[a["id"], a["canonical"].get("tieu_de", ""),
                    a["canonical"].get("chon", ""),
-                   "Anh" if a["canonical"].get("quyet_boi") == "nguoi" else "Tác tử",
+                   _ai_quyet(a, cong),
                    a["canonical"].get("trich_loi_nguoi", ""),
                    "; ".join(a["canonical"].get("he_qua", []))] for a in adrs],
             stale=[a["id"] for a in adrs if a["stale"]]))
@@ -164,8 +205,70 @@ def requirements(store: Any, inv: Any) -> dict[str, Any]:
             vi_sao="Quyết định chốt trong hội thoại mà không ghi lại thì không có phiên "
                    "bản, không có hệ quả, và không đánh dấu được hạ nguồn khi đổi ý.",
             can_gi="Khi anh chốt một lựa chọn, tác tử sẽ ghi bằng store.adr_create."))
+
+    blocks.extend(_khoi_ke_hoach(store))
     return {"surface": "requirements", "code": "A2", "title": "Yêu cầu & Giải pháp",
             "blocks": blocks}
+
+
+# Chữ trạng thái lấy từ chính nơi định nghĩa trạng thái — không chép lại ở đây, vì bản chép
+# lại sẽ lỗi thời im lặng đúng lúc ai đó thêm một trạng thái thứ bảy.
+from .ke_hoach import TEN_TRANG_THAI_VI as _TRANG_THAI_KE_HOACH   # noqa: E402
+
+
+def _khoi_ke_hoach(store: Any) -> list[dict[str, Any]]:
+    """A2.5 — kế hoạch chia việc. Chỗ trống lớn nhất trước đây.
+
+    Kế hoạch là **phần phân tích đắt nhất** tác tử làm cho một việc lớn: chia bước, mỗi bước
+    gắn công cụ và hiện vật, kèm giả định và phần tự tuyên bố nằm ngoài phạm vi. MDD-40 §E7
+    dòng 409 xếp nó ở **Console** — thẻ kế hoạch có checkbox theo bước.
+
+    Nhưng Console là dòng chảy: đo trên `rtos-ptit`, kế hoạch đi qua **12 phiên bản**, và tới
+    cuối phiên thì thẻ đầu tiên đã trôi khỏi màn hình từ lâu. Ba điều "ngoài phạm vi" mà tác tử
+    tự nêu — chưa cấp phát động, chưa bật MPU, chưa tích hợp DSI/LTDC — là thứ người đọc cần
+    nhất khi nghiệm thu, và không nơi nào giữ chúng. Đây là **sai lệch có chủ ý so với dòng
+    409**, ghi ở DEV-315.
+
+    Khối này **chỉ đọc**. Bước kế hoạch được đánh dấu xong bằng `plan.step_done`, mà công cụ ấy
+    đòi một hiện vật mở ra xem được. Đặt ở đây một cái nút "Xong" là mở đường vòng qua chính
+    đòi hỏi đó — nên không có nút nào.
+    """
+    ke = [a for a in store.list("plan", limit=10)]
+    if not ke:
+        return [empty(
+            "A2.5", "Kế hoạch chia việc",
+            chua_co="Chưa có kế hoạch nhiều chặng nào.",
+            vi_sao="Tác tử chỉ lập kế hoạch cho việc đủ lớn để phải chia chặng — việc nhỏ thì "
+                   "làm thẳng, và một kế hoạch cho việc nhỏ chỉ là thủ tục.",
+            can_gi="Giao một việc lớn và bảo tác tử lập kế hoạch trước.")]
+
+    # `plan:current` trước, kế hoạch đã cất xếp sau — người hỏi "đang làm gì" nhiều hơn hỏi
+    # "đã từng định làm gì".
+    ke.sort(key=lambda a: (a["id"] != "plan:current", a["id"]))
+    ra: list[dict[str, Any]] = []
+    for i, a in enumerate(ke):
+        c = a.get("canonical") or {}
+        buoc = c.get("steps") or []
+        xong = sum(1 for b in buoc if b.get("xong"))
+        tt = _TRANG_THAI_KE_HOACH.get(str(c.get("trang_thai")), str(c.get("trang_thai") or ""))
+        ra.append(khoi_hien_vat(
+            "A2.5" if i == 0 else f"A2.5.{i}",
+            "Kế hoạch chia việc" + ("" if a["id"] == "plan:current" else " (đã cất)"),
+            "ke_hoach", a,
+            summary=f"{xong}/{len(buoc)} bước xong · {tt}",
+            muc_tieu=str(c.get("muc_tieu") or ""),
+            trang_thai=tt,
+            gia_dinh=list(c.get("gia_dinh") or []),
+            ngoai_pham_vi=list(c.get("ngoai_pham_vi") or []),
+            buoc=[{"so": j + 1,
+                   "viec": str(b.get("viec") or ""),
+                   "cong_cu": str(b.get("cong_cu") or ""),
+                   "hien_vat": str(b.get("hien_vat") or ""),
+                   "chi_phi": str(b.get("chi_phi") or ""),
+                   "cong": str(b.get("cong") or ""),
+                   "ghi_chu": str(b.get("ghi_chu") or ""),
+                   "xong": bool(b.get("xong"))} for j, b in enumerate(buoc)]))
+    return ra
 
 
 # Đuôi tệp của tài liệu TÁC TỬ LÀM RA (`doc.render`), khác với tài liệu người NẠP VÀO.
@@ -377,7 +480,7 @@ def _don_gian(surface: str, code: str, title: str, khoi: list[dict[str, Any]]):
     return {"surface": surface, "code": code, "title": title, "blocks": khoi}
 
 
-def design(store: Any, inv: Any) -> dict[str, Any]:
+def design(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
     khoi: list[dict[str, Any]] = []
 
     bom = store.get("BOM")
@@ -401,9 +504,34 @@ def design(store: Any, inv: Any) -> dict[str, Any]:
                    "không mua nhầm theo một hướng sau đó bị bỏ.",
             can_gi="Chốt phương án, rồi bảo tác tử ghi danh sách linh kiện."))
 
+    khoi.extend(_khoi_kien_truc_phan_mem(store, goc))
     khoi.extend(_khoi_ban_do_mach(store))
     khoi.extend(_khoi_so_do(store))
     return _don_gian("design", "A5", "Thiết kế", khoi)
+
+
+def _khoi_kien_truc_phan_mem(store: Any, goc: str = "") -> list[dict[str, Any]]:
+    """A5.6 — thiết kế PHẦN MỀM. Xem `kien_truc.py` để biết vì sao khối này tồn tại.
+
+    Ba khối còn lại của tab Thiết kế đều dựng từ CKM, tức từ mạch. Dự án phần mềm thuần đi qua
+    tab này thì không thấy gì, kể cả khi tác tử vừa so ba phương án kiến trúc và chốt một cái.
+    """
+    from .kien_truc import muc_kien_truc
+
+    muc = muc_kien_truc(store, goc)
+    if not muc:
+        return [empty(
+            "A5.6", "Kiến trúc phần mềm",
+            chua_co="Chưa có phương án hay quyết định kiến trúc nào trong kho.",
+            vi_sao="Khối này chiếu lại phương án đã chốt, rủi ro nêu lúc chọn, các phương án "
+                   "đã loại và quan hệ giữa các mô-đun mã — nó không tự nghĩ ra thiết kế.",
+            can_gi="Bảo tác tử nêu 2–4 phương án kiến trúc rồi chốt một cái; quyết định sẽ "
+                   "thành ADR và hiện ở đây cùng sơ đồ mô-đun.")]
+    # Mục đầu mở sẵn: nó chứa kiến trúc đã chốt và sơ đồ mô-đun. Sáu mục gập hết thì mở tab
+    # Thiết kế ra vẫn chỉ thấy sáu dòng tiêu đề — vẫn chưa trả lời được "thiết kế đâu?".
+    return [block("A5.6", "Kiến trúc phần mềm", "sections",
+                  summary=f"{len(muc)} mục — phương án đã chốt, rủi ro, mô-đun",
+                  sections=muc, mo_san=[muc[0]["ten"]])]
 
 
 # ============================================================ A5.8 — sơ đồ nguyên lý (SCH-44 §9)
@@ -811,7 +939,57 @@ def _thanh(ty: float | None, rong: int = 12) -> str:
     return "▰" * n + "▱" * (rong - n)
 
 
-def code_surface(store: Any, inv: Any) -> dict[str, Any]:
+# Trần chữ đọc lên tab cho mỗi tài liệu phân tích. Tài liệu phân tích dài là chuyện thường;
+# đổ cả tệp vào một khối thì tab thành một trình xem tệp, và người cuộn mãi không tới khối sau.
+TRAN_CHU_PHAN_TICH = 6000
+
+
+def _khoi_phan_tich_ma(store: Any, goc: str = "") -> list[dict[str, Any]]:
+    """A7.2 — tài liệu `code.analyze` viết ra TRƯỚC khi sửa mã.
+
+    Quy trình lập trình (DEV-309) bắt: muốn sửa mã có sẵn thì phải phân tích trước, và bản phân
+    tích ấy là một tệp `.md` thật. Nhưng tệp ấy vào kho dưới dạng hiện vật `note` — mà **không
+    bề mặt nào liệt kê `note`**. Đo trên `rtos-ptit`: `tai-lieu/phan-tich-ma.md` có hai phiên
+    bản, không tab nào hiện.
+
+    Một bản phân tích bắt buộc phải viết mà không ai đọc được thì là thủ tục, không phải phân
+    tích. Khối này đọc thẳng nội dung tệp lên tab.
+    """
+    from pathlib import Path as _P
+
+    ghi_chu = [a for a in store.list("note", limit=50)
+               if str((a.get("canonical") or {}).get("path") or a["id"]).lower().endswith(".md")]
+    if not ghi_chu:
+        return []
+
+    muc: list[dict[str, str]] = []
+    for a in ghi_chu:
+        duong = str((a.get("canonical") or {}).get("path") or a["id"])
+        than = ""
+        if goc:
+            try:
+                p = _P(goc) / duong
+                if p.is_file():
+                    chu = p.read_text("utf-8", errors="replace")
+                    than = (chu[:TRAN_CHU_PHAN_TICH]
+                            + (f"\n\n*… cắt bớt, còn {len(chu) - TRAN_CHU_PHAN_TICH} ký tự "
+                               f"nữa trong `{duong}`.*"
+                               if len(chu) > TRAN_CHU_PHAN_TICH else ""))
+            except OSError as e:
+                than = f"*Không đọc được `{duong}`: {e}*"
+        if not than:
+            # Không đọc được thì nói là không đọc được — đừng hiện một mục rỗng, vì mục rỗng
+            # đọc ra thành "phân tích chẳng có gì".
+            than = (f"*Chưa đọc được nội dung `{duong}` từ đĩa; hiện vật `{a['id']}` v"
+                    f"{a.get('version', 1)} vẫn còn trong kho.*")
+        muc.append({"ten": f"{duong} · v{a.get('version', 1)}", "than": than})
+
+    return [block("A7.2", "Phân tích mã trước khi sửa", "sections",
+                  summary=(f"{len(muc)} tài liệu — đọc trước khi đổi mã có sẵn"),
+                  sections=muc)]
+
+
+def code_surface(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
     """Tab Mã nguồn: tệp mã, script, và QUY TRÌNH gọi chúng.
 
     Vì sao quy trình nằm chung tab với script: một bước "chạy `scripts/setup.sh`" và
@@ -838,6 +1016,8 @@ def code_surface(store: Any, inv: Any) -> dict[str, Any]:
             vi_sao="Tác tử chỉ ghi tệp khi anh yêu cầu một việc cụ thể, và mọi hằng số "
                    "kỹ thuật trong đó phải truy vết được tới một nguồn có tên (N1).",
             can_gi="Bảo tác tử viết phần anh cần."))
+
+    khoi.extend(_khoi_phan_tich_ma(store, goc))
 
     # Kết quả biên dịch — `build.compile` ghi vào kho, và tab Mã nguồn là chỗ người đọc
     # tìm nó. Không hiện ở đây thì kích thước Flash/SRAM chỉ tồn tại trong một câu trả lời
@@ -1376,12 +1556,12 @@ def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
              bo_nho_kw: dict[str, Any] | None = None) -> int:
     """Vẽ lại các bề mặt. Gọi cuối mỗi lượt và khi giao diện xin dựng lại toàn bộ."""
     models = {
-        "requirements": lambda: requirements(store, inv),
+        "requirements": lambda: requirements(store, inv, ledger),
         "documents": lambda: documents(store, inv, _goc_du_an(cfg)),
         "knowledge": lambda: knowledge(store, inv),
-        "design": lambda: design(store, inv),
+        "design": lambda: design(store, inv, _goc_du_an(cfg)),
         "tools": lambda: tools_surface(store, inv),
-        "code": lambda: code_surface(store, inv),
+        "code": lambda: code_surface(store, inv, _goc_du_an(cfg)),
         "simulation": lambda: simulation(store, inv),
         "hardware": lambda: hardware(store, inv),
         "journal": lambda: journal(ledger),

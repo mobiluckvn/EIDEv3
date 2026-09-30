@@ -64,13 +64,26 @@ class Buoc:
                 "xong": self.xong}
 
 
+# Sáu trạng thái của một kế hoạch, kèm chữ cho người đọc. Đặt cạnh định nghĩa vì chú thích
+# cũ ở `trang_thai` chỉ kể bốn cái, trong khi `plan.step_done` ghi `hoan_thanh` và
+# `plan.enter` ghi `da_cat` — một danh sách kể thiếu thì tệ hơn không kể, vì nó trông đủ.
+TEN_TRANG_THAI_VI: dict[str, str] = {
+    "dang_soan": "đang soạn",
+    "cho_duyet": "chờ anh duyệt",
+    "da_duyet": "đã duyệt, đang làm",
+    "hoan_thanh": "đã xong",
+    "huy": "đã bỏ",
+    "da_cat": "đã cất để làm việc khác",
+}
+
+
 @dataclass(slots=True)
 class KeHoach:
     muc_tieu: str = ""
     buoc: list[Buoc] = field(default_factory=list)
     gia_dinh: list[str] = field(default_factory=list)
     ngoai_pham_vi: list[str] = field(default_factory=list)
-    trang_thai: str = "dang_soan"          # dang_soan | cho_duyet | da_duyet | huy
+    trang_thai: str = "dang_soan"          # xem TEN_TRANG_THAI_VI — đủ SÁU trạng thái
     run_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:

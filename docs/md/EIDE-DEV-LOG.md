@@ -5844,3 +5844,98 @@ gì", một hàng ở "Trạng thái", và sửa số ca đơn vị 1339 → 134
 
 **1 344 ca đơn vị** · bộ dò tài liệu **0 chỗ lệch** · README 0 neo hỏng / 0 đường dẫn hỏng ·
 báo cáo dựng lại **12 trang / 15 bảng**, kiểm bằng mắt trang bảng số đo.
+
+---
+
+### [DEV-315] 30/09/2026 · Phân tích và thiết kế của tác tử lên tab — ba khối mới, và hai lỗi sơ đồ chỉ ảnh bắt được
+
+Anh Công theo dõi phiên dựng RTOS rồi nói: *"việc phân tích và thiết kế của Agent khá okay
+nhưng nội dung đó chưa được show ở tab bên cạnh"*. Đo lại trên chính dự án ấy:
+
+    A2  Yêu cầu & Giải pháp    A2.1∅  A2.3  A2.4
+    A5  Thiết kế               A5.4∅  A5.2∅          ← RỖNG HOÀN TOÀN
+    A7  Mã nguồn               A7.1  build
+
+Tác tử vừa so **ba phương án kiến trúc**, chốt một cái qua cổng G-DESIGN, chia việc thành **6
+bước qua 12 phiên bản kế hoạch**, viết một **tài liệu phân tích mã**. Không thứ nào mở ra xem
+được từ tab. Con số cụ thể: `plan` xuất hiện **0 lần** trong cả `surfaces.py`; hiện vật `note`
+chỉ có mặt ở một hàm tóm tắt dự phòng.
+
+#### Vì sao tab Thiết kế rỗng — và đây không phải lỗi cài đặt
+
+MDD-40 §E7 dòng 405 nói tab Thiết kế hiện *"hình + danh sách khối"* dựng từ `module_graph`; mà
+dòng 174 ghi rõ `arch.decompose`/`store.module_*` đã **gộp vào Bản đồ tri thức MẠCH** (§C2).
+Nghĩa là cả ba khối của tab Thiết kế — BOM, CKM, sơ đồ nguyên lý — đều dựng từ *mạch*.
+
+**Thiết kế phần mềm không có nhà.** Không ai viết sai dòng nào; chỗ trống nằm trong thiết kế,
+và chỉ lộ ra khi có một dự án phần mềm thuần đi qua.
+
+#### Ba khối mới, không thêm loại hiện vật nào
+
+**A5.6 Kiến trúc phần mềm** — sáu mục chiếu từ thứ đã có trong kho: kiến trúc đã chốt (kèm sơ
+đồ mô-đun), thành phần chính, **rủi ro nêu lúc chọn**, phương án đã loại kèm lý do, hệ quả
+ghi ở ADR, mô-đun trên đĩa. Mục đầu **mở sẵn** (`mo_san`), vì sáu mục gập hết thì mở tab ra vẫn
+chỉ thấy sáu dòng tiêu đề — vẫn chưa trả lời được câu hỏi ban đầu.
+
+Cạnh của sơ đồ đọc từ `#include`/`import` **có thật trong tệp**. Không có quan hệ nào thì
+**không vẽ**, và nói ra vì sao: sáu ô rời không nối gì là trang trí giả dạng bản vẽ kiến trúc.
+Trên dự án RTOS: 5 cạnh thật từ 6 tệp.
+
+**A2.5 Kế hoạch chia việc** — mục tiêu, **giả định**, **ngoài phạm vi**, và từng bước kèm công
+cụ + hiện vật. MDD-40 dòng 409 xếp kế hoạch ở **Console**; đây là **sai lệch có chủ ý**. Lý do
+đo được: kế hoạch RTOS đi qua 12 phiên bản, và ba điều tác tử tự tuyên bố không làm — chưa cấp
+phát động, chưa bật MPU, chưa tích hợp DSI/LTDC — là thứ cần nhất lúc nghiệm thu, mà Console
+là dòng chảy nên chúng đã trôi mất từ lâu. *Đề nghị cập nhật tài liệu: có.*
+
+Khối này **không có nút bấm**, cố ý: bước kế hoạch chỉ đóng bằng `plan.step_done`, mà công cụ
+ấy đòi một hiện vật mở ra xem được. `KhoiQuyTrinh` có sẵn ba nút "Xong / Không được / Bỏ qua"
+và trông rất tiện để tái dùng — nhưng nó gửi `surface: "code"` và không đòi hiện vật, tức là
+một **nút nói dối**. Nên viết `KhoiKeHoach` riêng, chỉ đọc.
+
+**A7.2 Phân tích mã trước khi sửa** — đọc thẳng nội dung tệp `.md` lên tab. Quy trình ở DEV-309
+bắt phải phân tích trước khi sửa mã có sẵn; *một bản phân tích bắt buộc phải viết mà không ai
+đọc được thì là thủ tục, không phải phân tích.*
+
+#### Cột "Ai quyết" nói thiếu về phía người
+
+ADR-01 ghi `quyet_boi: tac_tu`, và bảng A2.4 hiện đúng một chữ **"Tác tử"** — đọc ra thành
+*"tác tử tự quyết, không ai xem"*. Nhưng sổ cái có `h-0004` lúc **09:06:37**: anh bấm duyệt
+`gate-0001`, đúng cổng G-DESIGN chặn `store.option_choose`.
+
+Không sửa `quyet_boi`: `_kiem_nguoi_that_su_chon` cố tình khắt khe, và bấm *Duyệt* trên thẻ
+cổng thật sự chưa phải là tự chọn. Sửa chỗ **hiện ra**: ba trạng thái khác nhau thì ba chữ
+khác nhau — *Anh quyết* · *Tác tử đề xuất · anh duyệt qua cổng G-DESIGN* · *Tác tử tự quyết —
+chưa ai duyệt*. Nói thiếu về phía người cũng là một cách nói sai.
+
+#### Hai lỗi sơ đồ, chỉ tấm ảnh bắt được
+
+Dựng xong khối A5.6, bộ quét báo **123/124 ô xanh**, không kiểu khối nào "chưa biết vẽ", không
+khối nào chồng nhau. Nhìn ảnh thì thấy hai thứ mọi con số bỏ qua:
+
+1. **Nhãn cụm bị cắt mất nửa trên.** Khung `subgraph` vươn lên trên nút cao nhất 16–24 px để
+   nhét nhãn, mà khổ hình chỉ tính tới lề. `firmware` hiện ra một nửa ở mép.
+2. **`main.c` tràn sang khung thư mục khác.** Khung cụm là **hợp** các ô thành viên, còn tầng
+   lại xếp nút theo *tâm của các con* — nút hai cụm đan nhau nên hai khung chồng lên. Sơ đồ
+   nói `main.c` nằm trong `firmware/rtos`. **Một sơ đồ nói sai về cấu trúc thư mục thì tệ hơn
+   không có sơ đồ.**
+
+Sửa ở cả hai bộ vẽ (Swift cho tab, Python cho tài liệu). Phía Python còn một lớp nữa: xếp nút
+cùng cụm liền nhau *trong một tầng* vẫn chưa đủ, vì cụm trải qua nhiều tầng — phải cấp cho mỗi
+cụm một **dải toạ độ dùng chung cho mọi tầng**.
+
+Và tách `xep_cho()` ra khỏi phép vẽ, vì trước đó hình học chỉ kiểm được bằng mắt: `ve_png` vẫn
+trả PNG hợp lệ, `so_khoi`/`so_noi` vẫn đúng. *Một hình sai vẫn là một hình vẽ được.* Nay bốn ca
+đo thẳng toạ độ — hai khung không giao nhau, mỗi nút nằm trong khung của chính nó.
+
+#### Một lệch nhỏ tự lộ ra
+
+Chú thích ở `KeHoach.trang_thai` kể **bốn** trạng thái, mã ghi **sáu** (`hoan_thanh` ở
+`plan.step_done`, `da_cat` ở `plan.enter`). Nay có `TEN_TRANG_THAI_VI` đặt cạnh định nghĩa,
+`surfaces.py` nhập từ đó. *Một danh sách kể thiếu tệ hơn không kể, vì nó trông như đã đủ.*
+
+### Số đo
+
+**1 372 ca đơn vị** (+28) · bộ quét giao diện **124/124** trên dự án chuẩn · bộ dò tài liệu
+**0 chỗ lệch** · E2E qua app thật trên bản sao dự án RTOS, ảnh ở
+[`ket-qua-tab-phan-tich-thiet-ke/`](../review-v3/test/ket-qua-tab-phan-tich-thiet-ke/) ·
+năm phép phá sản phẩm đều làm bộ kiểm đỏ.

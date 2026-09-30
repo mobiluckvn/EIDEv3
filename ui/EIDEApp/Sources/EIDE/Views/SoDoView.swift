@@ -450,6 +450,18 @@ struct VeLuong: View {
             so.ngang ? max(kt[i].height, nhan[i].height) : max(kt[i].width, nhan[i].width)
         }
 
+        // Thứ tự cụm, để nút cùng một `subgraph` nằm LIỀN NHAU trong mỗi tầng.
+        //
+        // Không có nó thì tầng xếp thuần theo "tâm của các con", nút hai cụm đan xen nhau, và
+        // khung cụm — vốn là HỢP của các ô thành viên — chồng lên nhau. Đo được trên sơ đồ
+        // mô-đun RTOS: `main.c` thuộc cụm `firmware` nằm lọt vào giữa khung `firmware/rtos`,
+        // nhìn ra thành "main.c ở trong thư mục rtos". Một sơ đồ nói sai về cấu trúc thư mục
+        // thì tệ hơn không có sơ đồ.
+        //
+        // Nút không thuộc cụm nào nhận `Int.max` nên xếp cuối, không cắt đôi một cụm. Sơ đồ
+        // không có cụm nào thì mọi khoá bằng nhau và phép xếp theo tâm vẫn quyết định như cũ.
+        func cum(_ i: Int) -> Int { so.nut[i].cum ?? Int.max }
+
         // 1. Xếp tầng CUỐI trước, sát nhau.
         var giua = [CGFloat](repeating: 0, count: so.nut.count)
         let demNgang: CGFloat = so.ngang ? demY : demX
@@ -460,7 +472,9 @@ struct VeLuong: View {
                 x += oNgang(i) + demNgang
             }
         }
-        if let cuoi = theoTang.last { xep(cuoi, theoThuTu: cuoi) }
+        if let cuoi = theoTang.last {
+            xep(cuoi, theoThuTu: cuoi.sorted { cum($0) == cum($1) ? $0 < $1 : cum($0) < cum($1) })
+        }
 
         // 2. Ngược lên: mỗi nút CĂN GIỮA theo các nút nó trỏ tới.
         //
@@ -480,8 +494,12 @@ struct VeLuong: View {
                 let m = ds.isEmpty ? CGFloat(0) : ds.map { giua[$0] }.reduce(0, +) / CGFloat(ds.count)
                 return (i, ds.isEmpty ? .greatestFiniteMagnitude : m)
             }
+            // Cụm trước, rồi mới tới tâm mong muốn: giữ nút cùng `subgraph` liền nhau.
             // Nút không có con thì xếp cuối hàng, giữ nguyên thứ tự khai báo.
-            muon.sort { $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 < $1.1 }
+            muon.sort {
+                if cum($0.0) != cum($1.0) { return cum($0.0) < cum($1.0) }
+                return $0.1 == $1.1 ? $0.0 < $1.0 : $0.1 < $1.1
+            }
             // Đặt theo thứ tự mong muốn nhưng KHÔNG cho chồng lên nhau.
             var x = le
             for (i, m) in muon {
@@ -520,8 +538,16 @@ struct VeLuong: View {
             toiDaDoc = max(toiDaDoc, chay)
         }
 
+        // Chừa chỗ cho NHÃN cụm. Khung `subgraph` vươn lên trên nút cao nhất 16 px (inset 8 +
+        // đẩy 8 để nhét nhãn), mà khổ hình chỉ tính tới lề `le` = 10 — nên nhãn `firmware`
+        // bị cắt mất nửa trên ở mép trước khi hình kịp bắt đầu. Thấy trên ảnh chụp tab Thiết
+        // kế; không con số nào của bộ quét bắt được, vì hình vẫn "vẽ được".
+        let deNhan: CGFloat = so.cum.isEmpty ? 0 : 18
+        if deNhan > 0 {
+            for i in o.indices { o[i].khung.origin.y += deNhan }
+        }
         let w = so.ngang ? toiDaDoc + le : toiDaNgang + le
-        let h = so.ngang ? toiDaNgang + le : toiDaDoc + le
+        let h = (so.ngang ? toiDaNgang + le : toiDaDoc + le) + deNhan
         return (o, CGSize(width: max(w, 180), height: max(h, 70)))
     }
 
