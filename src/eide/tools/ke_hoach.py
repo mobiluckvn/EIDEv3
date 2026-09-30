@@ -20,6 +20,7 @@ from typing import Any
 
 from ..errors import EideError
 from ..ke_hoach import (MA_KE_HOACH, Buoc, KeHoach, doi_chieu, kiem_ke_hoach,
+                        thieu_phan_tich,
                         la_viec_lon)
 from .registry import Registry, ToolResult
 from .writing import EXPLAIN_SCHEMA
@@ -250,6 +251,27 @@ def dang_ky(r: Registry) -> None:
                                 "một bước không để lại gì thì sau này không ai kiểm được nó "
                                 "đã làm hay chưa."),
                 details={"loi": loi}, blame="agent"))
+
+        # Việc DỰNG CÁI CHƯA CÓ thì phải trả lời hai câu kiến trúc trước khi tách việc.
+        # Đây là CHẶN, không phải cảnh báo: sai kiến trúc thì tám bước sau đều sai theo, và
+        # phát hiện ở bước tám đắt gấp bội phát hiện ở bước không.
+        def _co_adr() -> bool:
+            try:
+                return bool(ctx.store.list("adr", limit=1)
+                            or ctx.store.list("option", limit=1))
+            except Exception:                                          # noqa: BLE001
+                return False
+
+        thieu = thieu_phan_tich(kh, _co_adr)
+        if thieu:
+            return ToolResult(False, error=EideError(
+                "E6009", "Kế hoạch viết mã MỚI mà thiếu phần thiết kế: " + " · ".join(thieu),
+                hint_for_agent=(
+                    "Thêm bước trả lời hai câu ấy vào ĐẦU kế hoạch rồi nộp lại — đừng bỏ qua "
+                    "để làm cho nhanh. Sai kiến trúc thì mọi bước sau đều sai theo, và phát "
+                    "hiện ở bước cuối đắt gấp bội phát hiện ở bước đầu. Đã có ADR hoặc phương "
+                    "án trong kho từ trước thì nói rõ trong `ghi_chu` của bước đầu."),
+                details={"thieu": thieu}, blame="agent"))
 
         lon, vi_sao = la_viec_lon(kh, ctx.registry.get)
         kh.trang_thai = "cho_duyet" if lon else "da_duyet"

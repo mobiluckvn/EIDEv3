@@ -97,6 +97,8 @@ class TurnContext:
     # Lượt này đã bị bắt tự kiểm chứng chưa. Vòng thứ hai là vòng tác tử đang TRẢ LỜI lời
     # nhắc ấy; bắt nó kiểm lại lần nữa sẽ thành vòng lặp.
     da_tu_kiem: bool = False
+    # Tệp tác tử đã ĐỌC trong lượt này — `fs.write` đòi đọc trước khi đè (§E4, N9).
+    da_doc: set[str] = field(default_factory=set)
     # Lời NGƯỜI đã nói trong phiên — constant-guard coi con số họ tự nói là có nguồn.
     loi_nguoi_trong_phien: list[str] = field(default_factory=list)
     usage_luot: Any = None                       # chi phí CỦA LƯỢT NÀY, không phải phiên
@@ -105,6 +107,14 @@ class TurnContext:
     # Tài liệu đã nạp trong phiên — giữ nguyên văn theo trang để trích Fact và trả lời
     # có trích trang. Không nằm trong kho vì nội dung PDF lớn và không cần phiên bản.
     tai_lieu: dict[str, Any] = field(default_factory=dict)
+
+    def mark_agent_read(self, path: str) -> None:
+        """Ghi nhận tác tử đã ĐỌC một tệp trong lượt này.
+
+        Dùng cho một luật chứ không để thống kê: `fs.write` không được đè một tệp đang có mà
+        tác tử chưa đọc. Xem `fs_write`.
+        """
+        self.da_doc.add(path)
 
     def mark_agent_wrote(self, path: str) -> None:
         """Soft-lock: cảnh báo người, nhưng VẪN cho họ sửa (§E4 bước 1).

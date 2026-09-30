@@ -108,6 +108,11 @@ def build_registry(features: Any = None) -> Registry:
         lines = text.splitlines()
         start = max(0, (offset or 1) - 1)
         end = min(len(lines), start + limit) if limit else len(lines)
+        # Ghi nhận ĐÃ ĐỌC — `fs.write` dựa vào đây để không cho đè một tệp chưa ai nhìn.
+        # Chỉ tính là đã đọc khi đọc TRỌN tệp: đọc 20 dòng giữa một tệp 800 dòng rồi ghi đè
+        # cả tệp thì vẫn là xoá 780 dòng chưa nhìn.
+        if offset in (None, 1) and (limit is None or limit >= len(lines)):
+            ctx.mark_agent_read(_rel(ctx, p))
         body = "\n".join(f"{i + 1:5d}\t{l}" for i, l in enumerate(lines[start:end], start))
         truncated = len(body) > MAX_READ_BYTES
         if truncated:

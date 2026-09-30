@@ -86,6 +86,8 @@ class History:
         self.ids = ids
         self.eide_md = eide_md
         self.log = ChangesetLog(paths.changesets)
+        # Lượt nào đã có mốc lùi rồi — một mốc mỗi lượt, đặt ở lần ghi đầu tiên.
+        self._moc_cua_luot: set[str] = set()
         self.blobs = BlobStore(paths.blobs)
         from .snapshot import SnapshotStore
         self.snapshots = SnapshotStore(paths.state_dir / "snapshots.jsonl")
@@ -150,6 +152,29 @@ class History:
         CX06 ("hạ nguồn STALE đúng danh sách") sẽ im lặng trượt. Git giữ *nội dung*;
         kho giữ *vị trí của nó trong mạng lưới phụ thuộc*.
         """
+        # MỐC LÙI trước lần sửa ĐẦU TIÊN của mỗi lượt.
+        #
+        # Changeset vốn đã hoàn tác được từng cái một. Nhưng một lượt sửa mã thường đẻ ra
+        # nhiều changeset, và khi người dùng nói *"bỏ hết đi, làm lại"* thì họ muốn lùi **cả
+        # lượt** về một điểm — không phải bấm hoàn tác bảy lần và tự nhớ đã tới đâu.
+        #
+        # Đặt mốc TRƯỚC khi đi, không dựng lại sau khi hỏng: lúc đã hỏng thì trạng thái cần
+        # quay về không còn ở đâu nữa.
+        #
+        # Một mốc mỗi lượt, không phải mỗi lần ghi — `_moc_cua_luot` giữ chỗ đã đặt.
+        moc = ""
+        if run_id and run_id not in self._moc_cua_luot:
+            self._moc_cua_luot.add(run_id)
+            try:
+                m = self.tao_snapshot(
+                    ten="", kind="checkpoint", boi="eide",
+                    ghi_chu=f"mốc lùi, trước khi lượt {run_id} sửa tệp lần đầu")
+                moc = m.id
+            except Exception:                                          # noqa: BLE001
+                # Không đặt được mốc thì VẪN cho ghi: chặn một việc hợp lệ vì không chụp
+                # được ảnh là đổi một bất tiện lấy một chỗ tắc.
+                moc = ""
+
         # Cấp mã changeset TRƯỚC khi commit: message commit phải mang mã đó, nếu không
         # thì nhìn vào `git log` sẽ không lần ngược ra được changeset nào sinh ra nó.
         cs_id = self.ids.next("cs")
@@ -172,6 +197,8 @@ class History:
             tool_call_id=tool_call_id, human_act_id=human_act_id, note=note,
             blob_truoc=blob_truoc)
 
+        # `snapshot_id` vốn dành cho đúng việc này: changeset trỏ về mốc lùi được.
+        cs.snapshot_id = moc or None
         # Đăng ký tệp thành hiện vật để nó có mặt trong kiểm kê và trong đồ thị phụ thuộc.
         for i, p in enumerate(paths):
             cu = self.store.get(p)
@@ -203,6 +230,9 @@ class History:
         self.log.append(cs)
         self.ledger.append("changeset", {
             "id": cs.id, "author": cs.author, "run_id": cs.run_id,
+            # MỐC LÙI của lượt. Sự kiện sổ cái là thứ sống qua khi tắt app; thiếu nó ở đây thì
+            # mốc chỉ tồn tại trong bộ nhớ tiến trình đang chạy.
+            "snapshot_id": cs.snapshot_id,
             "touches": [t.artefact_id for t in cs.touches],
             "reversible": cs.reversible, "stale": cs.stale_marked,
             "summary": cs.explain.get("summary", "")})

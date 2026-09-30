@@ -8,15 +8,15 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 - **Kiến trúc theo mô hình C4 (mã đang thế nào):** [`docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md`](docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md)
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
-- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1320 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
+- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1339 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
 - **Kết quả đo mới nhất (29/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
 - **Đề tài:** PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)
 - Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — Học viện Công nghệ Bưu chính Viễn thông (PTIT) · Học viên: Vũ Trí Công · GVHD: TS. Nguyễn Trung Hiếu
 
 ## Tác tử làm được những gì
 
-**121 công cụ** trong 10 nhóm (112 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ
-`EIDE_FEATURE_SCHEMATIC`), **6 tác tử con**, **8 skill**, **10 cổng duyệt**, **11 bề mặt**.
+**122 công cụ** trong 10 nhóm (113 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ
+`EIDE_FEATURE_SCHEMATIC`), **7 tác tử con**, **8 skill**, **10 cổng duyệt**, **11 bề mặt**.
 Dưới đây là năng lực theo *việc người dùng cần*, không theo cây mã.
 
 | Nhóm công cụ | Số | Làm gì |
@@ -27,7 +27,7 @@ Dưới đây là năng lực theo *việc người dùng cần*, không theo c�
 | Lịch sử | 18 | changeset · hoàn tác · bản ưng ý · nhánh · sổ cái · xuất/nhập dự án |
 | Điều phối | 10 | tác tử con · kế hoạch nhiều chặng · tìm và **tự viết công cụ** |
 | Tệp & lệnh | 7 | đọc/ghi/sửa tệp trong hộp cát · tìm kiếm |
-| Mã nguồn | 7 | biên dịch · bản đồ bộ nhớ · kiểm thử · độ nhạy bộ kiểm |
+| Mã nguồn | 8 | **phân tích mã trước khi sửa** · biên dịch · bản đồ bộ nhớ · kiểm thử · độ nhạy bộ kiểm |
 | Mạch thật | 6 | dò bo · nạp · đọc ngược · log · gỡ lỗi · đọc khung ảnh |
 | Mô phỏng | 4 | tiêu chí trước · chạy · đối chiếu |
 | Người & UI | 3 | hỏi người · mở bề mặt · ghi nhận cái chạm |
@@ -158,7 +158,29 @@ gán** một chân không có trong Fact đã nạp — không bịa chân. `eda
 (ngân sách dòng theo cây, mức logic hai đầu, trở kéo, reset). `khoi.*` thư viện khối tái dùng
 ba tầng, mỗi giá trị dẫn xuất có **công thức và nguồn** — thiếu nguồn thì không đặt.
 
-### 6 · Viết mã, biên dịch, mô phỏng, kiểm thử
+### 6 · Viết mã: phân tích trước · đánh mốc trước · thiết kế trước
+
+Ba luật cứng, cài bằng **mã** chứ không bằng lời dặn:
+
+| Lúc nào | Luật | Mã lỗi khi vi phạm |
+|---|---|---|
+| Ghi đè một tệp đang có | phải **đọc trọn nó** trong lượt này trước | `E4020` |
+| Lần sửa tệp đầu tiên của mỗi lượt | tự đặt một **mốc lùi**, và nói mã mốc cho anh | — |
+| Kế hoạch tạo **mã mới** | phải có bước **chọn kiến trúc** và nói **cấu trúc mã** | `E6009` |
+| Kế hoạch **sửa mã có sẵn** | phải có bước `code.analyze` | `E6009` |
+
+Ghi đè mù hỏng theo kiểu **im lặng và toàn phần**: không xung đột, không cảnh báo, chỉ có một
+tệp ngắn hơn hẳn. Trước đây đó chỉ là một câu gợi ý trong mô tả công cụ, và đo được là nó
+không giữ được gì: gọi thẳng `fs.write` lên một `main.c` 200 dòng chưa hề đọc thì **được nhận**.
+
+`code.analyze` trả lời câu `fs.read` không trả lời được: **ai đang dùng ký hiệu của tệp này**,
+tức chỗ nào sẽ phải xem lại sau khi sửa. Tài liệu nó sinh ra tách rõ **dữ kiện** (do mã quét:
+ký hiệu, phụ thuộc, nơi gọi) khỏi **nhận định** (do tác tử con `code-analyst` đọc hiểu) — một
+con số quét ra và một câu suy đoán không đứng cùng một hàng. Và nó ghi thẳng giới hạn của mình
+vào tài liệu: phép dò tìm tên trong văn bản, nên **gọi gián tiếp qua con trỏ hàm hay macro thì
+nó không thấy** — đó chính là câu hỏi đắt nhất giao cho tác tử con.
+
+### 7 · Biên dịch, mô phỏng, kiểm thử
 
 `build.compile` chọn chuỗi công cụ theo **dự án là gì**, không theo máy có gì — AVR
 (`arduino-cli` khi có `.ino`, không thì `avr-gcc`) và ARM bare-metal (`armv6-m`/`armv7-m`/
@@ -173,7 +195,7 @@ Nó phá mã sản phẩm rồi chạy lại — không ca nào đỏ nghĩa là
 Ra đời vì một bộ kiểm sáu ca đầy đủ tên/ngưỡng/báo cáo JSON đã **xanh mãi mãi** do tệp test
 tự định nghĩa lại hàm của sản phẩm (DEV-288).
 
-### 7 · Mạch thật
+### 8 · Mạch thật
 
 `target.detect` dò bo qua ổ đĩa bộ nạp, cổng nối tiếp, và **ID chip đọc qua SWD** — đối chiếu
 ba giá trị `khớp`/`lệch`/`chưa sờ được`, không gộp ba thành hai. `target.flash` (R4, cổng
@@ -183,7 +205,7 @@ im lặng. `target.screen` đọc bộ nhớ khung ảnh ra PNG để xem chip �
 11 mắt xích LTDC → DSI → panel. `target.debug` dừng chip, giải mã CFSR/HFSR, đọc khung ngắt,
 lấy dấu vết ngăn xếp, lấy mẫu PC, và đọc nguyên nhân reset.
 
-### 8 · Bộ nhớ và ngữ cảnh
+### 9 · Bộ nhớ và ngữ cảnh
 
 `EIDE.md` là bộ nhớ dài hạn của dự án — người và tác tử cùng sửa, tác tử đọc mỗi lượt. Nén
 ngữ cảnh bốn mức: `C1` thu gọn cơ học **0 token**, `C2` tóm tắt có kiểm ngược ba câu, `C3`
@@ -191,7 +213,7 @@ bậc thang, `C4` khẩn cấp. `memory.undo_compact` huỷ lần nén trong 24 
 một dòng nhưng **để lại dấu đã quên**. `ledger.query` tra sổ cái để trả lời "ban đầu anh nói
 gì", "vì sao chọn MTP".
 
-### 9 · Lịch sử, nhánh, bản ưng ý — ba mức lùi lại
+### 10 · Lịch sử, nhánh, bản ưng ý — ba mức lùi lại
 
 Mọi thứ ghi đều là changeset có phép nghịch đảo, và có **ba mức lùi lại** cho ba tình huống
 khác nhau:
@@ -216,7 +238,7 @@ git (xung đột thì **huỷ phép gộp**, không để lại cây làm việc
 và **chỉ lấy phần một bên đổi**. Cả hai bên cùng đổi thì để nguyên và kê ra cho anh quyết: không
 phép trộn nào đúng ở đó, và chọn hộ là giả mạo xuất xứ của quyết định.
 
-### 10 · Việc lớn: chia nhiều chặng, ghi từng chặng, rồi hợp nhất
+### 11 · Việc lớn: chia nhiều chặng, ghi từng chặng, rồi hợp nhất
 
 Một việc không xong trong một lượt — viết trọn tài liệu thiết kế một con chip, dựng nhiều khối
 firmware — đi theo năm nhịp:
@@ -252,9 +274,9 @@ cùng một tệp — lúc ấy sửa còn rẻ:
 | Hỏng một bước | làm lại **riêng bước ấy** | làm lại **cả nhóm** dùng chung tệp |
 | Bước cuối | `plan.merge` ráp lại | không có gì để gộp — tệp ấy **đã là** bản hợp nhất |
 
-### 11 · Tự kiểm chứng và tự bù năng lực
+### 12 · Tự kiểm chứng và tự bù năng lực
 
-`task.run` giao việc cho **6 tác tử con**. Mỗi cái có **ngữ cảnh sạch** — nó *không thấy* cuộc
+`task.run` giao việc cho **7 tác tử con**. Mỗi cái có **ngữ cảnh sạch** — nó *không thấy* cuộc
 trò chuyện giữa người dùng và tác tử chính, để nó **đọc dữ kiện chứ không đọc kỳ vọng** — và
 một tập công cụ hẹp, cắt đúng theo việc nó làm.
 
@@ -265,7 +287,8 @@ một tập công cụ hẹp, cắt đúng theo việc nó làm.
 | **`design-review`** | soi bản đồ mạch và sơ đồ | 9 | 12 | tìm chỗ **sai**, không khen chỗ đúng; mỗi phát hiện nêu sai ở đâu · vì sao biết · hậu quả nếu để nguyên |
 | **`sim-runner`** | nêu tiêu chí, chạy mô phỏng và test | 9 | 12 | *"đo, không phải thuyết phục"* — **không sửa ngưỡng** để một phép thử thành đạt |
 | **`verifier`** | kiểm chứng báo cáo của tác tử khác | 10 | 10 | **không biết đề bài** (cố ý), chỉ có công cụ đọc |
-| **`hardware`** | việc chạm bo thật | 5 | 12 | thao tác chạm bo phải người duyệt; thiếu công cụ thì trả `chua_du_du_kien` **kèm tên thao tác còn thiếu** |
+| **`code-analyst`** | đọc mã đang có, nói sửa vào đây thì **gãy chỗ nào** | 10 | 14 | chỉ có công cụ đọc; câu đắt nhất giao cho nó là **chỗ gọi gián tiếp** — con trỏ hàm, macro, bảng phân phối — thứ phép quét văn bản mù hẳn |
+| **`hardware`** | việc chạm bo thật | 5 | 12 | thao tác chạm bo phải người duyệt; thiếu công cụ thì trả `chua_du_du_kien` **kèm tên thao tác còn thiếu** | thao tác chạm bo phải người duyệt; thiếu công cụ thì trả `chua_du_du_kien` **kèm tên thao tác còn thiếu** |
 
 **Mọi tác tử con kết thúc bằng đúng một dòng JSON** — `tom_tat` · `da_lam` · `bang_chung` ·
 `chua_lam` · `ket_luan` · `do_tin` — và lược đồ ấy được kiểm bằng mã. Hai luật cứng trong đó:
@@ -297,7 +320,7 @@ và chỉ tốn token khi thật sự được nạp: `sim-criteria-first` · `a
 `datasheet-onboarding` · `design-review-checklist` · `hardfault-analysis` ·
 `explain-for-humans` · `trinh-bay-bang-hinh` · `chia-viec-lon`.
 
-### 12 · Ba lớp chặn quanh mỗi lời gọi
+### 13 · Ba lớp chặn quanh mỗi lời gọi
 
 **Hook S0** (0 token) chặn xác định trước khi tiêu một token nào: STOP, BACKREF, G-OPS,
 P-SAFE, P-LAW, P-QUAL, P-INJ. Nhờ nó, "thiết kế thiết bị phá sóng" bị từ chối trong 8 giây và
@@ -309,7 +332,7 @@ G-DESIGN · G-FILE · G-FLASH · G-HIST · G-OPS · G-QUAL · G-SAFE · G-SCOPE 
 **Hook Stop** kiểm trước khi kết thúc lượt: giả định đã nói ra chưa · người vừa sửa đã được
 nhắc tới chưa · lượt này có nói gì không · có việc nào chưa ai kiểm chứng không.
 
-### 13 · Giao diện: người dùng làm được gì, không chỉ xem
+### 14 · Giao diện: người dùng làm được gì, không chỉ xem
 
 Giao diện **không quyết gì** (I3) — nó vẽ lại thứ lõi gửi, và gói mọi cái chạm của người thành
 một hành vi đi qua **đúng một cửa** (I1). Nhưng nó không phải chỗ chỉ để đọc:
@@ -330,7 +353,7 @@ một hành vi đi qua **đúng một cửa** (I1). Nhưng nó không phải ch�
   (khác `⌘Z` vốn là undo của ô văn bản) · `⌘.` dừng khẩn · `⌘R` vẽ lại.
 * **Bề rộng Console** ba mức Hẹp / Vừa / Rộng, nhớ theo máy.
 
-### 14 · Dữ liệu dự án: tất cả nằm trong một thư mục
+### 15 · Dữ liệu dự án: tất cả nằm trong một thư mục
 
 Chép thư mục dự án **là** mang cả dự án đi — không có gì nằm ngoài nó. Tệp `du-an.json` ngay
 trong thư mục là tấm thẻ căn cước: dự án của bản nào, chip gì, bao nhiêu yêu cầu, sổ cái toàn
@@ -350,7 +373,7 @@ rồi lộ ra ở một lúc rất xa.
 Gói xuất ra **mở được bằng bất kỳ trình giải nén nào** — không có định dạng riêng, vì một định
 dạng riêng là một thứ nữa phải bảo trì và một thứ nữa có thể mất khả năng đọc.
 
-### 15 · Lỗi là dữ liệu, không phải tai nạn
+### 16 · Lỗi là dữ liệu, không phải tai nạn
 
 Mỗi lỗi mang bốn phần: mã (`E2013`), câu tiếng Việt cho người, **`hint_for_agent`** nói phải
 làm gì tiếp, và `alternatives` liệt kê công cụ đi được. Nhờ vậy một lời từ chối không làm tác
@@ -360,7 +383,7 @@ tử đứng lại — nó đọc gợi ý rồi đổi hướng.
 **tự thêm một bảng thật vào nguồn**, xuất lại thành bảng 7 hàng dùng được, và **nói với người
 dùng là đã sửa tệp của họ**.
 
-### 16 · Bảo mật và riêng tư — bằng cấu trúc, không bằng lời dặn
+### 17 · Bảo mật và riêng tư — bằng cấu trúc, không bằng lời dặn
 
 * **Chỉ một mô hình.** `ALLOWED_MODELS` chặn ở mức mã: đặt tên mô hình khác thì lõi **từ chối
   ngay khi khởi động**, không phải cảnh báo rồi chạy tiếp.
@@ -383,10 +406,11 @@ dùng là đã sửa tệp của họ**.
 | Quét giao diện 11 bề mặt | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
 | Tác tử tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Xuất tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
+| Quy trình lập trình (phân tích · mốc lùi · thiết kế) | **8/8** | [`thu_quy_trinh_code.py`](tools/thu_quy_trinh_code.py) |
 | Vẽ sơ đồ mermaid (giao diện + tài liệu) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
 | Chia việc lớn → ghi từng chặng → hợp nhất | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã ↔ tài liệu thiết kế | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
-| Ca đơn vị | **1320** | `pytest tests/ -q` |
+| Ca đơn vị | **1339** | `pytest tests/ -q` |
 | Bo thật STM32F469I-DISCO | LCD 800×480 + cảm ứng + FreeRTOS đa tác vụ, đã xác nhận bằng mắt | [`docs/stm32f469-freertos/`](docs/stm32f469-freertos/) |
 
 Mỗi ca kiểm có một tệp log riêng kèm **bảng từng lời gọi công cụ, tham số đầy đủ và mã lỗi**:

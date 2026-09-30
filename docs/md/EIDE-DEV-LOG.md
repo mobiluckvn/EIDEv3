@@ -5510,3 +5510,98 @@ Cách ly mọi thứ bằng mọi giá sẽ biến ba ca đo **máy thật** th�
 **1323 ca đơn vị** · công cụ đã nổ **110/121** (từ 90/121) · `tools/thu_18_cong_cu.py` hai
 lượt: 15/15 và 16/19 — ba ô đỏ lượt hai là tiền đề khác nhau giữa hai lượt, không phải đường
 đứt · bộ dò tài liệu **0 chỗ lệch**.
+
+---
+
+### [DEV-310] 30/09/2026 · Quy trình lập trình: phân tích trước · đánh mốc trước · thiết kế trước
+
+**Yêu cầu của anh Công:** *"trước khi code phải có tài liệu phân tích code (với trường hợp viết
+thêm) và đưa ra nội dung sẽ sửa rồi mới tiến hành sửa. Trước khi sửa cần phải đánh dấu bản
+trước đó để nếu sửa lỗi có thể rollback về được. Với việc làm mới hoàn toàn thì cần có phân
+tích và thiết kế cẩn thận: phân tích và lựa chọn kiến trúc, phân tích và lựa chọn code
+structure rồi mới tiến hành tách công việc để thực thi."*
+
+Và sau đó: *"các công cụ này cần thông minh nên bạn nên sử dụng Agent con ở đó nhé"*.
+
+#### Đo trước: ba đòi hỏi, ba lỗ hổng
+
+| Thử | Kết quả |
+|---|---|
+| `fs.write` đè `main.c` 200 dòng mà **chưa hề đọc** | **NHẬN** — tệp còn một dòng. Câu *"đọc tệp trước"* chỉ là gợi ý trong mô tả công cụ |
+| Mốc lùi trước khi sửa | **KHÔNG có** — chỉ có changeset, không có điểm quay về đặt tên được |
+| `plan.exit` hỏi gì về kiến trúc | **không gì** — nó kiểm hình thức (đủ bước, công cụ có thật), không kiểm nội dung kỹ thuật |
+
+#### Ba luật cài bằng MÃ
+
+**1. Không ghi đè tệp chưa đọc trọn (`E4020`).** Đọc 20 dòng giữa một tệp 800 dòng rồi đè cả
+tệp vẫn là xoá 780 dòng chưa nhìn, nên chỉ tính "đã đọc" khi đọc trọn. `fs.edit` không cần luật
+này — nó đòi đoạn cũ khớp từng ký tự nên không đọc thì không viết nổi lời gọi.
+
+Ghi đè mù hỏng theo kiểu **im lặng và toàn phần**: không xung đột, không cảnh báo, chỉ có một
+tệp ngắn hơn hẳn. Changeset vẫn hoàn tác được — nhưng hoàn tác là sửa hậu quả, không phải ngăn
+nguyên nhân.
+
+**2. Mốc lùi tự động ở lần sửa ĐẦU TIÊN của mỗi lượt.** Một lượt sửa mã đẻ ra nhiều changeset;
+khi người dùng nói *"bỏ hết đi"* họ muốn lùi **cả lượt** về một điểm, không phải bấm hoàn tác
+bảy lần và tự nhớ đã tới đâu. Một mốc mỗi lượt, không phải mỗi lần ghi — đặt mốc ở mọi lần ghi
+thì mốc thành tiếng ồn.
+
+**3. `plan.exit` đòi thiết kế cho việc viết mã (`E6009`).** Hai câu, cho hai loại việc khác
+nhau: *dựng cái chưa có* → chọn kiến trúc (`store.option_*`/`adr_create`) và nói cấu trúc mã;
+*sửa cái đang có* → một bước `code.analyze`. Luật đặt ở KẾ HOẠCH chứ không ở từng lời gọi
+`fs.edit`: bắt một dòng sửa vặt phải viết tài liệu thì luật ấy sẽ bị lách.
+
+#### `code.analyze` — và chỗ tác tử con vào việc
+
+`fs.read` cho thấy **một tệp**. Câu đắt nhất trước khi sửa là câu khác: **ai đang dùng nó?**
+Sửa một hàm mà không biết năm chỗ gọi nó thì năm chỗ ấy hỏng lặng lẽ — và `fs.read` không trả
+lời được, vì câu ấy cần quét cả cây mã.
+
+Tài liệu sinh ra **tách dữ kiện khỏi nhận định**, mỗi phần ghi rõ ai làm ra nó:
+
+* **Dữ kiện** do mã quét: ký hiệu, phụ thuộc, nơi gọi.
+* **Nhận định** do tác tử con **`code-analyst`** (mới, thứ bảy) đọc hiểu — ngữ cảnh sạch, chỉ
+  công cụ đọc, được đưa sẵn bảng dữ kiện để khỏi quét lại.
+
+Câu giao cho nó nặng nhất là câu thứ ba: **chỗ nào bảng dữ kiện KHÔNG nhìn thấy** — gọi gián
+tiếp qua con trỏ hàm, macro nối chuỗi, bảng phân phối. Phép quét văn bản kêu thừa chứ không bỏ
+sót chỗ gọi **thẳng**; chỗ gọi **gián tiếp** thì nó mù hẳn, mà đó đúng là chỗ hỏng đắt nhất khi
+sửa firmware. Giới hạn ấy ghi thẳng vào tài liệu, không giấu trong mã.
+
+#### Năm lỗi của chính phần vừa viết
+
+1. **`.m` khớp `.md`.** Luật "chỉ hỏi kiến trúc khi viết MÃ" so đuôi bằng phép tìm chuỗi con,
+   nên `.m` (Objective-C) khớp ngay trong `tai-lieu/1.md` — **mười ca kiểm đỏ cùng lúc**, và lý
+   do thật nằm ở hai ký tự. Báo động giả dạy người ta bỏ qua cảnh báo, nên nó đắt hơn hẳn việc
+   không có cảnh báo.
+2. **`code.analyze` là `core=False`** nên tác tử không nhìn thấy. Đo qua giao diện thật: giao
+   *"xem giúp rồi sửa"*, nó đọc năm tệp bằng `fs.read` rồi tự sửa, **không gọi lần nào**. Lần
+   thứ tư trong dự án này cùng một hình dạng lỗi. Nay `core=True`, và `fs.edit` nhắc tên nó.
+3. **`Changeset.to_dict()` không mang `snapshot_id`** — mốc lùi có trong bộ nhớ mà không tới sổ
+   cái. Năm changeset liên tiếp báo `snapshot_id=None` trong khi mốc đã đặt thật.
+4. **Sự kiện sổ cái cũng thiếu trường ấy** — mốc chỉ sống trong tiến trình đang chạy.
+5. **Tác tử con chạy mà không để lại dấu trong sổ cái**: quên truyền `ghi_so`. Nhận định của
+   `code-analyst` nằm trong tài liệu, còn sổ cái chỉ thấy `verifier`. Một việc không truy vết
+   được (N1), và ở đây nó còn là một việc **tốn tiền không ai đếm được**.
+
+#### Ba lần phép đo tự hỏng — và một luật cho bộ đo
+
+Bộ E2E chạy năm lượt mới đúng. Ba ô đỏ đầu **không nói về sản phẩm**:
+
+* đo chuỗi lời gọi trong một cửa sổ thời gian, trong khi sổ cái cho thấy luật chạy đúng: kế
+  hoạch 6 bước không kiến trúc bị `E6009`, tác tử đọc gợi ý, thêm `store.adr_create`, nộp lại 7
+  bước và **qua**;
+* một ô đòi *"kế hoạch không kiến trúc phải bị chặn"* — tức **chỉ xanh khi tác tử mắc lỗi**.
+  Lần chạy sau nó làm đúng ngay từ đầu và ô ấy đỏ;
+* một ô đòi tác tử phải nộp lại thành công **trong thời gian chờ** — đó là chuyện tốc độ, khác
+  với chuyện luật có giữ được hay không.
+
+Luật rút ra, ghi vào chính bộ đo: **một phép đo chỉ xanh khi sản phẩm mắc lỗi là một phép đo
+hỏng.** Đo BẤT BIẾN (không kế hoạch thiếu kiến trúc nào được nhận), kèm một ô chống xanh rỗng
+(có nộp kế hoạch viết mã để mà đo).
+
+### Số đo
+
+`code.analyze` + tác tử con `code-analyst` · **1339 ca đơn vị** (+16) · **122 công cụ** (113
+mặc định) · **7 tác tử con** · E2E quy trình lập trình **8/8** qua giao diện thật, trong đó
+`E4020` và `E6009` đều nổ thật trong lượt chạy · bộ dò tài liệu **0 chỗ lệch**.

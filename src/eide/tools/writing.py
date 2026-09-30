@@ -77,6 +77,32 @@ def register(r: Registry) -> Registry:
         rel = _rel(ctx, p)
         cu = p.read_text("utf-8", errors="replace") if p.exists() else None
 
+        # KHÔNG đè một tệp đang có mà lượt này chưa đọc trọn.
+        #
+        # Trước đây đây chỉ là một câu gợi ý trong mô tả công cụ (*"Đọc tệp trước bằng fs.read
+        # nếu nó đã tồn tại"*). Đo được 30/09/2026: gọi thẳng `fs.write` lên một `main.c` 200
+        # dòng chưa hề đọc — **được nhận**, tệp còn đúng một dòng. Changeset có, nên hoàn tác
+        # được; nhưng hoàn tác là sửa hậu quả, không phải ngăn nguyên nhân.
+        #
+        # Ghi đè mù là hỏng theo kiểu **im lặng và toàn phần**: không có xung đột, không có
+        # cảnh báo, chỉ có một tệp ngắn hơn hẳn. Mà một lời gợi ý thì chỉ có tác dụng với người
+        # đang nhớ tới nó.
+        #
+        # `fs.edit` không cần luật này: nó đòi đoạn cũ khớp từng ký tự, nên không đọc thì không
+        # viết nổi lời gọi.
+        if cu is not None and rel not in getattr(ctx, "da_doc", set()):
+            return ToolResult(False, error=EideError(
+                "E4020",
+                f"`{rel}` đã có {len(cu.splitlines())} dòng mà lượt này bạn chưa đọc nó — "
+                "chưa ghi đè được.",
+                hint_for_agent=(
+                    f"Đọc trọn tệp bằng `fs.read(path=\"{rel}\")` rồi ghi lại. Chỉ sửa một "
+                    "đoạn thì dùng `fs.edit` — nó đòi đoạn cũ khớp từng ký tự nên không xoá "
+                    "nhầm phần bạn chưa nhìn. Ghi đè mù hỏng im lặng và toàn phần: không xung "
+                    "đột, không cảnh báo, chỉ có một tệp ngắn hơn hẳn."),
+                details={"so_dong_hien_co": len(cu.splitlines())},
+                alternatives=["fs.read", "fs.edit"], blame="agent"))
+
         # §E4 bước 6: "KHÔNG ghi đè sửa của người nếu không được đồng ý". Lớp cấp quyền
         # đã dựng thẻ G-FILE cho chuyện này; tới được đây nghĩa là đã được duyệt.
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -90,12 +116,14 @@ def register(r: Registry) -> Registry:
         ctx.mark_agent_wrote(rel)
         return {"path": rel, "bytes": len(content.encode("utf-8")),
                 "changeset": cs.id, "tao_moi": cu is None,
-                "stale": cs.stale_marked,
-                "note_vi": _note_stale(cs)}
+                "stale": cs.stale_marked, "moc_lui": cs.snapshot_id,
+                "note_vi": _note_stale(cs) + _note_moc(cs)}
 
     @r.tool("fs.edit", "Tệp & lệnh",
             "Thay một đoạn văn bản trong tệp bằng đoạn khác. Đoạn cũ phải khớp CHÍNH XÁC "
-            "và xuất hiện đúng một lần — nếu không, đọc lại tệp bằng fs.read.",
+            "và xuất hiện đúng một lần — nếu không, đọc lại tệp bằng fs.read. Sửa MÃ mà "
+            "người khác đang dùng thì chạy `code.analyze` trước: nó trả lời câu `fs.read` "
+            "không trả lời được — ai đang gọi hàm này, tức chỗ nào sẽ gãy.",
             {"type": "object",
              "properties": {"path": {"type": "string"},
                             "old_string": {"type": "string"},
@@ -575,6 +603,21 @@ def _chap_nhan_nut(ctx: Any, duong: str, why: str, ca_nhanh: bool):
             "note_vi": (f"Đã tắt băng cảnh báo cho {len(chon)} nút"
                         + (" (cả nhánh)" if ca_nhanh else "")
                         + ". Lý do được ghi lại, không xoá — lịch sử vẫn thấy nó từng bật.")}
+
+
+def _note_moc(cs: Any) -> str:
+    """Nói ra MỐC LÙI của lượt, nếu lần ghi này là lần đầu.
+
+    Một mốc không ai biết là có thì cũng như không có — cùng bài học với
+    `memory.undo_compact` (DEV-308). Người dùng nói *"bỏ hết đi"* phải nghe được một mã cụ
+    thể để quay về, chứ không phải nghe "vẫn hoàn tác được".
+    """
+    m = getattr(cs, "snapshot_id", None)
+    if not m:
+        return ""
+    return (f"\n\nĐây là lần sửa đầu tiên của lượt này, nên đã đặt **mốc lùi `{m}`** trước "
+            "khi sửa. Muốn bỏ cả lượt thì khôi phục về mốc ấy — không phải hoàn tác từng "
+            "changeset và tự nhớ đã tới đâu.")
 
 
 def _note_stale(cs: Any) -> str:

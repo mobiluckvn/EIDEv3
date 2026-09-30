@@ -256,7 +256,12 @@ def test_ke_hoach_DA_DUYET_thi_mo_lai_cong_cu_ghi(chay):
     """Kế hoạch nhỏ được duyệt luôn ⇒ `da_duyet` ⇒ hết khoá."""
     from eide.llm import Response, ToolCall
 
-    b = [{"viec": "đọc", "cong_cu": "fs.read", "hien_vat": "nội dung main.c"},
+    # Kế hoạch này TẠO MÃ MỚI (`a.c`), nên từ 30/09/2026 nó phải trả lời hai câu kiến trúc
+    # trước khi tách việc — xem `thieu_phan_tich`. Thêm bước chốt hướng và nói cấu trúc mã;
+    # ý của ca kiểm không đổi: kế hoạch nhỏ được duyệt luôn thì hết khoá.
+    b = [{"viec": "chốt hướng: một tệp .c duy nhất, cấu trúc phẳng",
+          "cong_cu": "store.adr_create", "hien_vat": "ADR-01"},
+         {"viec": "đọc", "cong_cu": "fs.read", "hien_vat": "nội dung main.c"},
          {"viec": "ghi", "cong_cu": "fs.write", "hien_vat": "a.c"}]
     agent, _ = chay(
         {"kind": "say", "text": "làm giúp tôi"},

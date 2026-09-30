@@ -92,6 +92,11 @@ class Changeset:
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            # `snapshot_id` là MỐC LÙI của lượt. Thiếu nó ở đây thì mốc có trong bộ nhớ mà
+            # không tới sổ cái — và một mốc không ghi lại được thì không ai tìm ra nó sau khi
+            # tắt app. Đo được 30/09/2026: năm changeset liên tiếp đều báo `snapshot_id=None`
+            # trong khi mốc đã được đặt.
+            "snapshot_id": self.snapshot_id,
             "id": self.id, "ts": self.ts, "author": self.author, "run_id": self.run_id,
             "human_act_id": self.human_act_id, "tool_call_id": self.tool_call_id,
             "touches": [t.to_dict() for t in self.touches],

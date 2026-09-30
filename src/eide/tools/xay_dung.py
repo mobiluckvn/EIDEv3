@@ -37,6 +37,55 @@ def _bay_gio() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _nhan_dinh_cua_tac_tu_con(ctx: Any, dam: str, doi_gi: str) -> str:
+    """Giao bảng dữ kiện cho `code-analyst` rồi gắn nhận định của nó vào tài liệu.
+
+    Tách **dữ kiện** khỏi **nhận định** ngay trong tài liệu, mỗi phần ghi rõ ai làm ra nó:
+    phần trên do mã quét, phần này do một tác tử đọc hiểu. Người duyệt cần phân biệt được —
+    một con số quét ra và một câu suy đoán không đứng cùng một hàng.
+
+    Không gọi được mô hình (chạy trong bộ kiểm, hoặc lỗi mạng) thì **nói ra là thiếu**, chứ
+    không im lặng trả về tài liệu chỉ có dữ kiện: người đọc sẽ tưởng phần nhận định là "không
+    có gì đáng nói".
+    """
+    llm = getattr(getattr(ctx, "agent", None), "llm", None)
+    if llm is None:
+        return ("\n## Nhận định\n\n*Chưa có — lượt này không gọi được mô hình. "
+                "Tài liệu mới có phần DỮ KIỆN do mã quét ra.*\n")
+    try:
+        from .. import subagent as SA
+
+        # GHI SỔ. Không truyền `ghi_so` thì tác tử con chạy xong mà **không để lại dấu nào
+        # trong sổ cái** — đo được 30/09/2026: `code-analyst` đã chạy và nhận định của nó nằm
+        # trong tài liệu, nhưng sổ cái chỉ thấy `verifier`. Một việc không có dấu trong sổ cái
+        # là một việc không truy vết được (N1), và ở đây nó còn là một việc TỐN TIỀN không ai
+        # đếm được.
+        ghi = None
+        if getattr(ctx, "ledger", None) is not None:
+            def ghi(kind: str, data: dict[str, Any]) -> None:           # noqa: F811
+                ctx.ledger.append(kind, {"run_id": getattr(ctx, "run_id", ""), **data})
+
+        bc = SA.chay(llm=llm, registry=ctx.registry, ctx=ctx, ma="code-analyst",
+                     ghi_so=ghi,
+                     viec=("Đây là bảng dữ kiện do mã quét ra cho một thay đổi sắp làm. "
+                           f"Thay đổi dự định: {doi_gi}\n\n" + dam))
+    except Exception as e:                                             # noqa: BLE001
+        return (f"\n## Nhận định\n\n*Không lấy được: {e}. Tài liệu mới có phần DỮ KIỆN.*\n")
+
+    L = ["", "## Nhận định của tác tử con `code-analyst`", "",
+         f"*Tầng tin cậy: **{bc.do_tin or 'DONG'}** · kết luận: `{bc.ket_luan}`. "
+         "Phần trên là DỮ KIỆN do mã quét; phần này là ĐỌC HIỂU — hai thứ khác nhau.*", "",
+         bc.tom_tat or "*(không có tóm tắt)*", ""]
+    if bc.da_lam:
+        L += ["**Đã soi:**"] + [f"* {x}" for x in bc.da_lam] + [""]
+    if bc.bang_chung:
+        L += ["**Bằng chứng:**"] + [f"* `{b.get('kind')}` → {b.get('ref')}"
+                                    for b in bc.bang_chung] + [""]
+    if bc.chua_lam:
+        L += ["**Cố ý chưa soi:**"] + [f"* {x}" for x in bc.chua_lam] + [""]
+    return "\n".join(L)
+
+
 def register(r: Registry) -> Registry:
     dang_ky(r)
     return r
@@ -158,6 +207,103 @@ def dang_ky(r: Registry) -> None:
                 "note_vi": f"Đã cài {cong_cu} bằng `{lenh}` — nay có ở {duong}."}
 
     # ====================================================================== biên dịch
+    @r.tool("code.analyze", "Mã nguồn",
+            "PHÂN TÍCH MÃ ĐANG CÓ trước khi sửa nó: tệp có những ký hiệu gì, phụ thuộc gì, "
+            "và AI ĐANG DÙNG chúng — tức chỗ nào sẽ phải xem lại sau khi sửa. Bắt buộc nói "
+            "rõ SẼ ĐỔI GÌ. Sinh ra một tài liệu `.md` để người đọc trước khi duyệt cho sửa.",
+            {"type": "object",
+             "properties": {
+                 "tep": {"type": "array", "items": {"type": "string"},
+                         "description": "các tệp sắp sửa, đường dẫn trong dự án"},
+                 "doi_gi": {"type": "string",
+                            "description": "sẽ đổi gì, cụ thể — không phải 'cải thiện mã'"},
+                 "vi_sao": {"type": "string", "description": "vì sao phải đổi"},
+                 "ra": {"type": "string",
+                        "description": "nơi ghi tài liệu, mặc định `tai-lieu/phan-tich-ma.md`"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["tep", "doi_gi", "vi_sao", "explain"]},
+            # `core=True`: đây là CỬA VÀO của quy trình sửa mã, không phải một công cụ phụ.
+            # Đo được 30/09/2026 qua giao diện thật: giao đúng việc *"xem giúp rồi sửa"*, tác
+            # tử đọc năm tệp bằng `fs.read` rồi tự sửa — **không gọi `code.analyze` lần nào**,
+            # vì nó là `core=False` nên không nằm trong danh sách tác tử nhìn thấy. Lần thứ tư
+            # trong dự án này cùng một hình dạng lỗi.
+            risk="R2", gate="G-FILE", writes_artefact=True, needs_explain=True, core=True,
+            keywords=["phân tích mã", "trước khi sửa", "ai đang dùng", "tác động", "đọc mã",
+                      "impact", "code analysis", "sẽ sửa gì"],
+            returns_vi="Đường dẫn tài liệu, số ký hiệu, và danh sách chỗ phải xem lại")
+    def code_analyze(ctx: Any, tep: list[str], doi_gi: str, vi_sao: str,
+                     explain: dict[str, Any], ra: str = ""):
+        """Vì sao một công cụ riêng, khi đã có `fs.read`.
+
+        `fs.read` cho thấy **một tệp**. Trước khi sửa mã có sẵn thì câu đắt nhất là câu khác:
+        **ai đang dùng nó?** Sửa một hàm mà không biết năm chỗ gọi nó thì năm chỗ ấy hỏng lặng
+        lẽ — và `fs.read` không trả lời được, vì câu ấy cần quét cả cây mã.
+
+        Đòi `doi_gi` là cố ý: một bản phân tích không nói sẽ đổi gì thì chỉ là một bản liệt kê.
+        Người duyệt đọc nó để quyết *"có cho sửa không"*, mà muốn quyết thì phải biết sửa gì.
+        """
+        from ..phan_tich_ma import dung_tai_lieu, quet
+        from .writing import _rel, _sandbox
+
+        if not tep:
+            return ToolResult(False, error=EideError(
+                "E4021", "Chưa nêu tệp nào để phân tích.",
+                hint_for_agent="Liệt kê đúng những tệp sắp sửa; dùng `fs.glob` nếu chưa chắc.",
+                alternatives=["fs.glob", "fs.grep"], blame="agent"))
+        if len(doi_gi.strip()) < 15:
+            return ToolResult(False, error=EideError(
+                "E4022", "`doi_gi` quá ngắn — chưa nói được sẽ đổi gì.",
+                hint_for_agent=("Viết cụ thể: hàm nào, hành vi nào, thêm hay bớt gì. "
+                                "“Cải thiện mã” không phải một nội dung sửa — người duyệt "
+                                "đọc nó xong vẫn không biết họ đang duyệt cái gì."),
+                blame="agent"))
+
+        goc = Path(ctx.config.paths.project_root).resolve()
+        tm = quet(goc, [str(_sandbox(ctx, t).relative_to(goc)) for t in tep])
+        thieu = [t.duong for t in tm if t.so_dong < 0]
+        noi_dung = dung_tai_lieu(goc, tm, doi_gi, vi_sao)
+
+        # DỮ KIỆN xong thì tới NHẬN ĐỊNH — và nhận định là việc cần đọc hiểu, không phải việc
+        # quét văn bản. Giao cho tác tử con `code-analyst`, ngữ cảnh sạch, chỉ có công cụ đọc.
+        #
+        # Nó được đưa sẵn bảng dữ kiện để khỏi quét lại, và được hỏi đúng ba câu bảng ấy không
+        # trả lời được — nặng nhất là câu thứ ba: **chỗ gọi GIÁN TIẾP** qua con trỏ hàm, macro,
+        # bảng phân phối. Phép quét văn bản kêu thừa chứ không bỏ sót chỗ gọi thẳng, nhưng chỗ
+        # gọi gián tiếp thì nó mù hẳn — mà đó đúng là chỗ hỏng đắt nhất khi sửa firmware.
+        nhan_dinh = _nhan_dinh_cua_tac_tu_con(ctx, noi_dung, doi_gi)
+        noi_dung += nhan_dinh
+
+        p_ra = _sandbox(ctx, ra or "tai-lieu/phan-tich-ma.md")
+        p_ra.parent.mkdir(parents=True, exist_ok=True)
+        cu = p_ra.read_text("utf-8", errors="replace") if p_ra.exists() else None
+        p_ra.write_text(noi_dung, "utf-8")
+        rel = _rel(ctx, p_ra)
+        cs = ctx.history.ghi_tep(
+            author=f"agent:{ctx.run_id}", paths=[rel],
+            summary=explain.get("summary", "phân tích mã trước khi sửa"), explain=explain,
+            noi_dung_truoc={rel: cu} if cu is not None else None, run_id=ctx.run_id)
+        ctx.mark_agent_wrote(rel)
+        # Phân tích xong thì coi như ĐÃ ĐỌC: bộ dò đọc trọn từng tệp trong phạm vi.
+        for t in tm:
+            if t.so_dong >= 0:
+                ctx.mark_agent_read(t.duong)
+
+        xem_lai = sorted({x for t in tm for ds in t.ai_dung.values() for x in ds})
+        return {
+            "tai_lieu": rel, "changeset": cs.id,
+            "so_tep": len([t for t in tm if t.so_dong >= 0]),
+            "so_ky_hieu": sum(len(t.ky_hieu) for t in tm),
+            "thieu_tep": thieu, "cho_phai_xem_lai": xem_lai,
+            "note_vi": (
+                f"`{rel}` — {len([t for t in tm if t.so_dong >= 0])} tệp, "
+                f"{sum(len(t.ky_hieu) for t in tm)} ký hiệu, "
+                f"**{len(xem_lai)} tệp khác sẽ phải xem lại** sau khi sửa."
+                + (f"\n\nKhông có tệp: {', '.join(thieu)} — kiểm lại đường dẫn."
+                   if thieu else "")
+                + "\n\nĐưa tài liệu này cho người dùng đọc TRƯỚC khi sửa. Và đọc kỹ phần "
+                  "*Giới hạn*: phép dò tìm tên trong văn bản, nên gọi gián tiếp qua con trỏ "
+                  "hàm hay macro thì nó không thấy.")}
+
     @r.tool("build.compile", "Mã nguồn",
             "Biên dịch firmware bằng chuỗi công cụ THẬT trên máy (arduino-cli hoặc avr-gcc). "
             "Trả lỗi kèm tệp:dòng:cột, và kích thước Flash/SRAM đọc từ avr-size. Không có "

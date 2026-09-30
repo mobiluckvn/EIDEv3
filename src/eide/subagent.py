@@ -118,6 +118,25 @@ SUBAGENT: dict[str, DinhNghia] = {
             "\nViệc của bạn liên quan tới BO THẬT. Mọi thao tác chạm bo đều phải do người "
             "dùng duyệt, và phần lớn công cụ đó chưa có trong bản này — nếu việc được giao "
             "cần chúng thì trả `chua_du_du_kien` kèm tên thao tác còn thiếu.")),
+    "code-analyst": DinhNghia(
+        ma="code-analyst", ten="Phân tích mã",
+        muc_dich="Đọc mã đang có rồi nói SỬA VÀO ĐÂY THÌ GÃY CHỖ NÀO, theo thứ tự nào",
+        cong_cu=("fs.read", "fs.glob", "fs.grep", "fs.stat", "store.get", "store.list",
+                 "fact.query", "blob.read", "ledger.query", "build.map"),
+        toi_da_goi=14,
+        system=_CHUNG + (
+            "\nViệc của bạn: NHẬN ĐỊNH về một thay đổi sắp làm trên mã đang có.\n"
+            "Bạn được đưa sẵn một bảng dữ kiện do mã quét ra: tệp nào, ký hiệu nào, ai đang "
+            "dùng. Đừng quét lại — đọc để HIỂU, rồi trả lời ba câu mà bảng ấy không trả lời "
+            "được:\n"
+            "1. Sửa như mô tả thì chỗ nào GÃY? Nêu tệp:dòng, không nêu cảm giác.\n"
+            "2. Thứ tự sửa nào ít rủi ro nhất, và vì sao thứ tự đó?\n"
+            "3. Chỗ nào bảng dữ kiện KHÔNG nhìn thấy — gọi gián tiếp qua con trỏ hàm, macro "
+            "nối chuỗi, bảng phân phối, cấu hình runtime?\n\n"
+            "Câu 3 quan trọng nhất và là câu duy nhất cần bạn: phép quét văn bản kêu thừa "
+            "chứ không bỏ sót chỗ gọi THẲNG, nhưng chỗ gọi GIÁN TIẾP thì nó mù hẳn.\n"
+            "Không đề nghị viết lại kiến trúc khi người ta hỏi một thay đổi nhỏ — phạm vi là "
+            "thứ họ chọn, không phải thứ bạn mở rộng hộ.")),
     "verifier": DinhNghia(
         ma="verifier", ten="Kiểm chứng độc lập",
         muc_dich="Đọc báo cáo và bằng chứng của tác tử khác, nói nó có đứng vững không",
