@@ -152,13 +152,23 @@ def test_plan_cancel_mo_lai_cong_cu_ghi(make_agent):
 # ============================================================ đánh dấu bước
 def test_danh_dau_buoc_xong_PHAI_neu_hien_vat(make_agent):
     """Một bước "xong" mà không để lại gì thì dấu tích ấy chỉ nói rằng tác tử TIN là nó
-    xong — đúng thứ N6 cấm."""
+    xong — đúng thứ N6 cấm.
+
+    Từ 30/09/2026 phép kiểm chặt hơn: `hien_vat` phải TRỎ TỚI thứ mở ra xem được. Ca này vốn
+    dùng `docs/a.md` — một đường dẫn không tồn tại — và nó đi lọt; chính chỗ ấy là lỗ hổng.
+    """
     agent = make_agent([])
     agent.registry.run("plan.enter", {"viec": "x"}, _ctx(agent))
     agent.registry.run("plan.exit", {"buoc": _buoc(2)}, _ctx(agent))
     r = agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "   "}, _ctx(agent))
     assert not r.ok and r.error.code == "E6004"
-    r = agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "docs/a.md"}, _ctx(agent))
+    # Đường dẫn KHÔNG có thật: vẫn phải đỏ.
+    r = agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "docs/khong-co.md"},
+                           _ctx(agent))
+    assert not r.ok and r.error.code == "E6004"
+    # Tệp có thật (fixture `du_an` dựng sẵn `docs/ghi-chu.md`): xanh.
+    r = agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "docs/ghi-chu.md"},
+                           _ctx(agent))
     assert r.ok and r.data["xong"] == 1
 
 
@@ -176,8 +186,8 @@ def test_doi_chieu_chi_ra_ca_hai_phia_va_KHONG_goi_lech_la_loi():
     Một hook phạt sẽ dạy tác tử viết kế hoạch thật rộng cho an toàn — tức là phá đúng thứ mà
     plan mode sinh ra để có."""
     kh = KH.KeHoach(muc_tieu="x", trang_thai="da_duyet", buoc=[
-        KH.Buoc(viec="a", cong_cu="fs.read", hien_vat="h", xong=True),
-        KH.Buoc(viec="b", cong_cu="build.compile", hien_vat="h")])
+        KH.Buoc(viec="a", cong_cu="fs.read", hien_vat="docs/ghi-chu.md", xong=True),
+        KH.Buoc(viec="b", cong_cu="build.compile", hien_vat="main.c")])
     d = KH.doi_chieu(kh, ["fs.read", "target.flash", "fs.grep", "fs.read"])
     assert d["lech"] is True
     assert d["ngoai_ke_hoach"] == ["target.flash", "fs.grep"]
@@ -193,8 +203,8 @@ def test_doi_chieu_dung_ke_hoach_thi_noi_gon():
     from eide.tools.ke_hoach import bao_cao_doi_chieu
 
     kh = KH.KeHoach(muc_tieu="x", trang_thai="da_duyet", buoc=[
-        KH.Buoc(viec="a", cong_cu="fs.read", hien_vat="h", xong=True),
-        KH.Buoc(viec="b", cong_cu="fs.grep", hien_vat="h", xong=True)])
+        KH.Buoc(viec="a", cong_cu="fs.read", hien_vat="docs/ghi-chu.md", xong=True),
+        KH.Buoc(viec="b", cong_cu="fs.grep", hien_vat="main.c", xong=True)])
     assert "Đi đúng kế hoạch: 2/2" in bao_cao_doi_chieu(kh, ["fs.read", "fs.grep"])
 
 
@@ -311,9 +321,10 @@ def test_xong_HET_buoc_thi_ke_hoach_DONG_LAI(make_agent):
     agent = make_agent([])
     agent.registry.run("plan.enter", {"viec": "x"}, _ctx(agent))
     agent.registry.run("plan.exit", {"buoc": _buoc(2)}, _ctx(agent))
-    agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "a.md"}, _ctx(agent))
+    agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "docs/ghi-chu.md"},
+                       _ctx(agent))
     assert agent._plan_cho_ngu_canh() is not None, "chưa xong hết thì vẫn là kế hoạch hiện tại"
-    agent.registry.run("plan.step_done", {"so": 2, "hien_vat": "b.md"}, _ctx(agent))
+    agent.registry.run("plan.step_done", {"so": 2, "hien_vat": "main.c"}, _ctx(agent))
     kh = KeHoach.from_dict(agent.store.get(MA_KE_HOACH)["canonical"])
     assert kh.trang_thai == "hoan_thanh"
     assert agent._plan_cho_ngu_canh() is None, "xong hết rồi thì thôi chiếm chỗ"
@@ -345,7 +356,9 @@ def test_pending_LIET_KE_cac_buoc_chu_khong_chi_dem(make_agent):
     b = [{"viec": "lấy HAL của ST", "cong_cu": "fs.read", "hien_vat": "vendor/"},
          {"viec": "viết giao diện hai màn", "cong_cu": "fs.grep", "hien_vat": "ui.c"}]
     agent.registry.run("plan.exit", {"buoc": b}, _ctx(agent))
-    agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "vendor/ 12 tệp"}, _ctx(agent))
+    # Hiện vật phải TRỎ TỚI thứ mở ra xem được (từ 30/09/2026) — `docs/` có thật trong
+    # fixture, còn "vendor/ 12 tệp" là một câu kể lại.
+    agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "docs"}, _ctx(agent))
 
     ra = build_pending_block(cards=[], stopped_run=None, assumptions=[],
                              plan=agent._plan_cho_ngu_canh(), budget_tokens=400)

@@ -8,15 +8,15 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 - **Kiến trúc theo mô hình C4 (mã đang thế nào):** [`docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md`](docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md)
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
-- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1294 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
+- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1308 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
 - **Kết quả đo mới nhất (29/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
 - **Đề tài:** PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)
 - Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — Học viện Công nghệ Bưu chính Viễn thông (PTIT) · Học viên: Vũ Trí Công · GVHD: TS. Nguyễn Trung Hiếu
 
 ## Tác tử làm được những gì
 
-**119 công cụ** trong 10 nhóm (110 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ
-`EIDE_FEATURE_SCHEMATIC`), **6 tác tử con**, **7 skill**, **10 cổng duyệt**, **11 bề mặt**.
+**120 công cụ** trong 10 nhóm (111 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ
+`EIDE_FEATURE_SCHEMATIC`), **6 tác tử con**, **8 skill**, **10 cổng duyệt**, **11 bề mặt**.
 Dưới đây là năng lực theo *việc người dùng cần*, không theo cây mã.
 
 | Nhóm công cụ | Số | Làm gì |
@@ -25,7 +25,7 @@ Dưới đây là năng lực theo *việc người dùng cần*, không theo c�
 | Tri thức | 20 | nạp và đọc datasheet · trích Fact · hộ chiếu chip · **viết tài liệu ra Word/PPT/Excel/PDF** |
 | Store | 19 | yêu cầu · phương án · ADR · mô-đun · BOM · quy trình từng bước |
 | Lịch sử | 17 | changeset · hoàn tác · bản ưng ý · nhánh · sổ cái · xuất/nhập dự án |
-| Điều phối | 9 | tác tử con · kế hoạch · tìm và **tự viết công cụ** |
+| Điều phối | 10 | tác tử con · kế hoạch nhiều chặng · tìm và **tự viết công cụ** |
 | Tệp & lệnh | 7 | đọc/ghi/sửa tệp trong hộp cát · tìm kiếm |
 | Mã nguồn | 7 | biên dịch · bản đồ bộ nhớ · kiểm thử · độ nhạy bộ kiểm |
 | Mạch thật | 6 | dò bo · nạp · đọc ngược · log · gỡ lỗi · đọc khung ảnh |
@@ -211,13 +211,41 @@ gãy. Mỗi changeset còn kèm một commit git mang mã của nó, nên `git l
 changeset nào sinh ra thay đổi nào. `branch.*` thử phương án song song mà không đụng nhánh
 chính.
 
-### 10 · Chế độ kế hoạch
+### 10 · Việc lớn: chia nhiều chặng, ghi từng chặng, rồi hợp nhất
 
-Việc lớn (≥5 bước, hoặc chạm cổng, hoặc R3+) thì `plan.enter` **khoá mọi công cụ ghi**: từ
-lúc đó tác tử chỉ đọc và soạn. `plan.exit` nộp kế hoạch, mã kiểm trước khi người đọc (tên
-công cụ phải có thật, mỗi bước phải có hiện vật), rồi người duyệt qua cổng G-SCOPE. Kế hoạch
-là **hiện vật trên đĩa**, sống qua cả lúc app bị `kill -9`: mở lại, gõ "làm tiếp" là nó đi
-tiếp đúng bước, không bắt duyệt lại (DEV-289).
+Một việc không xong trong một lượt — viết trọn tài liệu thiết kế một con chip, dựng nhiều khối
+firmware — đi theo năm nhịp:
+
+    plan.enter   → KHOÁ mọi công cụ ghi; tác tử chỉ còn đọc, đo và nghĩ
+    plan.exit    → nộp 2–20 bước, mã kiểm trước khi người đọc, rồi cổng G-SCOPE
+    … mỗi bước một hoặc vài lượt, có thể cách nhau nhiều ngày …
+    plan.step_done(so, hien_vat)   → ghi kết quả từng chặng
+    plan.merge(ra=…)               → ráp các phần thành một sản phẩm
+
+Mỗi bước khai trước: *làm gì · bằng công cụ nào · để lại hiện vật gì · chạm cổng nào · tốn bao
+nhiêu*. Tên công cụ được **kiểm là có thật** trước khi người duyệt — một kế hoạch nêu công cụ
+không tồn tại thì đọc rất xuôi tai rồi chỉ hỏng lúc chạy.
+
+**Kế hoạch là hiện vật trên đĩa.** Nó vào `<pending>` mỗi lượt kèm bước nào xong bước nào
+chưa, và sống qua cả `kill -9`: mở lại, gõ *"làm tiếp"* là đi tiếp đúng bước, không duyệt lại
+(DEV-289). Vào kế hoạch mới khi cái cũ còn dở thì cái cũ **được cất lại**, không mất.
+
+**`plan.step_done` đòi hiện vật MỞ RA XEM ĐƯỢC** — đường dẫn tệp có thật, mã hiện vật trong
+kho, hay mã changeset. Một câu kể lại (*"tôi đã viết xong chương 1"*) bị từ chối: dấu tích
+"xong" kiểu ấy chỉ nói rằng tác tử **tin là** nó xong.
+
+**`plan.merge` ráp theo đúng thứ tự bước**, sinh mục lục, hạ cấp tiêu đề cho khớp thứ bậc, ghi
+rõ mỗi phần lấy từ tệp nào, và **kê ra phần nào không gộp được ngay trong tài liệu**. Nó không
+viết lại nội dung: chỗ trùng lặp hay lệch thuật ngữ thì sửa bằng `fs.edit` sau đó, để diff
+hiện đúng chỗ đã sửa.
+
+Hai kiểu chia đều hợp lệ, và `plan.exit` **cảnh báo ngay lúc lập kế hoạch** nếu nhiều bước khai
+cùng một tệp — lúc ấy sửa còn rẻ:
+
+| | Mỗi bước một tệp rồi gộp | Mọi bước viết dồn một tệp |
+|---|---|---|
+| Hỏng một bước | làm lại **riêng bước ấy** | làm lại **cả nhóm** dùng chung tệp |
+| Bước cuối | `plan.merge` ráp lại | không có gì để gộp — tệp ấy **đã là** bản hợp nhất |
 
 ### 11 · Tự kiểm chứng và tự bù năng lực
 
@@ -262,7 +290,7 @@ bộ kiểm đi kèm.
 `skill.load` nạp **7 hướng dẫn viết sẵn** theo ngữ cảnh — mỗi tệp khai `tu_khoa` và `khi_nao`,
 và chỉ tốn token khi thật sự được nạp: `sim-criteria-first` · `avr-bare-metal` ·
 `datasheet-onboarding` · `design-review-checklist` · `hardfault-analysis` ·
-`explain-for-humans` · `trinh-bay-bang-hinh`.
+`explain-for-humans` · `trinh-bay-bang-hinh` · `chia-viec-lon`.
 
 ### 12 · Ba lớp chặn quanh mỗi lời gọi
 
@@ -351,8 +379,9 @@ dùng là đã sửa tệp của họ**.
 | Tác tử tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Xuất tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
 | Vẽ sơ đồ mermaid (giao diện + tài liệu) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
+| Chia việc lớn → ghi từng chặng → hợp nhất | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã ↔ tài liệu thiết kế | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
-| Ca đơn vị | **1294** | `pytest tests/ -q` |
+| Ca đơn vị | **1308** | `pytest tests/ -q` |
 | Bo thật STM32F469I-DISCO | LCD 800×480 + cảm ứng + FreeRTOS đa tác vụ, đã xác nhận bằng mắt | [`docs/stm32f469-freertos/`](docs/stm32f469-freertos/) |
 
 Mỗi ca kiểm có một tệp log riêng kèm **bảng từng lời gọi công cụ, tham số đầy đủ và mã lỗi**:

@@ -199,6 +199,15 @@ def build_pending_block(*, cards: list[dict[str, Any]], stopped_run: dict[str, A
             dau = "x" if (buoc.get("xong") or buoc.get("done")) else " "
             L.append(f"  [{dau}] {i}. {str(buoc.get('viec') or '')[:72]}"
                      + (f" · {buoc.get('cong_cu')}" if buoc.get("cong_cu") else ""))
+        # NÓI TÊN CÔNG CỤ ra. Đo được 30/09/2026 qua giao diện thật: tác tử có kế hoạch ba
+        # bước ngay trước mặt, được bảo "làm tiếp", nó sửa tệp bằng `fs.edit` rồi dừng —
+        # **không gọi `plan.step_done` lần nào**, nên kế hoạch đứng yên 0/3 và không có gì để
+        # gộp. Danh sách bước cho nó biết PHẢI LÀM GÌ; nó vẫn cần biết ĐÁNH DẤU BẰNG CÁI GÌ.
+        L.append("  Làm xong một bước thì `plan.step_done(so, hien_vat)` NGAY, đừng để dồn — "
+                 "`hien_vat` phải trỏ tới tệp/hiện vật/changeset có thật.")
+        if done == len(b) and b:
+            L.append("  Hết bước rồi: `plan.merge(ra=…)` nếu việc này cần một sản phẩm hợp "
+                     "nhất từ các phần.")
         if muc:
             L.append("  Việc người dùng vừa giao mà KHÁC việc trên thì kế hoạch này không "
                      "phủ nó: soạn kế hoạch mới (`plan.enter`), đừng chạy tiếp cái cũ.")

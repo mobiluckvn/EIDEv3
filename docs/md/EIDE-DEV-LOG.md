@@ -5231,3 +5231,98 @@ nữa thì sửa một chỗ đang đúng.
 
 `1294 ca đơn vị` · quét giao diện **124/124** · bộ dò tài liệu **0 chỗ lệch** · ba ca mới,
 trong đó một ca bắt đúng chuyện datasheet `.pdf` không được đọc nhầm thành tệp tác tử tạo.
+
+---
+
+### [DEV-305] 30/09/2026 · Việc lớn nhiều chặng: `plan.merge`, và ba lỗ hổng của chế độ kế hoạch
+
+**Câu hỏi của anh Công:** năng lực chia một việc lớn thành nhiều lần thực hiện, ghi kết quả
+từng lần rồi hợp nhất — đã có chưa? Ví dụ: viết trọn tài liệu thiết kế một con chip.
+
+#### Đo trước: bốn phần năm đã có
+
+| Anh cần | Có chưa | Cơ chế |
+|---|---|---|
+| Chia việc lớn thành nhiều bước | ✅ | `plan.exit` — 2–20 bước, mỗi bước khai việc · công cụ · hiện vật · cổng · chi phí; **tên công cụ được kiểm là có thật** |
+| Người duyệt trước khi làm | ✅ | cổng G-SCOPE; trong lúc soạn thì **mọi công cụ ghi bị khoá** |
+| Làm qua nhiều lượt, nhiều ngày | ✅ | kế hoạch đã duyệt vào `<pending>` mỗi lượt, kèm bước nào xong |
+| Sống qua `kill -9` | ✅ | kế hoạch là hiện vật trên đĩa (DEV-289) |
+| Ghi kết quả từng chặng | ⚠️ | `plan.step_done` đòi hiện vật — **nhưng không kiểm nó có thật** |
+| **Hợp nhất các phần** | ❌ | không công cụ nào |
+
+#### Ba lỗ hổng, cả ba đo được chứ không suy ra
+
+**1. `plan.step_done` nhận một câu kể lại.** `plan.step_done(1, "tôi đã viết xong chương 1
+rồi nhé")` → **NHẬN**, bước thành xong. Phép kiểm cũ chỉ đòi chuỗi khác rỗng. Đó là chỗ đậu
+giả rẻ nhất còn lại trong chế độ kế hoạch, và nó trái đúng kỷ luật mà `bang_chung` của tác tử
+con đã có từ đầu: *"tôi đã kiểm" không phải bằng chứng.*
+
+Nay kiểm ba loại trỏ được: đường dẫn tệp có thật · mã hiện vật trong kho · mã changeset. Lỗi
+`E6004` còn **nhắc lại thứ kế hoạch đã hứa** cho bước ấy.
+
+**2. `plan.enter` lần hai đè mất kế hoạch đang chạy.** Đang giữa kế hoạch 3 bước, đã xong
+bước 1 → gọi lại `plan.enter` → mục tiêu đổi, số bước về 0, **không một lời báo**. Mã có một
+chú thích nói rõ đây là chủ ý (*"người dùng đổi ý là chuyện bình thường"*) — lý lẽ ấy biện
+minh cho việc CHO PHÉP kế hoạch mới, nó không biện minh cho việc **xoá dấu vết phần đã làm**.
+Nay kế hoạch cũ được cất sang `plan:<run_id>` và lời đáp nói rõ nó ở đâu, xong mấy bước.
+
+**3. Không có bước hợp nhất.** Xong hết thì kế hoạch chỉ đổi `trang_thai` rồi thôi. Với "viết
+tài liệu thiết kế chip", mỗi bước ra một chương, và phần việc cuối — ghép theo thứ tự, sinh
+mục lục, nói ra chương nào hụt — không chỗ nào lo. Người dùng nhận mười tệp rời và tự ráp.
+
+`plan.merge` ráp theo **đúng thứ tự bước**, hạ cấp tiêu đề cho khớp thứ bậc, ghi rõ mỗi phần
+lấy từ tệp nào, và **kê phần không gộp được ngay trong tài liệu** chứ không giấu vào kết quả
+lời gọi. Nó **không** viết lại nội dung — một công cụ vừa ghép vừa viết lại thì người duyệt
+không phân biệt được đâu là bản gốc.
+
+#### Hai lỗi của chính `plan.merge`, cả hai lộ ra ở lần chạy thật
+
+**Thứ bậc tiêu đề lộn ngược.** Mỗi phần vốn là tài liệu đứng riêng nên mở đầu ở `#`; ghép
+thẳng dưới một mục `##` thì mục con hiện to hơn mục cha. Nay hạ cấp, và bỏ qua dòng `#` nằm
+trong khối mã — `#include` không phải tiêu đề.
+
+**Ghép cùng một tệp nhiều lần.** Tác tử viết cả sáu phần dồn vào `y-tuong.md`, nên merge ghép
+đúng tệp ấy **sáu lần**: `ok=True`, nội dung nhân sáu, và tác tử phải tự `fs.write` đè lên để
+chữa (`cs-0008`). Một lời gọi `ok` cho ra thứ vô nghĩa thì tệ hơn một lỗi nói thẳng. Nay
+trùng thì ghép một lần và nói ra; **mọi** bước cùng một tệp thì từ chối (`E6008`) kèm lý do —
+tệp ấy đã là bản hợp nhất rồi.
+
+Và chỗ phát hiện được **dời lên sớm hơn**: `plan.exit` cảnh báo ngay lúc lập kế hoạch nếu
+nhiều bước khai cùng một `hien_vat`, kèm hai hệ quả (không gộp được · hỏng một bước phải làm
+lại cả nhóm). Phát hiện đúng mà muộn thì không cứu được lần chạy ấy.
+
+#### Lỗ hổng thứ tư, và nó là lỗ hổng cũ mặc áo mới
+
+Chạy E2E lần hai: tác tử có kế hoạch ba bước **ngay trong `<pending>`**, được bảo *"làm tiếp"*,
+nó sửa tệp bằng `fs.edit` rồi dừng — **không gọi `plan.step_done` lần nào**. Kế hoạch đứng yên
+0/3, không lỗi nào được ném ra.
+
+Lý do: `plan.step_done` và `plan.merge` là `core=False`, tức chỉ hiện ra sau một lần
+`tool.search`. **Cùng hình dạng với hai lần trước** — hook kiểm chứng bảo gọi `task.run` mà
+không mở khoá (DEV-2xx), và `tool.search` không nhắc `tool.propose` (DEV-302). *Bảo ai đó dùng
+một thứ họ không nhìn thấy thì không phải là bảo.*
+
+Nay: có kế hoạch đã duyệt thì ba công cụ ấy được **mở khoá mỗi lượt**, và `<pending>` **gọi
+tên chúng ra** — danh sách bước cho tác tử biết phải làm gì; nó vẫn cần biết đánh dấu bằng cái
+gì.
+
+#### Đo qua giao diện thật — và chỗ phải nói thẳng
+
+`tools/thu_chia_viec_lon.py`: **12/14**. Ca cốt lõi — *"chia ba phần, mỗi phần một tệp, làm
+xong từng phần thì đánh dấu, cuối cùng gộp"* — **3/3**, có bằng chứng: ba tệp phần riêng, và
+tệp gộp mang mục lục kèm dấu nguồn từng phần do chính `plan.merge` sinh.
+
+Hai ô đỏ còn lại **không phải lỗi sản phẩm**: khi không được dặn gì, tác tử chọn viết dồn vào
+một tệp và làm xong cả kế hoạch ngay lượt đầu — nên không còn gì để *"làm tiếp"*, và không có
+gì để gộp. Đó là **thói quen của tác tử**, và nó hợp lý với tài liệu ngắn. *"Nó không tự chọn"*
+khác hẳn *"nó không làm được"*, và trộn hai thứ ấy vào một ô là nói sai về sản phẩm.
+
+Bốn ca kiểm cũ đỏ khi phép kiểm hiện vật siết lại — chúng đang dựa vào đúng lỗ hổng vừa bịt
+(`hien_vat="docs/a.md"` với tệp không tồn tại). Sửa chúng dùng hiện vật thật, không nới phép
+kiểm.
+
+### Số đo
+
+`plan.merge` · **1308 ca đơn vị** (+14 ca mới) · E2E giao diện **12/14** · hiến pháp giữ trần
+**3 693/3 700** (nén bảy chỗ, không nâng trần) · bộ dò tài liệu **0 chỗ lệch** · skill mới
+`chia-viec-lon`.

@@ -124,32 +124,31 @@ bản, không có phụ thuộc, không hoàn tác riêng được, và sẽ b�
 
 | Vừa chốt cái gì | Ghi bằng | Đừng dùng |
 |---|---|---|
-| Một yêu cầu người dùng nêu | `store.req_create` (bắt buộc `source_quote`) | `memory.note` |
+| Yêu cầu người dùng nêu | `store.req_create` (bắt buộc `source_quote`) | `memory.note` |
 | Vài hướng giải quyết để so sánh | `store.option_create` mỗi hướng một lần | kể trong văn xuôi |
 | Người dùng chọn một hướng | `store.option_choose` — tự sinh ADR | `memory.note` |
-| Một quyết định kỹ thuật khác | `store.adr_create` | `memory.note` |
-| Linh kiện / bo mạch sẽ mua | `store.bom_set` | `memory.note` |
-| Cách làm từng bước cho người | `store.procedure_set` | `fs.write` một tệp `.md` |
-| Một con số người dùng vừa nói | `fact.assert_human` (bắt buộc trích lời) | viết thẳng vào mã |
+| Quyết định kỹ thuật khác | `store.adr_create` | `memory.note` |
+| Linh kiện / bo sẽ mua | `store.bom_set` | `memory.note` |
+| Cách làm từng bước cho người | `store.procedure_set` | `fs.write` tệp `.md` |
+| Con số người dùng vừa nói | `fact.assert_human` (bắt buộc trích lời) | viết thẳng vào mã |
 | Mạch chia thành những khối nào | `ckm.module_set` từng khối, rồi `diagram.render` | chỉ vẽ mermaid rồi coi như đã ghi |
 | Chân nào làm chức năng gì | `ckm.pinout_set` từng chân | kể trong văn xuôi |
-| Net nối những chân nào | `ckm.net_set`, hoặc `ckm.import_netlist` nếu đã có netlist | bảng trong câu trả lời |
+| Net nối những chân nào | `ckm.net_set`, hoặc `ckm.import_netlist` | bảng trong câu trả lời |
 | Script để chạy | `fs.write` vào `scripts/` | dán vào câu trả lời |
-| Cấu trúc / trình tự cho người XEM | khối ```mermaid — được VẼ ra hình | vẽ bằng ký tự ASCII |
+| Cấu trúc / trình tự cho người XEM | khối ```mermaid — được VẼ ra hình | vẽ bằng ASCII |
 | Tệp để gửi đi, in, nộp | nguồn `.md` rồi `doc.render` | dán cả tài liệu vào chat |
+| Việc không xong trong một lượt | `plan.enter` → từng bước → `plan.merge` | làm vội cho hết một lượt |
 | Mốc đáng quay về, người ĐÃ đặt tên | `snapshot.create` với đúng tên họ gõ | sửa tên cho "gọn" |
 | Mốc đáng quay về, người CHƯA đặt tên | `snapshot.propose` rồi dừng lượt | tự nghĩ ra tên |
 
-`memory.note` chỉ cho **mục tiêu dự án, quy ước làm việc, điều người dùng bảo đừng làm
-nữa** — thứ không có cấu trúc riêng. Gọi nó ba lần liên tiếp thì gần như chắc ba thứ đó
-thuộc ba công cụ khác ở bảng trên.
+`memory.note` chỉ cho **mục tiêu dự án, quy ước làm việc, điều người dùng bảo đừng làm nữa**.
+Gọi nó ba lần liên tiếp thì gần như chắc ba thứ đó thuộc ba công cụ khác ở bảng trên.
 
-**Hướng dẫn từng bước không bao giờ là một tệp markdown.** `store.procedure_set` giữ mỗi
-bước có lệnh, kết quả mong đợi, cách kiểm, cảnh báo — nhờ vậy người dùng đánh dấu được
-bước nào xong. Tệp `.md` không làm được.
+**Hướng dẫn từng bước không bao giờ là tệp markdown.** `store.procedure_set` giữ mỗi bước có
+lệnh, kết quả mong đợi, cách kiểm, cảnh báo — nhờ đó người dùng đánh dấu được bước nào xong.
 
-**Script phải có trước khi quy trình trỏ tới nó.** Một quy trình dẫn tới tệp không có thật
-chỉ bị phát hiện khi người dùng đang đứng trước bo mạch.
+**Script phải có trước khi quy trình trỏ tới nó** — một quy trình dẫn tới tệp không có thật
+chỉ lộ ra khi người dùng đang đứng trước bo mạch.
 
 ## Quy ước trình bày (E3.2)
 

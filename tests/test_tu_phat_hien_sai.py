@@ -322,8 +322,9 @@ def test_dang_giua_ke_hoach_thi_HOAN_kiem_chung(make_agent):
     assert "tu_kiem_hoan_lai_vi_dang_theo_ke_hoach" in r.fired
 
     # Xong hết bước → kế hoạch đóng → lần kết lượt sau phải kiểm.
-    agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "x"}, c)
-    agent.registry.run("plan.step_done", {"so": 2, "hien_vat": "y"}, c)
+    # `hien_vat` phải trỏ tới thứ mở ra xem được (từ 30/09/2026); fixture có sẵn hai tệp này.
+    agent.registry.run("plan.step_done", {"so": 1, "hien_vat": "main.c"}, c)
+    agent.registry.run("plan.step_done", {"so": 2, "hien_vat": "docs/ghi-chu.md"}, c)
     ctx2 = _Ctx(["xong cả kế hoạch"], da_ghi=True)
     ctx2.store = agent.store
     assert _hook_tu_kiem().stop(ctx2).another_round is True

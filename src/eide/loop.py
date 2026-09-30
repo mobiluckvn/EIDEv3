@@ -690,6 +690,29 @@ class Agent:
         a = self.store.get(MA_KE_HOACH)
         return KeHoach.from_dict(a.get("canonical") or {}) if a else None
 
+    # Công cụ chỉ dùng được KHI ĐANG CÓ kế hoạch đã duyệt. Chúng là `core=False` để không
+    # tốn lược đồ ở mọi phiên; nhưng lúc đang giữa một kế hoạch thì chúng phải NHÌN THẤY ĐƯỢC.
+    _CONG_CU_KHI_CO_KE_HOACH = ("plan.step_done", "plan.merge", "plan.cancel")
+
+    def _mo_khoa_cong_cu_ke_hoach(self) -> None:
+        """Có kế hoạch đã duyệt thì mở khoá `plan.step_done` / `plan.merge` / `plan.cancel`.
+
+        Đo được 30/09/2026 qua giao diện thật: tác tử có kế hoạch ba bước ngay trong
+        `<pending>`, được bảo *"làm tiếp"*, nó sửa tệp rồi dừng — **không gọi `plan.step_done`
+        lần nào**. Kế hoạch đứng yên 0/3, không có gì để gộp, và không lỗi nào được ném ra.
+
+        Lý do không phải nó lười: hai công cụ ấy là `core=False`, tức chỉ hiện ra sau một lần
+        `tool.search`. Cùng hình dạng lỗi với hook kiểm chứng từng bảo tác tử gọi `task.run`
+        mà không mở khoá — *bảo ai đó dùng một thứ họ không nhìn thấy thì không phải là bảo.*
+        """
+        if self._plan_cho_ngu_canh() is None:
+            return
+        mo = getattr(self.registry, "_unlocked", None)
+        if mo is None:
+            return
+        for t in self._CONG_CU_KHI_CO_KE_HOACH:
+            mo.add(t)
+
     def _plan_cho_ngu_canh(self) -> dict[str, Any] | None:
         """Kế hoạch ĐÃ DUYỆT, để `<pending>` nhắc lại mỗi lượt.
 
@@ -1365,6 +1388,8 @@ class Agent:
 
     # ------------------------------------------------------------------ ngữ cảnh
     def _assemble(self, ctx: TurnContext, s0: Any):
+        # Mở khoá công cụ của kế hoạch TRƯỚC khi dựng danh sách công cụ cho mô hình.
+        self._mo_khoa_cong_cu_ke_hoach()
         inv = ctx.build_inventory()
         recent = [m.get("text", "") for m in self.messages[-6:] if m.get("role") == "user"]
         from .skills import goi_y_cho_ngu_canh
