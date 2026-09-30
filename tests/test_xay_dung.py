@@ -694,3 +694,34 @@ def test_test_run_NHAT_tep_logic_theo_header_chu_khong_theo_TEN(make_agent):
     assert "Dịch cùng mã sản phẩm: ui_state.c" in r.data["note_vi"]
     assert "ui.c" in r.data["note_vi"].split("Ngoài tầm")[-1]
 
+
+
+def test_bao_ra_TEP_KHONG_VAO_ANH(du_an, tmp_path):
+    """Biên dịch "xong" mà thiếu tệp thì cái chạy trên bo không phải cái người ta viết.
+
+    Đo được 30/09/2026 trên phiên dựng RTOS thật: hai lần biên dịch đầu đỏ, lần thứ ba bỏ bớt
+    đầu vào thì xanh — ảnh ra 1 416 byte, **không một ký hiệu LCD/UI/Touch nào**, trong khi dự
+    án có 15 tệp mã. Tác tử báo "biên dịch xong": đúng về lời gọi, sai về việc.
+
+    1 416 byte trông như một con số, không trông như một vấn đề — nên phép so phải do MÃ làm.
+    """
+    from eide.tools.xay_dung import _tep_khong_vao_anh
+
+    sk = tmp_path / "firmware"
+    (sk / "vendor").mkdir(parents=True)
+    for t in ("main.c", "ui.c", "touch.c"):
+        (sk / t).write_text("int x;\n")
+    (sk / "vendor" / "hang.c").write_text("int y;\n")
+
+    class _Kq:
+        lenh = ["arm-none-eabi-gcc -o a.elf " + str(sk / "main.c")]
+
+    bo = _tep_khong_vao_anh(sk, _Kq())
+    assert sorted(bo) == ["firmware/touch.c", "firmware/ui.c"], bo
+    # `vendor/` bỏ qua có chủ ý: mã hãng có thể cố ý không dịch hết.
+    assert not any("vendor" in x for x in bo)
+
+    class _Du:
+        lenh = ["gcc " + " ".join(str(sk / t) for t in ("main.c", "ui.c", "touch.c"))]
+
+    assert _tep_khong_vao_anh(sk, _Du()) == []

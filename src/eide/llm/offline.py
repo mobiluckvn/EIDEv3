@@ -75,7 +75,25 @@ class ScriptedGateway:
 
 
 class RecordingGateway:
-    """Bọc một cổng thật, ghi mọi phản hồi ra JSONL để dùng lại."""
+    """Bọc một cổng thật, ghi **cả hai chiều** của mỗi lời gọi ra JSONL.
+
+    ## Vì sao phải ghi cả chiều GỬI ĐI
+
+    Bản đầu chỉ ghi phản hồi — đủ để phát lại, không đủ để **soát lại**. Sổ cái ghi `llm_call`
+    với model, token, thời gian và tên công cụ đã gọi; hội thoại nằm trong `transcript.jsonl`.
+    Nhưng thứ thật sự gửi tới mô hình — hiến pháp, `<inventory>`, lược đồ công cụ, sáu khối
+    nhắc — thì **không ở đâu cả**.
+
+    Mà đó đúng là thứ cần khi một lượt đi sai: câu hỏi không phải *"nó trả lời gì"* mà là
+    *"lúc ấy nó nhìn thấy gì"*. Yêu cầu của anh Công, 30/09/2026: *"ghi nhận log lại nhé toàn
+    bộ kể cả các lời gọi LLM và kết quả trả về"*.
+
+    ## Khoá API không bao giờ đi vào tệp này
+
+    Cổng bên trong giữ khoá; ở đây chỉ có nội dung hội thoại. Nhưng tệp ghi ra vẫn nằm trong
+    `.eide/` của dự án và **có thể chứa mã nguồn, số đo, lời người dùng** — nên nó là dữ liệu
+    của dự án, không phải thứ đem gửi đi đâu.
+    """
 
     def __init__(self, inner: Any, path: str | Path):
         self.inner = inner
@@ -84,13 +102,36 @@ class RecordingGateway:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def stream(self, **kw) -> Response:
+        import time as _t
+
+        t0 = _t.time()
         r = self.inner.stream(**kw)
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps({
+        cong_cu = kw.get("tools") or []
+        ban_ghi = {
+            "ts": _t.strftime("%Y-%m-%dT%H:%M:%S", _t.localtime(t0)),
+            "giay": round(_t.time() - t0, 2),
+            # --- chiều GỬI ĐI ---
+            "gui": {
+                "system": kw.get("system", ""),
+                "messages": kw.get("messages", []),
+                # Lược đồ công cụ rất dài và lặp lại mỗi lượt — ghi TÊN thôi, còn lược đồ đầy
+                # đủ thì đọc từ mã. Ghi cả vào đây làm tệp phình gấp mấy lần mà không thêm
+                # thông tin nào: nó là hằng số của phiên bản, không phải biến của lượt.
+                "cong_cu_thay_duoc": [
+                    (c.get("name") if isinstance(c, dict) else getattr(c, "name", str(c)))
+                    for c in cong_cu],
+            },
+            # --- chiều TRẢ VỀ ---
+            "nhan": {
                 "text": r.text,
-                "tool_calls": [{"id": c.id, "tool": c.tool, "args": c.args} for c in r.tool_calls],
-                "usage": r.usage.to_dict(), "finish_reason": r.finish_reason, "model": r.model,
-            }, ensure_ascii=False) + "\n")
+                "tool_calls": [{"id": c.id, "tool": c.tool, "args": c.args}
+                               for c in r.tool_calls],
+                "usage": r.usage.to_dict(), "finish_reason": r.finish_reason,
+                "model": r.model,
+            },
+        }
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(ban_ghi, ensure_ascii=False) + "\n")
         return r
 
     def count_tokens(self, text: str) -> int:

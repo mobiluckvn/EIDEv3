@@ -37,6 +37,24 @@ def _bay_gio() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _tep_khong_vao_anh(sketch: Path, kq: Any) -> list[str]:
+    """Tệp `.c` có trong cây nguồn mà **không** xuất hiện trong lệnh biên dịch.
+
+    So bằng tên tệp trong dòng lệnh thật đã chạy — không đoán theo quy ước thư mục. Bỏ qua
+    `vendor/` (mã hãng, có thể cố ý không dịch hết) và mọi thứ dưới thư mục ẩn.
+    """
+    lenh = " ".join(kq.lenh or [])
+    if not lenh:
+        return []
+    ra: list[str] = []
+    for q in sorted(sketch.rglob("*.c")):
+        if any(x.startswith(".") for x in q.parts) or "vendor" in q.parts:
+            continue
+        if q.name not in lenh and str(q) not in lenh:
+            ra.append(str(q.relative_to(sketch.parent)))
+    return ra
+
+
 def _nhan_dinh_cua_tac_tu_con(ctx: Any, dam: str, doi_gi: str) -> str:
     """Giao bảng dữ kiện cho `code-analyst` rồi gắn nhận định của nó vào tài liệu.
 
@@ -371,11 +389,30 @@ def dang_ky(r: Registry) -> None:
 
         qua_flash = flash_max and kq.flash > flash_max
         qua_sram = sram_max and kq.sram > sram_max
+
+        # TỆP NÀO KHÔNG VÀO ẢNH — phải nói ra, không để nó là chỗ trống.
+        #
+        # Đo được 30/09/2026 trên phiên dựng RTOS: hai lần biên dịch đầu ĐỎ (`E4002`), lần thứ
+        # ba bỏ bớt đầu vào thì XANH — và ảnh ra 1 416 byte, **không một ký hiệu LCD/UI/Touch
+        # nào**, trong khi dự án có 15 tệp mã. Tác tử báo "biên dịch xong", đúng về lời gọi và
+        # sai về việc: nó đã thu hẹp đầu vào cho tới khi qua được.
+        #
+        # 1 416 byte trông như một con số, không trông như một vấn đề. Nên phép so phải do MÃ
+        # làm: tệp `.c` có trong cây nguồn mà không có mặt trong ảnh là một danh sách, và một
+        # danh sách khác rỗng thì không ai đọc nhầm thành "xong".
+        bo_sot = _tep_khong_vao_anh(p, kq)
         return {
             **kq.to_dict(),
+            "tep_khong_vao_anh": bo_sot,
             "vua_chip": not (qua_flash or qua_sram),
             "note_vi": (
-                f"Biên dịch xong bằng {kq.cong_cu}: {kq.tep_ra}. "
+                (f"⚠︎ **{len(bo_sot)} tệp mã trong dự án KHÔNG có mặt trong ảnh vừa dựng**: "
+                 + ", ".join(f"`{x}`" for x in bo_sot[:8])
+                 + (f" …+{len(bo_sot) - 8}" if len(bo_sot) > 8 else "")
+                 + ". Biên dịch “xong” mà thiếu chúng thì cái chạy trên bo không phải cái bạn "
+                   "viết. Kiểm lại `sketch` và danh sách nguồn TRƯỚC khi báo là đạt.\n\n"
+                 if bo_sot else "")
+                + f"Biên dịch xong bằng {kq.cong_cu}: {kq.tep_ra}. "
                 + (f"Flash {kq.flash} B"
                    + (f"/{flash_max} B ({kq.flash / flash_max:.0%})" if flash_max else "")
                    + f", SRAM {kq.sram} B"

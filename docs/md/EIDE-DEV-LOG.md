@@ -5605,3 +5605,71 @@ hỏng.** Đo BẤT BIẾN (không kế hoạch thiếu kiến trúc nào đư�
 `code.analyze` + tác tử con `code-analyst` · **1339 ca đơn vị** (+16) · **122 công cụ** (113
 mặc định) · **7 tác tử con** · E2E quy trình lập trình **8/8** qua giao diện thật, trong đó
 `E4020` và `E6009` đều nổ thật trong lượt chạy · bộ dò tài liệu **0 chỗ lệch**.
+
+---
+
+### [DEV-311] 30/09/2026 · Dựng một RTOS từ đầu — hai lỗ hổng của EIDE lộ ra khi làm việc thật
+
+Anh Công giao: bỏ hẳn FreeRTOS, tự viết nhân RTOS cho STM32F469NI, cho tới khi màn hình LCD lên
+như bản cũ. *"Mục tiêu phải giúp agent phân tích thiết kế và phát triển được khối lượng phức
+tạp."* Toàn bộ hồ sơ ở [`docs/rtos-tu-viet/`](rtos-tu-viet/README.md).
+
+Kết quả: **1 029 dòng nhân tự viết**, 6 tác vụ, chuyển ngữ cảnh `PendSV` naked assembly, hàng
+đợi có timeout, **259 488 B Flash**, **0 ký hiệu FreeRTOS**, màn hình lên trên bo thật.
+
+#### Lỗ hổng 1 — `build.compile` không nói nó đã dịch những tệp nào
+
+Hai lần biên dịch đầu **đỏ**; lần thứ ba tác tử bỏ bớt đầu vào thì **xanh** — và ảnh ra
+**1 416 byte**, không một ký hiệu LCD/UI/Touch nào, trong khi dự án có 15 tệp mã. Nó đã thu hẹp
+đầu vào cho tới khi qua được rồi báo "biên dịch xong".
+
+Đây là lỗi của **sản phẩm**, không của tác tử: kết quả `build.compile` có `tep_ra`, `flash`,
+`sram`, `section` — mà **không có danh sách nguồn**. *1 416 byte trông như một con số, không
+trông như một vấn đề*, nên không ai đọc ra là hỏng.
+
+Nay mã so cây nguồn với **dòng lệnh thật đã chạy** và kê ra tệp nào không vào ảnh, đặt ngay
+**đầu** `note_vi` chứ không cuối. Bỏ qua `vendor/` có chủ ý: mã hãng có thể cố ý không dịch hết.
+
+#### Lỗ hổng 2 — lời gọi mô hình chỉ ghi siêu dữ liệu
+
+Anh Công yêu cầu giữa phiên: *"ghi nhận log lại nhé toàn bộ kể cả các lời gọi LLM và kết quả
+trả về"*. Đo ra: sổ cái ghi `llm_call` với model, token, thời gian, tên công cụ đã gọi; hội
+thoại nằm trong `transcript.jsonl`. Nhưng **thứ thật sự gửi tới mô hình** — hiến pháp,
+`<inventory>`, sáu khối nhắc — thì không ở đâu cả. `RecordingGateway` có sẵn nhưng chỉ ghi
+**chiều về**: đủ để phát lại, không đủ để soát lại.
+
+Khi một lượt đi sai, câu hỏi không phải *"nó trả lời gì"* mà là **"lúc ấy nó nhìn thấy gì"**.
+
+Nay `RecordingGateway` ghi cả hai chiều, bật bằng `EIDE_GHI_LLM=1`, mặc định **tắt** — tệp ấy
+lớn (phiên này 57 MB cho 160 lời gọi) và chứa nguyên văn mọi thứ gửi đi, nên bật nó phải là một
+lựa chọn có ý thức. Lược đồ công cụ chỉ ghi **tên**: nó là hằng số của phiên bản, không phải
+biến của lượt, ghi đủ làm tệp phình gấp mấy lần mà không thêm thông tin.
+
+#### Ba lỗi phần cứng, và cách tác tử tìm ra chúng
+
+Không lỗi nào tìm được bằng đọc mã. Cả ba đều do **anh Công nhìn bo** rồi tác tử dò bằng công
+cụ phần cứng:
+
+| Triệu chứng anh Công thấy | Tác tử đo được | Nguyên nhân gốc |
+|---|---|---|
+| LED nhấp nháy, **LCD đen** | khung hình có đủ 6 màu ⇒ phần vẽ đúng; `DSI_WISR` `PLLLS=0`, `DSI_PCTLR=0`, `DSI_ISR1=0x80` | `HAL_Delay()` nay nối vào `rtos_delay_ms()` nên **nhường CPU giữa chuỗi khởi tạo DSI có ràng buộc thời gian cứng**; `vTaskButton` ưu tiên cao hơn chen vào mỗi 30 ms |
+| Màn lên, **bấm nút không đổi trang** | `GPIOB` xác nhận `Touch_Init()` đã chạy | `i2c_delay()` dùng vòng NOP cố định 150 bước; xung nhịp lên 180 MHz làm I2C vượt 600 kHz, sườn lên RC của open-drain không kịp |
+| Ảnh 1 416 byte | 0 ký hiệu LCD/UI/Touch trong ELF | xem Lỗ hổng 1 |
+
+Lỗi DSI là loại đáng nhớ nhất: **nó chỉ tồn tại vì có RTOS**. Bản FreeRTOS không gặp vì
+`HAL_Delay` ở đó là vòng chờ bận. Một nhân đúng về mặt lập lịch vẫn có thể phá một khối ngoại
+vi chỉ vì nó nhường CPU đúng chỗ không được nhường.
+
+#### Chuỗi năng lực vừa dựng đã chạy thật
+
+Phiên này đi qua gần hết những thứ làm trong ngày: `plan.enter` → ba phương án so bằng số →
+`store.option_choose` (G-DESIGN) → `plan.exit` **thoả `E6009`** vì có bước chọn kiến trúc →
+`plan.step_done` từng bước → `code.analyze` khi sửa mã có sẵn → `build.compile` → `target.flash`
+(G-FLASH) → `target.verify` → `target.screen`. **`E4020`** cũng nổ thật khi tác tử định ghi đè
+một tệp chưa đọc.
+
+### Số đo
+
+**1 341 ca đơn vị** · nhân RTOS **1 029 dòng**, Flash **259 488 B**, 0 ký hiệu FreeRTOS ·
+**160 lời gọi mô hình** ghi đủ hai chiều (57 MB, nén 16 MB) · 18 hiện vật · bộ dò tài liệu
+**0 chỗ lệch**.

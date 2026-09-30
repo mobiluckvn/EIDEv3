@@ -1,0 +1,158 @@
+{
+ "eide": {
+  "luoc_do": 1,
+  "ghi_luc": "2026-09-30T10:04:49+00:00",
+  "ghi_boi": "EIDE v3"
+ },
+ "du_an": {
+  "ten": "rtos-ptit",
+  "thu_muc_luc_ghi": "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit",
+  "hien_vat": {
+   "adr": 1,
+   "build": 1,
+   "code": 6,
+   "note": 1,
+   "option": 3,
+   "plan": 2,
+   "target": 4
+  },
+  "ho_chieu_chip": null,
+  "bo_nho_dai_han_dong": 33
+ },
+ "du_lieu": {
+  "muc": [
+   {
+    "duong": "EIDE.md",
+    "hang": "ben",
+    "co": true,
+    "byte": 981,
+    "mo_ta": "Bộ nhớ dài hạn của dự án — người và tác tử cùng sửa"
+   },
+   {
+    "duong": "du-an.json",
+    "hang": "ben",
+    "co": true,
+    "byte": 3768,
+    "mo_ta": "Chính tệp này"
+   },
+   {
+    "duong": ".eide/ledger.jsonl",
+    "hang": "ben",
+    "co": true,
+    "byte": 2605188,
+    "mo_ta": "Sổ cái append-only, có chuỗi hash"
+   },
+   {
+    "duong": ".eide/store.sqlite",
+    "hang": "ben",
+    "co": true,
+    "byte": 487424,
+    "mo_ta": "Kho hiện vật event-sourced"
+   },
+   {
+    "duong": ".eide/changesets.jsonl",
+    "hang": "ben",
+    "co": true,
+    "byte": 36797,
+    "mo_ta": "Changeset và phép nghịch đảo"
+   },
+   {
+    "duong": ".eide/snapshots.jsonl",
+    "hang": "ben",
+    "co": true,
+    "byte": 4024,
+    "mo_ta": "Bản ưng ý do người đặt tên"
+   },
+   {
+    "duong": ".eide/counters.json",
+    "hang": "ben",
+    "co": true,
+    "byte": 83,
+    "mo_ta": "Bộ đếm mã: cs- · run- · h- · ses-"
+   },
+   {
+    "duong": ".eide/blobs",
+    "hang": "ben",
+    "co": true,
+    "byte": 560940,
+    "mo_ta": "Bản sao nội dung theo hash — đường lui khi hoàn tác"
+   },
+   {
+    "duong": ".eide/sessions",
+    "hang": "ben",
+    "co": true,
+    "byte": 2522619,
+    "mo_ta": "Transcript từng phiên, dùng để khôi phục sau sự cố"
+   },
+   {
+    "duong": ".eide/cong-cu",
+    "hang": "ben",
+    "co": false,
+    "byte": 0,
+    "mo_ta": "Công cụ tác tử tự viết cho chính nó"
+   },
+   {
+    "duong": ".eide/blocks",
+    "hang": "ben",
+    "co": false,
+    "byte": 0,
+    "mo_ta": "Thư viện khối riêng của dự án"
+   },
+   {
+    "duong": ".git",
+    "hang": "ben",
+    "co": true,
+    "byte": 795823,
+    "mo_ta": "Lịch sử tệp — mỗi changeset một commit"
+   },
+   {
+    "duong": ".eide/build",
+    "hang": "dung_lai_duoc",
+    "co": true,
+    "byte": 2975981,
+    "mo_ta": "Sản phẩm biên dịch (.elf/.bin/.hex/.map)"
+   },
+   {
+    "duong": ".eide/ui-test",
+    "hang": "tam",
+    "co": true,
+    "byte": 871552,
+    "mo_ta": "Kênh kiểm giao diện — chỉ có khi đang chạy bộ đo"
+   },
+   {
+    "duong": ".eide/anh-man-hinh.png",
+    "hang": "tam",
+    "co": true,
+    "byte": 19425,
+    "mo_ta": "Ảnh khung hình vừa đọc từ bo"
+   },
+   {
+    "duong": ".eide/transcripts",
+    "hang": "tam",
+    "co": true,
+    "byte": 0,
+    "mo_ta": "Thư mục cũ, không còn dùng"
+   }
+  ],
+  "tong_byte": {
+   "ben": 7017647,
+   "dung_lai_duoc": 2975981,
+   "tam": 890977,
+   "tep_cua_nguoi": 6360390
+  },
+  "so_tep_cua_nguoi": 85
+ },
+ "chep_di_the_nao": [
+  "Chép CẢ thư mục này là mang cả dự án — không có gì nằm ngoài nó.",
+  "Muốn gọn: bỏ mọi mục hạng `dung_lai_duoc` và `tam`. Chúng dựng lại được.",
+  "TUYỆT ĐỐI giữ mọi mục hạng `ben`: sổ cái, kho, changeset, blob, EIDE.md, .git.",
+  "Không đổi tên thư mục giữa chừng cũng được — dữ liệu không ghim đường dẫn tuyệt đối; trường `thu_muc_luc_ghi` chỉ để đối chiếu, không ai đọc nó để chạy."
+ ],
+ "lich_su": {
+  "su_kien": 3795,
+  "changeset": 20,
+  "phien": 12,
+  "so_cai_toan_ven": true,
+  "so_cai_noi": "Sổ cái toàn vẹn: 3795 sự kiện."
+ }
+}

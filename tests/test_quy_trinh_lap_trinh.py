@@ -230,3 +230,29 @@ def test_code_analyze_GHI_SO_khi_goi_tac_tu_con(bo, du_an):
 
     src = inspect.getsource(xay_dung._nhan_dinh_cua_tac_tu_con)
     assert "ghi_so=ghi" in src, "gọi subagent mà không truyền ghi_so"
+
+
+def test_ghi_nhat_ky_LLM_ca_hai_chieu(tmp_path):
+    """Ghi phản hồi thôi thì đủ để PHÁT LẠI, không đủ để SOÁT LẠI.
+
+    Khi một lượt đi sai, câu hỏi không phải *"nó trả lời gì"* mà là *"lúc ấy nó nhìn thấy
+    gì"* — hiến pháp, `<inventory>`, sáu khối nhắc. Trước 30/09/2026 thứ đó không ở đâu cả:
+    sổ cái chỉ ghi model/token/thời gian.
+    """
+    import json
+
+    from eide.llm import RecordingGateway, ScriptedGateway
+    from eide.llm.gateway import Response
+
+    trong = ScriptedGateway([Response(text="xong")])
+    p = tmp_path / "nk.jsonl"
+    gw = RecordingGateway(trong, p)
+    gw.stream(system="HIẾN PHÁP ...", messages=[{"role": "user", "text": "chào"}],
+              tools=[{"name": "fs.read"}])
+
+    d = json.loads(p.read_text("utf-8").strip())
+    assert d["gui"]["system"].startswith("HIẾN PHÁP")
+    assert d["gui"]["messages"][0]["text"] == "chào"
+    assert d["gui"]["cong_cu_thay_duoc"] == ["fs.read"]
+    assert d["nhan"]["text"] == "xong"
+    assert "usage" in d["nhan"] and "ts" in d and "giay" in d

@@ -13,6 +13,8 @@ import json
 import sys
 
 from .config import Config, load_dotenv
+import os
+
 from .llm import make_gateway
 from .loop import Agent
 from .protocol.rpc import Core, StdioTransport
@@ -32,7 +34,16 @@ def main(argv: list[str] | None = None) -> int:
 
     load_dotenv()
     cfg = Config.for_project(a.project, autonomy=a.autonomy)
-    agent = Agent(cfg, llm=make_gateway(cfg.model))
+    # `EIDE_GHI_LLM=1` bật ghi TOÀN BỘ lời gọi mô hình (cả chiều gửi lẫn chiều nhận) ra
+    # `.eide/llm/<phiên>.jsonl`. Mặc định TẮT: tệp ấy lớn và chứa nguyên văn mọi thứ gửi đi,
+    # nên bật nó phải là một lựa chọn có ý thức, không phải mặc định lặng lẽ.
+    ghi = None
+    if os.environ.get("EIDE_GHI_LLM") == "1":
+        from datetime import datetime
+
+        ghi = (cfg.paths.state_dir / "llm"
+               / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.jsonl")
+    agent = Agent(cfg, llm=make_gateway(cfg.model, record=ghi))
 
     if a.say:
         def show(cmd):

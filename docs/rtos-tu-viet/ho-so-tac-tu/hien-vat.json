@@ -1,0 +1,831 @@
+[
+ {
+  "id": "PA-A",
+  "loai": "option",
+  "ban": 2,
+  "canonical": {
+   "ten": "Nhân tiền định ưu tiên dựa trên PendSV (Preemptive Priority RTOS)",
+   "kien_truc": "Nhân tiền định đa mức ưu tiên (Preemptive Priority-based) với PendSV, Bitmap O(1) và TCB tĩnh.",
+   "linh_kien_chinh": [
+    "PendSV context switcher",
+    "SysTick timer 1000Hz",
+    "Bitmap priority scheduler O(1)",
+    "Ring-buffer Queue tĩnh",
+    "FPU lazy stacking support"
+   ],
+   "chi_phi_uoc": "RAM nhân ~1,5 KB, Flash ~4 KB (ước lượng tầng ĐỒNG)",
+   "do_kho": "trung bình",
+   "rui_ro": [
+    "Cần kiểm soát chặt chẽ việc lưu ngữ cảnh FPU (s16-s31) để tránh tràn stack hoặc sai lệch tính toán đồ họa",
+    "Đòi hỏi viết một đoạn mã hợp ngữ (PendSV_Handler) chính xác cho Cortex-M4"
+   ],
+   "dap_ung_req": [],
+   "khong_dap_ung": [],
+   "da_chon": true
+  }
+ },
+ {
+  "id": "PA-B",
+  "loai": "option",
+  "ban": 1,
+  "canonical": {
+   "ten": "Nhân hợp tác không chiếm quyền (Cooperative Scheduler)",
+   "kien_truc": "Nhân đa nhiệm hợp tác (Cooperative / Non-preemptive) dựa trên nhường quyền tự nguyện (os_yield).",
+   "linh_kien_chinh": [
+    "Coroutines/Cooperative Task Dispatcher",
+    "SysTick timer chỉ đếm thời gian",
+    "Hàng đợi FIFO cơ bản không block"
+   ],
+   "chi_phi_uoc": "RAM nhân ~0,5 KB, Flash ~2 KB (ước lượng tầng ĐỒNG)",
+   "do_kho": "thấp",
+   "rui_ro": [
+    "Độ trễ phản hồi cảm ứng Touch phụ thuộc vào việc tác vụ LCD có chịu nhường quyền hay không",
+    "Dễ gây giật giao diện và mất gói sự kiện cảm ứng nếu một tác vụ tính toán lâu"
+   ],
+   "dap_ung_req": [],
+   "khong_dap_ung": [],
+   "da_chon": false
+  }
+ },
+ {
+  "id": "PA-C",
+  "loai": "option",
+  "ban": 1,
+  "canonical": {
+   "ten": "Nhân kích hoạt theo thời gian tĩnh (Time-Triggered Hybrid Scheduler)",
+   "kien_truc": "Nhân lai kích hoạt theo lịch thời gian tĩnh (Time-Triggered) kết hợp ngắt ưu tiên cho tác vụ khẩn cấp.",
+   "linh_kien_chinh": [
+    "Static Dispatch Table",
+    "Hardware Timer Tick",
+    "Emergency ISR Interceptor",
+    "Mailbox định cỡ tĩnh"
+   ],
+   "chi_phi_uoc": "RAM nhân ~2 KB, Flash ~5 KB (ước lượng tầng ĐỒNG)",
+   "do_kho": "cao",
+   "rui_ro": [
+    "Rất khó linh hoạt khi xử lý sự kiện bất định như cử chỉ vuốt chạm cảm ứng hoặc render giao diện biến thiên",
+    "Độ phức tạp cấu hình bảng thời gian cao, dễ lệch pha thời gian khi tác vụ kéo dài quá slot"
+   ],
+   "dap_ung_req": [],
+   "khong_dap_ung": [],
+   "da_chon": false
+  }
+ },
+ {
+  "id": "ADR-01",
+  "loai": "adr",
+  "ban": 1,
+  "canonical": {
+   "tieu_de": "Chọn Nhân tiền định ưu tiên dựa trên PendSV (Preemptive Priority RTOS)",
+   "boi_canh": "Nhân tiền định đa mức ưu tiên (Preemptive Priority-based) với PendSV, Bitmap O(1) và TCB tĩnh.",
+   "phuong_an_xet": [
+    "PA-A",
+    "PA-C",
+    "PA-B"
+   ],
+   "chon": "PA-A",
+   "he_qua": [
+    "Triển khai nhân RTOS tiền định dùng ngắt PendSV và SysTick cho STM32F469 (Cortex-M4F)",
+    "Hiện thực lập lịch ưu tiên Bitmap O(1) và TCB định cỡ tĩnh",
+    "Hỗ trợ lưu/khôi phục ngữ cảnh phần cứng bao gồm FPU lazy stacking",
+    "Tạo cấu trúc hàng đợi và API đồng bộ hóa phục vụ các tác vụ ngoại vi và UI"
+   ],
+   "quyet_boi": "tac_tu",
+   "trich_loi_nguoi": ""
+  }
+ },
+ {
+  "id": "plan:current",
+  "loai": "plan",
+  "ban": 12,
+  "canonical": {
+   "muc_tieu": "Triển khai nhân RTOS tiền định trong firmware/rtos/ và biên dịch kiểm tra",
+   "steps": [
+    {
+     "viec": "Tạo tệp định nghĩa kiểu dữ liệu và cấu trúc nhân RTOS",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/rtos/rtos_types.h",
+     "cong": "",
+     "chi_phi": "1 lời gọi fs.write",
+     "ghi_chu": "Định nghĩa TCB, enum trạng thái tác vụ, kích thước ngữ cảnh và cấu hình mức ưu tiên · hiện vật: firmware/rtos/rtos_types.h",
+     "xong": true
+    },
+    {
+     "viec": "Tạo tầng phần cứng Cortex-M4F quản lý stack, PendSV và SysTick",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/rtos/rtos_port.c",
+     "cong": "",
+     "chi_phi": "1 lời gọi fs.write",
+     "ghi_chu": "Khởi tạo stack khung tác vụ Cortex-M4F (kèm FPU lazy stacking), chuyển ngữ cảnh PendSV và đếm nhịp SysTick · hiện vật: firmware/rtos/rtos_port.c",
+     "xong": true
+    },
+    {
+     "viec": "Tạo bộ lõi điều phối tác vụ tiền định đa mức ưu tiên O(1)",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/rtos/rtos_core.c",
+     "cong": "",
+     "chi_phi": "1 lời gọi fs.write",
+     "ghi_chu": "Bộ lập lịch bitmap O(1) dùng lệnh __CLZ, tạo tác vụ tĩnh, chuyển đổi tác vụ theo mức ưu tiên · hiện vật: firmware/rtos/rtos_core.c",
+     "xong": true
+    },
+    {
+     "viec": "Tạo mô-đun hàng đợi IPC tĩnh an toàn đa tác vụ",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/rtos/rtos_queue.c",
+     "cong": "",
+     "chi_phi": "1 lời gọi fs.write",
+     "ghi_chu": "Hàng đợi ring-buffer cấp phát tĩnh an toàn đa luồng, hỗ trợ cơ chế chờ hoặc trả về mã lỗi tức thì · hiện vật: firmware/rtos/rtos_queue.c",
+     "xong": true
+    },
+    {
+     "viec": "Tạo chương trình chính main.c khởi tạo tác vụ và chạy nhân RTOS",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/main.c",
+     "cong": "",
+     "chi_phi": "1 lời gọi fs.write",
+     "ghi_chu": "Khởi tạo phần cứng cơ bản, tạo 2 tác vụ mẫu độc lập trao đổi qua queue và khởi động rtos_start() · hiện vật: firmware/main.c",
+     "xong": true
+    },
+    {
+     "viec": "Biên dịch toàn bộ firmware và kiểm tra kích thước Flash/SRAM",
+     "cong_cu": "build.compile",
+     "hien_vat": "build",
+     "cong": "",
+     "chi_phi": "1 lời gọi build.compile",
+     "ghi_chu": "Kiểm tra cú pháp, liên kết toàn bộ các mô-đun RTOS với startup.c và vendor HAL, xuất số liệu Flash/SRAM · hiện vật: build:firmware",
+     "xong": true
+    }
+   ],
+   "gia_dinh": [
+    "Dự án sử dụng chuỗi công cụ biên dịch arm-none-eabi-gcc có hỗ trợ phần cứng FPU Cortex-M4F.",
+    "Mã khởi động firmware/startup.c đã khai báo các handler ngắt PendSV_Handler và SysTick_Handler dưới dạng hàm weak."
+   ],
+   "ngoai_pham_vi": [
+    "Chưa triển khai cấp phát bộ nhớ động (dynamic heap / malloc) nhằm duy trì tính tiền định tĩnh tuyệt đối.",
+    "Chưa bật khối bảo vệ bộ nhớ MPU (Memory Protection Unit) cho từng tác vụ riêng biệt.",
+    "Chưa tích hợp toàn bộ driver ngoại vi đồ họa màn hình DSI/LTDC vào các tác vụ mẫu tại vòng kiểm thử này."
+   ],
+   "trang_thai": "hoan_thanh",
+   "run_id": "run-014"
+  }
+ },
+ {
+  "id": "plan:run-004",
+  "loai": "plan",
+  "ban": 1,
+  "canonical": {
+   "muc_tieu": "Triển khai nhân RTOS tiền định PA-A cho STM32F469 và tích hợp kiểm thử hệ thống",
+   "steps": [
+    {
+     "viec": "Tạo tệp định nghĩa kiểu dữ liệu và cấu trúc nhân RTOS",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/rtos_types.h",
+     "cong": "G-FILE",
+     "chi_phi": "1 lời gọi",
+     "ghi_chu": "Định nghĩa TCB, Stack Frame Cortex-M4F, trạng thái tác vụ, cấu hình số mức ưu tiên",
+     "xong": false
+    },
+    {
+     "viec": "Tạo tầng trừu tượng phần cứng Cortex-M4F (chuyển ngữ cảnh PendSV và đếm nhịp SysTick)",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/rtos_port.h, firmware/rtos_port.c",
+     "cong": "G-FILE",
+     "chi_phi": "2 lời gọi",
+     "ghi_chu": "Hiện thực khởi tạo stack giả lập AAPCS và xử lý ngắt PendSV / SysTick cho Cortex-M4F FPU",
+     "xong": false
+    },
+    {
+     "viec": "Tạo bộ lõi điều phối nhân RTOS tiền định đa mức ưu tiên",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/rtos_kernel.h, firmware/rtos_kernel.c",
+     "cong": "G-FILE",
+     "chi_phi": "2 lời gọi",
+     "ghi_chu": "Lập lịch ưu tiên O(1) dùng __CLZ, quản lý TCB tĩnh, rtos_init, rtos_task_create, rtos_delay_ms",
+     "xong": false
+    },
+    {
+     "viec": "Tạo mô-đun hàng đợi IPC tĩnh an toàn đa luồng",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/rtos_queue.h, firmware/rtos_queue.c",
+     "cong": "G-FILE",
+     "chi_phi": "2 lời gọi",
+     "ghi_chu": "Hiện thực hàng đợi vòng tĩnh không cấp phát động malloc, phục vụ truyền tin nút bấm và giao diện",
+     "xong": false
+    },
+    {
+     "viec": "Tạo tệp ứng dụng chính tích hợp hệ thống ngoại vi và giao diện",
+     "cong_cu": "fs.write",
+     "hien_vat": "firmware/main.c",
+     "cong": "G-FILE",
+     "chi_phi": "1 lời gọi",
+     "ghi_chu": "Chuyển đổi từ tham-khao/main-freertos.c sang API nhân mới: 4 LED, nút bấm PA0, LCD DSI và Touch",
+     "xong": false
+    },
+    {
+     "viec": "Biên dịch toàn bộ dự án với toolchain arm-none-eabi-gcc",
+     "cong_cu": "build.compile",
+     "hien_vat": "bản build firmware (ELF/BIN/HEX)",
+     "cong": "",
+     "chi_phi": "1 lời gọi",
+     "ghi_chu": "Kiểm tra cú pháp, liên kết bộ nhớ stm32f469ni.ld và đo kích thước Flash/SRAM",
+     "xong": false
+    }
+   ],
+   "gia_dinh": [
+    "Vi điều khiển đích là STM32F469NI (Cortex-M4F với FPU đơn chính xác FPv4-SP, clock 180 MHz)",
+    "Hệ thống không sử dụng cấp phát bộ nhớ động (malloc) trong nhân RTOS để đảm bảo tính tiền định",
+    "Trình biên dịch GCC hỗ trợ inline assembly và các chỉ thị CMSIS __CLZ, __DSB, __ISB"
+   ],
+   "ngoai_pham_vi": [
+    "Chưa triển khai giao thức chống đảo ngược ưu tiên (Priority Inheritance Mutex) trong chặng này",
+    "Chưa triển khai MPU Memory Protection giữa các tác vụ",
+    "Chưa nạp thực tế xuống bo mạch vật lý trong lượt lập kế hoạch này"
+   ],
+   "trang_thai": "da_cat",
+   "run_id": "run-004"
+  }
+ },
+ {
+  "id": "cfg:firmware/stm32f469ni.ld",
+  "loai": "target",
+  "ban": 2,
+  "canonical": {
+   "loai": "linker",
+   "ten_tep": "stm32f469ni.ld",
+   "hash": "b26b7fa8b812eae78a51d6a2b53f0e4755b07250455561bdf3086f454cf0f816",
+   "khoa": {
+    "config:flash.size": "2097152 B",
+    "config:flash.origin": "0x08000000",
+    "config:ram.size": "327680 B",
+    "config:ram.origin": "0x20000000"
+   },
+   "so_khoa": 4,
+   "canh_bao": []
+  }
+ },
+ {
+  "id": "firmware/rtos/rtos_types.h",
+  "loai": "code",
+  "ban": 1,
+  "canonical": {
+   "path": "firmware/rtos/rtos_types.h",
+   "sha": "f76b8c4da8eb773fa232d842a02b3617205f4140",
+   "bytes": 6959
+  }
+ },
+ {
+  "id": "firmware/rtos/rtos_port.c",
+  "loai": "code",
+  "ban": 1,
+  "canonical": {
+   "path": "firmware/rtos/rtos_port.c",
+   "sha": "f2527cca828d72a58236e013ead83249651d48f7",
+   "bytes": 6383
+  }
+ },
+ {
+  "id": "firmware/rtos/rtos_core.c",
+  "loai": "code",
+  "ban": 1,
+  "canonical": {
+   "path": "firmware/rtos/rtos_core.c",
+   "sha": "f28b6eca60734b7f7a2edcb0657e7e54d79ea851",
+   "bytes": 6209
+  }
+ },
+ {
+  "id": "firmware/rtos/rtos_queue.c",
+  "loai": "code",
+  "ban": 1,
+  "canonical": {
+   "path": "firmware/rtos/rtos_queue.c",
+   "sha": "516fef76bc8f299364c45bdce1c5a1bbebcb5571",
+   "bytes": 2955
+  }
+ },
+ {
+  "id": "firmware/main.c",
+  "loai": "code",
+  "ban": 6,
+  "canonical": {
+   "path": "firmware/main.c",
+   "sha": "d4066930ed86c1ea280f950c9cdff24d492250de",
+   "bytes": 10751
+  }
+ },
+ {
+  "id": "build:firmware",
+  "loai": "build",
+  "ban": 9,
+  "canonical": {
+   "dat": true,
+   "cong_cu": "arm-none-eabi-gcc",
+   "lenh": [
+    "/opt/homebrew/bin/arm-none-eabi-gcc",
+    "-mcpu=cortex-m4",
+    "-mthumb",
+    "-mfpu=fpv4-sp-d16",
+    "-mfloat-abi=hard",
+    "-Os",
+    "-g3",
+    "-std=gnu11",
+    "-Wall",
+    "-Wextra",
+    "-ffreestanding",
+    "-ffunction-sections",
+    "-fdata-sections",
+    "-I/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware",
+    "-I/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/rtos",
+    "-I/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor",
+    "-T",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/stm32f469ni.ld",
+    "-nostartfiles",
+    "-Wl,--gc-sections",
+    "-Wl,-Map=/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/.eide/build/mach.map",
+    "-o",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/.eide/build/mach.elf",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/libc_stub.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/main.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/rtos/rtos_core.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/rtos/rtos_port.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/rtos/rtos_queue.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/startup.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/touch.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/ui.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/ui_state.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/font12.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/font16.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/font20.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/font24.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/font8.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/logo_ptit.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/otm8009a.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/otm8009a_reg.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32469i_discovery.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32469i_discovery_lcd.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32469i_discovery_sdram.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_cortex.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_dma.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_dma2d.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_dma_ex.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_dsi.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_gpio.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_ltdc.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_ltdc_ex.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_pwr.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_pwr_ex.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_rcc.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_rcc_ex.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_hal_sdram.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32f4xx_ll_fmc.c",
+    "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/system_stm32f4xx.c",
+    "-nostdlib",
+    "-lgcc"
+   ],
+   "so_loi": 0,
+   "so_canh_bao": 33,
+   "loi": [],
+   "canh_bao": [
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 457,
+     "cot": 44,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'pObj' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 515,
+     "cot": 51,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'pObj' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 685,
+     "cot": 62,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Xpos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 685,
+     "cot": 77,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Ypos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 701,
+     "cot": 63,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Xpos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 701,
+     "cot": 78,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Ypos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 701,
+     "cot": 93,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'pBmp' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 709,
+     "cot": 64,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Xpos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 709,
+     "cot": 79,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Ypos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 709,
+     "cot": 94,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'pData' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 709,
+     "cot": 110,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Width' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 709,
+     "cot": 126,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Height' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 725,
+     "cot": 62,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Xpos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 725,
+     "cot": 77,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Ypos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 725,
+     "cot": 92,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Length' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 725,
+     "cot": 109,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Color' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 742,
+     "cot": 62,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Xpos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 742,
+     "cot": 77,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Ypos' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 742,
+     "cot": 92,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Length' [-Wunused-parameter]"
+    },
+    {
+     "tep": "firmware/vendor/otm8009a.c",
+     "dong": 742,
+     "cot": 109,
+     "muc": "warning",
+     "thong_diep": "unused parameter 'Color' [-Wunused-parameter]"
+    }
+   ],
+   "tep_ra": ".eide/build/mach.hex",
+   "tep_bin": ".eide/build/mach.bin",
+   "thieu_libc": true,
+   "section": {
+    ".isr_vector": 64,
+    ".text": 14732,
+    ".rodata": 245332,
+    ".data": 76,
+    ".bss": 11032,
+    "._user_heap_stack": 2564,
+    ".debug_info": 91777,
+    ".debug_abbrev": 16258,
+    ".debug_loclists": 38181,
+    ".debug_aranges": 3632,
+    ".debug_rnglists": 3681,
+    ".debug_macro": 168991,
+    ".debug_line": 65245,
+    ".debug_str": 999983,
+    ".debug_frame": 9304
+   },
+   "flash": 262768,
+   "sram": 11108,
+   "flash_toi_da": 2097152,
+   "sram_toi_da": 327680,
+   "ty_le_flash": 0.125,
+   "ty_le_sram": 0.034,
+   "vi_sao_khong_dat": "",
+   "nguyen_van": "Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/otm8009a.c:776:61: warning: unused parameter 'Xpos' [-Wunused-parameter]\n  776 | int32_t OTM8009A_GetPixel(OTM8009A_Object_t *pObj, uint32_t Xpos, uint32_t Ypos, uint32_t *Color)\n      |                                                    ~~~~~~~~~^~~~\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/otm8009a.c:776:76: warning: unused parameter 'Ypos' [-Wunused-parameter]\n  776 | int32_t OTM8009A_GetPixel(OTM8009A_Object_t *pObj, uint32_t Xpos, uint32_t Ypos, uint32_t *Color)\n      |                                                                   ~~~~~~~~~^~~~\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/otm8009a.c:776:92: warning: unused parameter 'Color' [-Wunused-parameter]\n  776 | int32_t OTM8009A_GetPixel(OTM8009A_Object_t *pObj, uint32_t Xpos, uint32_t Ypos, uint32_t *Color)\n      |                                                                                  ~~~~~~~~~~^~~~~\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/otm8009a.c: In function 'OTM8009A_SetPixel':\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/otm8009a.c:792:61: warning: unused parameter 'Xpos' [-Wunused-parameter]\n  792 | int32_t OTM8009A_SetPixel(OTM8009A_Object_t *pObj, uint32_t Xpos, uint32_t Ypos, uint32_t Color)\n      |                                                    ~~~~~~~~~^~~~\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/otm8009a.c:792:76: warning: unused parameter 'Ypos' [-Wunused-parameter]\n  792 | int32_t OTM8009A_SetPixel(OTM8009A_Object_t *pObj, uint32_t Xpos, uint32_t Ypos, uint32_t Color)\n      |                                                                   ~~~~~~~~~^~~~\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/otm8009a.c:792:91: warning: unused parameter 'Color' [-Wunused-parameter]\n  792 | int32_t OTM8009A_SetPixel(OTM8009A_Object_t *pObj, uint32_t Xpos, uint32_t Ypos, uint32_t Color)\n      |                                                                                  ~~~~~~~~~^~~~~\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32469i_discovery_sdram.c: In function 'BSP_SDRAM_MspInit':\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32469i_discovery_sdram.c:365:67: warning: unused parameter 'Params' [-Wunused-parameter]\n  365 | __weak void BSP_SDRAM_MspInit(SDRAM_HandleTypeDef  *hsdram, void *Params)\n      |                                                             ~~~~~~^~~~~~\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32469i_discovery_sdram.c: In function 'BSP_SDRAM_MspDeInit':\n/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/vendor/stm32469i_discovery_sdram.c:472:69: warning: unused parameter 'Params' [-Wunused-parameter]\n  472 | __weak void BSP_SDRAM_MspDeInit(SDRAM_HandleTypeDef  *hsdram, void *Params)\n      |                                                               ~~~~~~^~~~~~"
+  }
+ },
+ {
+  "id": "tai-lieu/phan-tich-ma.md",
+  "loai": "note",
+  "ban": 2,
+  "canonical": {
+   "path": "tai-lieu/phan-tich-ma.md",
+   "sha": "a29ea2d2eaa64ef719f41f89d1fff388748e4c31",
+   "bytes": 2125
+  }
+ },
+ {
+  "id": "firmware/stm32f4xx_hal.h",
+  "loai": "code",
+  "ban": 1,
+  "canonical": {
+   "path": "firmware/stm32f4xx_hal.h",
+   "sha": "bba2020563a375a8d45cea0a9cacb87e0193eb32",
+   "bytes": 585
+  }
+ },
+ {
+  "id": "target:flash",
+  "loai": "target",
+  "ban": 7,
+  "canonical": {
+   "dat": true,
+   "cach": "st-flash",
+   "tep": "mach.bin",
+   "so_byte": 260204,
+   "hash": "b8a68b18c748b24ad3e878452e87cac6748aed8aac84b5771b902d4c51d5af39",
+   "dich": "0x08000000",
+   "giay": 9.1,
+   "da_verify": true,
+   "chip_da_doi_chieu": "STM32F46x_F47x",
+   "vi_sao_khong_dat": "",
+   "canh_bao": [],
+   "nguyen_van": "st-flash 1.8.0\nfile /Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/.eide/build/mach.bin md5 checksum: 91621b7ac3737df132b511ecb53bdd, stlink checksum: 0x0082a60c\n-> Flash page at 0x8000000 erased (size: 0x4000)\n-> Flash page at 0x8004000 erased (size: 0x4000)\n-> Flash page at 0x8008000 erased (size: 0x4000)\n-> Flash page at 0x800c000 erased (size: 0x4000)\n-> Flash page at 0x8010000 erased (size: 0x10000)\n-> Flash page at 0x8020000 erased (size: 0x20000)\n2026-09-30T16:59:25 INFO common.c: STM32F46x_F47x: 256 KiB SRAM, 2048 KiB flash in at least 16 KiB pages.\n2026-09-30T16:59:25 INFO common_flash.c: Attempting to write 260204 (0x3f86c) bytes to stm32 address: 134217728 (0x8000000)\nEraseFlash - Sector:0x0 Size:0x4000 EraseFlash - Sector:0x1 Size:0x4000 EraseFlash - Sector:0x2 Size:0x4000 EraseFlash - Sector:0x3 Size:0x4000 EraseFlash - Sector:0x4 Size:0x10000 EraseFlash - Sector:0x5 Size:0x20000 2026-09-30T16:59:28 INFO flash_loader.c: Starting Flash write for F2/F4/F7/L4\n2026-09-30T16:59:28 INFO flash_loader.c: Successfully loaded flash loader in sram\n2026-09-30T16:59:28 INFO flash_loader.c: Clear DFSR\n2026-09-30T16:59:28 INFO flash_loader.c: enabling 32-bit flash writes\n2026-09-30T16:59:32 INFO common_flash.c: Starting verification of write complete\n2026-09-30T16:59:34 INFO common_flash.c: Flash written and verified! jolly good!",
+   "chip_du_an": "",
+   "chip_theo_nhan_o": "STM32F469NI",
+   "reversible": false,
+   "vi_sao_khong_hoan_tac": "Ghi đè Flash của chip; bản cũ không còn."
+  }
+ },
+ {
+  "id": "target:screen",
+  "loai": "target",
+  "ban": 7,
+  "canonical": {
+   "dat": true,
+   "vi_sao_khong_dat": "",
+   "tep": "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/.eide/anh-man-hinh.png",
+   "dia_chi": "0xC0000000",
+   "rong": 800,
+   "cao": 480,
+   "dinh_dang": "ARGB8888",
+   "so_byte": 1536000,
+   "so_mau": 688,
+   "mau_hay_gap": [
+    {
+     "mau": "#FFFFFF",
+     "ti_le": 0.8817
+    },
+    {
+     "mau": "#00FF00",
+     "ti_le": 0.0283
+    },
+    {
+     "mau": "#0000FF",
+     "ti_le": 0.0281
+    },
+    {
+     "mau": "#000080",
+     "ti_le": 0.0113
+    },
+    {
+     "mau": "#000000",
+     "ti_le": 0.0087
+    }
+   ],
+   "chi_mot_mau": false,
+   "ltdc": {
+    "dat": true,
+    "vi_sao_khong_dat": "",
+    "ltdc_bat": true,
+    "lop1_bat": true,
+    "dia_chi_khung": "0xC0000000",
+    "dinh_dang": "ARGB8888",
+    "cao": 480,
+    "buoc_dong": 3200,
+    "rong": 800,
+    "rong_cua_so": 800,
+    "cao_cua_so": 480
+   },
+   "duong": {
+    "dat": true,
+    "vi_sao_khong_dat": "",
+    "mat_xich": [
+     {
+      "ten": "LTDC bật",
+      "thong": true,
+      "so_do": "LTDC_GCR = 0xC0002221",
+      "nghia": "bộ điều khiển màn hình có đang quét khung ảnh ra không",
+      "cach_sua": "HAL_LTDC_Init / __HAL_LTDC_ENABLE"
+     },
+     {
+      "ten": "Lớp 1 bật",
+      "thong": true,
+      "so_do": "LTDC_L1CR = 0x00000001",
+      "nghia": "lớp ảnh có được bật để hiện không",
+      "cach_sua": "BSP_LCD_LayerDefaultInit"
+     },
+     {
+      "ten": "Host DSI bật",
+      "thong": true,
+      "so_do": "DSI_CR = 0x00000001",
+      "nghia": "khối DSI có đang chạy không",
+      "cach_sua": "HAL_DSI_Start"
+     },
+     {
+      "ten": "Bọc DSI bật (DSIEN)",
+      "thong": true,
+      "so_do": "DSI_WCR(0x40017004) = 0x00000008 → COLM=0 SHTDN=0 LTDCEN=0 DSIEN=1",
+      "nghia": "bọc DSI là chỗ ảnh của LTDC được đóng gói rồi đẩy ra đường DSI; tắt thì màn đen dù LTDC chạy hoàn hảo",
+      "cach_sua": "__HAL_DSI_WRAPPER_ENABLE / HAL_DSI_Start"
+     },
+     {
+      "ten": "Hiển thị không bị tắt (SHTDN)",
+      "thong": true,
+      "so_do": "DSI_WCR(0x40017004) = 0x00000008 → COLM=0 SHTDN=0 LTDCEN=0 DSIEN=1",
+      "nghia": "bit SHTDN = 1 là trạng thái TẮT hiển thị của bọc DSI (DSI_DISPLAY_OFF trong HAL). Ảnh vẫn được LTDC quét ra, nhưng bọc DSI không đẩy nó đi đâu cả",
+      "cach_sua": "xoá bit SHTDN SAU khi mọi bước khởi tạo đã xong — nếu mã đã xoá rồi mà đọc lại vẫn thấy 1 thì có ai đó bật lại nó về sau; tìm chỗ ghi vào DSI->WCR"
+     },
+     {
+      "ten": "LTDC ĐANG QUÉT (không chỉ “đã bật”)",
+      "thong": true,
+      "so_do": "CPSR đọc hai lần: 0x01CA00B4 → 0x01D6008B",
+      "nghia": "CPSR là vị trí điểm ảnh đang quét. Hai lần đọc ra CÙNG một giá trị nghĩa là bộ quét đứng yên — LTDC bật mà không chạy. Đổi giá trị nghĩa là điểm ảnh đang thật sự chảy ra đường DSI",
+      "cach_sua": "kiểm xung nhịp điểm ảnh: PLL của DSI cấp xung cho LTDC ở chế độ video"
+     },
+     {
+      "ten": "PLL của DSI đã khoá",
+      "thong": true,
+      "so_do": "DSI_WISR = 0x00003300, PLLLS = 1",
+      "nghia": "PLL chưa khoá thì không có xung nhịp cho cả đường DSI lẫn LTDC",
+      "cach_sua": "HAL_DSI_Init — kiểm tham số PLL (NDIV/IDF/ODF)"
+     },
+     {
+      "ten": "PHY của DSI bật (DEN + CKE)",
+      "thong": true,
+      "so_do": "DSI_PCTLR = 0x00000006, DEN = 1, CKE = 1",
+      "nghia": "PHY là phần cứng đẩy bit ra hai làn dữ liệu; tắt thì không byte nào rời khỏi chip",
+      "cach_sua": "HAL_DSI_Start"
+     },
+     {
+      "ten": "Chế độ VIDEO (không phải chế độ lệnh)",
+      "thong": true,
+      "so_do": "DSI_MCR = 0x00000000, CMDM = 0",
+      "nghia": "chế độ lệnh chỉ đẩy khung khi có ai bấm nút refresh (DSI_WCR.LTDCEN); panel OTM8009A trên bo này chạy chế độ video liên tục",
+      "cach_sua": "HAL_DSI_ConfigVideoMode"
+     },
+     {
+      "ten": "Không có lỗi trên đường DSI",
+      "thong": true,
+      "so_do": "DSI_ISR0 = 0x00000000, DSI_ISR1 = 0x00000000",
+      "nghia": "ISR0 gom lỗi ACK do CHÍNH PANEL báo về; ISR1 gom lỗi PHY và quá hạn. Cả hai bằng 0 nghĩa là đường truyền sạch — và khi đó màn vẫn đen thì lỗi ở phía panel, không phải ở đường",
+      "cach_sua": "đọc chuỗi khởi tạo panel: nó có thật sự chạy hết không, có bị trả lỗi giữa chừng không"
+     },
+     {
+      "ten": "Panel đã ra khỏi reset (XRES = PH7)",
+      "thong": true,
+      "so_do": "ODR(0x40021C14) bit 7 = 1, IDR(0x40021C10) bit 7 = 1",
+      "nghia": "XRES tích cực THẤP: bit = 0 nghĩa là panel đang bị giữ trong reset và sẽ không hiện gì, dù mọi thứ phía trước đều đúng. Đọc cả IDR vì chân này thường là open-drain — ODR nói ý định, IDR nói thực tế",
+      "cach_sua": "BSP_LCD_Reset() phải kết thúc bằng việc kéo chân này LÊN (GPIO_PIN_SET)"
+     }
+    ],
+    "dut_o": [],
+    "wcfgr": "0x0000000A",
+    "chan_xres": "PH7",
+    "ghi_chu_chan": "Chân XRES là của RIÊNG từng bo; mặc định ở đây lấy theo 32F469IDISCOVERY (BSP_LCD_Reset trong stm32469i_discovery_lcd.c). Bo khác thì truyền `chan_xres`/`odr_xres` khác.",
+    "thong_suot": true,
+    "ket_luan": "Mọi mắt phía STM32 đều thông, kể cả “LTDC đang quét” và “không có lỗi trên đường DSI”. Nếu mắt người vẫn thấy màn đen thì phần còn lại KHÔNG nằm ở cấu hình phía chip: nghi (1) chuỗi lệnh khởi tạo panel OTM8009A chưa chạy hết hoặc bị bỏ giữa chừng, (2) lệnh bật màn / đặt độ sáng chưa tới panel, (3) đèn nền, (4) nhận nhầm loại panel — bo này có hai biến thể, OTM8009A và NT35510."
+   }
+  }
+ },
+ {
+  "id": "target:debug",
+  "loai": "target",
+  "ban": 9,
+  "canonical": {
+   "dat": true,
+   "che_do": "Thread",
+   "pc": "0x08000412",
+   "xpsr": "0x01000000",
+   "msp": "",
+   "o_nho": {
+    "0x40020400": [
+     "00050280",
+     "00000300",
+     "000f00c0",
+     "00050100"
+    ],
+    "0x40020410": [
+     "00002fd0",
+     "00000300",
+     "00000000",
+     "00000000"
+    ],
+    "0x40020420": [
+     "00000000",
+     "00000000",
+     "00000000",
+     "00000000"
+    ],
+    "0xe000ed28": [
+     "00000000",
+     "00000000"
+    ],
+    "0xe000ed34": [
+     "e000edf8",
+     "e000edf8"
+    ]
+   },
+   "vi_sao_khong_dat": "",
+   "nguyen_van": "Open On-Chip Debugger 0.12.0\nLicensed under GNU GPL v2\nFor bug reports, read\n\thttp://openocd.org/doc/doxygen/bugs.html\nInfo : auto-selecting first available session transport \"hla_swd\". To override use 'transport select <transport>'.\nInfo : The selected transport took over low-level target control. The results might differ compared to plain JTAG/SWD\nInfo : clock speed 2000 kHz\nInfo : STLINK V2J35M26 (API v2) VID:PID 0483:374B\nInfo : Target voltage: 3.250493\nInfo : [stm32f4x.cpu] Cortex-M4 r0p1 processor detected\nInfo : [stm32f4x.cpu] target has 6 breakpoints, 4 watchpoints\nInfo : starting gdb server for stm32f4x.cpu on 3333\nInfo : Listening on port 3333 for gdb connections\n[stm32f4x.cpu] halted due to debug-request, current mode: Thread \nxPSR: 0x01000000 pc: 0x08000412 psp: 0x20002798\n0x40020400: 00050280 00000300 000f00c0 00050100 \n\n0x40020410: 00002fd0 00000300 00000000 00000000 \n\n0x40020420: 00000000 00000000 00000000 00000000 \n\n0xe000ed28: 00000000 00000000 \n\n0xe000ed34: e000edf8 e000edf8 \n\n",
+   "loi_phan_cung": {
+    "cfsr": "0x00000000",
+    "hfsr": "0x00000000",
+    "nghia": [],
+    "mmfar": "(không hợp lệ)",
+    "bfar": "(không hợp lệ)"
+   },
+   "ky_hieu": {
+    "0x08000412": {
+     "ham": "rtos_idle_task_entry",
+     "nguon": "rtos_core.c:34",
+     "nguon_day_du": "/Users/congvt/Documents/EIDE_v3/du-lieu/rtos-ptit/firmware/rtos/rtos_core.c:34",
+     "ghi_chu": ""
+    },
+    "0x40020400": {
+     "ham": "",
+     "nguon": "",
+     "nguon_day_du": "",
+     "ghi_chu": "ELF không có ký hiệu nào ở địa chỉ này — có thể chip đang chạy bản khác, hoặc địa chỉ nằm ngoài vùng mã (bảng vector, RAM, bootloader)"
+    },
+    "0x40020410": {
+     "ham": "",
+     "nguon": "",
+     "nguon_day_du": "",
+     "ghi_chu": "ELF không có ký hiệu nào ở địa chỉ này — có thể chip đang chạy bản khác, hoặc địa chỉ nằm ngoài vùng mã (bảng vector, RAM, bootloader)"
+    },
+    "0x40020420": {
+     "ham": "",
+     "nguon": "",
+     "nguon_day_du": "",
+     "ghi_chu": "ELF không có ký hiệu nào ở địa chỉ này — có thể chip đang chạy bản khác, hoặc địa chỉ nằm ngoài vùng mã (bảng vector, RAM, bootloader)"
+    }
+   },
+   "ky_hieu_vi_sao_khong_co": "",
+   "ky_hieu_tin_duoc": true,
+   "doi_chieu_tai_pc": {
+    "do_duoc": true,
+    "khop": true,
+    "vi_sao": "",
+    "dia_chi": "0x08000412",
+    "so_byte": 32
+   },
+   "nhieu_mau": {},
+   "nguyen_nhan_reset": {}
+  }
+ }
+]
