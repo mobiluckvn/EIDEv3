@@ -8,14 +8,14 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 - **Kiến trúc theo mô hình C4 (mã đang thế nào):** [`docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md`](docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md)
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
-- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1308 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
+- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1320 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
 - **Kết quả đo mới nhất (29/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
 - **Đề tài:** PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)
 - Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — Học viện Công nghệ Bưu chính Viễn thông (PTIT) · Học viên: Vũ Trí Công · GVHD: TS. Nguyễn Trung Hiếu
 
 ## Tác tử làm được những gì
 
-**120 công cụ** trong 10 nhóm (111 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ
+**121 công cụ** trong 10 nhóm (112 đăng ký mặc định + 9 công cụ `sch.*` nằm sau cờ
 `EIDE_FEATURE_SCHEMATIC`), **6 tác tử con**, **8 skill**, **10 cổng duyệt**, **11 bề mặt**.
 Dưới đây là năng lực theo *việc người dùng cần*, không theo cây mã.
 
@@ -24,7 +24,7 @@ Dưới đây là năng lực theo *việc người dùng cần*, không theo c�
 | Thiết kế | 27 | bản đồ tri thức mạch · cây khối phân cấp · thư viện khối · sơ đồ nguyên lý |
 | Tri thức | 20 | nạp và đọc datasheet · trích Fact · hộ chiếu chip · **viết tài liệu ra Word/PPT/Excel/PDF** |
 | Store | 19 | yêu cầu · phương án · ADR · mô-đun · BOM · quy trình từng bước |
-| Lịch sử | 17 | changeset · hoàn tác · bản ưng ý · nhánh · sổ cái · xuất/nhập dự án |
+| Lịch sử | 18 | changeset · hoàn tác · bản ưng ý · nhánh · sổ cái · xuất/nhập dự án |
 | Điều phối | 10 | tác tử con · kế hoạch nhiều chặng · tìm và **tự viết công cụ** |
 | Tệp & lệnh | 7 | đọc/ghi/sửa tệp trong hộp cát · tìm kiếm |
 | Mã nguồn | 7 | biên dịch · bản đồ bộ nhớ · kiểm thử · độ nhạy bộ kiểm |
@@ -208,8 +208,13 @@ tên; muốn đề xuất thì dùng `snapshot.propose` rồi dừng lượt cho
 
 Sổ cái là **append-only có chuỗi hash**: sửa một dòng cũ thì `ledger.verify` chỉ ra đúng dòng
 gãy. Mỗi changeset còn kèm một commit git mang mã của nó, nên `git log` lần ngược ra được
-changeset nào sinh ra thay đổi nào. `branch.*` thử phương án song song mà không đụng nhánh
-chính.
+changeset nào sinh ra thay đổi nào.
+
+**Nhánh** thử hai phương án song song, và một nhánh có **hai nửa**: nhánh git cho tệp, bản chụp
+kho cho hiện vật. Chuyển nhánh khôi phục cả hai. `branch.merge` mang kết quả về — tệp gộp bằng
+git (xung đột thì **huỷ phép gộp**, không để lại cây làm việc dở dang), hiện vật thì so ba bên
+và **chỉ lấy phần một bên đổi**. Cả hai bên cùng đổi thì để nguyên và kê ra cho anh quyết: không
+phép trộn nào đúng ở đó, và chọn hộ là giả mạo xuất xứ của quyết định.
 
 ### 10 · Việc lớn: chia nhiều chặng, ghi từng chặng, rồi hợp nhất
 
@@ -381,7 +386,7 @@ dùng là đã sửa tệp của họ**.
 | Vẽ sơ đồ mermaid (giao diện + tài liệu) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
 | Chia việc lớn → ghi từng chặng → hợp nhất | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã ↔ tài liệu thiết kế | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
-| Ca đơn vị | **1308** | `pytest tests/ -q` |
+| Ca đơn vị | **1320** | `pytest tests/ -q` |
 | Bo thật STM32F469I-DISCO | LCD 800×480 + cảm ứng + FreeRTOS đa tác vụ, đã xác nhận bằng mắt | [`docs/stm32f469-freertos/`](docs/stm32f469-freertos/) |
 
 Mỗi ca kiểm có một tệp log riêng kèm **bảng từng lời gọi công cụ, tham số đầy đủ và mã lỗi**:

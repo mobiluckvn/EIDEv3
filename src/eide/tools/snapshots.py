@@ -249,6 +249,38 @@ def register(r: Registry) -> Registry:
                 "E7006", kq["message_vi"], blame="agent"))
         return kq
 
+    @r.tool("branch.merge", "Lịch sử",
+            "GỘP một nhánh vào nhánh đang đứng. Tệp gộp bằng git; hiện vật thì chỉ lấy phần "
+            "MỘT bên đổi — cả hai bên cùng đổi thì để nguyên và kê ra cho người quyết. Xung "
+            "đột tệp thì HUỶ phép gộp, không để lại cây làm việc dở dang.",
+            {"type": "object",
+             "properties": {"tu": {"type": "string",
+                                   "description": "tên nhánh muốn gộp VÀO nhánh hiện tại"},
+                            "explain": EXPLAIN_SCHEMA},
+             "required": ["tu", "explain"]},
+            risk="R3", gate="G-HIST", writes_artefact=True, needs_explain=True, core=False,
+            keywords=["gộp nhánh", "merge", "nhập nhánh", "hợp nhất nhánh", "lấy về nhánh"],
+            returns_vi="Đã lấy hiện vật nào, hiện vật nào XUNG ĐỘT, và bản ưng ý để lùi lại")
+    def branch_merge(ctx: Any, tu: str, explain: dict[str, Any]):
+        """§E5.5 phần để ngỏ trong thiết kế gốc.
+
+        Trước công cụ này, `branch.create`/`switch`/`list` cho thử hai phương án song song mà
+        **không có đường mang kết quả về** — nhánh thử xong là một ngõ cụt, muốn dùng thì chép
+        tay từng tệp.
+        """
+        kq = ctx.history.gop_nhanh(tu, by="human")
+        if not kq.get("ok"):
+            return ToolResult(False, error=EideError(
+                "E5010", kq.get("message_vi", "Không gộp được."),
+                hint_for_agent=(
+                    "Xung đột tệp thì phép gộp đã bị HUỶ và cây làm việc trở về như cũ — "
+                    "không có gì phải dọn. Mở từng tệp xung đột ra, hỏi người dùng giữ bên "
+                    "nào, sửa trên một nhánh rồi gộp lại."),
+                details={k: v for k, v in kq.items() if k != "message_vi"},
+                alternatives=["branch.switch", "history.diff", "snapshot.compare"],
+                blame="user"))
+        return kq
+
     @r.tool("branch.list", "Lịch sử",
             "Liệt kê các nhánh và cho biết đang ở nhánh nào.",
             {"type": "object", "properties": {}},

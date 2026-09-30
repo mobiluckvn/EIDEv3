@@ -694,6 +694,39 @@ class Agent:
     # tốn lược đồ ở mọi phiên; nhưng lúc đang giữa một kế hoạch thì chúng phải NHÌN THẤY ĐƯỢC.
     _CONG_CU_KHI_CO_KE_HOACH = ("plan.step_done", "plan.merge", "plan.cancel")
 
+    def _mo_khoa_theo_ngu_canh(self) -> None:
+        """Mở khoá những công cụ chỉ dùng được TRONG MỘT TÌNH HUỐNG, đúng lúc tình huống ấy tới.
+
+        Chúng để `core=False` cho khỏi tốn lược đồ ở mọi lượt. Nhưng `core=False` nghĩa là tác
+        tử **không nhìn thấy** cho tới khi nó `tool.search` — và nó chỉ tìm khi nó biết có thứ
+        để tìm. Đây là hình dạng lỗi lặp lại nhiều nhất trong dự án này (xem DEV-302, DEV-305).
+
+        Đo được 30/09/2026: **31 trên 120 công cụ chưa nổ lần nào** trong mọi lượt chạy thật,
+        và 25 trong số đó là `core=False`.
+        """
+        mo = getattr(self.registry, "_unlocked", None)
+        if mo is None:
+            return
+
+        # `skill.load` — 8 skill hiện tên trong `<skills-hint>` MỖI LƯỢT, mà công cụ để nạp
+        # chúng thì tác tử không nhìn thấy. Đo được: **0 lần nạp** trong toàn bộ lịch sử chạy.
+        # Gợi ý một danh mục rồi giấu cái nút mở nó đi thì danh mục ấy chỉ tốn token.
+        mo.add("skill.load")
+
+        # `history.undo_30s` — cửa sổ hoàn tác KHÔNG cần thẻ cổng. Menu ⌥⌘Z của giao diện gửi
+        # câu "Hoàn tác việc bạn vừa làm giúp mình", và tác tử lúc ấy chỉ thấy `history.undo`
+        # (R2, cổng G-HIST) — nên nó dựng thẻ cổng cho một việc lẽ ra lùi được ngay. Đúng thứ
+        # cửa sổ 30 giây sinh ra để tránh.
+        #
+        # Chỉ mở khi CÒN trong cửa sổ: hết 30 giây thì công cụ ấy chỉ trả lỗi, và một công cụ
+        # luôn hiện mà luôn hỏng là một công cụ dạy người ta bỏ qua nó.
+        import time as _t
+
+        if any(_t.time() - x <= 30 for x in (self.thoi_diem_ket_thuc or {}).values()):
+            mo.add("history.undo_30s")
+
+        self._mo_khoa_cong_cu_ke_hoach()
+
     def _mo_khoa_cong_cu_ke_hoach(self) -> None:
         """Có kế hoạch đã duyệt thì mở khoá `plan.step_done` / `plan.merge` / `plan.cancel`.
 
@@ -1388,8 +1421,8 @@ class Agent:
 
     # ------------------------------------------------------------------ ngữ cảnh
     def _assemble(self, ctx: TurnContext, s0: Any):
-        # Mở khoá công cụ của kế hoạch TRƯỚC khi dựng danh sách công cụ cho mô hình.
-        self._mo_khoa_cong_cu_ke_hoach()
+        # Mở khoá công cụ theo ngữ cảnh TRƯỚC khi dựng danh sách công cụ cho mô hình.
+        self._mo_khoa_theo_ngu_canh()
         inv = ctx.build_inventory()
         recent = [m.get("text", "") for m in self.messages[-6:] if m.get("role") == "user"]
         from .skills import goi_y_cho_ngu_canh

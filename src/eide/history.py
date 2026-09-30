@@ -426,6 +426,9 @@ class History:
             passed=passed or [],
             contents={
                 "git_tag": tag,
+                # NHÁNH lúc chụp. Không ghi thì không có cách nào tìm ra "trạng thái kho của
+                # nhánh kia" khi gộp — bản chụp nào cũng trông giống nhau.
+                "nhanh": self.nhanh_hien_tai(),
                 "git_sha": self.vcs.sha_hien_tai() if self.git_san else None,
                 "store_export_hash": h,
                 "eide_md_hash": self.blobs.put(md.read_text("utf-8")) if md.exists() else None,
@@ -668,6 +671,135 @@ class History:
                                + ", ".join(f"{k.loai} ({len(k.them)}+/{len(k.bot)}-/"
                                            f"{len(k.doi)}~)" for k in kb))}
 
+    def gop_nhanh(self, tu: str, *, by: str = "human") -> dict[str, Any]:
+        """Gộp nhánh `tu` vào nhánh đang đứng. §E5.5 — phần thiết kế gốc để ngỏ.
+
+        ## Một nhánh có HAI nửa, và chúng gộp theo hai cách khác nhau
+
+        `tao_nhanh` tạo một nhánh git cho **tệp**, và một bản chụp kho cho **hiện vật**.
+        Gộp cũng phải đi hai đường:
+
+        * **Tệp** — `git merge`. Git biết gộp văn bản, và quan trọng hơn: nó biết lúc nào nó
+          KHÔNG biết. Xung đột thì **huỷ luôn phép gộp** (`--abort`) và trả về danh sách tệp
+          xung đột. Không để lại cây làm việc ở trạng thái gộp dở: một cây dở dang là thứ
+          người dùng phải tự dọn, mà họ không hề xin nó.
+        * **Hiện vật** — so ba bên: điểm rẽ · bên này · bên kia. Hiện vật chỉ MỘT bên đổi thì
+          lấy bên ấy. **Cả hai bên cùng đổi thì không đụng vào**, và kê ra cho người quyết.
+
+        ## Vì sao không tự trộn hiện vật xung đột
+
+        Hiện vật là JSON có nghĩa — một `store.req` đổi ở cả hai nhánh thì không có phép trộn
+        nào đúng: lấy bên nào cũng là vứt bỏ một quyết định mà ai đó đã cân nhắc. Tự chọn hộ
+        là giả mạo xuất xứ của quyết định ấy, và `explain` sẽ nói sai về việc vì sao nó thành
+        ra như thế.
+        """
+        if not self.git_san:
+            return {"ok": False, "message_vi": "Dự án không dùng được git nên chưa gộp được."}
+        vao = self.nhanh_hien_tai()
+        if tu == vao:
+            return {"ok": False,
+                    "message_vi": f"Đang đứng ngay trên “{tu}” — không gộp một nhánh vào "
+                                  "chính nó."}
+        if tu not in self.danh_sach_nhanh():
+            return {"ok": False, "message_vi": f"Không có nhánh nào tên “{tu}”. "
+                                               f"Đang có: {', '.join(self.danh_sach_nhanh())}."}
+
+        # Chụp một mốc TRƯỚC khi gộp — gộp là việc đổi cả cây làm việc, và đường lui phải có
+        # sẵn trước khi đi, không phải dựng lại sau khi hỏng.
+        truoc = self.tao_snapshot(ten="", kind="checkpoint",
+                                  ghi_chu=f"ngầm, trước khi gộp “{tu}” vào “{vao}”",
+                                  boi="eide")
+
+        from .vcs import GitKhongSan
+
+        try:
+            self.vcs._git("merge", "--no-edit", tu)
+        except GitKhongSan as e:
+            xung_dot = [x[3:].strip() for x in
+                        self.vcs._git("status", "--porcelain", check=False).splitlines()
+                        if x[:2] in ("UU", "AA", "DU", "UD", "AU", "UA", "DD")]
+            self.vcs._git("merge", "--abort", check=False)
+            return {"ok": False, "xung_dot_tep": xung_dot, "snapshot_truoc": truoc.id,
+                    "message_vi": (
+                        f"Gộp tệp KHÔNG xong: {len(xung_dot)} tệp xung đột"
+                        + (" (" + ", ".join(xung_dot[:6]) + ")" if xung_dot else "")
+                        + f". Đã huỷ phép gộp, cây làm việc trở về đúng như trước — không "
+                          f"để lại trạng thái gộp dở. Lỗi git: {e}")}
+
+        kq_hv = self._gop_hien_vat(tu, vao, by=by)
+        self.ledger.append("note", {"gop_nhanh": tu, "vao": vao,
+                                    "snapshot_truoc": truoc.id, **kq_hv})
+        return {"ok": True, "tu": tu, "vao": vao, "snapshot_truoc": truoc.id, **kq_hv,
+                "message_vi": (
+                    f"Đã gộp tệp của “{tu}” vào “{vao}”. "
+                    + (f"Lấy {len(kq_hv['da_lay'])} hiện vật chỉ bên “{tu}” đổi. "
+                       if kq_hv["da_lay"] else "Không hiện vật nào chỉ bên kia đổi. ")
+                    + (f"**{len(kq_hv['xung_dot'])} hiện vật CẢ HAI bên cùng đổi — chưa đụng "
+                       "vào**, anh quyết từng cái: "
+                       + ", ".join(kq_hv["xung_dot"][:6]) + "."
+                       if kq_hv["xung_dot"] else "Không hiện vật nào xung đột.")
+                    + f" Lùi lại được bằng bản ưng ý {truoc.id}.")}
+
+    def _gop_hien_vat(self, tu: str, vao: str, *, by: str) -> dict[str, Any]:
+        """So ba bên (điểm rẽ · bên này · bên kia) rồi lấy phần chỉ một bên đổi."""
+        from . import snapshot as sn
+
+        def _kho_cua(s_id: str | None) -> dict[str, Any] | None:
+            if not s_id:
+                return None
+            s = self.snapshots.get(s_id)
+            if s is None:
+                return None
+            raw = self.blobs.get(s.contents.get("store_export_hash") or "")
+            return _unjson(raw) if raw is not None else None
+
+        # Điểm rẽ: bản ưng ý `tao_nhanh` đặt tên `nhanh-<ten>`.
+        re_nhanh = next((s for s in self.snapshots.all(gom_checkpoint=True)
+                         if s.name == f"nhanh-{tu}"), None)
+        # Bên kia: bản chụp gần nhất được tạo KHI ĐANG ĐỨNG trên nhánh ấy.
+        ben_kia = next((s for s in reversed(self.snapshots.all(gom_checkpoint=True))
+                        if (s.contents or {}).get("nhanh") == tu), None)
+
+        goc = _kho_cua(re_nhanh.id if re_nhanh else None)
+        kia = _kho_cua(ben_kia.id if ben_kia else None)
+        if goc is None or kia is None:
+            return {"da_lay": [], "xung_dot": [],
+                    "ghi_chu_hien_vat": (
+                        "Không tìm đủ bản chụp kho của hai bên nên **chỉ gộp phần tệp**. "
+                        "Hiện vật của nhánh kia còn nguyên ở đó; chuyển sang nó để xem.")}
+
+        nay = sn.xuat_kho(self.store)
+        d_kia = {x["id"]: x for x in kia.get("artefacts", [])}
+        d_goc = {x["id"]: x for x in goc.get("artefacts", [])}
+        d_nay = {x["id"]: x for x in nay.get("artefacts", [])}
+
+        doi_kia = {i for i in d_kia
+                   if i not in d_goc or d_kia[i]["canonical"] != d_goc[i]["canonical"]}
+        doi_nay = {i for i in d_nay
+                   if i not in d_goc or d_nay[i]["canonical"] != d_goc[i]["canonical"]}
+
+        xung_dot = sorted(i for i in doi_kia & doi_nay
+                          if d_kia[i]["canonical"] != d_nay.get(i, {}).get("canonical"))
+        chi_kia = sorted(doi_kia - doi_nay)
+
+        da_lay: list[str] = []
+        for i in chi_kia:
+            a = d_kia[i]
+            self.store.apply(
+                artefact_id=i, type=a["type"], op="update" if i in d_nay else "create",
+                author=f"human:{by}", canonical=a["canonical"],
+                explain={"summary": f"lấy từ nhánh “{tu}” khi gộp vào “{vao}”",
+                         "why": "chỉ nhánh kia đổi hiện vật này, bên này không đụng tới",
+                         "sources": [{"kind": "changeset", "ref": f"branch:{tu}"}],
+                         "diff_prev": "theo bản của nhánh kia", "next": "—",
+                         "confidence": "NGUOI"})
+            da_lay.append(i)
+        return {"da_lay": da_lay, "xung_dot": xung_dot,
+                "ghi_chu_hien_vat": (
+                    "Hiện vật cả hai bên cùng đổi thì KHÔNG tự trộn: không phép trộn nào "
+                    "đúng, và chọn hộ là giả mạo xuất xứ của quyết định." if xung_dot else "")}
+
+
     # ================================================================== nhánh
     def tao_nhanh(self, ten: str, *, tu_snapshot: str | None = None) -> dict[str, Any]:
         """§E5.5 — nhánh để thử hai phương án song song.
@@ -694,16 +826,47 @@ class History:
                               f"nằm trên nhánh này; “{hien}” giữ nguyên."}
 
     def chuyen_nhanh(self, ten: str) -> dict[str, Any]:
+        """Chuyển nhánh: `git checkout` cho TỆP, và khôi phục kho cho HIỆN VẬT.
+
+        Nửa thứ hai trước đây **không có**. `tao_nhanh` ghi trong docstring rằng "chuyển nhánh
+        sẽ khôi phục nửa thứ hai", nhưng mã chỉ gọi `git checkout` — nên nhánh cô lập tệp mà
+        **không cô lập hiện vật**: viết một REQ trên nhánh thử rồi quay về `main` thì REQ ấy
+        vẫn nằm đó.
+
+        Đo được 30/09/2026 khi viết `branch.merge`: phép gộp không thấy hiện vật nào "chỉ bên
+        kia đổi", vì chúng chưa bao giờ bị tách ra. Hai phương án song song mà dùng chung một
+        kho thì không phải hai phương án song song.
+
+        Khôi phục **an toàn vì có đường lui**: một mốc ngầm được chụp ngay trước khi chuyển,
+        nên trạng thái đang bỏ lại không mất.
+        """
         if not self.git_san:
             return {"ok": False, "message_vi": "Dự án không dùng được git."}
-        self.tao_snapshot(ten="", kind="checkpoint",
-                          ghi_chu=f"ngầm, trước khi chuyển sang nhánh {ten}", boi="eide")
+        cu_ = self.nhanh_hien_tai()
+        truoc = self.tao_snapshot(
+            ten="", kind="checkpoint",
+            ghi_chu=f"ngầm, trước khi chuyển từ {cu_} sang nhánh {ten}", boi="eide")
         try:
             self.vcs._git("checkout", ten)
         except GitKhongSan as e:
             return {"ok": False, "message_vi": f"Không chuyển được: {e}"}
-        return {"ok": True, "nhanh": ten,
-                "message_vi": f"Đang ở nhánh “{ten}”."}
+
+        # Kho của nhánh đích = bản chụp gần nhất được tạo KHI ĐANG ĐỨNG trên nó.
+        dich = next((x for x in reversed(self.snapshots.all(gom_checkpoint=True))
+                     if (x.contents or {}).get("nhanh") == ten and x.id != truoc.id), None)
+        khoi_phuc = ""
+        if dich is not None:
+            raw = self.blobs.get(dich.contents.get("store_export_hash") or "")
+            if raw is not None:
+                cham = self._ap_ban_xuat(_unjson(raw), self.ids.next("cs"))
+                khoi_phuc = (f" Kho hiện vật về theo {dich.id} ({len(cham)} hiện vật).")
+            else:
+                khoi_phuc = (f" Bản chụp {dich.id} mất nội dung kho nên hiện vật GIỮ NGUYÊN "
+                             "như nhánh cũ — nói với người dùng điều đó.")
+        return {"ok": True, "nhanh": ten, "snapshot_truoc": truoc.id,
+                "kho_theo": dich.id if dich else None,
+                "message_vi": f"Đang ở nhánh “{ten}”.{khoi_phuc}"
+                              f" Trạng thái vừa rời khỏi giữ ở {truoc.id}."}
 
     def nhanh_hien_tai(self) -> str:
         if not self.git_san:

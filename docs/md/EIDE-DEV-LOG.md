@@ -5326,3 +5326,83 @@ kiểm.
 `plan.merge` · **1308 ca đơn vị** (+14 ca mới) · E2E giao diện **12/14** · hiến pháp giữ trần
 **3 693/3 700** (nén bảy chỗ, không nâng trần) · bộ dò tài liệu **0 chỗ lệch** · skill mới
 `chia-viec-lon`.
+
+---
+
+### [DEV-306] 30/09/2026 · 31/120 công cụ chưa nổ lần nào — nối ba đường, và một chỗ KHÔNG phải lỗi
+
+Quét sổ cái của **mọi** dự án trong `du-lieu/`: **31 trên 120 công cụ chưa từng nổ** trong bất
+kỳ lượt chạy thật nào. 25 trong số đó là `core=False` — chỉ hiện sau một lần `tool.search`, mà
+tác tử chỉ tìm khi nó biết có thứ để tìm.
+
+#### Ba đường đứt, và cả ba đều đứt ở chỗ khác nhau
+
+**1. `skill.load` — 0 lần nạp trong toàn bộ lịch sử.** Tám skill hiện tên trong `<skills-hint>`
+**mỗi lượt**, mà công cụ để mở chúng thì tác tử không nhìn thấy. Gợi ý một danh mục rồi giấu
+cái nút mở nó đi thì danh mục ấy chỉ tốn token. Nay mở khoá mỗi lượt.
+
+**2. `history.undo_30s` — cửa sổ lùi KHÔNG cần thẻ cổng, chưa dùng lần nào.** Menu **⌥⌘Z** gửi
+câu *"Hoàn tác việc bạn vừa làm giúp mình"*; lúc ấy tác tử chỉ thấy `history.undo` (R2, cổng
+G-HIST) nên nó **dựng thẻ cổng cho một việc lẽ ra lùi được ngay** — đúng thứ cửa sổ 30 giây
+sinh ra để tránh. Nay mở khoá **chỉ khi còn trong cửa sổ**: một công cụ luôn hiện mà luôn hỏng
+là một công cụ dạy người ta bỏ qua nó.
+
+**3. `fact.review` — đường DUY NHẤT để một Fact lên VÀNG, chưa nổ lần nào**, nghĩa là chưa Fact
+nào từng thành VÀNG. Công cụ ấy `core=True` nên tác tử vẫn nhìn thấy; chỗ đứt nằm ở **phía
+người**: khối "Hàng đợi rà soát Fact" báo *"chờ anh xác nhận từng dòng"* rồi để họ tự đoán phải
+làm gì. Nay khối ấy nói thẳng câu người dùng gõ được (*"duyệt FACT-07"*) và tên công cụ sẽ chạy.
+
+#### Và một chỗ KHÔNG phải lỗi — ghi lại để lần sau không ai sửa nhầm
+
+`ledger.verify` (công cụ) chưa nổ lần nào, nhưng **cơ chế thì chạy liên tục**: bề mặt Nhật ký
+gọi `ledger.verify()` mỗi lần vẽ lại, `du-an.json` ghi kết quả mỗi lần mở dự án, và
+`goi_du_an.nhap()` kiểm trước khi trả về. Công cụ chỉ là lối thoát hiểm thủ công.
+
+*Số lần chạy bằng 0 là một phát hiện, không phải một kết luận.* Phải hỏi tiếp: cơ chế ấy có
+đường nào khác để nổ không.
+
+#### Đo sau khi nối — cả hai nổ lần đầu tiên
+
+Qua giao diện thật: xin hướng dẫn viết AVR bare-metal → tác tử gọi **`skill.load` hai lần**.
+Gõ đúng câu menu ⌥⌘Z gửi → **`history.undo_30s` là lời gọi ĐẦU TIÊN** của lượt, không thẻ cổng
+nào dựng lên.
+
+---
+
+### [DEV-307] 30/09/2026 · `branch.merge`, và nhánh trước nay chỉ cô lập một nửa
+
+`branch.merge` có trong thiết kế §E5.5 mà **không có trong mã**: ba công cụ
+`create`/`switch`/`list` cho thử hai phương án song song rồi **không có đường mang kết quả
+về** — nhánh thử xong là ngõ cụt, muốn dùng thì chép tay từng tệp.
+
+#### Chỗ lộ ra khi viết nó: nhánh chưa bao giờ cô lập hiện vật
+
+`tao_nhanh` ghi trong docstring rằng *"chuyển nhánh sẽ khôi phục nửa thứ hai"*. Mã của
+`chuyen_nhanh` chỉ gọi `git checkout`. Nên viết một REQ trên nhánh thử rồi quay về `main` thì
+REQ ấy **vẫn nằm đó**: nhánh cô lập **tệp** mà không cô lập **hiện vật**.
+
+Lộ ra vì ca kiểm đầu tiên của phép gộp đỏ: nó không thấy hiện vật nào *"chỉ bên kia đổi"* — vì
+chúng chưa bao giờ bị tách ra. *Hai phương án song song dùng chung một kho thì không phải hai
+phương án song song.*
+
+Nay `chuyen_nhanh` khôi phục kho theo bản chụp gần nhất **của nhánh đích**, và mỗi bản chụp ghi
+lại nhánh nó được tạo trên (`contents["nhanh"]`) — không ghi thì mọi bản chụp trông như nhau.
+An toàn vì có đường lui: một mốc ngầm được chụp ngay trước khi chuyển.
+
+#### Phép gộp: hai nửa, hai cách
+
+* **Tệp** — `git merge`. Git biết gộp văn bản, và quan trọng hơn: **nó biết lúc nào nó không
+  biết**. Xung đột thì `--abort` và trả về danh sách tệp xung đột. Không để lại cây làm việc ở
+  trạng thái gộp dở: một cây dở dang là thứ người dùng phải tự dọn mà họ không hề xin.
+* **Hiện vật** — so ba bên (điểm rẽ · bên này · bên kia). Chỉ một bên đổi thì lấy bên ấy.
+  **Cả hai bên cùng đổi thì không đụng vào**, và kê ra cho người quyết.
+
+Vì sao không tự trộn hiện vật xung đột: một `store.req` đổi ở cả hai nhánh thì không có phép
+trộn nào đúng — lấy bên nào cũng là vứt bỏ một quyết định ai đó đã cân nhắc. Chọn hộ là **giả
+mạo xuất xứ** của quyết định ấy, và `explain` sẽ nói sai về việc vì sao nó thành ra như thế.
+
+### Số đo
+
+`branch.merge` · **1320 ca đơn vị** (+12) · số công cụ **121** (112 mặc định) cập nhật trong 4
+tài liệu · bộ dò tài liệu **0 chỗ lệch** · `skill.load` và `history.undo_30s` **nổ lần đầu**
+trong lượt chạy thật.

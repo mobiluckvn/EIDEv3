@@ -332,10 +332,22 @@ def knowledge(store: Any, inv: Any) -> dict[str, Any]:
         # §C3 bước 5 — hàng đợi rà soát: BẠC là "nguồn đã duyệt, dòng chưa xác nhận".
         bac = [f for f in facts if f["tier"] == "BAC"]
         if bac:
+            # NÓI RA cách xác nhận, không chỉ nói là "chờ xác nhận".
+            #
+            # Đo được 30/09/2026: `fact.review` — đường DUY NHẤT để một Fact lên VÀNG —
+            # **chưa nổ lần nào** trong toàn bộ lịch sử chạy, nghĩa là chưa Fact nào từng
+            # thành VÀNG. Công cụ ấy `core=True` nên tác tử vẫn nhìn thấy; chỗ đứt nằm ở
+            # phía người: khối này báo có hàng đợi rồi để họ tự đoán phải làm gì.
+            #
+            # Một hàng đợi không nói cách xử lý là một hàng đợi không ai xử lý.
             blocks.append(block(
                 "A4.2b", "Hàng đợi rà soát Fact", "table",
                 summary=(f"{len(bac)} Fact ở tầng BẠC chờ anh xác nhận từng dòng. "
-                         "Xác nhận rồi mới lên VÀNG và dùng được để quyết định tự động."),
+                         "Xác nhận rồi mới lên VÀNG và dùng được để quyết định tự động. "
+                         "**Cách xác nhận:** đọc cột trích đoạn, đúng thì bảo tác tử "
+                         f"*“duyệt {bac[0]['fact_id']}”* (hoặc “duyệt hết các Fact ở bảng "
+                         "này” nếu anh đã soát xong) — nó sẽ gọi `fact.review`. Sai thì bảo "
+                         "nó số đúng, tác tử ghi thành Fact tầng NGƯỜI kèm lời anh."),
                 columns=["Mã", "Khoá", "Giá trị", "Trang", "Trích đoạn nguyên văn"],
                 rows=[[f["fact_id"], f["key"],
                        f"{f['value']} {f['unit'] or ''}".strip(),
