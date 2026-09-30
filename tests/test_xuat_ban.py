@@ -260,3 +260,57 @@ def test_pdf_datasheet_da_nap_khong_bi_doc_nham_thanh_tep_tao_ra():
     assert _tac_tu_lam_ra(
         {"canonical": {"title": "DS", "pages": 9, "path": "ds.pdf"}}) is False
     assert _tac_tu_lam_ra({"canonical": {"path": "main.c", "bytes": 1}}) is False
+
+
+def test_be_rong_cot_dat_ca_LUOI_lan_O(tmp_path):
+    """LibreOffice đọc `tblGrid`, không đọc `cell.width`.
+
+    Đo được 30/09/2026 khi làm báo cáo RTOS: mọi ô đã đúng 3,54 inch mà `gridCol` vẫn 1440
+    twips (1 inch) cho mọi cột — bản PDF ra với cột đầu teo còn một inch, chữ xuống dòng năm
+    lần. Hai chỗ cùng nói về một thứ thì phải sửa cả hai.
+    """
+    from docx.oxml.ns import qn
+
+    md = ("| Hạng mục rất dài cần nhiều chỗ để đọc được | Vai | LQ |\n|---|---|---|\n"
+          "| Nghiên cứu chuyển ngữ cảnh Cortex-M4F PendSV | Senior | 1 |\n")
+    p = tmp_path / "b.docx"
+    assert render(md, p, "docx").dat
+    t = docx.Document(str(p)).tables[0]
+    lu = [int(g.get(qn("w:w"))) for g in t._tbl.find(qn("w:tblGrid"))]
+    assert lu[0] > lu[1] * 2, f"cột văn xuôi không rộng hơn cột ngắn: {lu}"
+    assert all(c.width for c in t.rows[0].cells)
+
+
+def test_cot_du_rong_cho_TU_DAI_NHAT(tmp_path):
+    """Một hằng số cận dưới làm chữ “Senior” gãy thành “Senio/r”. Ngắt giữa một từ thì người
+    đọc phải ghép lại trong đầu, mà cái giá để tránh chỉ là vài phần mười inch."""
+    from eide.xuat_ban import _rong_cot
+
+    class _O:
+        width = None
+
+    class _H:
+        def __init__(self, n):
+            self.cells = [_O() for _ in range(n)]
+
+    class _B:
+        autofit = True
+        rows = [_H(3) for _ in range(2)]
+        columns = [_O() for _ in range(3)]
+
+    from docx.shared import Inches
+
+    b = _B()
+    _rong_cot(b, [["Hạng mục dài dằng dặc để chiếm chỗ", "Vai trò", "LQ"],
+                  ["x", "Senior", "1"]], Inches)
+    rong = [c.width.inches for c in b.columns]
+    assert rong[1] >= 0.6, f"cột chứa 'Senior' quá hẹp: {rong}"
+    assert b.autofit is False, "không đặt bố cục cố định thì bề rộng chỉ là lời đề nghị"
+
+
+def test_trich_dan_nhieu_dong_thanh_MOT_khoi():
+    """Tách mỗi dòng `>` thành một khối thì một lời ghi chú ba dòng hiện ra như ba lời ghi chú
+    khác nhau, mỗi cái một khung."""
+    k = doc_markdown("> dòng một\n> dòng hai\n> dòng ba\n\nđoạn thường\n")
+    assert [x.loai for x in k] == ["trich", "doan"]
+    assert k[0].chu == "dòng một dòng hai dòng ba"

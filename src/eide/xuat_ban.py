@@ -199,9 +199,18 @@ def doc_markdown(md: str) -> list[Khoi]:
 
         if d.lstrip().startswith(">"):
             xa_doan()
-            khoi.append(Khoi("trich", d.lstrip()[1:].strip()))
-            dang_mo = khoi[-1]
+            # Gộp các dòng `>` LIỀN NHAU thành MỘT khối trích dẫn.
+            #
+            # Tách mỗi dòng thành một khối thì bản Word ra ba đoạn trích dẫn rời, mỗi đoạn một
+            # khung — đo được ở mục 5 của báo cáo RTOS: một lời ghi chú ba dòng hiện ra như ba
+            # lời ghi chú khác nhau.
+            nd = [d.lstrip()[1:].strip()]
             i += 1
+            while i < n and dong[i].lstrip().startswith(">"):
+                nd.append(dong[i].lstrip()[1:].strip())
+                i += 1
+            khoi.append(Khoi("trich", " ".join(x for x in nd if x).strip()))
+            dang_mo = khoi[-1]
             continue
 
         if dang_mo is not None:                   # dòng nối tiếp của mục đang mở
@@ -390,6 +399,53 @@ def _chen_so_do(tl: Any, nguon: str, Inches: Any, CANH: Any, Pt: Any, _chu: Any)
 
 
 # ============================================================================ → .docx
+def _rong_cot(bang: Any, hang: list[list[str]], Inches: Any) -> None:
+    """Chia bề rộng cột theo độ dài chữ, có cận dưới và cận trên.
+
+    Cận dưới để một cột toàn số không teo lại thành sợi chỉ; cận trên để một cột văn xuôi
+    không nuốt hết trang. Phần còn lại chia theo tỉ lệ độ dài trung bình — không theo độ dài
+    lớn nhất, vì một ô ngoại lệ dài gấp ba sẽ kéo lệch cả bảng.
+    """
+    if not hang:
+        return
+    sc = max(len(h) for h in hang)
+    dai = []
+    for j in range(sc):
+        o = [len(chu_tran(h[j])) for h in hang if j < len(h)]
+        dai.append(sum(o) / len(o) if o else 1)
+    # Bố cục CỐ ĐỊNH, nếu không thì `cell.width` chỉ là lời đề nghị và thuật toán tự co của
+    # trình đọc ghi đè lên nó — đo được: đặt bề rộng xong mà cột đầu vẫn teo còn một inch.
+    bang.autofit = False
+    # Cận dưới của mỗi cột = đủ chứa TỪ DÀI NHẤT trong cột ấy.
+    #
+    # Một hằng số 0,55 inch làm chữ "Senior" gãy thành "Senio/r" — đo trên bảng WBS. Ngắt dòng
+    # giữa một từ thì người đọc phải ghép lại trong đầu, mà cái giá để tránh chỉ là vài phần
+    # mười inch.
+    tu_dai = []
+    for j in range(sc):
+        w = [max((len(x) for x in chu_tran(h[j]).split()), default=1)
+             for h in hang if j < len(h)]
+        tu_dai.append(max(w) if w else 1)
+    tong = sum(dai) or 1
+    KHUNG = 6.4                                    # bề rộng dùng được của khổ A4, lề 2,5 cm
+    rong = [max(0.18 + tu_dai[j] * 0.075, min(3.4, KHUNG * d / tong))
+            for j, d in enumerate(dai)]
+    he_so = KHUNG / sum(rong)
+    rong = [r * he_so for r in rong]
+    # Đặt CẢ LƯỚI (`tblGrid`) lẫn từng ô.
+    #
+    # Chỉ đặt `cell.width` là không đủ: đo trên tệp sinh ra, mọi ô đã đúng 3,54 inch mà
+    # `gridCol` vẫn 1440 twips (1 inch) cho mọi cột — và LibreOffice, thứ dựng bản PDF, đọc
+    # LƯỚI chứ không đọc ô. Hai chỗ cùng nói về một thứ thì phải sửa cả hai.
+    for j, r in enumerate(rong):
+        if j < len(bang.columns):
+            bang.columns[j].width = Inches(r)
+    for h in bang.rows:
+        for j, o in enumerate(h.cells):
+            if j < len(rong):
+                o.width = Inches(rong[j])
+
+
 def sang_docx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
               goc_anh: Path | None = None) -> KetQuaRender:
     kq = KetQuaRender(dinh_dang="docx")
@@ -464,6 +520,19 @@ def sang_docx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
         elif k.loai == "bang" and k.hang:
             b = tl.add_table(rows=len(k.hang), cols=max(len(h) for h in k.hang))
             b.style = "Light Grid Accent 1"
+            # Cho Word TỰ CO CỘT theo nội dung.
+            #
+            # Mặc định `python-docx` để bố cục cột cố định, nên một bảng 6 cột có cột đầu dài
+            # (tên hạng mục) và năm cột ngắn (con số) sẽ chia đều — cột đầu bị bóp còn một
+            # inch và chữ xuống dòng năm lần, trong khi các cột số thừa chỗ. Đo được trên bảng
+            # WBS của báo cáo RTOS: mỗi hàng cao gấp bốn lần cần thiết.
+            # ĐẶT BỀ RỘNG CỘT THEO NỘI DUNG, không phó mặc autofit.
+            #
+            # `autofit` là lời đề nghị, và LibreOffice — thứ dựng bản PDF — bỏ qua nó. Đo được
+            # trên bảng WBS 6 cột của báo cáo RTOS: cột đầu (tên hạng mục, 40–60 ký tự) bị chia
+            # đều bằng năm cột số, còn một inch, chữ xuống dòng năm lần và mỗi hàng cao gấp bốn
+            # lần cần thiết. Tính bề rộng bằng mã thì kết quả giống nhau ở mọi trình đọc.
+            _rong_cot(b, k.hang, Inches)
             for i, hang in enumerate(k.hang):
                 for j, o in enumerate(hang):
                     if j >= len(b.columns):
@@ -475,6 +544,10 @@ def sang_docx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
                     if i == 0:
                         for r in p.runs:
                             r.bold = True
+            # Một đoạn rỗng sau bảng. Hai bảng liền nhau không có khoảng cách thì trông như
+            # MỘT bảng — đo được trên mục 5.5 của báo cáo RTOS: bảng đơn giá và bảng kịch bản
+            # chi phí dính liền, hàng tiêu đề của bảng sau đọc ra như một hàng dữ liệu.
+            tl.add_paragraph()
         elif k.loai == "so_do":
             _chen_so_do(tl, k.chu, Inches, WD_ALIGN_PARAGRAPH, Pt, _chu)
         elif k.loai == "anh":

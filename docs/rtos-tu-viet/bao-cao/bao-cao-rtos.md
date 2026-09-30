@@ -224,21 +224,145 @@ Quy đổi theo kịch bản B: **≈ 34 000 đồng** cho toàn bộ phiên —
 kiến trúc, 1 029 dòng nhân RTOS, sáu lần biên dịch, bốn lần nạp bo, và ba lần dò lỗi phần cứng
 tới tận thanh ghi DSI.
 
-### 4.4. Đối chiếu công sức
+---
 
-| | Ước lượng người làm tay | Phiên này |
+## 5. Ước lượng nếu làm bằng nhân sự
+
+Phần này trả lời câu: *cùng khối lượng ấy, một công ty chỉ dùng người thì tốn bao nhiêu?*
+
+> **Toàn bộ mục 5 là ƯỚC LƯỢNG — tầng ĐỒNG.** Mục 1–4 là số đo đọc từ sổ cái và nhật ký;
+> mục này là phán đoán từ phạm vi đã biết. Hai loại số ấy **không đứng cùng một hàng**, nên
+> chúng ở hai mục khác nhau chứ không trộn vào một bảng.
+
+### 5.1. Phương pháp
+
+Dùng **WBS ba điểm (PERT)**: mỗi hạng mục ước ba giá trị — lạc quan (LQ), khả dĩ (KD), bi quan
+(BQ) — rồi lấy `E = (LQ + 4×KD + BQ) / 6`. Cách này nói ra được **độ bất định**, thứ mà một con
+số đơn lẻ giấu đi.
+
+Giả định nền:
+
+- Đội đã quen STM32 và chuỗi công cụ ARM, **chưa từng viết nhân RTOS**.
+- **Driver LCD/DSI/SDRAM/cảm ứng đã có sẵn**, không tính vào khối lượng phát triển — giống hệt
+  điều kiện của phiên tác tử.
+- 21 ngày công một tháng, 8 giờ một ngày.
+- Đã có bo, có máy nạp, không tính chi phí thiết bị.
+
+### 5.2. Bảng phân rã công việc
+
+| Hạng mục | Vai trò | LQ | KD | BQ | **PERT** |
+|---|---|---|---|---|---|
+| Phân tích hiện trạng: đọc ứng dụng FreeRTOS + driver, chốt bề mặt 9 API | Senior | 1 | 2 | 4 | **2,2** |
+| Nghiên cứu chuyển ngữ cảnh Cortex-M4F (PendSV, PSP/MSP, khung stack) | Senior | 1 | 3 | 6 | **3,2** |
+| Thiết kế kiến trúc: so ba phương án, chốt, viết ADR | Senior | 1 | 2 | 3 | **2,0** |
+| Thiết kế chi tiết: TCB, hàng chờ ưu tiên, danh sách trễ, hàng đợi | Senior | 1 | 2 | 3 | **2,0** |
+| Hiện thực tầng port (assembly naked, khởi tạo khung stack) | Senior | 2 | 4 | 8 | **4,3** |
+| Hiện thực lõi lập lịch + tác vụ Idle | Mid | 2 | 3 | 6 | **3,3** |
+| Hiện thực hàng đợi IPC có hết hạn | Mid | 1 | 2 | 4 | **2,2** |
+| Tích hợp 6 tác vụ ứng dụng + driver sẵn có | Mid | 1 | 2 | 4 | **2,2** |
+| Dựng hệ thống build: `-nostdlib`, linker script, cờ FPU | Mid | 0,5 | 1 | 3 | **1,2** |
+| Gỡ lỗi DSI: PLL không khoá do nhường CPU giữa chuỗi khởi tạo | Senior | 1 | 3 | 8 | **3,5** |
+| Gỡ lỗi I2C cảm ứng: định thời vòng NOP sau khi đổi xung nhịp | Senior | 0,5 | 1 | 3 | **1,2** |
+| Kiểm thử trên bo: 6 tác vụ, cảm ứng, hồi quy | QA | 1 | 2 | 4 | **2,2** |
+| Viết tài liệu: yêu cầu, thiết kế C4, báo cáo | Mid | 1 | 2 | 4 | **2,2** |
+| **TỔNG** | | **14** | **29** | **60** | **31,7 ngày công** |
+
+Hai hạng mục **bi quan gấp bốn lần lạc quan** — *tầng port assembly* (2 → 8) và *gỡ lỗi DSI*
+(1 → 8). Đó là hai chỗ rủi ro thật, và cả hai đều đã xảy ra đúng như vậy trong phiên tác tử:
+lỗi DSI là lỗi khó nhất, phải đọc tới thanh ghi `DSI_WISR` mới ra.
+
+### 5.3. Khoảng tin cậy
+
+Độ lệch chuẩn PERT: **±2,3 ngày**.
+
+| Mức tin | Khoảng |
+|---|---|
+| ~68 % | **29 – 34 ngày công** |
+| ~95 % | **27 – 36 ngày công** |
+
+Nói cách khác: **32 ngày công ± 5**. Một con số tròn "một tháng rưỡi" không sai, nhưng nó
+không cho biết đâu là chỗ có thể trượt.
+
+### 5.4. Nguồn lực và thời gian lịch
+
+| Vai trò | Ngày công | Tỉ trọng |
 |---|---|---|
-| Đọc hiểu bản FreeRTOS + driver | 0,5 – 1 ngày | trong 81 phút chung |
-| Thiết kế và so ba phương án | 0,5 ngày | |
-| Viết 1 029 dòng nhân + gỡ lỗi DSI/I2C | 2 – 4 ngày | |
-| **Tổng** | **3 – 5 ngày công** | **81 phút + ≈ 1,4 USD** |
+| Kỹ sư nhúng **Senior** | 18,4 | 58 % |
+| Kỹ sư nhúng **Mid** | 11,1 | 35 % |
+| **QA nhúng** | 2,2 | 7 % |
+| Quản lý dự án (20 % thời lượng) | 6,3 | — |
 
-Cột trái là **ước lượng, tầng ĐỒNG** — không đo được trong phiên này, nêu ra để so tương quan
-chứ không phải một con số nghiệm thu.
+Đội tối thiểu: **1 Senior + 1 Mid + QA bán thời gian + PM 20 %**.
+
+**Thời gian lịch ≈ 4 – 5 tuần.** Senior là **đường găng**: 18,4 ngày công của anh ta gần như
+không song song hoá được — phân tích, thiết kế, tầng assembly và hai lần gỡ lỗi phần cứng đều
+nối tiếp nhau. Thêm người thứ ba **không rút ngắn được** phần này.
+
+### 5.5. Chi phí nhân sự
+
+Đơn giá theo lương tháng thị trường Việt Nam (triệu đồng), nhân **hệ số gánh 1,4** cho bảo hiểm,
+chỗ ngồi, thiết bị và chi phí quản lý:
+
+| Vai trò | Thấp | Giữa | Cao |
+|---|---|---|---|
+| Senior nhúng | 40 | 55 | 70 |
+| Mid nhúng | 20 | 27 | 35 |
+| QA nhúng | 15 | 20 | 25 |
+
+| Kịch bản | Chi phí phát triển | Kèm PM | Quy đổi |
+|---|---|---|---|
+| Thấp | 66,1 triệu | ≈ 82 triệu | ≈ 3 300 USD |
+| **Giữa** | **90,4 triệu** | **≈ 111 triệu** | **≈ 4 450 USD** |
+| Cao | 115,4 triệu | ≈ 142 triệu | ≈ 5 700 USD |
+
+### 5.6. Đối chiếu bằng COCOMO — và vì sao nó lệch
+
+Kiểm chéo bằng COCOMO cơ bản trên **1,029 KSLOC**:
+
+| Chế độ | Người-tháng | Ngày công | Tháng lịch |
+|---|---|---|---|
+| Organic | 2,47 | 51,9 | 3,5 |
+| Embedded | 3,73 | 78,2 | 3,8 |
+
+COCOMO cho **52 – 78 ngày công**, gấp 1,6 – 2,5 lần ước lượng WBS (31,7). Chênh lệch ấy có lý
+do, và nói ra thì có ích hơn là chọn con số mình thích:
+
+- COCOMO tính **trọn vòng đời công nghiệp**: đặc tả chính thức, rà soát chéo, kiểm thử hệ thống,
+  tài liệu bàn giao, bảo trì ban đầu. Ở đây phần lớn những thứ ấy không có trong phạm vi.
+- Nó được hiệu chuẩn trên **dự án lớn**, và được biết là **ước lượng thừa cho dự án rất nhỏ**
+  — dưới 2 KSLOC thì hệ số cố định lấn át.
+- Phạm vi này **dùng lại driver có sẵn**; COCOMO tính theo dòng mã giao ra mà không trừ phần
+  tái sử dụng.
+
+Nên lấy WBS làm số chính, và đọc COCOMO như **cận trên**: nếu đội chưa từng chạm Cortex-M ở
+mức thanh ghi, con số thật sẽ trôi về phía 50 ngày hơn là 32.
+
+### 5.7. Đối chiếu với phiên tác tử
+
+| | Làm bằng nhân sự (ước lượng) | Phiên tác tử (đo được) |
+|---|---|---|
+| Thời gian lịch | **4 – 5 tuần** | **81,2 phút** |
+| Công sức | **31,7 ngày công** (±5) | 46 lượt trao đổi của một người |
+| Chi phí | **≈ 111 triệu đồng** (mức giữa, kèm PM) | **≈ 34 000 đồng** tiền mô hình |
+| Đội hình | 1 Senior + 1 Mid + QA + PM | 1 người + tác tử |
+
+Ba điều cần nói thẳng để bảng trên không bị đọc quá tay:
+
+1. **Chưa phải cùng một sản phẩm.** Nhân RTOS trong phiên này chạy đúng trên bo, nhưng chưa
+   qua thử nghiệm dài hạn, chưa đo độ trễ chuyển tác vụ bằng máy, chưa có bộ kiểm tự động chạy
+   trên phần cứng. Một đội người ở mức 31,7 ngày công thường giao kèm những thứ đó.
+2. **Người vẫn nằm trên đường găng.** 46 lượt trao đổi, và ba lỗi phần cứng đều bắt đầu từ
+   việc **một người nhìn vào bo** rồi mô tả triệu chứng. Bỏ người ra thì phiên này không kết
+   thúc được.
+3. **Chi phí mô hình không phải toàn bộ chi phí.** Chưa tính công của người ngồi cùng
+   (81 phút), giấy phép công cụ, và thời gian dựng môi trường.
+
+Cách đọc đúng bảng này: tác tử **không thay thế** 31,7 ngày công, nó **nén** phần lớn trong số
+đó xuống còn thời gian một người đọc và quyết.
 
 ---
 
-## 5. Kết luận
+## 6. Kết luận
 
 Ba điều phiên này chứng minh được, mỗi điều có bằng chứng kèm theo:
 

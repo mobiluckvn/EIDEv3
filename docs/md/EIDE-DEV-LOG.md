@@ -5722,3 +5722,57 @@ tham số nữa. Chưa làm, và ghi lại ở đây để lần sau không ai t
 ### Số đo
 
 **1 341 ca đơn vị** · báo cáo 9 trang / 9 bảng / 4 sơ đồ · bộ dò tài liệu **0 chỗ lệch**.
+
+---
+
+### [DEV-313] 30/09/2026 · Ước lượng nhân sự cho cùng khối lượng — và ba lỗi dựng bảng Word
+
+Anh Công đặt thêm: *"trường hợp tôi là công ty chỉ dùng nhân sự thì cần làm ước lượng nguồn lực
+và tính chi phí… từ phân tích, thiết kế, phát triển, kiểm thử"*.
+
+#### Ước lượng: WBS ba điểm, không phải một con số tròn
+
+Mục 5 mới của báo cáo dùng **PERT** — mỗi hạng mục ước ba giá trị rồi lấy
+`E = (LQ + 4×KD + BQ)/6`. Cách này nói ra được **độ bất định**, thứ một con số đơn lẻ giấu đi.
+
+| | |
+|---|---|
+| Tổng | **31,7 ngày công**, độ lệch chuẩn ±2,3 |
+| Khoảng ~68 % · ~95 % | 29–34 · 27–36 ngày công |
+| Phân bổ | Senior 18,4 (58 %) · Mid 11,1 (35 %) · QA 2,2 (7 %) · PM 6,3 |
+| Thời gian lịch | **4–5 tuần**, Senior là đường găng |
+| Chi phí (mức giữa, kèm PM) | **≈ 111 triệu đồng** |
+
+Hai hạng mục có **bi quan gấp bốn lần lạc quan** — tầng port assembly (2→8) và gỡ lỗi DSI
+(1→8). Cả hai đã xảy ra đúng như thế trong phiên tác tử, nên đó không phải phòng hờ suông.
+
+Kiểm chéo bằng **COCOMO** trên 1,029 KSLOC: organic 52 ngày công, embedded 78 — gấp 1,6–2,5
+lần WBS. Chênh lệch ấy **nói ra chứ không giấu**: COCOMO tính trọn vòng đời công nghiệp, hiệu
+chuẩn trên dự án lớn, và không trừ phần tái sử dụng driver. Đọc nó như **cận trên**.
+
+Toàn bộ mục 5 dán nhãn **tầng ĐỒNG** ngay đầu mục: mục 1–4 là số đo đọc từ sổ cái, mục 5 là
+phán đoán. Hai loại số ấy không đứng cùng một hàng, nên chúng ở hai mục khác nhau.
+
+#### Ba lỗi dựng bảng Word, cả ba chỉ thấy khi mở bản PDF ra nhìn
+
+**1. Bề rộng cột: `cell.width` đúng mà `tblGrid` sai.** Mọi ô đã đặt 3,54 inch, nhưng `gridCol`
+vẫn 1440 twips (1 inch) cho mọi cột — và **LibreOffice, thứ dựng bản PDF, đọc lưới chứ không
+đọc ô**. Bảng WBS 6 cột ra với cột đầu teo còn một inch, mỗi hàng cao gấp bốn lần cần thiết.
+Hai chỗ cùng nói về một thứ thì phải sửa cả hai.
+
+Kèm theo: `autofit` là **lời đề nghị**, không phải lệnh — phải đặt bố cục **cố định** thì bề
+rộng mới được tôn trọng. Và cận dưới của mỗi cột nay đủ chứa **từ dài nhất** trong cột ấy, vì
+một hằng số 0,55 inch làm chữ "Senior" gãy thành "Senio/r".
+
+**2. Hai bảng liền nhau trông như một.** Không có đoạn rỗng giữa chúng, nên hàng tiêu đề của
+bảng sau đọc ra như một hàng dữ liệu của bảng trước.
+
+**3. Trích dẫn nhiều dòng thành nhiều khối.** Một lời ghi chú ba dòng hiện ra như ba lời ghi
+chú khác nhau, mỗi cái một khung. Nay các dòng `>` liền nhau gộp thành một.
+
+Cả ba đều thuộc loại **số đo không bắt được**: `so_bang`, `so_doan`, `so_ky_tu` đều đúng và ổn
+định qua mọi lần dựng. Lần thứ sáu trong dự án này một tấm ảnh bắt được thứ mọi con số bỏ qua.
+
+### Số đo
+
+**1 344 ca đơn vị** (+3) · báo cáo 12 trang / 15 bảng / 4 sơ đồ · bộ dò tài liệu **0 chỗ lệch**.
