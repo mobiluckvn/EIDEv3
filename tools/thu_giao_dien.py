@@ -37,13 +37,22 @@ XANH, DO, VANG, XAM, HET = "\033[92m", "\033[91m", "\033[93m", "\033[90m", "\033
 class GiaoDien:
     """Điều khiển app EIDE đang chạy."""
 
-    def __init__(self, du_an: pathlib.Path):
+    def __init__(self, du_an: pathlib.Path, *, xoa: bool = True):
+        """`xoa=False` để BÁM vào một kênh app đã mở sẵn, không cắt trắng hai tệp.
+
+        Cần khi đo thao tác **đổi dự án**: app tự mở kênh ở dự án mới và ghi `kenh_mo` ngay,
+        nên dựng một `GiaoDien` mặc định sau đó sẽ xoá đúng dòng mình đang đợi — bài đo treo
+        45 giây rồi báo "app không chạy", trong khi app chạy bình thường.
+
+        *Một bộ đo xoá mất thứ nó sắp đọc thì báo sai về sản phẩm.*
+        """
         self.d = du_an / ".eide" / "ui-test"
         self.d.mkdir(parents=True, exist_ok=True)
         self.inbox = self.d / "inbox.jsonl"
         self.outbox = self.d / "outbox.jsonl"
-        self.inbox.write_text("", "utf-8")
-        self.outbox.write_text("", "utf-8")
+        if xoa:
+            self.inbox.write_text("", "utf-8")
+            self.outbox.write_text("", "utf-8")
         self._da_doc = 0
 
     # ------------------------------------------------------------------ gửi

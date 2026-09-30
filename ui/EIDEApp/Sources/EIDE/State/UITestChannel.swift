@@ -45,10 +45,30 @@ final class UITestChannel {
 
     var dangBat: Bool { thuMuc != nil }
 
-    /// Bật kênh nếu thư mục `ui-test/` có sẵn trong dự án.
+    /// Đã từng bật trong phiên chạy này chưa.
+    ///
+    /// Kênh bật theo sự có mặt của `.eide/ui-test` trong dự án — cách ấy giữ cho kênh TẮT ở
+    /// mọi dự án thật, và đó là điều đúng. Nhưng nó có một hệ quả: **đổi dự án là mất kênh**,
+    /// vì dự án mới chưa có thư mục ấy. Mà "đổi dự án" lại đúng là thứ cần đo — anh Công báo
+    /// màn hình giữ nguyên chat của dự án cũ, và không bài đo nào chạm tới được.
+    ///
+    /// *Một bộ đo tắt đúng lúc xảy ra việc cần đo thì không đo được gì.*
+    ///
+    /// Nên: đã bật một lần trong phiên thì theo sang dự án sau, tự tạo thư mục. Bật lần đầu
+    /// vẫn phải do người đặt thư mục vào — app không bao giờ tự mở kênh.
+    private var daTungBat = false
+
+    /// Bật kênh: thư mục `ui-test/` có sẵn trong dự án, hoặc kênh đã bật ở dự án trước.
     func batNeuCo(duAn: URL, state: AppState) {
         let d = duAn.appendingPathComponent(".eide/ui-test")
-        guard FileManager.default.fileExists(atPath: d.path) else { return }
+        if !FileManager.default.fileExists(atPath: d.path) {
+            guard daTungBat else { return }
+            try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        }
+        daTungBat = true
+        // Con trỏ đọc thuộc về MỘT tệp inbox. Sang dự án khác là sang một tệp khác, mà con
+        // trỏ vẫn đứng ở dòng thứ N của tệp cũ — kênh sẽ bỏ qua N lệnh đầu của dự án mới.
+        daDoc = 0
         self.thuMuc = d
         self.state = state
 
@@ -421,7 +441,7 @@ final class UITestChannel {
             ]
         }
 
-        return [
+        var ra: [String: Any] = [
             "su_kien": "anh_chup",
             "khung_cua_so": khungCuaSo(),
             // Cặp khối có KHUNG giao nhau. Giữ lại vì rẻ, nhưng đọc kỹ giới hạn của nó ở
@@ -471,6 +491,25 @@ final class UITestChannel {
                 "du_an": s.status.du_an, "chip": s.status.chip,
                 "chang": s.status.chang, "stale": s.status.stale,
                 "fact": s.status.fact, "mo_hinh": s.status.mo_hinh,
+                // Ngân sách và token: bộ đo phải hỏi được "con số có SỐNG giữa lượt không".
+                // Lấy đúng thứ tự mà `NganSachView`/`TokenView` lấy — nếu không, bộ đo đo
+                // một con đường khác với con đường người nhìn.
+                "ngan_sach": [
+                    "tool": s.status.ngan_sach.tool,
+                    "giay": s.status.ngan_sach.giay,
+                    "da_dung_tool": s.run?.status == "running"
+                        ? (s.run?.tools ?? 0) : s.status.ngan_sach.da_dung_tool,
+                    "da_dung_giay": s.run?.status == "running"
+                        ? (s.run?.seconds ?? 0) : s.status.ngan_sach.da_dung_giay,
+                ] as [String: Any],
+                "token": [
+                    "luot": s.run?.status == "running"
+                        ? (s.run?.tokensIn ?? 0) + (s.run?.tokensOut ?? 0)
+                        : s.status.token.luot,
+                    "phien": s.status.token.phien,
+                    "phien_vao": s.status.token.phien_vao,
+                    "phien_ra": s.status.token.phien_ra,
+                ] as [String: Any],
                 // Đồng hồ ngữ cảnh (MEM-02) — để ca đo hỏi được "khối nào chạm trần".
                 "ngu_canh": [
                     "tong": s.status.ngu_canh.tong,
@@ -483,9 +522,22 @@ final class UITestChannel {
                          "tran": $0.tran ?? 0, "vuot": $0.vuot] as [String: Any]
                     },
                 ] as [String: Any],
-            ],
+            ] as [String: Any],
+            // KHÔNG nằm trong `trang_thai`: đây là dữ liệu cho bộ đo chứ không phải một ô
+            // trên thanh. Để lẫn vào đó thì phép kiểm "ô nào bỏ trống câm" đọc nó như một ô
+            // và báo lỗi mỗi khi không có lượt nào chạy — tức là lúc bình thường nhất.
+            "run_trang_thai": s.run?.status ?? "",
             "dang_chay": s.busy,
         ]
+        // `isa` chỉ vào bản chụp khi THẬT SỰ hiện trên thanh: `StatusBarView` giấu nhãn này
+        // khi chưa ghim hộ chiếu chip. Một chuỗi rỗng ở đây đọc ra thành "một ô đang bỏ
+        // trống câm", tức bộ quét báo một lỗi không có thật.
+        if var tt = ra["trang_thai"] as? [String: Any],
+           let isa = s.status.isa, !isa.isEmpty {
+            tt["isa"] = isa
+            ra["trang_thai"] = tt
+        }
+        return ra
     }
 
     /// Gom mọi chữ do tác tử viết trong một khối, đã qua bộ dựng. Dùng để soi xem

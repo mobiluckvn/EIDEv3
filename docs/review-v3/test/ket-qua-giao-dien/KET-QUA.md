@@ -9,7 +9,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | Kết quả | Điều được kiểm | Bằng chứng |
 |---|---|---|
 | ✅ | Đủ 11 tab, đúng thứ tự tài liệu | ['requirements', 'documents', 'knowledge', 'design', 'tools', 'code', 'simulation', 'hardware', 'journal', 'history', 'project'] |
-| ✅ | Đọc được khung cửa sổ để đo tràn | {'cao': 1018, 'rong': 1450, 'so': 33227, 'x': 28, 'y': 33} |
+| ✅ | Đọc được khung cửa sổ để đo tràn | {'cao': 1018, 'rong': 1700, 'so': 33626, 'x': 28, 'y': 33} |
 | ✅ | Ba nút Hẹp / Vừa / Rộng của Console cho ba bề rộng KHÁC nhau | {'Hẹp': 320, 'Vừa': 460, 'Rộng': 640} |
 | ✅ | Bấm nút bề rộng thì trạng thái đổi theo | Vừa |
 ## Bề mặt requirements — Yêu cầu & Giải pháp
@@ -24,7 +24,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt documents — Tài liệu & Nguồn
 
@@ -38,7 +38,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt knowledge — Tri thức mạch
 
@@ -52,7 +52,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt design — Thiết kế
 
@@ -66,7 +66,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt tools — Công cụ
 
@@ -80,7 +80,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt code — Mã nguồn
 
@@ -94,7 +94,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt simulation — Mô phỏng
 
@@ -108,7 +108,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt hardware — Mạch thật
 
@@ -122,7 +122,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt journal — Nhật ký
 
@@ -136,7 +136,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt history — Lịch sử
 
@@ -150,7 +150,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Bề mặt project — Dự án & Bộ nhớ
 
@@ -164,7 +164,7 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 | ✅ | Khối nào có nút "Vì sao?" thì lớp giải thích đủ SÁU trường (N8) | thiếu trường: — |
 | ✅ | Không nhãn nào lộ giá trị thô (None / dict / traceback) | — |
 | ✅ | Không khối nào đè lên khối khác | — |
-| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 990 px (cửa sổ 1450 − console 460) · tràn: — |
+| ✅ | Không khối nào rộng hơn khung bên phải (không đẩy nút ra ngoài màn) | khung phải ≈ 1240 px (cửa sổ 1700 − console 460) · tràn: — |
 | ✅ | Không khối nào cao gấp hơn 4 lần cửa sổ (khối không ai đọc hết) | khung cao 1018 · — |
 ## Tổng các bề mặt
 
@@ -180,19 +180,19 @@ Bộ quét hỏi ba câu cho từng bề mặt: *có nhãn nào rỗng không ·
 
 | Kết quả | Điều được kiểm | Bằng chứng |
 |---|---|---|
-| ✅ | Ở khổ nhỏ nhất (1100×720) vẫn không khối nào tràn ngang | khung {'cao': 752, 'rong': 1100, 'so': 33227, 'x': 28, 'y': 331} · tràn: — |
+| ✅ | Ở khổ nhỏ nhất (1100×720) vẫn không khối nào tràn ngang | khung {'cao': 752, 'rong': 1100, 'so': 33626, 'x': 28, 'y': 331} · tràn: — |
 ## Thanh trạng thái
 
 | Kết quả | Điều được kiểm | Bằng chứng |
 |---|---|---|
-| ✅ | Thanh trạng thái có dữ liệu | {'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {'NGUOI': 1}, 'mo_hinh': 'gemini-3.8-flash', 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3693, 'tran': 3700, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 380, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 205114, 'ty_le': 0.205}, 'stale': 7} |
-| ✅ | Không ô nào trên thanh trạng thái bỏ trống câm | ô rỗng: — · đủ: ['chang', 'chip', 'du_an', 'fact', 'mo_hinh', 'ngu_canh', 'stale'] |
+| ✅ | Thanh trạng thái có dữ liệu | {'chang': 'C6 Mạch thật', 'chip': 'chưa ghim', 'du_an': 'stm32f469-freertos', 'fact': {'NGUOI': 1}, 'mo_hinh': 'gemini-3.8-flash', 'ngan_sach': {'da_dung_giay': 0, 'da_dung_tool': 0, 'giay': 300, 'tool': 40}, 'ngu_canh': {'cua_so': 1000000, 'kha_dung': 800000, 'khoi': [{'ten': 'constitution', 'token': 3693, 'tran': 3700, 'vuot': False}, {'ten': 'eide_md', 'token': 1041, 'tran': 3000, 'vuot': False}, {'ten': 'inventory', 'token': 380, 'tran': 800, 'vuot': False}, {'ten': 'facts', 'token': 0, 'tran': 2000, 'vuot': False}, {'ten': 'human_edits', 'token': 0, 'tran': 1000, 'vuot': False}, {'ten': 'pending', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'skills_hint', 'token': 0, 'tran': 300, 'vuot': False}, {'ten': 'transcript', 'token': 0, 'tran': 0, 'vuot': False}, {'ten': 'dự trữ (bất khả xâm phạm)', 'token': 200000, 'tran': 200000, 'vuot': False}], 'muc': 'C0', 'tong': 205114, 'ty_le': 0.205}, 'stale': 7, 'token': {'luot': 0, 'phien': 0, 'phien_ra': 0, 'phien_vao': 0}} |
+| ✅ | Không ô nào trên thanh trạng thái bỏ trống câm | ô rỗng: — · đủ: ['chang', 'chip', 'du_an', 'fact', 'mo_hinh', 'ngan_sach', 'ngu_canh', 'stale', 'token'] |
 | ✅ | Thanh trạng thái không lộ giá trị thô | — |
 ## Widget sửa tay (§E2 — người sửa được gì)
 
 | Kết quả | Điều được kiểm | Bằng chứng |
 |---|---|---|
-| ✅ | Có ít nhất một khối cho người sửa trực tiếp bằng widget | requirements/A2.1: Yêu cầu,Tiêu chí đo; simulation/criteria:sim-01: Ngưỡng |
+| ✅ | Có ít nhất một khối cho người sửa trực tiếp bằng widget | requirements/A2.1: Tiêu chí đo,Yêu cầu; simulation/criteria:sim-01: Ngưỡng |
 ## Thông báo và hội thoại
 
 | Kết quả | Điều được kiểm | Bằng chứng |

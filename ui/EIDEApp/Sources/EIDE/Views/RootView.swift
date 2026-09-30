@@ -7,6 +7,97 @@ import SwiftUI
 /// Lý do nó đáng chỗ: khi tác tử bắt đầu quên, câu hỏi đầu tiên của người là "vì sao".
 /// Không có đồng hồ này thì câu trả lời duy nhất là "ngữ cảnh đầy" — một lời giải
 /// thích không kiểm được. Có nó thì người thấy **khối nào** đã chạm trần.
+/// Ngân sách một lượt — công cụ đã gọi và giây đã trôi.
+///
+/// Đọc **`state.run` trước** rồi mới tới `state.status`: lõi gửi `run.update` sau mỗi lời gọi
+/// công cụ (rẻ), còn thanh trạng thái chỉ dựng lại ở cuối lượt (đắt — phải quét cả kho). Lấy
+/// theo thứ tự ngược lại thì trong suốt một lượt dài, con số đứng nguyên ở `0/40`.
+struct NganSachView: View {
+    @EnvironmentObject var state: AppState
+
+    private var dangChay: Bool { state.run?.status == "running" }
+
+    var body: some View {
+        let b = state.status.ngan_sach
+        let tool = dangChay ? (state.run?.tools ?? 0) : b.da_dung_tool
+        let giay = dangChay ? (state.run?.seconds ?? 0) : b.da_dung_giay
+        // Sát trần thì đổi màu: chạm trần là lúc tác tử **bị cắt giữa chừng**, và người đọc
+        // cần biết trước khi nó xảy ra chứ không phải sau.
+        let cang = b.tool > 0 && Double(tool) >= Double(b.tool) * 0.8
+        return HStack(spacing: 4) {
+            if dangChay {
+                Image(systemName: "circle.fill").font(.system(size: 5))
+                    .foregroundStyle(Color.okGreen)
+                    .help("Đang chạy — số đo cập nhật sau mỗi lời gọi công cụ")
+            }
+            Text("\(tool)/\(b.tool) tool · \(Int(giay))/\(Int(b.giay)) s")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(cang ? Color.staleAmber : .secondary)
+        }
+        .help(cang
+              ? "Sắp chạm trần ngân sách lượt — tác tử sẽ phải dừng và báo lại"
+              : "Ngân sách một lượt: số lời gọi công cụ và số giây")
+    }
+}
+
+/// Token đã tiêu. Trả lời câu **đồng hồ ngữ cảnh không trả lời được**.
+///
+/// Ngữ cảnh có thể đứng yên ở 20 % suốt buổi trong khi số token tiêu ra vẫn tăng đều — mỗi
+/// lượt nạp lại phần cố định rồi vứt đi. Trước đây con số này chỉ có trong thẻ Run, mà thẻ ấy
+/// biến mất khi lượt xong, nên không nơi nào nói tổng của cả phiên.
+struct TokenView: View {
+    @EnvironmentObject var state: AppState
+
+    private var dangChay: Bool { state.run?.status == "running" }
+
+    var body: some View {
+        let t = state.status.token
+        let luot = dangChay
+            ? (state.run?.tokensIn ?? 0) + (state.run?.tokensOut ?? 0)
+            : t.luot
+        // Phiên chỉ cập nhật ở cuối lượt; cộng thêm phần của lượt đang chạy để con số không
+        // đứng im giữa chừng. Cộng như thế là ĐÚNG, vì `phien` lúc này chưa tính lượt này.
+        let phien = dangChay ? t.phien + luot : t.phien
+        return HStack(spacing: 3) {
+            Image(systemName: "circle.hexagongrid").font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+            Text(luot > 0 ? "\(gon(luot)) / \(gon(phien))" : gon(phien))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+        .help(chuGiai(t, luot: luot, phien: phien))
+    }
+
+    /// Con số chính xác, tách vào/ra/cache cho cả lượt lẫn phiên.
+    ///
+    /// Tách `cached` ra riêng vì nó rẻ hơn token thường nhiều lần; gộp vào một con số là làm
+    /// người đọc tưởng đắt hơn thực tế.
+    private func chuGiai(_ t: StatusBar.Token, luot: Int, phien: Int) -> String {
+        func dong(_ nhan: String, _ tong: Int, _ vao: Int, _ ra: Int, _ cache: Int) -> String {
+            "\(nhan) \(tong.formatted()) (vào \(vao.formatted()) · ra \(ra.formatted())"
+            + (cache > 0 ? " · cache \(cache.formatted())" : "") + ")"
+        }
+        var d: [String] = ["Token ĐÃ TIÊU:"]
+        if luot > 0 {
+            d.append("· " + dong("lượt này", luot, t.luot_vao, t.luot_ra, t.luot_cache))
+        }
+        d.append("· " + dong("cả phiên", phien, t.phien_vao, t.phien_ra, t.phien_cache))
+        d.append("")
+        d.append("Khác với đồng hồ ngữ cảnh bên phải: đó là chỗ CÒN NHỚ được,")
+        d.append("đây là chỗ ĐÃ TIÊU. Ngữ cảnh đứng yên mà số này vẫn tăng là bình thường —")
+        d.append("mỗi lượt nạp lại phần cố định rồi vứt đi.")
+        return d.joined(separator: "\n")
+    }
+
+    /// 1 234 → "1,2k". Thanh trạng thái không đủ chỗ cho bảy chữ số, mà bảy chữ số cũng
+    /// không ai đọc lướt được — con số chính xác nằm ở tooltip.
+    private func gon(_ n: Int) -> String {
+        if n < 1000 { return "\(n)" }
+        if n < 1_000_000 { return String(format: "%.1fk", Double(n) / 1000) }
+        return String(format: "%.2fM", Double(n) / 1_000_000)
+    }
+}
+
 struct DongHoNguCanh: View {
     let nc: StatusBar.NguCanh
 
@@ -182,6 +273,14 @@ struct StatusBarView: View {
                     ? "Chưa ghim hộ chiếu chip nào. Tác tử không ghim tên chip trần khi chưa có tài liệu."
                     : "Hộ chiếu chip đã ghim (ns.part@semver)")
 
+            // Lõi gửi `isa` từ đầu, nhưng không nhãn nào vẽ nó ra — nên tập lệnh mà mọi lựa
+            // chọn biên dịch dựa vào chỉ tồn tại trong JSON. Nạp nhầm firmware cho sai kiến
+            // trúc là một lỗi tốn cả buổi, và đây là chỗ rẻ nhất để thấy trước.
+            if let isa = state.status.isa, !isa.isEmpty {
+                muc("Tập lệnh", isa,
+                    help: "Kiến trúc tập lệnh suy ra từ hộ chiếu chip — quyết định cờ biên dịch")
+            }
+
             if state.status.fact.isEmpty {
                 muc("Fact", "0", help: "Chưa có con số nào truy vết được tới tài liệu")
             } else {
@@ -226,12 +325,8 @@ struct StatusBarView: View {
             muc("Tự chủ", state.status.tu_chu, help: "Mức tự chủ: A3 = ghi tự do, chỉ cổng rủi ro mới hỏi")
             muc("Mô hình", state.status.mo_hinh, help: "Mô hình đang dùng")
 
-            let b = state.status.ngan_sach
-            Text("\(b.da_dung_tool)/\(b.tool) tool · \(Int(b.da_dung_giay))/\(Int(b.giay)) s")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .help("Ngân sách một lượt")
-
+            NganSachView()
+            TokenView()
             DongHoNguCanh(nc: state.status.ngu_canh)
 
             Circle()

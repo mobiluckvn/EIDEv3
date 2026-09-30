@@ -249,6 +249,7 @@ struct StatusBar: Codable {
     var tu_chu: String = "A3"
     var mo_hinh: String = ""
     var ngan_sach: Budget = .init()
+    var token: Token = .init()
     var ngu_canh: NguCanh = .init()
 
     struct Budget: Codable {
@@ -256,6 +257,22 @@ struct StatusBar: Codable {
         var giay: Double = 300
         var da_dung_tool: Int = 0
         var da_dung_giay: Double = 0
+    }
+
+    /// Token ĐÃ TIÊU — khác hẳn đồng hồ ngữ cảnh bên cạnh.
+    ///
+    /// Đồng hồ ngữ cảnh nói *"còn nhớ được bao nhiêu"*; cái này nói *"đã tiêu bao nhiêu"*.
+    /// Ngữ cảnh có thể đứng yên ở 20 % suốt buổi trong khi hoá đơn vẫn tăng đều, vì mỗi lượt
+    /// nạp lại phần cố định rồi vứt đi.
+    struct Token: Codable {
+        var luot: Int = 0
+        var phien: Int = 0
+        var luot_vao: Int = 0
+        var luot_ra: Int = 0
+        var luot_cache: Int = 0
+        var phien_vao: Int = 0
+        var phien_ra: Int = 0
+        var phien_cache: Int = 0
     }
 
     /// Đồng hồ ngữ cảnh — EIDE-MEM-42 §4, khối A14.6.

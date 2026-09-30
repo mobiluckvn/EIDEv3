@@ -175,8 +175,11 @@ struct EIDEApp: App {
             switch kq {
             case .dat(let vi):
                 setup.duAnPath = den.path
-                state.notices.append(.init(level: "info", text: vi, code: nil))
+                // Báo SAU khi mở: mở dự án xoá sạch thông báo của dự án cũ (`doiDuAn`), nên
+                // đặt câu này trước thì chính nó bị cuốn đi cùng — người nhập một gói xong
+                // không thấy gì xác nhận là đã nhập được.
                 await moRoiGhiNho()
+                state.notices.append(.init(level: "info", text: vi, code: nil))
             case .hong(let vi):
                 state.notices.append(.init(level: "error", text: vi, code: nil))
             }

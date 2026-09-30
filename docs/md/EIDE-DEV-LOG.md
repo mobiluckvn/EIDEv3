@@ -5939,3 +5939,93 @@ Chú thích ở `KeHoach.trang_thai` kể **bốn** trạng thái, mã ghi **sá
 **0 chỗ lệch** · E2E qua app thật trên bản sao dự án RTOS, ảnh ở
 [`ket-qua-tab-phan-tich-thiet-ke/`](../review-v3/test/ket-qua-tab-phan-tich-thiet-ke/) ·
 năm phép phá sản phẩm đều làm bộ kiểm đỏ.
+
+---
+
+### [DEV-316] 30/09/2026 · Đổi dự án mà màn hình không đổi, và số đo đứng im suốt lượt
+
+Anh Công báo ba việc về màn hình tương tác: đổi dự án mà chat của dự án cũ vẫn còn; token và
+số lời gọi công cụ không cập nhật; và đề nghị rà xem nhãn nào chưa tích hợp. Cả ba đều đúng,
+và mỗi cái lộ ra một chỗ hỏng lớn hơn phần nhìn thấy.
+
+#### 1 · `AppState.mo()` khởi động lõi mới mà không xoá gì
+
+Không một dòng nào dọn trạng thái cũ. Chat còn lại là phần **dễ thấy nhất**, chưa phải phần
+nguy nhất: `cards` giữ nguyên các **thẻ cổng đang chờ duyệt** của dự án trước. Bấm *Duyệt* trên
+một thẻ như vậy là gửi quyết định về một lõi đã chết, cho một hiện vật ở thư mục khác.
+
+Thêm `doiDuAn(_:)` dọn đủ mười thứ, gọi **trước** `client.start`. Hai thứ cố ý **không** xoá:
+`draft` — chữ người tự gõ mà chưa gửi, xoá nó là làm mất việc của người để cho gọn màn hình
+của máy; và `selectedSurface` — tab đang xem là thói quen của người, không phải dữ liệu dự án.
+
+Có một ca kiểm đọc chính `AppState.swift`, đối chiếu danh sách `@Published` với danh sách được
+dọn: thêm một trường mới mà quên dọn thì ca ấy đỏ.
+
+Hai thứ nữa lộ ra khi đi theo đường này:
+
+* `UITestChannel.tat()` **chưa từng được gọi**. Mỗi lần đổi dự án lại thêm một bộ đếm giờ 4 Hz,
+  cái cũ không ai tắt.
+* Nhánh nhập gói `.zip` đặt thông báo *trước* khi mở dự án — nay chính `doiDuAn` xoá nó, nên
+  người nhập một gói xong sẽ không thấy gì xác nhận. Đảo thứ tự.
+
+#### 2 · Cả một lượt chỉ có hai mốc tin
+
+`run.update` lúc bắt đầu (chi phí rỗng) và lúc kết thúc. Ở giữa — chỗ tác tử gọi mười công cụ
+và tiêu vài trăm nghìn token — thanh trạng thái đứng nguyên `0/40 tool · 0/300 s`. Người nhìn
+vào đó **không phân biệt được *đang chạy* với *đã treo***, mà đấy đúng là lúc họ cần biết nhất:
+một lượt dài là lúc duy nhất người ta muốn bấm Dừng.
+
+Thêm `_nhip(ctx)` sau mỗi lời gọi công cụ và sau mỗi lượt gọi mô hình. Dùng `run.update` chứ
+không vẽ lại thanh trạng thái: dựng thanh trạng thái phải `inventory.build()` — quét kho, quét
+sổ cái — và làm thế sau mỗi lời gọi là trả một cái giá lớn cho một con số nhỏ.
+
+Đo trên app thật: dãy công cụ **0 → 2 → 3 → 5 → 6 → 7 → … → 12**, token **0 → 57 820 →
+150 351 → 235 110**.
+
+#### 3 · Và bộ đếm còn CHẠY NGƯỢC
+
+`emit_all` luôn gửi kèm thanh trạng thái, nên `paint(only=["history"])` — chạy mỗi khi người
+ghi bản ưng ý hoặc rẽ nhánh — đẩy `da_dung_tool = 0` lên màn hình **giữa một lượt đang chạy**.
+
+*Một con số đi lùi tệ hơn một con số đứng yên: đứng yên chỉ là chưa biết, đi lùi là nói sai.*
+
+#### 4 · Rà nhãn: một cái chưa bao giờ hiện, một cái chưa bao giờ có
+
+Đối chiếu ba tầng — lõi gửi gì · Swift khai gì · view đọc gì:
+
+* **`isa` gửi từ đầu, không nhãn nào vẽ.** Tập lệnh quyết định mọi cờ biên dịch, và nó chỉ tồn
+  tại trong JSON. Nay có nhãn *Tập lệnh*, hiện khi đã ghim hộ chiếu chip.
+* **Token đã tiêu không có trong mô hình.** Nó chỉ sống trong thẻ Run, mà thẻ ấy **biến mất khi
+  lượt xong** — nên không nơi nào nói tổng của phiên. Nay có ô `lượt / phiên`, tách `cached`
+  riêng vì nó rẻ hơn nhiều lần và gộp vào là làm người đọc tưởng đắt hơn thực tế.
+
+Đồng hồ ngữ cảnh cạnh bên **không** trả lời câu này: nó nói *còn nhớ được bao nhiêu*. Ngữ cảnh
+đứng yên ở 20 % suốt buổi trong khi hoá đơn tăng đều là chuyện bình thường — mỗi lượt nạp lại
+phần cố định rồi vứt đi.
+
+Một ca kiểm nay quét mọi trường `status_bar` lõi gửi và đòi mỗi trường có người đọc.
+
+#### Bộ đo tắt đúng lúc cần đo
+
+Kênh kiểm thử bật theo sự có mặt của `.eide/ui-test` trong dự án — đúng, vì nó phải TẮT ở mọi
+dự án thật. Hệ quả: **đổi dự án là mất kênh**, mà đổi dự án lại đúng là thứ cần đo. Nay đã bật
+một lần trong phiên thì theo sang dự án sau; bật lần đầu vẫn phải do người đặt thư mục vào.
+
+Kèm hai lỗi nữa ở chính bộ đo: con trỏ `daDoc` không về 0 khi sang inbox khác (kênh bỏ qua N
+lệnh đầu của dự án mới), và `GiaoDien.__init__` **cắt trắng outbox** nên xoá đúng dòng
+`kenh_mo` mình sắp đợi — thêm `xoa=False` để bám vào kênh đang mở.
+
+#### Một ca kiểm vô nghĩa, bắt được bằng cách phá sản phẩm
+
+`test_lõi_phat_NHIP_sau_moi_loi_goi_cong_cu` dò `for call in rsp.tool_calls:` trên cả tệp — mà
+chuỗi ấy cũng nằm trong **docstring đầu `loop.py`**, nên nó bắt trọn hơn sáu trăm dòng và luôn
+thấy `_nhip` ở đâu đó. Gỡ hẳn lời gọi ra, ca vẫn xanh. Nay neo vào dòng ngay sau vòng lặp và
+chặn trên độ dài thân bắt được.
+
+*Sáu phép phá, năm cái đỏ ngay — cái thứ sáu xanh, và đó là cái đáng giá nhất.*
+
+### Số đo
+
+**1 407 ca đơn vị** (+35) · bộ quét giao diện **124/124** · E2E qua app thật **22/22**
+([`thu_doi_du_an_va_nhip.py`](../../tools/thu_doi_du_an_va_nhip.py)) · bộ dò tài liệu **0 chỗ
+lệch** · sáu phép phá sản phẩm đều làm bộ kiểm đỏ.

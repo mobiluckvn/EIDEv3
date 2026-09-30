@@ -1512,7 +1512,35 @@ def status_bar(inv: Any, cfg: Any, *, run: dict[str, Any] | None = None,
         "ngan_sach": {"tool": b.max_tool_calls, "giay": b.max_seconds,
                       "da_dung_tool": (run or {}).get("tool_calls", 0),
                       "da_dung_giay": (run or {}).get("seconds", 0)},
+        "token": _token_da_tieu(run),
     }
+
+
+def _token_da_tieu(run: dict[str, Any] | None) -> dict[str, int]:
+    """Token đã tiêu — của LƯỢT và của PHIÊN, tách bạch.
+
+    Đồng hồ ngữ cảnh cạnh bên trả lời *"còn nhớ được bao nhiêu"*; nó không trả lời
+    *"đã tiêu bao nhiêu"*. Hai câu khác nhau: ngữ cảnh có thể ở 20 % suốt buổi trong khi hoá
+    đơn tăng đều, vì mỗi lượt nạp lại phần cố định rồi vứt đi.
+
+    Trước đây con số này chỉ tồn tại trong thẻ Run — thẻ ấy **biến mất khi lượt xong**, nên
+    không nơi nào nói tổng của phiên. Người dùng hỏi thẳng vì sao thanh trạng thái không có
+    token; câu trả lời là chưa ai đưa nó lên.
+    """
+    c = (run or {}).get("cost") or {}
+    luot = c.get("tokens") or {}
+    phien = c.get("phien") or {}
+
+    def tong(d: dict[str, Any]) -> int:
+        return int(d.get("in", 0)) + int(d.get("out", 0))
+
+    return {"luot": tong(luot), "phien": tong(phien),
+            "luot_vao": int(luot.get("in", 0)), "luot_ra": int(luot.get("out", 0)),
+            # `cached` rẻ hơn token thường rất nhiều; gộp vào một con số là làm người đọc
+            # tưởng đắt hơn thực tế, nên để riêng.
+            "luot_cache": int(luot.get("cached", 0)),
+            "phien_vao": int(phien.get("in", 0)), "phien_ra": int(phien.get("out", 0)),
+            "phien_cache": int(phien.get("cached", 0))}
 
 
 # =========================================================================== phát tất cả

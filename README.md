@@ -8,7 +8,7 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 - **Kiến trúc theo mô hình C4 (mã đang thế nào):** [`docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md`](docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md)
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
-- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1372 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
+- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1407 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
 - **Việc thật tác tử đã làm xong:** [một RTOS viết từ số không thay FreeRTOS trên STM32F469I-DISCO](docs/rtos-tu-viet/) — [báo cáo 12 trang](docs/rtos-tu-viet/bao-cao/BAO-CAO-RTOS.docx) kèm thiết kế C4, thời gian, chi phí và ước lượng nếu thuê người
 - **Kết quả đo mới nhất (30/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
 - **Đề tài:** PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)
@@ -512,7 +512,7 @@ Toàn bộ dấu vết đã đẩy lên git, không chỉ kết quả:
 | Vẽ sơ đồ mermaid (giao diện + tài liệu) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
 | Chia việc lớn → ghi từng chặng → hợp nhất | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã ↔ tài liệu thiết kế | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
-| Ca đơn vị | **1372** | `pytest tests/ -q` |
+| Ca đơn vị | **1407** | `pytest tests/ -q` |
 | Bo thật STM32F469I-DISCO | LCD 800×480 + cảm ứng + FreeRTOS đa tác vụ, đã xác nhận bằng mắt | [`docs/stm32f469-freertos/`](docs/stm32f469-freertos/) |
 | **RTOS tự viết thay FreeRTOS** trên cùng bo | nhân **689 dòng** chạy thật · LCD + cảm ứng + 6 tác vụ đạt · **0** ký hiệu nhân FreeRTOS · **−22 828 B** RAM | [§18](#18--bài-kiểm-lớn-nhất-một-rtos-viết-từ-số-không) · [`docs/rtos-tu-viet/`](docs/rtos-tu-viet/) |
 
@@ -562,6 +562,7 @@ nhau, và trộn chúng vào một cột là nói sai về sản phẩm.
 | **Việc nhiều chặng** | `plan.step_done` đòi hiện vật **mở ra xem được** (tệp/hiện vật/changeset), không nhận một câu kể lại · `plan.merge` ráp các phần theo đúng thứ tự bước, sinh mục lục, hạ cấp tiêu đề, **kê phần không gộp được ngay trong tài liệu** · kế hoạch mới không làm mất kế hoạch cũ · `plan.exit` cảnh báo khi nhiều bước cùng ghi một tệp | xong |
 | **Quy trình lập trình** | **`E4020`** không ghi đè tệp chưa đọc trọn · **mốc lùi tự động** ở lần sửa đầu mỗi lượt · **`E6009`** kế hoạch viết mã mới phải chọn kiến trúc + nói cấu trúc mã, kế hoạch sửa mã phải có `code.analyze` · `code.analyze` tách **dữ kiện** (mã quét: ai đang gọi) khỏi **nhận định** (tác tử con `code-analyst`) | xong |
 | **Nhánh gộp được** | `branch.merge` — tệp gộp bằng git (**xung đột thì huỷ phép gộp**, không để lại cây làm việc dở), hiện vật so ba bên và chỉ lấy phần một bên đổi; cả hai bên cùng đổi thì để nguyên và kê ra · `chuyen_nhanh` nay khôi phục **cả kho hiện vật**, không chỉ tệp | xong |
+| **Màn hình tương tác** | Đổi dự án nay **dọn sạch** màn hình — không chỉ chat mà cả **thẻ cổng đang chờ duyệt** của dự án cũ · thanh trạng thái có **token đã tiêu** (lượt / phiên) và nhãn **Tập lệnh** · bộ đếm công cụ và giây **cập nhật sau mỗi lời gọi**, và không còn chạy ngược khi vẽ lại cục bộ | xong |
 | **Phân tích & thiết kế lên tab** | Ba chỗ trống bịt lại: **A5.6 Kiến trúc phần mềm** (kiến trúc đã chốt · rủi ro nêu lúc chọn · phương án đã loại · **sơ đồ mô-đun vẽ từ `#include` thật**, không có quan hệ thì KHÔNG vẽ) · **A2.5 Kế hoạch chia việc** (mục tiêu · giả định · **ngoài phạm vi** · từng bước kèm hiện vật, chỉ đọc) · **A7.2 Phân tích mã trước khi sửa**. Cột *Ai quyết* nay phân biệt **ba** trạng thái, không còn gộp "anh duyệt qua cổng" vào chữ "Tác tử" | xong |
 | **RTOS viết từ số không** | Tác tử thay hẳn FreeRTOS trên STM32F469I-DISCO: tự nêu **ba phương án kiến trúc** → người chốt qua `G-DESIGN` → nhân **689 dòng** (`PendSV` · bitmap O(1) · TCB tĩnh) → **LCD 800×480 + cảm ứng chạy thật trên bo** · bốn tệp nhân mỗi tệp **đúng một lần ghi** · ba lỗi phần cứng dò tới thanh ghi `DSI_WISR` · toàn bộ 351 lời gọi mô hình ghi nguyên văn | xong |
 | **Đường dẫn tới công cụ** | Rà toàn bộ sổ cái: **31/121 công cụ chưa nổ lần nào** → nối bảy đường đứt (`skill.load` · `history.undo_30s` · `store.req_update` · `stale.accept` · `memory.undo_compact` · `plan.step_done` · `code.analyze`) rồi giao đúng loại việc cho phần còn lại → **110/121 đã nổ thật** | xong |

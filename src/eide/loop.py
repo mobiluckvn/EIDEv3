@@ -352,7 +352,17 @@ class Agent:
     # ------------------------------------------------------------------ vẽ bề mặt
     def paint(self, emit: Callable[[Any], None], *, run: dict[str, Any] | None = None,
               only: list[str] | None = None) -> None:
-        """Dựng và gửi SurfaceModel cho các tab (§D, §E2, §E7)."""
+        """Dựng và gửi SurfaceModel cho các tab (§D, §E2, §E7).
+
+        `run` bỏ trống thì lấy **báo cáo lượt gần nhất**, không lấy rỗng. `emit_all` luôn gửi
+        kèm thanh trạng thái, nên một lần vẽ lại cục bộ — `paint(only=["history"])` sau khi
+        người ghi bản ưng ý hay rẽ nhánh — sẽ đẩy `da_dung_tool = 0` lên màn hình và **bộ đếm
+        chạy ngược về không** ngay giữa một lượt còn đang chạy.
+
+        Một con số đi lùi thì tệ hơn một con số đứng yên: đứng yên chỉ là chưa biết, còn đi lùi
+        là nói sai.
+        """
+        run = run if run is not None else (self.last_report or None)
         from . import surfaces
         inv = inventory.build(self.store, ledger=self.ledger,
                               project_name=self.project_name,
@@ -680,8 +690,11 @@ class Agent:
             if not rsp.tool_calls:
                 return
 
+            self._nhip(ctx)          # token vừa tiêu — nói ngay, đừng đợi hết lượt
+
             for call in rsp.tool_calls:
                 self._one_tool(call, ctx)
+                self._nhip(ctx)      # bộ đếm công cụ và giây, sau MỖI lời gọi
                 if ctx.awaiting_human:
                     return
             nhac = self._nhac_neu_dang_quay_vong(ctx)
@@ -1557,20 +1570,40 @@ class Agent:
         ctx.usage_luot = u if ctx.usage_luot is None else ctx.usage_luot.add(u)
         self.usage_phien = u if self.usage_phien is None else self.usage_phien.add(u)
 
+    def _nhip(self, ctx: TurnContext) -> None:
+        """Báo số đo của lượt ĐANG CHẠY: công cụ đã gọi, giây đã trôi, token đã tiêu.
+
+        Trước đây cả một lượt chỉ có hai mốc tin: `run.update` lúc bắt đầu (chi phí rỗng) và
+        `run.update` lúc kết thúc. Giữa hai mốc ấy — chỗ tác tử gọi mười công cụ và tiêu vài
+        chục nghìn token — thanh trạng thái đứng nguyên ở `0/40 tool · 0/300 s`.
+
+        Người nhìn vào đó không phân biệt được *đang chạy* với *đã treo*. Mà đây đúng là lúc
+        họ cần biết nhất: một lượt dài là lúc duy nhất người ta muốn bấm Dừng.
+
+        Dùng `run.update` chứ không vẽ lại cả thanh trạng thái: dựng thanh trạng thái phải
+        `inventory.build()` — quét kho, quét sổ cái — và làm thế sau mỗi lời gọi công cụ là
+        trả một cái giá lớn cho một con số nhỏ.
+        """
+        if ctx.run_id:
+            ctx.emit(uic.run_update(ctx.run_id, status="running",
+                                    cost=self._chi_phi(ctx)))
+
+    def _chi_phi(self, ctx: TurnContext) -> dict[str, Any]:
+        """Chi phí tới thời điểm này — một nguồn sự thật cho cả nhịp giữa lượt lẫn báo cáo."""
+        return {"tokens": ctx.usage_luot.to_dict() if ctx.usage_luot else {},
+                "tools": ctx.tool_calls_used,
+                "seconds": round(ctx.elapsed, 2),
+                "phien": self.usage_phien.to_dict() if self.usage_phien else {}}
+
     def _report(self, ctx: TurnContext) -> dict[str, Any]:
         """Báo cáo lượt, 5 dòng — §E2 dòng "Báo cáo lượt"."""
-        luot = ctx.usage_luot
-        phien = self.usage_phien
         return {
             "run_id": ctx.run_id,
             "tool_calls": ctx.tool_calls_used,
             "seconds": round(ctx.elapsed, 2),
             "awaiting_human": ctx.awaiting_human,
             "assumptions": list(self.assumptions),
-            "cost": {"tokens": luot.to_dict() if luot else {},
-                     "tools": ctx.tool_calls_used,
-                     "seconds": round(ctx.elapsed, 2),
-                     "phien": phien.to_dict() if phien else {}},
+            "cost": self._chi_phi(ctx),
         }
 
 

@@ -108,7 +108,17 @@ final class AppState: ObservableObject {
         }
 
         do {
-            duAnDir = duAn
+            // Dọn sạch mọi thứ THUỘC VỀ dự án cũ, trước khi lõi mới nói câu đầu tiên.
+            //
+            // Không có chỗ này thì mở một dự án mới xong vẫn thấy nguyên hội thoại của dự án
+            // trước — anh Công báo đúng chuyện đó. Và chat mới là phần dễ thấy nhất, chứ chưa
+            // phải phần nguy nhất: `cards` giữ lại các **thẻ cổng đang chờ duyệt** của dự án
+            // cũ. Bấm *Duyệt* trên một thẻ như vậy là gửi quyết định về một lõi đã chết, cho
+            // một hiện vật ở một thư mục khác.
+            //
+            // Lõi tự dựng lại phần của nó khi mở (`<resume>` + `ui.sync`), nên xoá ở đây
+            // không mất gì: cái gì thuộc dự án mới sẽ tới ngay sau.
+            doiDuAn(duAn)
             try client.start(.init(python: python, repoRoot: repo, projectDir: duAn))
             let hello = try await client.call("hello", ["client": .object([
                 "name": .string("EIDE.app"), "uap": .string("1.1")
@@ -137,6 +147,38 @@ final class AppState: ObservableObject {
     func dong() {
         client.stop()
         connection = .chuaKetNoi
+    }
+
+    /// Xoá mọi trạng thái gắn với dự án cũ và ghim dự án mới.
+    ///
+    /// Danh sách này là **danh sách đầy đủ** những gì trong `AppState` thuộc về một dự án cụ
+    /// thể. Thêm một `@Published` mới mà quên thêm vào đây thì nó sẽ rò từ dự án này sang dự
+    /// án kia — nên có một ca kiểm đọc chính tệp này và đối chiếu hai danh sách.
+    ///
+    /// `draft` **không** bị xoá: đó là chữ người dùng tự gõ mà chưa gửi. Xoá nó là làm mất
+    /// việc của người để cho gọn màn hình của máy. Nó nằm ngay trước mắt nên không ai gửi
+    /// nhầm mà không thấy.
+    ///
+    /// `selectedSurface` cũng giữ: tab đang xem là thói quen của người, không phải dữ liệu
+    /// của dự án.
+    func doiDuAn(_ duAn: URL) {
+        // Kênh kiểm thử trỏ vào `.eide/ui-test` của dự án CŨ và chạy một bộ đếm giờ 4 Hz.
+        // `tat()` có sẵn từ đầu nhưng chưa nơi nào gọi, nên mỗi lần đổi dự án lại thêm một
+        // bộ đếm giờ nữa — đổi năm lần là năm bộ cùng đọc một tệp.
+        kenhKiemThu.tat()
+        transcript.removeAll()
+        surfaces.removeAll()
+        cards.removeAll()
+        notices.removeAll()
+        staleList.removeAll()
+        coreLog.removeAll()
+        khungKhoi.removeAll()
+        khoiChuaBietVe.removeAll()
+        streaming.removeAll()
+        status = StatusBar()
+        run = nil
+        busy = false
+        duAnDir = duAn
     }
 
     /// Đưa tệp người dùng vừa kéo–thả (hoặc vừa chọn) vào dự án rồi báo cho tác tử.
