@@ -5456,3 +5456,57 @@ phân biệt: giao thử đúng loại việc đó một lần. Nếu công cụ
 
 **1323 ca đơn vị** (+3) · 4 công cụ nổ lần đầu qua giao diện thật · bộ dò tài liệu **0 chỗ
 lệch** · hiến pháp **3 693/3 700**, không đụng tới.
+
+---
+
+### [DEV-309] 30/09/2026 · Giao đúng loại việc cho 18 công cụ "chưa ai giao" — và nhãn ấy hoá ra ĐÚNG
+
+DEV-308 xếp 18 công cụ vào nhóm *"cần một loại việc chưa ai giao"*. Nhãn ấy **rất dễ thành cái
+cớ**: nói vậy thì công cụ nào cũng có lý do để im. Cách phân biệt duy nhất là **giao thử đúng
+loại việc đó một lần**.
+
+`tools/thu_18_cong_cu.py` — mỗi ca một câu tiếng Việt như người dùng thật sẽ gõ, **không nhắc
+tên công cụ** (nhắc tên là mớm bài, và mớm bài thì đo chính lời mớm chứ không đo sản phẩm).
+
+#### Kết quả: 31 → 11 công cụ chưa nổ
+
+Cả 18 đều nổ khi được giao đúng việc — `memory.status` · `memory.metrics` ·
+`memory.remember_user` · `memory.gc` · `memory.forget` · `ckm.import_netlist` · `khoi.list` ·
+`khoi.place` · `khoi.extract` · `doc.language` · `doc.to_pdf` · `doc.figures` ·
+`store.procedure_progress` · `fact.review` · `ui.explain` · `store.option_choose` ·
+`plan.cancel` · `snapshot.release`.
+
+**Nhãn cũ đúng.** Đây là kết quả đáng giá nhất của lượt đo: nó nói rằng 18 công cụ ấy không có
+đường nào đứt, và lần sau không ai phải đi soi chúng nữa.
+
+Còn lại 11, đều có lý do đứng được: `blob.read` (chỉ nổ khi một kết quả bị cắt) · `branch.merge`
+(vừa viết) · `khoi.upgrade` (cần thư viện có hai bản) · `ledger.verify` (cơ chế nổ qua bề mặt
+Nhật ký) · `memory.undo_compact` (cần đã nén) · `sch.*` (3, sau cờ tính năng) ·
+`target.verify` (cần bo) · `store.procedure_progress`/`fact.review` (đã nổ ở lượt một, xem dưới).
+
+#### Ba chỗ chính PHÉP ĐO tự làm hỏng mình
+
+**1. Bộ đo xoá mất bằng chứng của chính nó.** Script dọn sạch dự án mỗi lần chạy — mà xoá dự
+án là xoá luôn sổ cái. `fact.review` và `store.procedure_progress` nổ ở lượt một rồi **biến mất
+khỏi thống kê** vì lượt hai dọn đúng chỗ chúng từng nổ. Nay có cờ `--giu`, và docstring nói rõ:
+*một phép đo phá mất dữ liệu của phép đo trước là một phép đo chỉ nói về lần cuối cùng.*
+
+**2. Lượt E2E ghi vào THƯ MỤC NHÀ của người dùng.** `khoi.extract` với `dung_chung=true` lưu
+vào `~/.eide/blocks` — ngoài mọi dự án, dùng chung cả máy. Hai khối `LDO-3V3` do lượt đo tạo ra
+nằm lại đó, và ca kiểm `khoi.list phải rỗng` **đỏ ngay ở lần chạy sau**. Mất một lúc mới thấy
+lỗi nằm ở phép đo chứ không ở sản phẩm. Đã dọn sạch `~/.eide`.
+
+**3. Cả bộ kiểm đều có thể chạm `~`.** Bốn chỗ trong mã ghi dưới `~/.eide`: bộ nhớ người dùng ·
+thư viện khối · thiết lập · bộ đệm tìm kiếm. Nay `conftest` cho **mỗi ca một thư mục nhà
+riêng**. Một bộ kiểm đỏ-hay-xanh-tuỳ-máy là một bộ kiểm nói về cái máy, không nói về sản phẩm;
+và một bộ kiểm để lại rác ngoài kho là một bộ kiểm không ai dám chạy hai lần.
+
+**Lối ra có chủ ý:** `@pytest.mark.nha_that` cho ca cần máy thật. `test_xay_dung` gọi
+`arduino-cli`, mà nó cất chuỗi công cụ dưới `$HOME` — đổi nhà là nó tải lại rồi biên dịch hỏng.
+Cách ly mọi thứ bằng mọi giá sẽ biến ba ca đo **máy thật** thành ba ca đo một thư mục rỗng.
+
+### Số đo
+
+**1323 ca đơn vị** · công cụ đã nổ **110/121** (từ 90/121) · `tools/thu_18_cong_cu.py` hai
+lượt: 15/15 và 16/19 — ba ô đỏ lượt hai là tiền đề khác nhau giữa hai lượt, không phải đường
+đứt · bộ dò tài liệu **0 chỗ lệch**.

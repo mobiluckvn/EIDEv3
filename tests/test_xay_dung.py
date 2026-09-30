@@ -11,6 +11,13 @@ và chỉ vỡ ra khi người dùng nạp firmware vào bo thật. Nên mọi c
 
 from __future__ import annotations
 
+import pytest
+
+# Bộ này gọi CHUỖI CÔNG CỤ THẬT trên máy (`arduino-cli`, `avr-gcc`,
+# `arm-none-eabi-gcc`), mà chúng cất dữ liệu dưới `$HOME`. Đổi nhà là chúng
+# tải lại từ đầu rồi biên dịch hỏng — xem fixture `_nha_rieng` ở conftest.
+pytestmark = pytest.mark.nha_that
+
 import shutil
 
 import pytest

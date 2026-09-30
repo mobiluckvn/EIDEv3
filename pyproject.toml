@@ -46,5 +46,8 @@ eide = ["rules/*.yaml", "policy/*.yaml", "context/*.md"]
 "eide.skills" = ["*.md"]
 
 [tool.pytest.ini_options]
+markers = [
+  "nha_that: ca kiểm cần THƯ MỤC NHÀ THẬT (chuỗi công cụ cài sẵn trên máy)",
+]
 testpaths = ["tests"]
 pythonpath = ["src"]
