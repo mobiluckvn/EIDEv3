@@ -415,6 +415,30 @@ def _net(ve, x1, y1, x2, y2, mau, net: str) -> None:
                  (x1 + (x2 - x1) * b, y1 + (y2 - y1) * b)], fill=mau, width=rong)
 
 
+def _cung(ve, p1, p2, mau, net: str, *, lech: int, doc: bool) -> tuple[int, int]:
+    """Vẽ một cung vòng ra bên cạnh, thay cho đoạn thẳng đi xuyên giữa.
+
+    Bezier bậc hai xấp xỉ bằng các đoạn thẳng ngắn — Pillow không vẽ đường cong sẵn, và một
+    đa giác 24 đoạn thì mắt không phân biệt được với đường cong.
+    """
+    gx = (p1[0] + p2[0]) / 2 + (lech if doc else 0)
+    gy = (p1[1] + p2[1]) / 2 + (0 if doc else lech)
+    truoc = p1
+    for i in range(1, 25):
+        t = i / 24
+        u = 1 - t
+        x = u * u * p1[0] + 2 * u * t * gx + t * t * p2[0]
+        y = u * u * p1[1] + 2 * u * t * gy + t * t * p2[1]
+        if net == "dut" and i % 2 == 0:
+            truoc = (x, y)
+            continue
+        ve.line([truoc, (x, y)], fill=mau, width=3 if net == "dam" else 2)
+        truoc = (x, y)
+    # Đỉnh cung ở t = 0,5 — chỗ xa đường thẳng nhất, nên là chỗ đặt nhãn không đè lên gì.
+    return (int(0.25 * p1[0] + 0.5 * gx + 0.25 * p2[0]),
+            int(0.25 * p1[1] + 0.5 * gy + 0.25 * p2[1]))
+
+
 def ve_png(nguon: str, ra: Path, *, rong_toi_da: int = 1700) -> tuple[Path | None, str]:
     """Vẽ một khối mermaid ra PNG. Trả `(đường dẫn, lý do nếu không vẽ được)`."""
     try:
@@ -691,6 +715,7 @@ def _ve_luong(so: Luong, Image, ImageDraw, f):
 
     # Gieo sẵn khung các NÚT: nhãn phải tránh cả hộp khối, không chỉ tránh nhãn khác. Nhìn
     # trong app thấy `VCC / GND` nằm đè lên chữ `Khối vi điều khiển`.
+    # `tang` dùng lại ở phép vẽ cạnh để biết cạnh nào vượt tầng.
     da_dat: list[tuple[int, int, int, int]] = [
         (k[0], k[1], k[0] + k[2], k[1] + k[3]) for k in khung if k]
     for c in so.canh:
@@ -704,7 +729,28 @@ def _ve_luong(so: Luong, Image, ImageDraw, f):
             p1 = (a[0] + a[2] // 2, a[1] + a[3])
             p2 = (b[0] + b[2] // 2, b[1])
         mau = MAU_MO[:3] if c.net == "dut" else (75, 85, 99)
-        _net(ve, *p1, *p2, mau, c.net)
+        # Cạnh VƯỢT TẦNG thì vòng ra bên cạnh, không đi xuyên giữa.
+        #
+        # Một cạnh nối tầng 0 với tầng 3 vẽ thẳng sẽ chạy đè lên mọi nút và mọi nhãn nằm giữa
+        # — nhìn ra thì nó như thể nối hai nút khác hẳn. Đo được 30/09/2026 trên sơ đồ C1 của
+        # báo cáo RTOS: cạnh `Kỹ sư → Bo` đi xuyên chuỗi, và nhãn "nhìn màn hình, chạm cảm
+        # ứng" rơi vào giữa `Kỹ sư` và `EIDE` — người đọc hiểu sai quan hệ.
+        vuot = abs(tang[c.den] - tang[c.tu]) if c.tu < len(tang) and c.den < len(tang) else 1
+        dinh = None
+        if vuot > 1:
+            # Độ vồng TỈ LỆ với chiều dài cạnh, không phải một hằng số.
+            #
+            # Bản trước vồng cố định 60 px. Trên sơ đồ C1 của báo cáo RTOS — một CHUỖI bốn nút,
+            # mỗi tầng một nút nên tất cả nằm cùng một cột — cạnh dài 700 px vồng 60 px trông
+            # vẫn như đường thẳng, và nó vẫn đè lên hai nút ở giữa. 60 px là nhiều với một
+            # cạnh ngắn và gần như không là gì với một cạnh dài.
+            import math as _m
+
+            dai = _m.hypot(p2[0] - p1[0], p2[1] - p1[1])
+            lech = int(max(70, dai * 0.22))
+            dinh = _cung(ve, p1, p2, mau, c.net, lech=lech, doc=not so.ngang)
+        else:
+            _net(ve, *p1, *p2, mau, c.net)
         _mui_ten(ve, *p1, *p2, mau)
         if c.nhan:
             # Thử vài chỗ dọc đường, lấy chỗ đầu tiên không chạm nhãn đã đặt. Không chỗ nào
@@ -712,7 +758,17 @@ def _ve_luong(so: Luong, Image, ImageDraw, f):
             # mất thì người đọc không biết là đã mất.
             lw, lh = _do(do, c.nhan, f_nho)
             o = None
+            # Cạnh vồng thì nhãn theo ĐỈNH cung; nếu đặt trên dây cung nó sẽ nằm đúng chỗ
+            # cạnh ấy vừa tránh ra.
+            moc = dinh if dinh is not None else None
             for t in (0.5, 0.66, 0.36, 0.8, 0.22):
+                if moc is not None:
+                    cx, cy = moc[0], moc[1] + int((t - 0.5) * 60)
+                    o = (cx - lw // 2 - 3, cy - lh // 2 - 2, cx + lw // 2 + 3, cy + lh // 2 + 2)
+                    if not any(not (o[2] < q[0] or q[2] < o[0] or o[3] < q[1] or q[3] < o[1])
+                               for q in da_dat):
+                        break
+                    continue
                 cx = int(p1[0] + (p2[0] - p1[0]) * t)
                 cy = int(p1[1] + (p2[1] - p1[1]) * t)
                 o = (cx - lw // 2 - 3, cy - lh // 2 - 2, cx + lw // 2 + 3, cy + lh // 2 + 2)

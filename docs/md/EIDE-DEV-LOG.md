@@ -5673,3 +5673,52 @@ một tệp chưa đọc.
 **1 341 ca đơn vị** · nhân RTOS **1 029 dòng**, Flash **259 488 B**, 0 ký hiệu FreeRTOS ·
 **160 lời gọi mô hình** ghi đủ hai chiều (57 MB, nén 16 MB) · 18 hiện vật · bộ dò tài liệu
 **0 chỗ lệch**.
+
+---
+
+### [DEV-312] 30/09/2026 · Báo cáo RTOS bằng `doc.render` — và giới hạn của bộ vẽ sơ đồ chuỗi
+
+Anh Công đặt một tài liệu `.docx` mô tả yêu cầu, thiết kế theo C4, quá trình tác tử làm, kèm
+**số liệu thời gian và chi phí**. Viết bằng Markdown rồi dựng bằng **chính `doc.render` của
+EIDE** — 9 trang, 9 bảng, 4 sơ đồ C4 vẽ thành ảnh:
+[`docs/rtos-tu-viet/bao-cao/`](rtos-tu-viet/bao-cao/).
+
+#### Số liệu lấy từ nhật ký, không ước lượng
+
+| | |
+|---|---|
+| Thời gian thực | **81,2 phút** (08:59:33 → 10:20:44 UTC, đọc từ sổ cái) |
+| Chờ mô hình | **24,8 phút** — 30,5 % thời gian thực |
+| Lời gọi mô hình | **355** · trung bình 4,2 giây |
+| Token vào | 23 126 605, **trong đó 19 793 272 đã đệm (85,6 %)** |
+| Token ra · suy nghĩ | 73 517 · 118 429 |
+| Lượt trao đổi · lời gọi công cụ · changeset | 46 · 367 · 20 |
+
+Tỉ lệ đệm 85,6 % là con số đáng chú ý nhất: hiến pháp, lược đồ 122 công cụ và phần đầu hội
+thoại lặp ở mọi lượt nên được đệm. **Chi phí thật gần như chỉ phụ thuộc phần mới của mỗi lượt.**
+
+Kho không lưu bảng giá, nên chi phí trình bày dưới dạng **công thức kèm tham số** và ba kịch
+bản đơn giá — không bịa một con số rồi để nó thành sự thật trong một tài liệu nộp.
+
+#### Giới hạn bộ vẽ: đồ thị CHUỖI
+
+Sơ đồ C1 đầu tiên là một chuỗi bốn nút (`Kỹ sư → EIDE → Firmware → Bo`) có một cạnh vượt tầng.
+Bộ vẽ xếp mỗi tầng một nút ⇒ **tất cả nằm cùng một cột**, mọi cạnh chồng lên cùng một đường
+thẳng đứng, và nhãn rơi nhầm chỗ — người đọc hiểu sai quan hệ giữa các khối.
+
+Hai lần sửa, cả hai đều đo lại bằng mắt trên bản PDF:
+
+1. **Cạnh vượt tầng vòng ra bên cạnh** thay vì đi xuyên giữa. Bản đầu vồng cố định 60 px —
+   với một cạnh dài 700 px thì 60 px trông vẫn như đường thẳng. Nay vồng **tỉ lệ với chiều
+   dài** (22 %, tối thiểu 70 px), và **nhãn bám vào đỉnh cung**: đặt nhãn trên dây cung là đặt
+   nó đúng chỗ cạnh ấy vừa tránh ra.
+2. Vẫn chưa đủ với hình chuỗi, nên **bản vẽ đổi hình dạng**: `EIDE` thành nút toả ra hai nhánh
+   (`Firmware`, `Bo`). Rẽ nhánh là dạng bộ vẽ làm tốt — sơ đồ C2 cùng tài liệu ra rất sạch.
+
+Nói thẳng chỗ còn lại: **bộ vẽ xử lý đồ thị rẽ nhánh tốt và đồ thị chuỗi kém.** Sửa cho chuỗi
+cần một thuật toán định tuyến cạnh thật sự (kênh riêng cho cạnh vượt tầng), không phải một
+tham số nữa. Chưa làm, và ghi lại ở đây để lần sau không ai tưởng nó đã xong.
+
+### Số đo
+
+**1 341 ca đơn vị** · báo cáo 9 trang / 9 bảng / 4 sơ đồ · bộ dò tài liệu **0 chỗ lệch**.
