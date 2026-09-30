@@ -69,10 +69,18 @@ class KetQuaNen:
             return (f"[Hệ thống] Đã nén {self.truoc} → {self.sau} ký tự, nhưng **chưa "
                     "kiểm được** — không có câu hỏi nào đủ điều kiện. Nếu thấy tôi quên "
                     "gì, bảo tôi huỷ nén.")
+        # NÓI RA đường lui và tên công cụ.
+        #
+        # Nhánh này là nhánh chạy nhiều nhất, và nó không nhắc gì tới việc huỷ nén được —
+        # `memory.undo_compact` chưa nổ lần nào trong toàn bộ lịch sử chạy. Một phép biến đổi
+        # không đảo ngược được thì người ta sợ nó; một phép đảo ngược không ai biết là có thì
+        # cũng thế.
         return (f"[Hệ thống] Đã nén {self.truoc} → {self.sau} ký tự, giữ {K_LUOT} lượt "
                 f"gần nhất, kiểm {self.diem_kiem}."
                 + (f" Rút vào bộ nhớ dự án: {', '.join(self.rut_vao_m2)}."
-                   if self.rut_vao_m2 else ""))
+                   if self.rut_vao_m2 else "")
+                + " Thấy tôi quên gì thì bảo huỷ nén — `memory.undo_compact` lùi được trong "
+                  "24 giờ.")
 
 
 # =========================================================================== PreCompact

@@ -109,3 +109,41 @@ def test_ledger_verify_KHONG_phai_duong_dut(du_an):
     from eide import surfaces
 
     assert "ledger.verify()" in inspect.getsource(surfaces.journal)
+
+
+def test_STALE_neu_CA_HAI_loi_ra(du_an):
+    """`stale.accept` chưa nổ lần nào: `<inventory>` chỉ nói "cần cập nhật".
+
+    Nhưng có thật những lần thượng nguồn đổi mà hạ nguồn vẫn đúng — đổi tên một Fact không làm
+    sai một đoạn mã dùng giá trị của nó. Chỉ nêu một lối thì tác tử hoặc sửa thừa, hoặc lờ đi.
+    """
+    from eide.store.inventory import Inventory
+
+    inv = Inventory(project_name="x")
+    inv.stale = [{"id": "CODE-01", "type": "code", "stale_reason": "REQ-01 đổi"}]
+    ra = inv.render()
+    assert "stale.accept" in ra
+    assert "vẫn đúng" in ra
+
+
+def test_req_create_chi_duong_SUA_yeu_cau_da_co():
+    """Bảng hiến pháp chỉ nói "yêu cầu người dùng nêu → `store.req_create`" và không nói gì về
+    việc SỬA một yêu cầu đã có — nên `store.req_update` chưa nổ lần nào.
+
+    Hệ quả đo được ở TC006: tác tử cập nhật cả ba phương án nhưng không ai gọi nó là "v2", vì
+    nó không có đường ra bản v2 trong đầu.
+    """
+    from eide.tools import build_registry
+
+    t = build_registry().get("store.req_create")
+    assert "store.req_update" in t.summary_vi
+    assert "ĐỪNG tạo một REQ mới" in t.summary_vi
+
+
+def test_bao_nen_ngu_canh_NOI_duong_lui():
+    """Một phép đảo ngược không ai biết là có thì cũng như không có."""
+    from eide.memory.nen import KetQuaNen
+
+    k = KetQuaNen(muc="C2", ok=True, truoc=9000, sau=3000, diem_kiem="3/3")
+    d = k.dong_he_thong()
+    assert "memory.undo_compact" in d and "24 giờ" in d

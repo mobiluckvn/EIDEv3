@@ -725,6 +725,12 @@ class Agent:
         if any(_t.time() - x <= 30 for x in (self.thoi_diem_ket_thuc or {}).values()):
             mo.add("history.undo_30s")
 
+        # `memory.undo_compact` — mở khoá sau khi ĐÃ nén lần nào đó trong phiên. Cửa sổ của nó
+        # là 24 giờ, nên không hẹp như cửa sổ 30 giây; nhưng trước khi có lần nén đầu tiên thì
+        # nó chỉ là một công cụ luôn trả lỗi.
+        if getattr(self, "da_nen_lan_nao", False):
+            mo.add("memory.undo_compact")
+
         self._mo_khoa_cong_cu_ke_hoach()
 
     def _mo_khoa_cong_cu_ke_hoach(self) -> None:
@@ -1463,6 +1469,7 @@ class Agent:
                     ghim=mem.chi_so_ghim(self.messages),
                     tep_da_sua=set(self.locks))
         self.ledger.append("note", {"run_id": ctx.run_id, "compact": "C1", **bc})
+        self.da_nen_lan_nao = True
         # §12 "nén là giao dịch": ghi tệp mới rồi đổi tên. Không có khoảnh khắc nào
         # transcript ở trạng thái "đã cắt nhưng chưa có bản thay thế".
         self.transcript.thay_toan_bo(list(self.messages))

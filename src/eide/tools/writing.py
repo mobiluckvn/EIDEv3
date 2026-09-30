@@ -135,9 +135,12 @@ def register(r: Registry) -> Registry:
 
     # ====================================================================== yêu cầu
     @r.tool("store.req_create", "Store",
-            "Ghi một yêu cầu (REQ) vào kho. BẮT BUỘC trích đúng lời người dùng vào "
+            "Ghi một yêu cầu MỚI (REQ) vào kho. BẮT BUỘC trích đúng lời người dùng vào "
             "source_quote — không trích được câu nào thì đó không phải yêu cầu của họ "
-            "(N7: chỉ thị cho bạn và rủi ro bạn tự thấy đều KHÔNG thành yêu cầu).",
+            "(N7: chỉ thị cho bạn và rủi ro bạn tự thấy đều KHÔNG thành yêu cầu). "
+            "Yêu cầu ĐÃ CÓ mà người dùng đổi ý thì dùng `store.req_update` để ra bản v2, "
+            "ĐỪNG tạo một REQ mới — hai REQ nói cùng một việc thì không ai biết cái nào "
+            "đang có hiệu lực.",
             {"type": "object",
              "properties": {
                  "id": {"type": "string", "description": "FR-01, NFR-02, UR-03…"},

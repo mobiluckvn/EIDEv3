@@ -5406,3 +5406,53 @@ mạo xuất xứ** của quyết định ấy, và `explain` sẽ nói sai về
 `branch.merge` · **1320 ca đơn vị** (+12) · số công cụ **121** (112 mặc định) cập nhật trong 4
 tài liệu · bộ dò tài liệu **0 chỗ lệch** · `skill.load` và `history.undo_30s` **nổ lần đầu**
 trong lượt chạy thật.
+
+---
+
+### [DEV-308] 30/09/2026 · Soi nốt 30 công cụ chưa nổ — bốn đường đứt nữa, và một bảng phân loại
+
+Sau DEV-306 còn **30/121** công cụ chưa nổ lần nào. Soi từng cái thay vì sửa hàng loạt, vì
+**vài cái "chưa nổ" là đúng** — và sửa một chỗ đang đúng thì đắt hơn để nguyên.
+
+#### Bốn đường đứt, cả bốn đều là MỘT CÂU HƯỚNG DẪN THIẾU, không phải mã hỏng
+
+| Công cụ | Câu thiếu | Hệ quả đo được |
+|---|---|---|
+| **`store.req_update`** | Bảng hiến pháp chỉ nói *"yêu cầu người dùng nêu → `store.req_create`"*, không nói gì về việc **sửa** một yêu cầu đã có | TC006: tác tử cập nhật cả ba phương án nhưng **không ai gọi là "v2"** — nó không có đường ra bản v2 trong đầu |
+| **`stale.accept`** | `<inventory>` chỉ nói STALE *"cần cập nhật"* | Lối thứ hai không tồn tại với tác tử, nên nó hoặc sửa thừa hoặc lờ đi. Có thật những lần thượng nguồn đổi mà hạ nguồn vẫn đúng |
+| **`memory.undo_compact`** | Dòng báo nén — nhánh chạy nhiều nhất — không nhắc gì tới việc huỷ nén được | *Một phép đảo ngược không ai biết là có thì cũng như không có* |
+| **`plan.cancel`** | `core=False`, và `<pending>` không nhắc | Đã mở khoá cùng `plan.step_done`/`plan.merge` ở DEV-305 |
+
+Chữa: câu hướng dẫn đặt **đúng chỗ tác tử đang nhìn lúc cần** — lối sửa REQ nằm trong mô tả
+`store.req_create` (nơi nó đứng ngay trước khi tạo nhầm cái mới), lối thứ hai của STALE nằm
+ngay dưới danh sách STALE, đường huỷ nén nằm trong chính dòng báo nén.
+
+Không tốn một token nào của hiến pháp — nó đang ở 3 693/3 700.
+
+#### Đo lại qua giao diện thật
+
+* *"Mình đổi ý: dải đo phải là −20…80 °C chứ không phải 0–50 nữa"* → **`store.req_update`**,
+  và **không** gọi `store.req_create` — đúng thứ TC006 thiếu.
+* Gõ đúng câu mà **File ▸ Xuất dự án** gửi → **`project.export`** là lời gọi đầu tiên.
+
+Cộng với DEV-306: `skill.load` · `history.undo_30s` · `store.req_update` · `project.export`
+đều **nổ lần đầu tiên** trong đời dự án.
+
+#### Bảng phân loại 30 cái — để lần sau không ai đo lại từ đầu
+
+| Nhóm | Số | Ví dụ | Việc cần làm |
+|---|---|---|---|
+| **Đường đứt — đã chữa** | 4 | `store.req_update` · `stale.accept` · `memory.undo_compact` · `plan.cancel` | xong |
+| **Cơ chế nổ qua đường khác — KHÔNG phải lỗi** | 1 | `ledger.verify` | không làm gì; xem DEV-306 |
+| **Vừa viết xong, chưa có lượt thật** | 1 | `branch.merge` | dùng khi có việc |
+| **Sau cờ tính năng, mặc định tắt** | 3 | `sch.export` · `sch.import` · `sch.symbol_confirm` | đúng như thiết kế |
+| **Cần THIẾT BỊ hoặc bàn tay người** | 3 | `target.verify` (cần bo) · `snapshot.release` · `store.option_choose` | chờ người |
+| **Cần một loại việc chưa ai giao** | 18 | `khoi.*` (4, thư viện khối) · `doc.figures`/`language`/`to_pdf` · `ckm.import_netlist` · `memory.*` (5 còn lại) · `blob.read` · `ui.explain` · `store.procedure_progress` · `fact.review` | giao đúng loại việc rồi đo lại |
+
+Nhóm cuối là nhóm cần cẩn thận nhất: *"chưa ai giao loại việc ấy"* rất dễ thành cái cớ. Cách
+phân biệt: giao thử đúng loại việc đó một lần. Nếu công cụ vẫn không nổ thì nó là đường đứt.
+
+### Số đo
+
+**1323 ca đơn vị** (+3) · 4 công cụ nổ lần đầu qua giao diện thật · bộ dò tài liệu **0 chỗ
+lệch** · hiến pháp **3 693/3 700**, không đụng tới.

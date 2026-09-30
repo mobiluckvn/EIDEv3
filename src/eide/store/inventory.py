@@ -135,6 +135,14 @@ class Inventory:
                 L.append(f"  - {s['id']} ({s['type']}): {s.get('stale_reason') or 'không rõ lý do'}")
             if len(self.stale) > 6:
                 L.append(f"  … và {len(self.stale) - 6} cái nữa")
+            # HAI lối ra, không phải một.
+            #
+            # Dòng trên chỉ nói "cần cập nhật", nên `stale.accept` — lối thứ hai — chưa nổ
+            # lần nào trong toàn bộ lịch sử chạy. Nhưng có thật những lần thượng nguồn đổi mà
+            # hạ nguồn vẫn đúng: đổi tên một Fact không làm sai một đoạn mã dùng giá trị của
+            # nó. Chỉ nêu một lối thì tác tử hoặc sửa thừa, hoặc lờ đi.
+            L.append("  Hai lối: cập nhật hiện vật cho khớp thượng nguồn, HOẶC `stale.accept` "
+                     "nếu thượng nguồn đổi mà hạ nguồn vẫn đúng — nói rõ vì sao vẫn đúng.")
         else:
             L.append("STALE: 0.")
 
