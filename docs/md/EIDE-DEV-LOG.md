@@ -6029,3 +6029,80 @@ chặn trên độ dài thân bắt được.
 **1 407 ca đơn vị** (+35) · bộ quét giao diện **124/124** · E2E qua app thật **22/22**
 ([`thu_doi_du_an_va_nhip.py`](../../tools/thu_doi_du_an_va_nhip.py)) · bộ dò tài liệu **0 chỗ
 lệch** · sáu phép phá sản phẩm đều làm bộ kiểm đỏ.
+
+---
+
+### [DEV-317] 01/10/2026 · Công thức LaTeX chỉ đổi được ở MỘT trong sáu chỗ
+
+Anh Công báo bản xuất tài liệu không render được LaTeX ra docx, pdf và pptx. Dựng một tài liệu
+có công thức ở sáu ngữ cảnh rồi đọc lại từ chính tệp xuất ra:
+
+| Ngữ cảnh | Word | PowerPoint |
+|---|---|---|
+| Đoạn văn nguyên vẹn `$$…$$` | **đổi được** | in cả dấu đô-la |
+| Giữa dòng `$…$` | in nguyên `\frac{f_{VCO}}{PLLP}` | in nguyên |
+| Gạch đầu dòng | in nguyên | in nguyên |
+| Ô bảng | in nguyên | in nguyên |
+| Trích dẫn | in nguyên | in nguyên |
+| Rào ` ```math ` | in nguyên, dạng khối mã | in nguyên |
+
+Ba tệp đều báo **ĐẠT**, và `so_doan`/`so_bang`/`so_ky_tu` đều đúng. *`ok` nói về lời gọi,
+không nói về kết quả* — lần thứ bảy trong dự án này.
+
+Gốc gọn: `cong_thuc_nguoi_doc` được gọi ở **đúng một chỗ** trong cả tệp — nhánh đoạn văn của
+bộ dựng Word, và chỉ khi cả đoạn là `$$…$$`.
+
+#### Sửa ở chỗ mọi ngữ cảnh đều đi qua
+
+Phép đổi chuyển vào **bộ quét chữ trong dòng** (`_quet`), nơi đoạn văn, gạch đầu dòng, ô bảng,
+trích dẫn, tiêu đề, slide và ô Excel đều phải đi qua. Đặt trước nhánh nhấn mạnh, vì `$a * b$`
+có dấu sao và nhánh nghiêng đọc trước sẽ cắt công thức làm đôi.
+
+Đoạn chỉ có `$$…$$` và rào ` ```math ` nay thành **một loại khối riêng** (`cong_thuc`), nhận ra
+một lần ở bộ đọc Markdown — trước đây phép nhận nằm trong bộ dựng Word nên PowerPoint không
+có. Bảng ký hiệu mở từ 23 lên 90 mục: đủ bộ chữ Hy Lạp, tập hợp, logic, giải tích, và ký tự
+thoát `\%` `\{` `\}`.
+
+#### Chỗ khó nhất: dấu đô-la cũng là tiền
+
+"Giá $5 và $10 nữa" mà đọc thành công thức thì **ăn mất cả đoạn chữ ở giữa**. Bốn điều kiện,
+mỗi cái loại một kiểu nhầm có thật: có dấu đóng cùng đoạn · ruột không dính khoảng trắng ở hai
+đầu · không quá 300 ký tự · **ruột không phải toàn chữ số** (`$5$`, `$1.000$` là giá). Sáu câu
+có dấu đô-la thật — giá tiền, biến shell `$HOME` — đều giữ nguyên, mà `$x$` và `$E = mc^2$`
+vẫn đổi được.
+
+#### Ba chốt chặn thừa nhau, không chốt nào đo được
+
+`\le` là tiền tố của `\leq`. Bản đầu có **ba** cơ chế cùng ngăn chuyện ấy — thứ tự khai trong
+bảng (một chốt vô hình), `sorted` theo độ dài, và `(?![A-Za-z])` — và **phá riêng cái nào bộ
+kiểm cũng không đỏ**, vì hai cái còn lại đỡ.
+
+Gộp còn một biểu thức, và đo lại cho thẳng thắn: hai thuộc tính của nó vẫn thừa nhau, bỏ cả
+hai mới đỏ. Nói ra trong chú thích chứ không giấu. Thứ **thật sự đo được** nằm ở chỗ khác:
+một ca kiểm phủ **cả bảng 90 ký hiệu**. Chính nó bắt được `\leftrightarrow` bị luật xoá
+`\left` ăn mất đầu, ra thành `rightarrow` — lỗi không chốt nào ở trên chạm tới, và không ca
+thử-một-lệnh nào tìm ra.
+
+#### Lệnh không đổi được thì NÓI RA
+
+`tex_con_sot` đếm phần còn sót — soi **bản đã đổi**, không soi nguồn, vì soi nguồn thì `\frac`
+và `\times` cũng bị đếm và cảnh báo sẽ kêu mỗi lần. *Một cảnh báo luôn kêu thì bằng không
+kêu.* `doc.render` nay báo ngay đầu câu trả lời: chưa đổi được lệnh nào, và chúng sẽ in ra
+giấy đúng như đang viết.
+
+Phân số bỏ ngoặc khi không cần: `(1)/(1000)` → `1/1000`, giữ `(a+b)/c`.
+
+#### Một giờ mất vì bytecode cũ
+
+Giữa lúc thử độ nhạy, phép phá đổi `findall(c)` → `findall(x)` — **cùng số ký tự**, và khôi
+phục trong cùng một giây. Phép kiểm cache của Python là *mtime tính theo giây + kích thước
+tệp*, nên nó không thấy gì đổi và tiếp tục chạy bản đã phá. `inspect.getsource` đọc tệp `.py`
+nên hiện mã đúng, trong khi mã chạy là mã sai.
+
+*Một phép đo đọc một chỗ và chạy một chỗ khác thì nói về chỗ nào cũng sai.* Từ nay xoá
+`__pycache__` giữa các lượt phá.
+
+### Số đo
+
+**1 440 ca đơn vị** (+33) · bộ dò tài liệu **0 chỗ lệch** · sáu ngữ cảnh kiểm bằng cách mở lại
+tệp và bằng mắt trên trang PDF · bảng 90 ký hiệu có ca phủ toàn bộ.

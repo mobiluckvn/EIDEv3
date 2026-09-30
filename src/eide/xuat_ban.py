@@ -53,7 +53,8 @@ RONG_ANH_TOI_DA = 6.0
 class Khoi:
     """Một khối Markdown đã đọc xong. `loai` quyết định các trường nào có nghĩa."""
 
-    loai: str                       # tieu_de | doan | gach_dau | so_thu_tu | bang | ma | anh | ngan | trich | so_do
+    loai: str                       # tieu_de | doan | gach_dau | so_thu_tu | bang | ma | anh
+                                    # | ngan | trich | so_do | cong_thuc
     chu: str = ""
     muc: int = 0                    # bậc tiêu đề, hoặc bậc thụt của gạch đầu dòng
     hang: list[list[str]] = field(default_factory=list)   # bảng: hàng đầu là tiêu đề cột
@@ -115,7 +116,15 @@ def doc_markdown(md: str) -> list[Khoi]:
 
     def xa_doan() -> None:
         if dem_doan:
-            khoi.append(Khoi("doan", " ".join(x.strip() for x in dem_doan).strip()))
+            chu = " ".join(x.strip() for x in dem_doan).strip()
+            # Đoạn chỉ có một công thức `$$…$$` là công thức TRÌNH BÀY — căn giữa, đứng riêng.
+            # Nhận ra ở đây, một lần, để Word và PowerPoint cùng dùng; trước đây phép nhận
+            # này nằm trong bộ dựng Word nên PowerPoint in cả dấu đô-la ra slide.
+            if chu.startswith("$$") and chu.endswith("$$") and len(chu) > 4 \
+                    and "$$" not in chu[2:-2]:
+                khoi.append(Khoi("cong_thuc", chu[2:-2].strip()))
+            else:
+                khoi.append(Khoi("doan", chu))
             dem_doan.clear()
 
     while i < n:
@@ -133,8 +142,13 @@ def doc_markdown(md: str) -> list[Khoi]:
             # `mermaid` là SƠ ĐỒ, không phải mã để đọc. Trước đây nó in nguyên cú pháp vào
             # giữa trang Word — đúng thứ người nhận không đọc được, và đúng chỗ người ta
             # chờ một hình.
-            khoi.append(Khoi("so_do" if ng.lower() == "mermaid" else "ma",
-                             "\n".join(than), ngon_ngu=ng))
+            # ```math / ```latex / ```tex là CÔNG THỨC, không phải mã để đọc — cùng lý do với
+            # ```mermaid. Trước đây `\tau = R \cdot C` in ra dưới dạng khối mã đẳng khoảng,
+            # nguyên cú pháp TeX.
+            loai = ("so_do" if ng.lower() == "mermaid"
+                    else "cong_thuc" if ng.lower() in ("math", "latex", "tex")
+                    else "ma")
+            khoi.append(Khoi(loai, "\n".join(than), ngon_ngu=ng))
             dang_mo = None
             continue
 
@@ -231,22 +245,85 @@ def doc_markdown(md: str) -> list[Khoi]:
 # Thứ tự có nghĩa: gỡ `\text{…}` TRƯỚC `\frac{…}{…}`. Ngược lại thì `\frac{8\text{ MHz}}{8}`
 # không khớp — mẫu của `\frac` không nhận ngoặc lồng, nên nó bỏ qua và cú pháp TeX lọt ra
 # trang giấy. Đo trên chính tài liệu kiến trúc: một phân số giữ nguyên `\frac{...}{...}`.
+def _phan_so(tu: str, mau: str) -> str:
+    """`\\frac{a}{b}` → `a/b`; chỉ đóng ngoặc khi vế đó THẬT SỰ cần.
+
+    Đóng ngoặc vô điều kiện cho ra `(1)/(1000)` và `(PLLN)/(PLLM)` — đúng nhưng đọc vướng,
+    và trên một trang giấy đầy công thức thì cái vướng ấy cộng dồn. Chỉ cần ngoặc khi vế có
+    phép cộng/trừ/nhân/chia hoặc khoảng trắng, vì lúc ấy bỏ ngoặc sẽ đổi nghĩa.
+    """
+    def boc(x: str) -> str:
+        x = x.strip()
+        return f"({x})" if (not x or re.search(r"[+\-*/×·÷\s]", x)) else x
+
+    return f"{boc(tu)}/{boc(mau)}"
+
+
 _TEX = (
     (re.compile(r"\\(?:text|mathrm|mathbf|operatorname)\{([^{}]*)\}"), r"\1"),
-    (re.compile(r"\\frac\{([^{}]*)\}\{([^{}]*)\}"), r"(\1)/(\2)"),
+    (re.compile(r"\\frac\{([^{}]*)\}\{([^{}]*)\}"), lambda m: _phan_so(m[1], m[2])),
     (re.compile(r"\\(?:quad|qquad|,|;|!)"), " "),
-    (re.compile(r"\\left|\\right"), ""),
+    # `\left(` / `\right]` là lệnh chỉnh cỡ ngoặc — bỏ đi là đúng. Nhưng không có
+    # `(?![A-Za-z])` thì nó ăn luôn đầu của `\leftrightarrow` và `\leftarrow`, để lại
+    # `rightarrow` nằm giữa công thức. Bắt được bằng ca kiểm phủ CẢ BẢNG ký hiệu, không
+    # phải bằng ca thử một lệnh.
+    (re.compile(r"\\(?:left|right)(?![A-Za-z])"), ""),
     (re.compile(r"_\{([^{}]*)\}"), r"_\1"),
     (re.compile(r"\^\{([^{}]*)\}"), r"^\1"),
 )
 _TEX_KY_HIEU = {
-    r"\\times": "×", r"\\cdot": "·", r"\\div": "÷", r"\\pm": "±",
-    r"\\implies": "⇒", r"\\Rightarrow": "⇒", r"\\rightarrow": "→", r"\\to": "→",
-    r"\\leq": "≤", r"\\geq": "≥", r"\\neq": "≠", r"\\approx": "≈",
-    r"\\alpha": "α", r"\\beta": "β", r"\\mu": "µ", r"\\Omega": "Ω",
-    r"\\omega": "ω", r"\\pi": "π", r"\\Delta": "Δ", r"\\delta": "δ",
-    r"\\infty": "∞", r"\\sum": "∑", r"\\sqrt": "√",
+    # phép toán và so sánh
+    r"\times": "×", r"\cdot": "·", r"\div": "÷", r"\pm": "±", r"\mp": "∓",
+    r"\leq": "≤", r"\le": "≤", r"\geq": "≥", r"\ge": "≥", r"\neq": "≠", r"\ne": "≠",
+    r"\approx": "≈", r"\equiv": "≡", r"\sim": "∼", r"\propto": "∝",
+    r"\ll": "≪", r"\gg": "≫", r"\ast": "∗",
+    # mũi tên
+    r"\implies": "⇒", r"\Rightarrow": "⇒", r"\Leftarrow": "⇐", r"\iff": "⇔",
+    r"\Leftrightarrow": "⇔", r"\leftrightarrow": "↔",
+    r"\rightarrow": "→", r"\to": "→", r"\leftarrow": "←", r"\mapsto": "↦",
+    # tập hợp và logic
+    r"\in": "∈", r"\notin": "∉", r"\subset": "⊂", r"\subseteq": "⊆",
+    r"\cup": "∪", r"\cap": "∩", r"\emptyset": "∅", r"\varnothing": "∅",
+    r"\forall": "∀", r"\exists": "∃", r"\land": "∧", r"\lor": "∨", r"\neg": "¬",
+    # giải tích
+    r"\infty": "∞", r"\sum": "∑", r"\prod": "∏", r"\int": "∫",
+    r"\partial": "∂", r"\nabla": "∇", r"\sqrt": "√",
+    # chữ Hy Lạp — đủ bộ, vì thiếu một chữ là một công thức in ra cú pháp thô
+    r"\alpha": "α", r"\beta": "β", r"\gamma": "γ", r"\Gamma": "Γ",
+    r"\delta": "δ", r"\Delta": "Δ", r"\epsilon": "ε", r"\varepsilon": "ε",
+    r"\zeta": "ζ", r"\eta": "η", r"\theta": "θ", r"\Theta": "Θ",
+    r"\iota": "ι", r"\kappa": "κ", r"\lambda": "λ", r"\Lambda": "Λ",
+    r"\mu": "µ", r"\nu": "ν", r"\xi": "ξ", r"\Xi": "Ξ",
+    r"\pi": "π", r"\Pi": "Π", r"\rho": "ρ", r"\sigma": "σ", r"\Sigma": "Σ",
+    r"\tau": "τ", r"\upsilon": "υ", r"\phi": "φ", r"\varphi": "φ", r"\Phi": "Φ",
+    r"\chi": "χ", r"\psi": "ψ", r"\Psi": "Ψ", r"\omega": "ω", r"\Omega": "Ω",
+    # linh tinh hay gặp trong tài liệu kỹ thuật
+    r"\ldots": "…", r"\dots": "…", r"\cdots": "⋯", r"\angle": "∠",
+    r"\degree": "°", r"\circ": "°", r"\prime": "′", r"\percent": "%",
 }
+
+# Một lượt duyệt cho cả bảng. Hai thuộc tính giữ cho `\le` không ăn mất `\leq`:
+#
+#   * nhánh alternation xếp **dài trước ngắn**, nên Python thử `\leq` trước và thắng;
+#   * `(?![A-Za-z])` từ chối khớp khi còn chữ cái đằng sau.
+#
+# Hai cái này **thừa nhau** — đo rồi: bỏ riêng cái nào bộ kiểm cũng không đỏ, bỏ cả hai mới
+# đỏ. Nói ra chứ không giấu, vì bản trước có tận BA chốt như vậy nằm rải ra (kể cả thứ tự
+# khai trong bảng, một chốt vô hình) và không ai biết cái nào đang thật sự làm việc. Nay cả
+# hai nằm trong một biểu thức, đọc một chỗ là thấy hết.
+#
+# Thứ **đo được** thì nằm ở chỗ khác: ca kiểm phủ CẢ BẢNG. Chính nó bắt được `\leftrightarrow`
+# bị luật xoá `\left` ăn mất đầu — một lỗi không chốt nào ở đây chạm tới.
+_MOT_LUOT = re.compile(
+    "(?:" + "|".join(sorted((re.escape(k) for k in _TEX_KY_HIEU), key=len, reverse=True))
+    + r")(?![A-Za-z])")
+
+# Ký tự TeX thoát bằng gạch chéo — `\%` là dấu phần trăm, không phải một lệnh.
+# Đổi SAU cùng, nếu không thì `\%` bị bảng ký hiệu trên nhìn thành lệnh `\p…`.
+_TEX_THOAT = re.compile(r"\\([%&#_${}])")
+
+# Lệnh TeX còn sót sau khi đổi hết — dùng để ĐẾM, không để xoá.
+_TEX_CON_SOT = re.compile(r"\\[A-Za-z]+")
 
 
 def cong_thuc_nguoi_doc(s: str) -> str:
@@ -261,9 +338,34 @@ def cong_thuc_nguoi_doc(s: str) -> str:
             t = mau.sub(thay, t)
         if t == truoc:
             break
-    for mau, ky in _TEX_KY_HIEU.items():
-        t = re.sub(mau + r"\b", ky, t)
+    t = _MOT_LUOT.sub(lambda m: _TEX_KY_HIEU[m.group(0)], t)
+    t = _TEX_THOAT.sub(r"\1", t)              # `\%` → `%`, sau cùng
     return re.sub(r"\s+", " ", t).strip()
+
+
+def tex_con_sot(khoi: list[Khoi]) -> list[str]:
+    """Lệnh TeX chưa đổi được — soi **bản ĐÃ đổi**, không soi nguồn.
+
+    Soi nguồn thì `\\frac` và `\\times` cũng bị đếm, trong khi chúng đổi được hết; con số ấy
+    sẽ báo động mỗi lần và nhanh chóng bị bỏ qua. *Một cảnh báo luôn kêu thì bằng không kêu.*
+
+    Bộ đổi này cố ý **không phải một bộ dựng TeX**. Nhưng im lặng bỏ qua một lệnh lạ thì người
+    đọc nhận một trang giấy có `\\varrho` nằm giữa câu mà không ai báo trước. Nói ra ở
+    `note_vi` của `doc.render` thì tác tử sửa được nguồn; im lặng thì không ai sửa gì.
+    """
+    sot: set[str] = set()
+    for k in khoi:
+        if k.loai == "cong_thuc":
+            sot |= set(_TEX_CON_SOT.findall(cong_thuc_nguoi_doc(k.chu)))
+            continue
+        if k.loai in ("ma", "so_do"):        # mã và sơ đồ giữ nguyên văn, không phải công thức
+            continue
+        phan = [k.chu] + [o for h in k.hang for o in h]
+        for x in phan:
+            for c, kieu in tach_chu(x):
+                if "cong_thuc" in kieu:
+                    sot |= set(_TEX_CON_SOT.findall(c))
+    return sorted(sot)
 
 
 # ------------------------------------------------------------------- chữ trong dòng
@@ -299,6 +401,37 @@ def _go_lien_ket(m: re.Match[str]) -> str:
     return chu if dia_chi.startswith("#") else f"{chu} ({dia_chi})"
 
 
+def _dong_cong_thuc(s: str, i: int) -> tuple[int, str] | None:
+    """`$…$` hoặc `$$…$$` bắt đầu ở `i`? Trả `(vị trí sau dấu đóng, ruột)` hoặc `None`.
+
+    Đây là chỗ khó nhất của việc đọc công thức giữa dòng: **dấu đô-la cũng là tiền**. Một câu
+    "giá $5 và $10 nữa" mà đọc thành công thức thì ăn mất cả đoạn chữ ở giữa.
+
+    Bốn điều kiện, mỗi cái loại một kiểu nhầm có thật:
+
+    * có dấu đóng trên **cùng một đoạn** (không có ở đây thì `$` chỉ là ký tự thường);
+    * ruột **không bắt đầu và không kết thúc bằng khoảng trắng** — "giá $5 và $10" có ruột
+      `"5 và "` kết thúc bằng khoảng trắng, nên bị loại đúng như mong muốn;
+    * ruột không rỗng và không quá 300 ký tự — quá dài gần như chắc chắn là hai dấu tiền ở
+      hai câu khác nhau;
+    * ruột không chứa dấu `$` nào nữa.
+    """
+    dai = 2 if s.startswith("$$", i) else 1
+    dau = "$$" if dai == 2 else "$"
+    j = s.find(dau, i + dai)
+    if j == -1:
+        return None
+    ruot = s[i + dai:j]
+    if not ruot or ruot != ruot.strip() or "$" in ruot or len(ruot) > 300:
+        return None
+    # Ruột chỉ có chữ số, dấu chấm phẩy và khoảng trắng thì đó là TIỀN, không phải công thức:
+    # `$5$`, `$1.000$`, `$4,450$`. Một công thức thật luôn có thêm thứ gì đó — biến, phép
+    # toán, hoặc một lệnh TeX.
+    if re.fullmatch(r"[\d.,\s]+", ruot):
+        return None
+    return j + dai, ruot
+
+
 def _quet(s: str, kieu: frozenset[str], ra: list[tuple[str, frozenset[str]]]) -> None:
     dem: list[str] = []
 
@@ -309,6 +442,21 @@ def _quet(s: str, kieu: frozenset[str], ra: list[tuple[str, frozenset[str]]]) ->
 
     i, n = 0, len(s)
     while i < n:
+        # Công thức đứng TRƯỚC mọi kiểu nhấn mạnh: `$a * b$` có dấu sao, và nếu để nhánh
+        # nghiêng đọc trước thì công thức bị cắt làm đôi ở giữa.
+        #
+        # Đặt phép đổi công thức ở ĐÂY, trong bộ quét chữ, chứ không ở chỗ dựng đoạn văn —
+        # vì mọi ngữ cảnh đều đi qua `tach_chu`: đoạn văn, gạch đầu dòng, ô bảng, trích dẫn,
+        # tiêu đề, slide PowerPoint, ô Excel. Bản trước chỉ đổi khi CẢ ĐOẠN là `$$…$$` và chỉ
+        # trong Word, nên năm chỗ còn lại in nguyên cú pháp TeX ra giấy.
+        if s[i] == "$":
+            kq = _dong_cong_thuc(s, i)
+            if kq is not None:
+                sau, ruot = kq
+                xa()
+                ra.append((cong_thuc_nguoi_doc(ruot), kieu | {"cong_thuc"}))
+                i = sau
+                continue
         if s.startswith("**", i):
             j = s.find("**", i + 2)
             if j != -1:
@@ -474,7 +622,9 @@ def sang_docx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
         for c, kieu in tach_chu(s):
             r = p.add_run(c)
             r.bold = "dam" in kieu
-            r.italic = "nghieng" in kieu
+            # Công thức để nghiêng như quy ước toán học — và nghiêng cũng là dấu hiệu đọc
+            # được bằng mắt rằng chỗ này ĐÃ qua bộ đổi, chứ không phải chữ thường trùng hình.
+            r.italic = "nghieng" in kieu or "cong_thuc" in kieu
             if "ma" in kieu:
                 r.font.name = "Menlo"
                 r.font.size = Pt(9.5)
@@ -483,13 +633,12 @@ def sang_docx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
         if k.loai == "tieu_de":
             tl.add_heading(chu_tran(k.chu), min(max(k.muc, 1), 6))
         elif k.loai == "doan":
-            if k.chu.startswith("$$") and k.chu.endswith("$$"):
-                p = tl.add_paragraph()
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                r = p.add_run(cong_thuc_nguoi_doc(k.chu))
-                r.italic = True
-            else:
-                _chu(tl.add_paragraph(), k.chu)
+            _chu(tl.add_paragraph(), k.chu)
+        elif k.loai == "cong_thuc":
+            p = tl.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            r = p.add_run(cong_thuc_nguoi_doc(k.chu))
+            r.italic = True
         elif k.loai in ("gach_dau", "so_thu_tu"):
             kieu = "List Bullet" if k.loai == "gach_dau" else "List Number"
             p = tl.add_paragraph(style=kieu)
@@ -715,6 +864,11 @@ def sang_pptx(khoi: list[Khoi], ra: Path, *, tieu_de: str = "",
             p.text = chu_tran(k.chu)
             p.level = min(k.muc, 4)
             p.font.size = Pt(18)
+        elif k.loai == "cong_thuc":
+            p = than.add_paragraph()
+            p.text = cong_thuc_nguoi_doc(k.chu)
+            p.font.size = Pt(20)
+            p.font.italic = True
         elif k.loai == "ma":
             p = than.add_paragraph()
             p.text = k.chu
@@ -897,9 +1051,19 @@ def render(md: str, ra: Path, dinh_dang: str, *, tieu_de: str = "",
         return KetQuaRender(dinh_dang=dinh_dang,
                             vi_sao_khong_dat="Nguồn rỗng — không có gì để render.")
     if dinh_dang == "docx":
-        return sang_docx(khoi, ra, tieu_de=tieu_de, goc_anh=goc_anh)
-    if dinh_dang == "xlsx":
-        return sang_xlsx(khoi, ra)
-    if dinh_dang == "pptx":
-        return sang_pptx(khoi, ra, tieu_de=tieu_de, goc_anh=goc_anh)
-    return sang_pdf(khoi, ra, tieu_de=tieu_de, goc_anh=goc_anh)
+        kq = sang_docx(khoi, ra, tieu_de=tieu_de, goc_anh=goc_anh)
+    elif dinh_dang == "xlsx":
+        kq = sang_xlsx(khoi, ra)
+    elif dinh_dang == "pptx":
+        kq = sang_pptx(khoi, ra, tieu_de=tieu_de, goc_anh=goc_anh)
+    else:
+        kq = sang_pdf(khoi, ra, tieu_de=tieu_de, goc_anh=goc_anh)
+
+    # Lệnh TeX không đổi được thì **nói ra**, chứ không lặng lẽ in cú pháp thô ra giấy.
+    # Bộ đổi này cố ý không phải một bộ dựng TeX; giới hạn của nó phải hiện ở kết quả, nếu
+    # không thì nó là một giới hạn chỉ người đọc bản in mới phát hiện — quá muộn.
+    if kq.dat:
+        sot = tex_con_sot(khoi)
+        if sot:
+            kq.do_lai["tex_chua_doi_duoc"] = sot
+    return kq

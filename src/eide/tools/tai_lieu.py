@@ -54,7 +54,10 @@ def dang_ky(r: Registry) -> None:
             "Excel (.xlsx) hoặc PDF — từ một tệp Markdown bạn đã viết bằng fs.write. Dùng khi "
             "người dùng cần một tệp gửi đi, in ra hoặc nộp, chứ không phải chữ trong khung "
             "chat. Khối ```mermaid trong nguồn được VẼ THÀNH HÌNH trong tệp (sequenceDiagram "
-            "và graph/flowchart), không in ra cú pháp. PowerPoint: mỗi tiêu đề một slide.",
+            "và graph/flowchart), không in ra cú pháp. Công thức LaTeX `$…$` giữa dòng, "
+            "`$$…$$` nguyên đoạn và khối ```math được đổi sang ký hiệu toán đọc được "
+            "(× ≤ ∈ τ Ω…) ở MỌI chỗ — kể cả trong bảng, gạch đầu dòng và trích dẫn. "
+            "PowerPoint: mỗi tiêu đề một slide.",
             {"type": "object",
              "properties": {
                  "nguon": {"type": "string",
@@ -157,6 +160,16 @@ def _noi(tep: str, dinh_dang: str, do_lai: dict[str, Any], nguon: str,
                           for k, v in (do_lai.get("sheet") or {}).items()))
     else:
         do = f"{do_lai.get('so_trang', 0)} trang"
+    # Lệnh TeX không đổi được thì nói NGAY ĐẦU, cùng chỗ với các cảnh báo khác — người đọc
+    # bản in sẽ thấy nguyên cú pháp thô giữa câu, và lúc ấy tệp đã gửi đi rồi.
+    sot = do_lai.get("tex_chua_doi_duoc") or []
+    canh_bao = ""
+    if sot:
+        canh_bao = ("\n\n⚠️ **Chưa đổi được " + str(len(sot)) + " lệnh TeX** — "
+                    + ", ".join(f"`{x}`" for x in sot[:8])
+                    + (" …" if len(sot) > 8 else "")
+                    + ". Chúng in ra giấy đúng như đang viết. Viết lại bằng ký hiệu thường "
+                      "trong nguồn rồi render lại.")
     # Đường dẫn ĐẦY ĐỦ, không chỉ đường tương đối.
     #
     # Anh Công hỏi ngày 29/09/2026: *"thư mục Agent sinh ra tài liệu nằm ở đâu?"* — tệp nằm
@@ -164,5 +177,6 @@ def _noi(tep: str, dinh_dang: str, do_lai: dict[str, Any], nguon: str,
     # tệp rồi đi tìm không thấy. Một tệp không tìm thấy thì cũng bằng chưa làm.
     o_dau = f"\n\nTệp nằm ở: `{day_du}`" if day_du else ""
     return (f"`{tep}` — **{do}** (đếm bằng cách mở lại chính tệp vừa tạo, không phải bằng số "
-            f"byte đã ghi).{o_dau}\n\nNguồn là `{nguon}`: sửa ở đó rồi render lại, đừng sửa "
-            "trong Word — bản render là thứ dựng lại được, nguồn mới là thứ giữ lịch sử.")
+            f"byte đã ghi).{canh_bao}{o_dau}\n\nNguồn là `{nguon}`: sửa ở đó rồi render lại, "
+            "đừng sửa trong Word — bản render là thứ dựng lại được, nguồn mới là thứ giữ "
+            "lịch sử.")
