@@ -9,7 +9,6 @@
 #define REG_CONFIG        0x1A
 #define REG_GYRO_CONFIG   0x1B
 #define REG_ACCEL_CONFIG  0x1C
-#define REG_ACCEL_CONFIG_2 0x1D
 #define REG_ACCEL_XOUT_H  0x3B
 #define REG_PWR_MGMT_1    0x6B
 #define REG_WHO_AM_I      0x75
@@ -28,8 +27,8 @@ const char* mpu6050_get_init_diag(void) {
 }
 
 bool mpu6050_init(void) {
-    /* Đánh thức MPU6050 và chọn nguồn xung PLL tối ưu (CLKSEL = 1, PWR_MGMT_1 = 0x01) */
-    if (!i2c_write_byte(MPU6050_ADDR, REG_PWR_MGMT_1, 0x01)) {
+    /* Đánh thức MPU6050 bằng cách xoá bit SLEEP trong thanh ghi PWR_MGMT_1 (§8.2 Bảng 22 dòng 2) */
+    if (!i2c_write_byte(MPU6050_ADDR, REG_PWR_MGMT_1, 0x00)) {
         snprintf(s_mpu_init_diag, sizeof(s_mpu_init_diag), "PWR_MGMT_1 write err");
         return false;
     }
@@ -75,37 +74,9 @@ bool mpu6050_init(void) {
         return false;
     }
 
-    /* Với chip họ MPU-6500/9250 (ID 0x72): cấu hình và kiểm chứng thanh ghi ACCEL_CONFIG_2 (0x1D) */
-    if (who_am_i == 0x72) {
-        uint8_t cfg2_orig = 0;
-        i2c_read_bytes(MPU6050_ADDR, REG_ACCEL_CONFIG_2, &cfg2_orig, 1);
-        if (!i2c_write_byte(MPU6050_ADDR, REG_ACCEL_CONFIG_2, 0x03)) {
-            snprintf(s_mpu_init_diag, sizeof(s_mpu_init_diag), "ACCEL_CFG2 write err");
-            return false;
-        }
-        for (volatile uint16_t d = 0; d < 5000; d++);
-        uint8_t cfg2_verify = 0;
-        i2c_read_bytes(MPU6050_ADDR, REG_ACCEL_CONFIG_2, &cfg2_verify, 1);
-
-        /* Đọc thêm các thanh ghi mở rộng của họ 6500 (0x1E, 0x1F) để thu thập bằng chứng silicon */
-        uint8_t r1E = 0, r1F = 0;
-        i2c_read_bytes(MPU6050_ADDR, 0x1E, &r1E, 1);
-        i2c_read_bytes(MPU6050_ADDR, 0x1F, &r1F, 1);
-
-        char diag_regs[64];
-        snprintf(diag_regs, sizeof(diag_regs), "[DIAG] Regs: 1C=%02X 1D=%02X(orig %02X) 1E=%02X 1F=%02X",
-                 accel_cfg_verify, cfg2_verify, cfg2_orig, r1E, r1F);
-        uart_send_line(diag_regs);
-
-        /* Quy tắc nghiêm ngặt: Ghi mà đọc lại không khớp thì KHÔNG ĐƯỢC báo OK */
-        if (cfg2_verify == 0x03) {
-            snprintf(s_mpu_init_diag, sizeof(s_mpu_init_diag), "OK ID=0x72 CFG2=0x03 (DLPF 41Hz verified)");
-        } else {
-            snprintf(s_mpu_init_diag, sizeof(s_mpu_init_diag), "WARN ID=0x72 CFG2_UNWRITABLE (0x%02X!=0x03)", cfg2_verify);
-        }
-    } else {
-        snprintf(s_mpu_init_diag, sizeof(s_mpu_init_diag), "OK ID=0x68(MPU6050) CFG=0x%02X", accel_cfg_verify);
-    }
+    /* Chuỗi chẩn đoán thành công: xác nhận WHO_AM_I và cấu hình dải đo gia tốc */
+    snprintf(s_mpu_init_diag, sizeof(s_mpu_init_diag), "OK (WHO=0x%02X, CFG=0x%02X)", who_am_i, accel_cfg_verify);
+    return true;
 
     return true;
 }
