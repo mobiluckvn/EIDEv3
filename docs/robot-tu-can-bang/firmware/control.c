@@ -32,11 +32,13 @@ void control_set_state(control_system_t *cs, control_state_t new_state) {
 }
 
 int16_t control_update_4ms(control_system_t *cs, float accel_x_g, float accel_z_g, float gyro_y_dps) {
-    /* Tính góc nghiêng pitch từ gia tốc kế */
-    float accel_pitch = atan2f(-accel_x_g, accel_z_g) * RAD_TO_DEG_FACTOR;
+    /* Tính góc nghiêng pitch từ gia tốc kế theo ánh xạ §8.3 (X đứng, Z trước-sau) và tham số §11 */
+    float forward_accel_z = (-1.0f) * accel_z_g; /* s = -1 cho bo hạng L (§11.5) */
+    float accel_pitch = (atan2f(forward_accel_z, accel_x_g) * RAD_TO_DEG_FACTOR) - (-0.713f);
 
-    /* Cập nhật bộ lọc bù kết hợp con quay quán tính */
-    float pitch = filter_update(&cs->filter, accel_pitch, gyro_y_dps);
+    /* Cập nhật bộ lọc bù kết hợp con quay quán tính nhân s = -1 (§11.5) */
+    float gyro_pitch_rate = (-1.0f) * gyro_y_dps;
+    float pitch = filter_update(&cs->filter, accel_pitch, gyro_pitch_rate);
     cs->current_pitch = pitch;
 
     switch (cs->state) {
@@ -57,8 +59,8 @@ int16_t control_update_4ms(control_system_t *cs, float accel_x_g, float accel_z_
                 cs->fall_triggered = true;
                 control_reset(cs);
             } else {
-                /* Tính toán PID cân bằng góc nghiêng */
-                float speed_out = pid_calculate(&cs->pid, 0.0f, pitch, CONTROL_LOOP_DT);
+                /* Tính toán PID cân bằng góc nghiêng với dấu đầu ra u phù hợp (§11.5) */
+                float speed_out = -pid_calculate(&cs->pid, 0.0f, pitch, CONTROL_LOOP_DT);
                 cs->motor_speed = (int16_t)speed_out;
             }
             break;

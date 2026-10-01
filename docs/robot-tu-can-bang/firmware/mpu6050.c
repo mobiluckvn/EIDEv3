@@ -1,6 +1,7 @@
 #include "mpu6050.h"
 #include "config.h"
 #include "i2c.h"
+#include <stddef.h>
 
 #define REG_SMPLRT_DIV    0x19
 #define REG_CONFIG        0x1A
@@ -49,6 +50,44 @@ bool mpu6050_read_raw(mpu6050_raw_data_t *raw) {
     raw->gyro_x  = (int16_t)((buf[8] << 8) | buf[9]);
     raw->gyro_y  = (int16_t)((buf[10] << 8) | buf[11]);
     raw->gyro_z  = (int16_t)((buf[12] << 8) | buf[13]);
+
+    return true;
+}
+
+static int32_t s_calib_sum_gx = 0;
+static int32_t s_calib_sum_gy = 0;
+static int32_t s_calib_sum_gz = 0;
+static uint16_t s_calib_count = 0;
+
+void mpu6050_calib_reset(void) {
+    s_calib_sum_gx = 0;
+    s_calib_sum_gy = 0;
+    s_calib_sum_gz = 0;
+    s_calib_count = 0;
+}
+
+bool mpu6050_calib_step(bool *out_done) {
+    if (out_done == NULL) {
+        return false;
+    }
+    *out_done = false;
+
+    mpu6050_raw_data_t raw;
+    if (!mpu6050_read_raw(&raw)) {
+        return false;
+    }
+
+    s_calib_sum_gx += raw.gyro_x;
+    s_calib_sum_gy += raw.gyro_y;
+    s_calib_sum_gz += raw.gyro_z;
+    s_calib_count++;
+
+    if (s_calib_count >= CALIB_SAMPLES) {
+        s_gyro_bias_x = (float)s_calib_sum_gx / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
+        s_gyro_bias_y = (float)s_calib_sum_gy / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
+        s_gyro_bias_z = (float)s_calib_sum_gz / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
+        *out_done = true;
+    }
 
     return true;
 }

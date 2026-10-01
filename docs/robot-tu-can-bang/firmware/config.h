@@ -25,23 +25,34 @@
 #define BUTTON_PINREG        PINB
 #define BUTTON_PORT          PORTB
 
-/* Chân điều khiển Driver A4988 Động cơ Trái (Motor L) */
-#define MOTOR_L_STEP_PIN     PD3       /* D3 (PD3): Xung STEP động cơ trái */
+/* Chân điều khiển Driver A4988 Động cơ Trái (Motor L) theo Bảng 13 (STEP2 = D7, DIR2 = D6) */
+#define MOTOR_L_STEP_PIN     PD7       /* D7 (PD7): Xung STEP động cơ trái (STEP2) */
 #define MOTOR_L_STEP_DDR     DDRD
 #define MOTOR_L_STEP_PORT    PORTD
 
-#define MOTOR_L_DIR_PIN      PD2       /* D2 (PD2): Hướng DIR động cơ trái */
+#define MOTOR_L_DIR_PIN      PD6       /* D6 (PD6): Hướng DIR động cơ trái (DIR2) */
 #define MOTOR_L_DIR_DDR      DDRD
 #define MOTOR_L_DIR_PORT     PORTD
 
-/* Chân điều khiển Driver A4988 Động cơ Phải (Motor R) */
-#define MOTOR_R_STEP_PIN     PD5       /* D5 (PD5): Xung STEP động cơ phải */
+/* Chân điều khiển Driver A4988 Động cơ Phải (Motor R) theo Bảng 13 (STEP1 = D5, DIR1 = D4) */
+#define MOTOR_R_STEP_PIN     PD5       /* D5 (PD5): Xung STEP động cơ phải (STEP1) */
 #define MOTOR_R_STEP_DDR     DDRD
 #define MOTOR_R_STEP_PORT    PORTD
 
-#define MOTOR_R_DIR_PIN      PD4       /* D4 (PD4): Hướng DIR động cơ phải */
+#define MOTOR_R_DIR_PIN      PD4       /* D4 (PD4): Hướng DIR động cơ phải (DIR1) */
 #define MOTOR_R_DIR_DDR      DDRD
 #define MOTOR_R_DIR_PORT     PORTD
+
+/* =========================================================================
+ * THAM SỐ HIỆU CHUẨN BO HẠNG L (Tài liệu bàn giao §11)
+ * ========================================================================= */
+#define CALIB_ACCEL_ZERO_RAW   102       /* Giá trị thô gia tốc tại điểm cân bằng (LSB, ±4 g) (§11.2) */
+#define CALIB_PITCH_OFFSET_DEG (-0.713f) /* Góc lệch lắp đặt cảm biến [°] (§11.2) */
+#define CALIB_AXIS_DIR_Z       (-1.0f)   /* Chiều trục trước-sau s = -1 (hạng L) (§11.5 Bảng 33) */
+
+/* Mức logic chân DIR khi đi tới (§11 Bảng 33, Bảng 13) */
+#define DIR_FORWARD_LEFT       1         /* Bánh TRÁI: mức CAO (HIGH) = tiến */
+#define DIR_FORWARD_RIGHT      0         /* Bánh PHẢI: mức THẤP (LOW) = tiến */
 
 /* GHI CHÚ PHẦN CỨNG ĐẶC BIỆT:
  * Chân EN của 2 driver A4988 nối cứng GND trên mạch bo mạch.

@@ -31,6 +31,12 @@ bool mpu6050_read_raw(mpu6050_raw_data_t *raw);
 /* Quy trình tự động hiệu chuẩn offset tĩnh con quay (FR-02) */
 bool mpu6050_calibrate_gyro(void);
 
+/* Khởi tạo quy trình hiệu chuẩn phi chặn */
+void mpu6050_calib_reset(void);
+
+/* Thực hiện lấy 1 mẫu hiệu chuẩn phi chặn, trả về true khi thành công và gán *out_done = true khi đủ 500 mẫu */
+bool mpu6050_calib_step(bool *out_done);
+
 /* Đọc dữ liệu đã trừ offset hiệu chuẩn và đổi sang đơn vị vật lý */
 bool mpu6050_read_scaled(mpu6050_data_t *data);
 

@@ -23,17 +23,17 @@ void motor_set_speed(int16_t speed_left, int16_t speed_right) {
     s_speed_left = speed_left;
     s_speed_right = speed_right;
 
-    /* Cập nhật hướng quay DIR */
+    /* Cập nhật hướng quay DIR theo §11 Bảng 33 (Trái: HIGH=tiến, Phải: LOW=tiến) */
     if (speed_left >= 0) {
-        MOTOR_L_DIR_PORT |= (1 << MOTOR_L_DIR_PIN);
+        MOTOR_L_DIR_PORT |= (1 << MOTOR_L_DIR_PIN);  /* Bánh trái: HIGH = tiến */
     } else {
-        MOTOR_L_DIR_PORT &= ~(1 << MOTOR_L_DIR_PIN);
+        MOTOR_L_DIR_PORT &= ~(1 << MOTOR_L_DIR_PIN); /* Bánh trái: LOW = lùi */
     }
 
     if (speed_right >= 0) {
-        MOTOR_R_DIR_PORT |= (1 << MOTOR_R_DIR_PIN);
+        MOTOR_R_DIR_PORT &= ~(1 << MOTOR_R_DIR_PIN); /* Bánh phải: LOW = tiến */
     } else {
-        MOTOR_R_DIR_PORT &= ~(1 << MOTOR_R_DIR_PIN);
+        MOTOR_R_DIR_PORT |= (1 << MOTOR_R_DIR_PIN);  /* Bánh phải: HIGH = lùi */
     }
 }
 
