@@ -506,9 +506,9 @@ Chỉ còn điều kiện bắt buộc về phần cứng. Không có lời gi�
 kế, hoặc do người đọc mã rồi hỏi lại.
 
 Và chỗ quyết định: robot chỉ đứng được **sau khi có một bản chạy được để so sánh**. Năm vòng
-cắm bo trước đó thu hẹp được một phần, nhưng nghi phạm ai cũng nghĩ tới trước là hệ số PID.
+cắm bo trước đó thu hẹp được một phần, nhưng chỗ bị nghi là hệ số PID.
 Khi nạp bản của nhà cung cấp — phần mềm người viết, đã đứng được trên chính bo này — robot
-đứng ngay. Một lần nạp đó chia đôi không gian lỗi: phần cứng, jack động cơ, cảm biến, nguồn
+đứng ngay. Một lần nạp đó chia đôi chỗ cần tìm lỗi: phần cứng, jack động cơ, cảm biến, nguồn
 đều tốt, nên lỗi còn lại nằm trong phần mềm.
 
 Đối chiếu từng con số tìm ra **bảy** chỗ lệch, trong đó chỗ nặng nhất là hằng số chỉnh chuẩn
@@ -516,28 +516,100 @@ gia tốc: **535 thay vì 92**, tức **3,1 độ** điểm cân bằng sai. Rob
 không giữ được, nên nó vọt qua rồi ngã. Còn hệ số PID thì bản chạy được dùng **đúng** con số
 EIDE vẫn để — nó chưa bao giờ là nguyên nhân.
 
-Xem đầy đủ: [**báo cáo so sánh với người làm tay**](docs/robot-tu-can-bang/BAO-CAO-SO-SANH.md)
-và [`docs/robot-tu-can-bang/`](docs/robot-tu-can-bang/).
+#### Mất bao lâu, tốn bao nhiêu
 
-### 7.3 · Rút ra được gì từ hai việc này
+| | Nếu một đội người làm tay (ước lượng) | Phiên Agent (đo được) |
+|---|---|---|
+| Thời gian | **31,0 ngày công ±2,6** · khoảng **4 tuần** lịch | **7,4 giờ**, một buổi |
+| Nhân lực | 1 Senior + 1 Mid + QA + quản lý | **1 người** + Agent |
+| Tiền | **≈ 105 triệu đồng** (mức giữa) | **≈ 340 nghìn đồng** tiền mô hình |
+| Phần mềm có đứng được không | có | **có** |
 
-Chỗ Agent thật sự đổi được cục diện **không phải là tốc độ gõ mã**. Là chỗ này: nó làm những
+Chênh khoảng **300 lần về tiền** và **30 lần về giờ công** (31 ngày công của một đội so với 7,4
+giờ của một người).
+
+Con số 31 ngày công tính đủ bốn khâu, chia theo 13 việc nhỏ, mỗi việc ước ba mức rồi lấy theo
+PERT. Hai việc có mức chậm nhất gấp bốn đến sáu lần mức nhanh nhất, và đó là hai chỗ rủi ro
+thật:
+
+| Việc | Vai | Nhanh | Thường | Chậm | Ngày công |
+|---|---|---|---|---|---|
+| Hàm ngắt 50 kHz: 0 số thực, 0 phép chia | Senior | 1 | 3 | **8** | 3,50 |
+| **Gỡ lỗi trên bo: ba dấu cộng trừ và ba con số theo từng bo** | Senior | 2 | 5 | **12** | 5,67 |
+
+Dòng thứ hai trong phiên thật **đã rơi về phía mức chậm**: mười lần cắm bo, và vẫn chưa xong
+tới khi có bản chạy được để so.
+
+Kiểm chéo bằng COCOMO trên 1,820 KSLOC cho **95 – 155 ngày công**, tức gấp 3 đến 5 lần. Chênh
+lệch đó có lý do — COCOMO tính trọn vòng đời công nghiệp và được biết là ước lượng thừa cho dự
+án dưới 2 KSLOC — nên lấy PERT làm số chính và đọc COCOMO như mức trần.
+
+**Bốn điều bảng trên không chứng minh**, nói trước để không bị đọc quá tay:
+
+1. **Người vẫn nằm trên đường quyết định.** Cả mười lần cắm bo đều cần người dựng robot lên rồi
+   nói nó ngã về phía nào. Agent không chạm được vào robot, nên 7,4 giờ ấy phần lớn là chờ
+   người thử.
+2. **Bước cuối dùng một bản đã chạy được để so.** Không có nó thì phiên này còn kéo dài.
+3. **340 nghìn đồng không phải toàn bộ chi phí** — chưa tính giờ của người, phần cứng, và thời
+   gian dựng EIDE.
+4. **Tám chỗ Agent báo xong trong khi đang sai đều cần một phép đo do người thiết kế.** Thời
+   gian rà soát đó nằm **trong** 7,4 giờ, nhưng nó cần một người biết phải đo cái gì. Giao cho
+   người không biết nghi chỗ nào thì tám chỗ ấy lọt hết, và robot sẽ không đứng.
+
+Xem cách tính đầy đủ — token, đơn giá ba mức, bảng 13 việc, COCOMO:
+[**báo cáo so sánh với người làm tay**](docs/robot-tu-can-bang/BAO-CAO-SO-SANH.md) ·
+[`docs/robot-tu-can-bang/`](docs/robot-tu-can-bang/).
+
+### 7.3 · Đặt hai việc cạnh nhau: thời gian và tiền
+
+| | Hệ điều hành tự viết | Robot hai bánh tự đứng |
+|---|---|---|
+| Phần mềm giao ra | 689 dòng lõi + 340 dòng ứng dụng | 1 820 dòng, 10 mô-đun |
+| **Phiên Agent — thời gian** | **81,2 phút** | **7,4 giờ** |
+| **Phiên Agent — tiền mô hình** | **≈ 34 nghìn đồng** · 351 lời gọi | **≈ 340 nghìn đồng** · 1 415 lời gọi |
+| **Nếu người làm tay — ngày công** | **31,7 ±2,3** | **31,0 ±2,6** |
+| **Nếu người làm tay — thời gian lịch** | 4–5 tuần | khoảng 4 tuần |
+| **Nếu người làm tay — tiền** | **≈ 111 triệu đồng** | **≈ 105 triệu đồng** |
+| Chênh về tiền | **khoảng 3 300 lần** | **khoảng 300 lần** |
+| Chênh về giờ công | **khoảng 190 lần** | **khoảng 30 lần** |
+| Chạy thật trên bo | LCD 800×480 + cảm ứng + 6 việc | robot đứng được |
+
+Hai cột không chênh giống nhau, và chỗ khác nhau đó nói lên điều chính:
+
+Bài hệ điều hành chênh **gấp hơn mười lần** so với bài robot. Lý do là bài hệ điều hành gần như
+toàn bộ nằm trong phần **đọc tài liệu, tra thanh ghi, viết mã** — đúng phần Agent nhanh. Bài
+robot thì phần lớn thời gian nằm ở **gỡ lỗi trên bo thật**, mà phần đó Agent không rút ngắn được
+bao nhiêu: nó không chạm được vào robot, mỗi lần đều phải chờ người dựng lên rồi nói nó ngã về
+phía nào.
+
+Nói cách khác: **mức lợi của Agent tỉ lệ với phần việc nằm trong máy tính.** Việc nào càng dính
+vào vật thật thì khoảng chênh càng hẹp.
+
+### 7.4 · Rút ra được gì từ hai việc này
+
+Chỗ Agent thật sự giúp được nhiều nhất **không phải là tốc độ gõ mã**. Là chỗ này: nó làm những
 phép đo mà người sẽ bỏ. Đọc ngược chip đủ 32 lần trong một phiên. Dựng bảng 109 điều kiện rồi
 đối chiếu lại sau mỗi lần sửa. Ghi 249 lần sửa đều gỡ lại được. Giữ nguyên văn 1 415 lời gọi
 mô hình. Không phải vì nó cẩn thận hơn người, mà vì **nó không mỏi**, và mỏi là lý do người bỏ
 bước.
 
-Chỗ Agent không làm được, và hai việc này chứng minh khá rõ:
+Chỗ Agent không làm được, và hai việc này cho thấy khá rõ:
 
 1. **Nó không tự biết nó sai.** Mọi câu "đã xong, đã kiểm, 0 byte lệch" đều có thể đúng về lời
    gọi và sai về kết quả.
-2. **Bộ kiểm nó tự viết thì xanh sẵn.** Phải có người phá mã sản phẩm rồi đòi bộ kiểm phải đỏ.
+2. **Bộ kiểm nó tự viết thì báo đạt sẵn.** Phải có người sửa hỏng mã sản phẩm rồi đòi bộ kiểm
+   phải báo lỗi.
 3. **Nó không chạm được vào thế giới.** Có những con số chỉ đo được khi người dựng robot lên
    và nói nó ngã về phía nào.
 
 Nên hình dung đúng không phải "Agent thay người", mà là: **Agent gánh phần ghi chép và phần
 làm đủ bước, người giữ phần phán đoán và phần chạm vào vật thật.** Và có một vai thứ ba hoá ra
 cũng quan trọng: **một bản đã chạy được**, dùng để so sánh.
+
+Có một điều kiện đi kèm những con số tiền ở trên, phải nói rõ: **340 nghìn đồng chỉ đúng khi có
+người biết phải nghi chỗ nào.** Giao cùng việc đó cho người không biết đặt phép đo thì tám chỗ
+sai sẽ lọt hết, và robot sẽ không đứng — lúc ấy số tiền đó mua được một phần mềm trông như đã
+xong.
 
 ---
 
