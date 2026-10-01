@@ -40,7 +40,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 
 ## 1 · Nhìn một lượt: EIDE làm được gì
 
-Agent có **122 công cụ** (113 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch bật bằng cờ), **7
+Agent có **127 công cụ** (118 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch bật bằng cờ), **7
 Agent con**, **8 bộ hướng dẫn nạp theo việc**, **11 cửa duyệt**, và **11 tab** để người xem
 việc đang tới đâu.
 
@@ -55,6 +55,7 @@ Bảng dưới xếp theo *việc người cần làm*, không theo cách chia m
 | **Viết mã** | 8 | đọc hiểu mã cũ trước khi sửa · dịch mã · bản đồ bộ nhớ · chạy bộ kiểm · đo xem bộ kiểm có đo gì không |
 | **Chạy thử trên máy** | 2 | nêu mức đo trước, chạy, rồi đối chiếu |
 | **Làm việc với bo thật** | 6 | dò bo · nạp · đọc ngược để so từng byte · đọc log · tìm chỗ treo · đọc khung ảnh từ chip |
+| **Làm chip trên FPGA** | 5 | soát cú pháp Verilog · mô phỏng testbench · tổng hợp · đặt-đi dây và **đo Fmax thật** · đóng gói bitstream |
 | **Nhớ và quản việc** | 28 | kho dữ liệu · sổ ghi việc · gỡ lại · bản chốt · nhánh · chia việc nhiều chặng |
 | **Tự lo cho mình** | 4 | tìm công cụ · **tự viết công cụ mới** rồi tự kiểm trước khi dùng |
 
@@ -396,7 +397,8 @@ thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc ph
 | Cách làm mã: đọc trước, đánh mốc, chọn cấu trúc | **8/8** | [`thu_quy_trinh_code.py`](tools/thu_quy_trinh_code.py) |
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
-| Công cụ đã được dùng thật | **110/122** | rà toàn bộ sổ ghi việc |
+| Luồng công cụ FPGA bốn chặng | **chạy thông** — Verilog → bitstream `.fs` | [`docs/riscv-tn20k/`](docs/riscv-tn20k/) |
+| Công cụ đã được dùng thật | **115/127** | rà toàn bộ sổ ghi việc |
 
 Mỗi ca kiểm có một tệp log riêng, trong đó có **bảng từng lời gọi công cụ kèm tham số đầy đủ
 và mã lỗi**: [`ket-qua-chay-lai/nhat-ky/`](docs/review-v3/test/ket-qua-chay-lai/nhat-ky/).
@@ -415,7 +417,7 @@ Một công cụ không bao giờ được dùng thì bằng không có nó.
 
 ---
 
-## 7 · Hai việc thật đã làm xong
+## 7 · Ba việc thật
 
 ### 7.1 · Viết một hệ điều hành thời gian thực, thay hẳn FreeRTOS
 
@@ -561,7 +563,47 @@ Xem cách tính đầy đủ — token, đơn giá ba mức, bảng 13 việc, C
 [**báo cáo so sánh với người làm tay**](docs/robot-tu-can-bang/BAO-CAO-SO-SANH.md) ·
 [`docs/robot-tu-can-bang/`](docs/robot-tu-can-bang/).
 
-### 7.3 · Đặt hai việc cạnh nhau: thời gian và tiền
+### 7.3 · Lõi RISC-V trên FPGA — việc đang làm, và là việc khó nhất
+
+Hai việc trên đã xong. Việc này **chưa**, và nó nằm đây vì đó là chỗ đo được nhiều nhất: nó cố
+ý nằm **ngoài hẳn** vùng EIDE từng làm. Trước việc này EIDE không có một dòng nào về HDL —
+không tổng hợp Verilog được, không mô phỏng Verilog được, không đóng gói bitstream được, không
+nạp FPGA được, và không biên dịch cho RISC-V được.
+
+Đề bài: dựng một CPU RISC-V trên kit Sipeed Tang Nano 20K, chạy chương trình C trên CPU đó, đo
+chi phí nhân ma trận làm đường cơ sở, rồi thêm phần cứng chuyên dụng để giảm chi phí ấy.
+
+**Đã mô phỏng được:**
+
+| | |
+|---|---|
+| SoC in "Hello" qua UART | testbench giải mã từng bit, nhận đúng `Hello from PicoRV32 on Tang Nano 20K, cycle=126` |
+| Fmax | **134,93 MHz**, cần 27 |
+| Tài nguyên | LUT **2 180/20 736** · FF 820/15 552 · BSRAM 16/46 |
+| Nhân ma trận | bốn cách viết, mọi kết quả khớp mô hình NumPy |
+| Đường cơ sở | **719,48 chu kỳ** cho mỗi phép nhân-cộng, ở cấu hình không có bộ nhân cứng |
+
+**Chưa làm được:** chạy trên bo thật (chưa có kit, và đề bài cấm Agent tự đặt hàng) · Bài 2 mới
+4 trên 96 phép đo · Bài 3 chưa bắt đầu.
+
+**Agent tự viết 1 407 dòng** — Verilog, C, hợp ngữ, linker script, Python, ràng buộc chân.
+
+Một kết quả ngược trực giác mà chỉ đo mới thấy: đề bài mô tả cách viết V1 là *"đọc B theo hàng,
+liên tục hơn"*, ngụ ý nhanh hơn. Đo ra thì **V1 chậm hơn V0 14 %** — vì lợi thế ấy là lợi thế
+bộ nhớ đệm, mà SoC này không có bộ nhớ đệm.
+
+Và một chuyện đáng ghi hơn cả phần kỹ thuật: **phần lớn thời gian mất trong việc này là lỗi của
+người, không phải của Agent.** Bốn lượt liền Agent chạy lại bài cũ; ba giả thuyết hợp lý đều
+sai; nguyên nhân thật là hộp thư nối giữa bộ điều khiển phiên và giao diện không được dọn, nên
+app phát lại lời giao việc **cũ nhất**. Agent chưa bao giờ nhận được câu được gõ.
+
+> Trước khi hỏi *"vì sao nó làm sai"*, hỏi *"nó có nhận được đề bài không"*.
+
+Xem đầy đủ: [`docs/riscv-tn20k/`](docs/riscv-tn20k/) — trong đó
+[`NANG-CAP-AGENT.md`](docs/riscv-tn20k/tai-lieu/NANG-CAP-AGENT.md) ghi từng chỗ EIDE không làm
+được và chuyện gì xảy ra sau đó. Đó là kết quả nghiên cứu chính của việc này.
+
+### 7.4 · Đặt hai việc đã xong cạnh nhau: thời gian và tiền
 
 | | Hệ điều hành tự viết | Robot hai bánh tự đứng |
 |---|---|---|
@@ -586,7 +628,7 @@ phía nào.
 Nói cách khác: **mức lợi của Agent tỉ lệ với phần việc nằm trong máy tính.** Việc nào càng dính
 vào vật thật thì khoảng chênh càng hẹp.
 
-### 7.4 · Rút ra được gì từ hai việc này
+### 7.5 · Rút ra được gì từ ba việc này
 
 Chỗ Agent thật sự giúp được nhiều nhất **không phải là tốc độ gõ mã**. Là chỗ này: nó làm những
 phép đo mà người sẽ bỏ. Đọc ngược chip đủ 32 lần trong một phiên. Dựng bảng 109 điều kiện rồi
@@ -618,7 +660,7 @@ xong.
 
 Nói ra để người đọc không phải tự tìm:
 
-- **12 trong 122 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
+- **12 trong 127 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
   bo, chưa viết xong.
 - **Công thức toán chưa dựng thành hình trên màn hình chat.** Phần tệp Word, PDF, PowerPoint
   thì đã xong, nhưng màn hình chat đi đường khác và chưa nối phần công thức vào.
@@ -629,6 +671,10 @@ Nói ra để người đọc không phải tự tìm:
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
 - **Sáu ca kiểm cần người trực tiếp làm**, chưa tự động hoá được.
 - **Robot còn 23 trong 109 điều kiện chưa làm**, phần lớn là các điểm đo để cắm máy hiện sóng.
+- **Việc FPGA mới xong Bài 1 phần mô phỏng.** Chưa chạy trên bo thật vì chưa có kit; Bài 2
+  mới 4 trên 96 phép đo; Bài 3 chưa bắt đầu. Và `tool.install` mở một thẻ duyệt **mới** mỗi
+  lần gọi lại, nên một việc cài có thể để lại hàng chục thẻ treo — thẻ được duyệt sang lượt
+  sau, mà Agent thử lại trong cùng lượt.
 
 Danh sách đầy đủ, kèm chỗ cần sửa trong mã:
 [`docs/md/VIEC-CHO-LAM.md`](docs/md/VIEC-CHO-LAM.md).
