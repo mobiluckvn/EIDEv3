@@ -75,6 +75,22 @@ void motor_enable(void) {
     }
 }
 
+int16_t motor_get_throttle_l(void) {
+    int16_t val;
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        val = s_target_thr_l;
+    }
+    return val;
+}
+
+int16_t motor_get_throttle_r(void) {
+    int16_t val;
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        val = s_target_thr_r;
+    }
+    return val;
+}
+
 /* Hàm chạy trong ISR Timer2 ngắt 50 kHz (Tầng 1) tuân thủ nghiêm ngặt §7.7 (Bảng 19) */
 void motor_isr_step(void) {
     /* Yêu cầu 5: Gom mọi thao tác vào một biến tạm, ghi PORTD một lần ở cuối */

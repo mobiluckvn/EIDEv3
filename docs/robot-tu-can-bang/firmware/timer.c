@@ -5,6 +5,7 @@
 static volatile uint32_t s_system_ms = 0;
 static volatile bool s_flag_control_4ms = false;
 static volatile uint8_t s_tick_counter_4ms = 0;
+static volatile uint16_t s_deadline_miss = 0;
 
 /* Khai báo hàm ngắt tầng 1 sinh xung bước từ mô-đun motor */
 extern void motor_isr_step(void);
@@ -32,6 +33,10 @@ ISR(TIMER0_COMPA_vect) {
     s_tick_counter_4ms++;
     if (s_tick_counter_4ms >= CONTROL_LOOP_MS) {
         s_tick_counter_4ms = 0;
+        if (s_flag_control_4ms) {
+            /* Cờ cũ chưa được xóa khi nhịp 4 ms kế tiếp tới -> deadline miss (§12.6, §13.4 Mục 8) */
+            s_deadline_miss++;
+        }
         s_flag_control_4ms = true;
     }
 }
@@ -58,4 +63,13 @@ bool timer_check_control_flag(void) {
         return true;
     }
     return false;
+}
+
+uint16_t timer_get_deadline_miss(void) {
+    uint16_t miss;
+    uint8_t sreg = SREG;
+    cli();
+    miss = s_deadline_miss;
+    SREG = sreg;
+    return miss;
 }

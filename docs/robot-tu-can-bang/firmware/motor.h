@@ -25,4 +25,8 @@ void motor_enable(void);
 /* Hàm thực thi trong ISR ngắt Timer2 50 kHz (Tầng 1) */
 void motor_isr_step(void);
 
+/* Đọc lệnh throttle hiện tại của hai bánh xe */
+int16_t motor_get_throttle_l(void);
+int16_t motor_get_throttle_r(void);
+
 #endif /* MOTOR_H_ */

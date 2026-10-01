@@ -30,6 +30,9 @@ void fsm_update_control_4ms(void);
 /* Lấy trạng thái hiện tại của robot */
 robot_state_t fsm_get_state(void);
 
+/* Lấy góc nghiêng pitch đo được gần nhất */
+float fsm_get_pitch(void);
+
 /* Báo lỗi cảm biến quán tính (MPU6050) và kích hoạt mã bíp cảnh báo */
 void fsm_notify_sensor_error(void);
 

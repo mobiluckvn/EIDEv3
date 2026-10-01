@@ -13,4 +13,7 @@ uint32_t timer_get_ms(void);
 /* Kiểm tra và xoá cờ chu kỳ vòng cân bằng 4 ms (Tầng 2) */
 bool timer_check_control_flag(void);
 
+/* Lấy số lần trễ hạn chu kỳ điều khiển Tầng 2 */
+uint16_t timer_get_deadline_miss(void);
+
 #endif /* TIMER_H_ */

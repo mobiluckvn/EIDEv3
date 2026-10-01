@@ -20,6 +20,7 @@ static uint32_t s_last_btn_time = 0;
 /* Quản lý còi phi chặn */
 static uint32_t s_buzzer_off_time = 0;
 static bool s_sensor_error = false;
+static bool s_sensor_error_muted = false;
 static uint32_t s_last_calib_ms = 0;
 
 /* Quản lý chế độ tự kiểm dấu (§13.4) */
@@ -73,16 +74,24 @@ robot_state_t fsm_get_state(void) {
     return s_state;
 }
 
+float fsm_get_pitch(void) {
+    return s_last_measured_pitch;
+}
+
 void fsm_update_background(void) {
     uint32_t now = timer_get_ms();
 
-    /* Quản lý còi: nếu có lỗi cảm biến, phát mã bíp cảnh báo riêng biệt (3 bíp ngắn dồn dập mỗi giây) */
+    /* Quản lý còi: nếu có lỗi cảm biến, phát mã bíp cảnh báo riêng biệt (nếu chưa bấm nút tắt còi) */
     if (s_sensor_error) {
-        uint16_t phase = (uint16_t)(now % 1000);
-        if ((phase < 80) || (phase >= 160 && phase < 240) || (phase >= 320 && phase < 400)) {
-            BUZZER_PORT |= (1 << BUZZER_PIN);
+        if (s_sensor_error_muted) {
+            BUZZER_PORT &= ~(1 << BUZZER_PIN); /* Đã bấm tắt còi: im tiếng hoàn toàn */
         } else {
-            BUZZER_PORT &= ~(1 << BUZZER_PIN);
+            uint16_t phase = (uint16_t)(now % 1000);
+            if ((phase < 80) || (phase >= 160 && phase < 240) || (phase >= 320 && phase < 400)) {
+                BUZZER_PORT |= (1 << BUZZER_PIN);
+            } else {
+                BUZZER_PORT &= ~(1 << BUZZER_PIN);
+            }
         }
     } else if (s_state == STATE_DIAG_ANGLE) {
         /* Chế độ kiểm tra dấu góc (§13.4 Mục 4): còi kêu theo dấu góc */
@@ -136,7 +145,9 @@ void fsm_update_background(void) {
                 motor_set_throttle(100, 100); /* Chạy tới chậm trong 3 giây (v ≈ 0,031 m/s) */
                 s_diag_motor_start = now;
             } else if (s_sensor_error) {
-                /* Giữ nguyên trạng thái dừng khi cảm biến hỏng */
+                /* Bấm nút D12 khi đang báo lỗi: TẮT CÒI NGAY LẬP TỨC nhưng vẫn giữ cờ lỗi và log chữ */
+                s_sensor_error_muted = true;
+                BUZZER_PORT &= ~(1 << BUZZER_PIN);
             } else if (s_state == STATE_BALANCING || s_state == STATE_READY) {
                 /* Bấm nút khi đang chạy hoặc sẵn sàng -> Dừng hẳn (FR-03) */
                 s_state = STATE_STOPPED;

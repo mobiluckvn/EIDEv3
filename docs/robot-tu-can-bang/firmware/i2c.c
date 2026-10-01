@@ -3,7 +3,25 @@
 #include <avr/io.h>
 
 void i2c_init(void) {
-    /* TWBR = 12 với F_CPU = 16 MHz và Prescaler = 1 tạo xung SCL 400 kHz */
+    /* §8.6 Giải phóng bus TWI trước khi ghi TWCR: phát 9 xung SCL bằng phần mềm */
+    PORTC &= ~((1 << PC4) | (1 << PC5));
+    DDRC &= ~(1 << PC4); /* Nhả SDA làm đầu vào */
+
+    /* Phát 9 xung SCL dạng open-drain */
+    for (uint8_t i = 0; i < 9; i++) {
+        DDRC |= (1 << PC5);  /* Kéo SCL xuống */
+        for (volatile uint8_t d = 0; d < 10; d++);
+        DDRC &= ~(1 << PC5); /* Nhả SCL lên */
+        for (volatile uint8_t d = 0; d < 10; d++);
+    }
+
+    /* Tạo điều kiện STOP giả lập */
+    DDRC |= (1 << PC4);
+    for (volatile uint8_t d = 0; d < 10; d++);
+    DDRC &= ~(1 << PC4);
+    for (volatile uint8_t d = 0; d < 10; d++);
+
+    /* TWBR = 12 với F_CPU = 16 MHz và Prescaler = 1 tạo xung SCL 400 kHz (§8.1) */
     TWSR = 0x00;
     TWBR = 12;
     TWCR = (1 << TWEN);

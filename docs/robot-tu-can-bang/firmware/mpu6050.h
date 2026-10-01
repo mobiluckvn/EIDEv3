@@ -25,6 +25,9 @@ typedef struct {
 /* Khởi tạo cảm biến MPU6050 qua I2C */
 bool mpu6050_init(void);
 
+/* Lấy chuỗi chẩn đoán kết quả khởi tạo MPU6050 (Bảng 86) */
+const char* mpu6050_get_init_diag(void);
+
 /* Đọc toàn bộ 6 trục cảm biến thô */
 bool mpu6050_read_raw(mpu6050_raw_data_t *raw);
 
