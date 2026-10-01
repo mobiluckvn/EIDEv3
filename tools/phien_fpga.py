@@ -34,6 +34,7 @@ sổ, cả phiên dựng lại được từ đầu mà không cần tin vào b�
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pathlib
 import shutil
@@ -55,13 +56,71 @@ RA = REPO / "du-lieu/ket-qua/fpga-riscv"
 DE_BAI = REPO / "docs/fpga/yeu-cau-agent-riscv-tang-nano-20k.md"
 
 
+def cho_luot_dong(du_an: pathlib.Path, han_giay: float = 25.0) -> bool:
+    """Chờ sổ ghi việc có `turn.end` cho lượt mới nhất, TRƯỚC khi được phép tắt lõi.
+
+    Vì sao cần: `hoi()` trả về khi lời đáp của tác tử hiện ra trên giao diện, nhưng lõi còn
+    phải ghi `turn.end` xuống sổ. Tắt lõi ngay lúc ấy thì bản ghi kết thúc không bao giờ xuống
+    đĩa.
+
+    Hậu quả không hiện ra ngay, và đó là chỗ đắt: lần mở lại dự án, khối `<resume>` đọc sổ,
+    thấy một lượt có `turn.start` mà không có `turn.end`, rồi nói với tác tử *"Lượt run-00N
+    chưa kết thúc"*. Khối ấy còn dặn thêm *"việc dở dang thì nói ra TRƯỚC khi làm"*. Nên tác tử
+    đi làm lại đúng việc của lượt trước, thay vì việc vừa được giao.
+
+    Đo được ngày 01/10/2026: bốn lượt liền tác tử lặp lại việc cũ, và nguyên nhân nằm ở đây
+    chứ không nằm ở lời giao việc hay ở ngữ cảnh.
+    """
+    so = du_an / ".eide" / "ledger.jsonl"
+    het = time.time() + han_giay
+    while time.time() < het:
+        try:
+            bat_dau: list[str] = []
+            ket_thuc: set[str] = set()
+            with open(so, encoding="utf-8", errors="replace") as f:
+                for dong in f:
+                    if '"turn.' not in dong:
+                        continue
+                    d = json.loads(dong)
+                    rid = (d.get("data") or {}).get("run_id")
+                    if d.get("kind") == "turn.start" and rid:
+                        bat_dau.append(rid)
+                    elif d.get("kind") == "turn.end" and rid:
+                        ket_thuc.add(rid)
+            if bat_dau and bat_dau[-1] in ket_thuc:
+                return True
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.5)
+    print(f"{DO}  ⚠ lượt cuối chưa thấy turn.end sau {han_giay:.0f}s — lần mở lại sẽ báo "
+          f"'dở dang' và tác tử sẽ làm lại việc cũ{HET}")
+    return False
+
+
 def mo_app(du_an: pathlib.Path) -> GiaoDien:
     """Mở app, bật ghi nhật ký mô hình.
 
     Gọi thẳng tệp nhị phân chứ không `open -a`: LaunchServices không mang biến môi trường của
     vỏ lệnh sang, mà `EIDE_GHI_LLM` phải tới được lõi — lõi là tiến trình con của app.
     """
+    cho_luot_dong(du_an)
     subprocess.run(["pkill", "-f", "EIDE.app/Contents/MacOS/EIDE"], check=False)
+    # DỌN HỘP THƯ VÀO trước khi mở lại app — giữ hộp ra, bỏ hộp vào.
+    #
+    # `GiaoDien(..., xoa=False)` được đặt để **giữ hộp ra**, vì nhật ký phiên đọc từ đó. Nhưng
+    # nó giữ luôn hộp vào, và app mở lại thì đọc hộp vào **từ đầu tệp** rồi phát lại lời giao
+    # việc CŨ NHẤT.
+    #
+    # Đo được ngày 01/10/2026: ba lượt liền tác tử chạy lại bài blinky, kể cả khi câu giao việc
+    # viết thẳng "đừng chạy lại blinky". Nó không cãi — nó **không hề nhận được** câu ấy. Hộp
+    # thư có bốn lời giao việc chồng lên nhau, và lần nào app cũng phát lại lời thứ nhất.
+    #
+    # Mất bốn lượt mới tìm ra, vì mọi dấu hiệu đều trỏ sang chỗ khác: tưởng ngữ cảnh bị việc cũ
+    # chiếm chỗ, tưởng khối <resume> bảo nó làm nốt, tưởng lời giao việc quá dài. Cả ba đều là
+    # giả thuyết hợp lý, và cả ba đều sai.
+    hop_vao = du_an / ".eide" / "ui-test" / "inbox.jsonl"
+    if hop_vao.exists():
+        hop_vao.write_text("", "utf-8")
     het = time.time() + 20
     while time.time() < het:
         if subprocess.run(["pgrep", "-f", "EIDE.app/Contents/MacOS/EIDE"],

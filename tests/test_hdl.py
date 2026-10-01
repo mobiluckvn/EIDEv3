@@ -461,3 +461,27 @@ def test_ghi_tep_roi_moi_do_thi_KHONG_dat(tmp_path, monkeypatch):
     kq = H.tong_hop(goc=goc, nguon=goc / "rtl", dinh="blinky")
     assert ra.exists() and ra.stat().st_size > 0, "ca này cần tệp CÓ mặt và không rỗng"
     assert not kq.dat, "lệnh trả mã lỗi thì không đạt, dù tệp có mặt"
+
+
+# =============================================================== khối <resume>
+
+def test_resume_khong_bao_tac_tu_lam_lai_viec_cu(tmp_path):
+    """Dòng "lượt chưa kết thúc" phải nói rõ ĐỪNG tự làm lại.
+
+    Đo ngày 01/10/2026, phiên FPGA: khối `<resume>` ghi "Lượt run-00N chưa kết thúc", cộng với
+    lời dặn "việc dở dang thì nói ra TRƯỚC khi làm" — tác tử hiểu là phải làm nốt, và **bốn
+    lượt liền nó lặp lại việc của lượt trước** thay vì việc vừa được giao.
+
+    Dòng ấy còn thường SAI: `turn.end` được ghi đúng lúc khối resume đang dựng, nên một lượt đã
+    xong vẫn hiện ở đây. Một cuộc đua ghi/đọc, không phải một lượt hỏng.
+    """
+    from eide.memory import resume as R
+
+    nguon = (tmp_path / "resume_src.py")
+    src = __import__("inspect").getsource(R)
+    assert "đừng tự làm lại việc của lượt" in src or "đừng** tự làm lại" in src, (
+        "lời nhắc phải nói thẳng là đừng làm lại")
+    assert "ledger.query" in src, "phải chỉ cách tra xem lượt cũ đã làm tới đâu"
+    assert "hỏi người dùng" in src, "còn dở thật thì hỏi, không tự quyết"
+    assert "việc cũ chỉ được làm lại khi người" in src, (
+        "lời dặn cuối khối phải nói rõ: nói ra ≠ làm nốt")

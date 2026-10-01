@@ -51,7 +51,21 @@ def dung_khoi_resume(*, ledger: Any, store: Any, history: Any,
         elif ev.kind == "turn.end":
             da_xong.add(ev.data.get("run_id"))
     if run_cuoi and run_cuoi not in da_xong:
-        dang_do.append(f"- Lượt {run_cuoi} chưa kết thúc.")
+        # Nói rõ phải làm GÌ với tin này, vì bản thân tin ấy mơ hồ và tốn kém khi hiểu nhầm.
+        #
+        # Bản cũ chỉ ghi "Lượt run-00N chưa kết thúc." Cộng với lời dặn cuối khối — *"việc dở
+        # dang thì nói ra TRƯỚC khi làm"* — tác tử hiểu là phải làm nốt việc cũ, và nó **làm
+        # lại đúng việc của lượt trước** thay vì việc vừa được giao. Đo được ngày 01/10/2026
+        # trong phiên FPGA: bốn lượt liền lặp lại việc cũ.
+        #
+        # Và phần lớn trường hợp dòng này còn SAI. `turn.end` được ghi ngay lúc khối resume
+        # đang dựng, nên một lượt đã xong vẫn hiện ở đây — một cuộc đua ghi/đọc, không phải
+        # một lượt hỏng. Sổ kiểm lại sau đó thấy đủ cả `turn.start` lẫn `turn.end`.
+        dang_do.append(
+            f"- Lượt {run_cuoi} không thấy bản ghi kết thúc. Thường là tiến trình bị tắt ngay "
+            "lúc đang ghi, chứ không phải việc làm dở — nên **đừng tự làm lại việc của lượt "
+            "ấy**. Muốn biết nó đã làm tới đâu thì gọi `ledger.query`; nếu thật sự còn dở và "
+            "ảnh hưởng tới việc vừa được giao thì **hỏi người dùng**, đừng tự quyết.")
 
     cho = [e for e in su_kien if e.kind == "gate" and e.data.get("state") == "open"]
     da_tra = {e.data.get("gate_id") for e in su_kien
@@ -135,7 +149,9 @@ def dung_khoi_resume(*, ledger: Any, store: Any, history: Any,
           "Chỉ khi họ hỏi “dự án đang thế nào” hoặc chưa giao việc gì cụ thể thì mới "
           "thuật lại 5–8 câu từ khối này.",
           "Nếu có mục nào ở trên ảnh hưởng tới việc họ vừa giao — việc dở dang, thẻ "
-          "đang chờ, sổ lệch — thì nói ra TRƯỚC khi làm.",
+          "đang chờ, sổ lệch — thì **nói ra bằng một câu** rồi vẫn làm việc vừa được giao. "
+          "Nói ra không có nghĩa là đi làm nốt việc cũ: việc cũ chỉ được làm lại khi người "
+          "dùng bảo làm lại.",
           "Không chắc điều gì thì gọi ledger.query, đừng đoán.",
           "</resume>"]
     return "\n".join(L)

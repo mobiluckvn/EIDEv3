@@ -195,3 +195,49 @@ ngay lượt đầu, sáu lời gọi công cụ.
 không làm được, chỉ vì lịch sử hội thoại kéo nó về việc cũ.** Và cách chữa rẻ nhất không phải
 sửa lời giao việc — là tách phiên.
 
+## Vòng năm: bốn lượt mất vì một hộp thư không ai dọn
+
+Ba lượt liền Agent chạy lại bài blinky thay vì làm việc mới, kể cả khi câu giao việc viết thẳng
+*"đừng chạy lại blinky"*.
+
+Tôi đi qua **ba giả thuyết, cả ba đều hợp lý và cả ba đều sai**:
+
+| Giả thuyết | Vì sao nghe hợp lý | Vì sao sai |
+|---|---|---|
+| Ngữ cảnh bị việc cũ chiếm chỗ | mười mấy lượt bàn về cài đặt | mở dự án sạch lịch sử vẫn lặp |
+| Khối `<resume>` bảo nó làm nốt | khối ấy **thật sự** ghi "Lượt run-00N chưa kết thúc" | sửa lời dặn xong vẫn lặp |
+| Câu giao việc quá dài | lần nào ngắn lại cũng có vẻ khá hơn | câu ngắn nhất vẫn lặp |
+
+Nguyên nhân thật: **Agent chưa bao giờ nhận được câu tôi gõ.**
+
+Hộp thư nối giữa bộ điều khiển phiên và giao diện (`.eide/ui-test/inbox.jsonl`) không được dọn.
+Tôi mở nó với `xoa=False` để **giữ hộp ra** — nhật ký phiên đọc từ đó — nhưng cờ ấy giữ luôn
+**hộp vào**. Mỗi lần mở lại app, nó đọc hộp vào **từ đầu tệp** rồi phát lại lời giao việc cũ
+nhất. Hộp thư có bốn lời chồng lên nhau; lần nào cũng phát lời thứ nhất.
+
+Nên khi tôi viết "đừng chạy lại blinky", Agent không cãi — nó **không thấy câu ấy**.
+
+### Vì sao mất bốn lượt
+
+Mọi dấu hiệu đều trỏ sang chỗ khác, và mỗi giả thuyết sai lại **sinh ra một bản sửa trông có
+lý**: tôi sửa lời dặn trong `<resume>`, thêm bước chờ `turn.end`, viết lại câu giao việc ba
+lần. Ba bản sửa ấy đều đúng về mặt riêng của chúng, nên không bản nào tự lộ ra là chữa nhầm
+bệnh.
+
+Phép đo chấm dứt mọi tranh cãi rất rẻ, và tôi làm nó cuối cùng thay vì đầu tiên: **in ra đúng
+những tin mà mô hình nhận được, theo thứ tự.** Hai tin, và tin cuối kết thúc bằng lệnh blinky.
+
+> Trước khi hỏi *"vì sao nó làm sai"*, hỏi *"nó có nhận được đề bài không"*.
+
+### Bài học cho EIDE
+
+Hai cơ chế đúng đứng cạnh nhau mà không ai nối: cờ `xoa` gộp chung **hộp vào** và **hộp ra**,
+trong khi hai hộp có vòng đời ngược nhau — hộp ra phải giữ để đọc lại, hộp vào phải dọn để
+khỏi phát lại. Một cờ cho hai thứ ngược nhau thì luôn sai một nửa.
+
+### Sau khi dọn
+
+Lượt kế tiếp Agent làm đúng việc ngay: lấy `picorv32.v` (**3 049 dòng**, 8 mô-đun, bản quyền
+Claire Wolf, giấy phép ISC) và viết `docs/third_party.md` đúng luật A3.5 của đề bài. Nó còn tự
+báo một chỗ thiếu mới: `code.vendor_fetch` trả `E3006`, nên phải đi đường khác.
+
