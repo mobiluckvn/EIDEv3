@@ -54,9 +54,9 @@
 #define CALIB_PITCH_OFFSET_DEG (0.713f)  /* Góc lệch lắp đặt cảm biến [°] (§11.2) */
 #define CALIB_AXIS_DIR_Z       (1.0f)    /* Chiều trục trước-sau s_net = +1 (nghiêng tới -> pitch > 0) (§13.4 Mục 4) */
 
-/* Mức logic chân DIR khi đi tới theo bản tham chiếu drv_stepper.c đã chạy tốt trên bo */
-#define DIR_FORWARD_LEFT       0         /* Bánh TRÁI: mức THẤP (LOW) = tiến (drv_stepper.c:52) */
-#define DIR_FORWARD_RIGHT      1         /* Bánh PHẢI: mức CAO (HIGH) = tiến (drv_stepper.c:82) */
+/* Mức logic chân DIR khi đi tới theo Fact f-nguoi-34069670 (quan sát trực tiếp trên bo của anh Công) */
+#define DIR_FORWARD_LEFT       1         /* Bánh TRÁI: mức CAO (HIGH) = tiến */
+#define DIR_FORWARD_RIGHT      0         /* Bánh PHẢI: mức THẤP (LOW) = tiến */
 
 /* GHI CHÚ PHẦN CỨNG ĐẶC BIỆT:
  * Chân EN của 2 driver A4988 nối cứng GND trên mạch bo mạch.
