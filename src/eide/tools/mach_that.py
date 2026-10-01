@@ -194,6 +194,29 @@ def dang_ky(r: Registry) -> None:
                 alternatives=["build.compile"], blame="agent"))
 
         d = MT.do_bo()
+        # Bo AVR: ĐỌC CHỮ KÝ ngay tại đây, trước khi đối chiếu.
+        #
+        # `do_bo()` cố ý không tự đọc — việc ấy reset bo, và `target.detect` là công cụ R1 mà
+        # người dùng tưởng là chỉ nhìn. Nhưng ở đây thì khác: sắp NẠP, mà nạp cũng reset bo,
+        # nên phép đọc không thêm tác dụng phụ nào.
+        #
+        # Thiếu chỗ này thì phép đối chiếu chip — thứ TC034 tồn tại để bắt — tụt xuống thành
+        # "người dùng đã bỏ qua". Đo được trên bo thật: tác tử vừa đọc `1e950f` xong, vừa ghim
+        # hộ chiếu ATmega328P xong, mà vẫn phải nạp bằng `dong_y_khong_doi_chieu_chip=true`.
+        # Nó cầm đủ hai vế mà công cụ không ghép được.
+        cong_avr_som = cong or next((t["duong_dan"] for t in d["thiet_bi"]
+                                     if t["nap_duoc_bang"] == "avrdude"), "")
+        if not d["chip_doc_duoc"] and cong_avr_som and cach in ("tu_chon", "avrdude"):
+            hc_som = _ho_chieu(ctx) or {}
+            ma_som = (ma_chip_avrdude
+                      or MT._MA_AVRDUDE.get(_goc_chip(str(hc_som.get("chip") or "")), "m328p"))
+            ten_avr, ky_avr, _ = MT.doc_chu_ky_avr(cong_avr_som, ma_chip=ma_som,
+                                                   baud=baud_bootloader)
+            if ten_avr:
+                d["chip_doc_duoc"] = ten_avr
+                d["vi_sao_chua_doc_duoc_chip"] = ""
+                d["avr"] = {"doc_duoc": True, "chu_ky": ky_avr, "chip": ten_avr,
+                            "cong": cong_avr_som, "baud": baud_bootloader}
         if not d["nap_duoc"]:
             return ToolResult(False, error=EideError(
                 "E4011", "Không tìm thấy đường nào để nạp: máy không có bộ nạp nào đang cắm.",

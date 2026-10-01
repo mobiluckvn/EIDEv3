@@ -231,3 +231,22 @@ def test_lenh_doc_chu_ky_CO_co_v(monkeypatch):
     MT.doc_chu_ky_avr("/dev/x")
     assert "-v" in giu["lenh"], "thiếu -v thì avrdude 8 không in chữ ký"
     assert "-n" in giu["lenh"], "thiếu -n thì phép DÒ lại đi GHI vào chip"
+
+
+# ================== phép đối chiếu chip KHÔNG được tụt xuống thành "người dùng đã bỏ qua"
+def test_flash_AVR_tu_doc_chu_ky_truoc_khi_doi_chieu():
+    """Đo được trên bo thật: tác tử vừa đọc `1e950f`, vừa ghim hộ chiếu ATmega328P, mà vẫn
+    phải nạp bằng `dong_y_khong_doi_chieu_chip=true` — hai lần gọi trước bị chặn E4013.
+
+    Nó cầm đủ hai vế mà công cụ không ghép được. `target.flash` phải TỰ đọc chữ ký khi đường
+    nạp là avrdude: sắp nạp thì cũng reset bo, nên phép đọc không thêm tác dụng phụ nào.
+
+    Ca này đọc chính mã, vì hành vi ấy chỉ thấy được khi có bo cắm thật.
+    """
+    src = (Path(__file__).resolve().parents[1]
+           / "src/eide/tools/mach_that.py").read_text("utf-8")
+    than = src.split("def target_flash(")[1].split("        # Chọn cách nạp.")[0]
+    i_doc = than.find("MT.doc_chu_ky_avr(")
+    i_so = than.find("so_chip(chip_du_an")
+    assert i_doc > 0, "target.flash không đọc chữ ký AVR"
+    assert i_so > 0 and i_doc < i_so, "đọc chữ ký phải nằm TRƯỚC phép đối chiếu"

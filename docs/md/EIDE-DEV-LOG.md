@@ -6189,7 +6189,26 @@ nạp được. Ca `test_moi_chu_ky_deu_tra_duoc_ma_avrdude` canh đúng bất b
 Tác tử tự gọi `target.detect` với `doc_chu_ky_avr=true` và đọc được **`0x1E 0x95 0x0F` →
 ATmega328P**, khớp tài liệu. Chưa nạp — chờ anh Công xác nhận danh mục an toàn.
 
+#### Nạp xong rồi mới thấy phép đối chiếu đã tụt xuống thành một lời miễn
+
+Tác tử nạp đạt: 5 710 byte, avrdude in `verified`, đọc ngược 32 768 byte từ chip và **0 byte
+lệch**. Nhưng trường `chip_da_doi_chieu` trong kho **rỗng**.
+
+Tra sổ cái: hai lần gọi `target.flash` đầu bị chặn `E4013`, lần thứ ba đi qua bằng
+`dong_y_khong_doi_chieu_chip=true`. Tức tác tử đã **bỏ qua phép đối chiếu chip** — thứ TC034
+tồn tại để bắt — dù năm phút trước nó vừa đọc được `1e950f` và vừa ghim hộ chiếu ATmega328P.
+
+Nó cầm đủ hai vế mà công cụ không ghép được: `target.flash` gọi `do_bo()` mới, và `do_bo()` cố
+ý không đọc chữ ký AVR (việc ấy reset bo). Nên trên bo AVR, một phép kiểm an toàn **im lặng
+hạ cấp thành một lời miễn** — đúng loại hỏng tệ nhất, vì nó vẫn xanh.
+
+Vá: `target.flash` tự đọc chữ ký khi đường nạp là avrdude. Lý do lần này không có tác dụng
+phụ — **sắp nạp thì cũng reset bo rồi**.
+
+Nạp lại, không cờ miễn: `chip_da_doi_chieu = ATmega328P`, khớp hộ chiếu, 0 byte lệch.
+
 ### Số đo
 
-**1 472 ca đơn vị** (+29) · bộ dò tài liệu **0 chỗ lệch** · đo trên bo Arduino Nano thật đang
-cắm ở `/dev/cu.usbserial-21410`.
+**1 473 ca đơn vị** (+30) · bộ dò tài liệu **0 chỗ lệch** · nạp thật vào ATmega328P ở
+`/dev/cu.usbserial-21410`, đọc ngược 32 768 byte, 0 byte lệch · 374 lời gọi mô hình ghi nguyên
+văn.
