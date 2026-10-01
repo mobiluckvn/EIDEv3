@@ -1,8 +1,10 @@
 `timescale 1ns / 1ps
 
-`include "tai-lieu/picorv32.v"
+`include "third_party/picorv32/picorv32.v"
 
-module soc_top (
+module soc_top #(
+    parameter INIT_FILE = ".eide/build/mach.hex"
+) (
     input  wire       clk_27m,      // Thạch anh 27 MHz (PIN 4)
     input  wire       btn_s1,       // Nút S1 (PIN 88, Active-Low)
     output wire       uart_tx_pin,  // UART TX nối BL616 (PIN 69)
@@ -105,7 +107,7 @@ module soc_top (
 
     bram #(
         .WORDS     (8192),
-        .INIT_FILE ("")
+        .INIT_FILE (INIT_FILE)
     ) ram (
         .clk       (clk_27m),
         .resetn    (sys_resetn),

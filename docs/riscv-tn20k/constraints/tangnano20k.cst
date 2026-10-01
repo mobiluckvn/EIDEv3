@@ -3,8 +3,8 @@
 // Mọi chân trong tệp này đều đã được đối chiếu và xác minh nguồn.
 
 // --- 1. Clock hệ thống 27 MHz ---
-IO_LOC "sys_clk" 4;
-IO_PORT "sys_clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+IO_LOC "clk_27m" 4;
+IO_PORT "clk_27m" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
 
 // --- 2. 6 LED trên bo (tích cực thấp: 0=sáng, 1=tối) ---
 IO_LOC "led[0]" 15;
@@ -36,8 +36,8 @@ IO_PORT "btn_s2" IO_TYPE=LVCMOS33 PULL_MODE=UP;
 
 // --- 4. Cổng UART nối tới chip cầu USB BL616 ---
 // FPGA TX (truyền lên máy tính qua USB CDC): PIN 69
-IO_LOC "uart_tx" 69;
-IO_PORT "uart_tx" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+IO_LOC "uart_tx_pin" 69;
+IO_PORT "uart_tx_pin" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
 
 // FPGA RX (nhận từ máy tính): PIN 70
 IO_LOC "uart_rx" 70;
