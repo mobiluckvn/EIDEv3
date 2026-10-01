@@ -6102,7 +6102,28 @@ nên hiện mã đúng, trong khi mã chạy là mã sai.
 *Một phép đo đọc một chỗ và chạy một chỗ khác thì nói về chỗ nào cũng sai.* Từ nay xoá
 `__pycache__` giữa các lượt phá.
 
+#### Rồi ba lỗi nữa, cũng chỉ trang in bắt được
+
+Dựng bộ tệp mẫu để anh Công tự kiểm, và nhìn bản PDF thì thấy ba chỗ ở đúng những ca chưa
+từng thử:
+
+| Viết | Ra | Vì sao |
+|---|---|---|
+| `\sqrt{R^2 + X^2}` | `√{R^2 + X^2}` | `\sqrt` nằm trong bảng như một ký tự lẻ, không ai gỡ ngoặc nhọn của nó |
+| `2^{\circ}` | `2^°` | luật `^{…}` chạy trước, mà **độ là hậu tố chứ không phải số mũ** |
+| `\frac{1}{2\pi\tau}` | `1/2πτ` | **sai nghĩa** — `1/2πτ` đọc thành `(1/2)·π·τ` |
+
+Cái thứ ba đáng nói nhất: chuỗi ra **không còn một ký tự TeX nào**, mọi con số đọc lại đều
+đúng, chỉ là nghĩa đã khác. Không bộ đếm nào chạm tới được.
+
+Gốc là phép quyết định đóng ngoặc đếm theo *ký tự phép toán*, mà `2\pi\tau` không có dấu cộng
+hay khoảng trắng nào. Nay đếm theo **hạng** — một lệnh TeX, một số, một tên là một hạng — và
+số tách riêng khỏi tên đứng sau, vì trong TeX `2R` nghĩa là `2·R`.
+
+Bộ tệp mẫu ở [`ket-qua-cong-thuc/`](../review-v3/test/ket-qua-cong-thuc/): một nguồn, bốn tệp
+dựng ra, kèm bảng "phải thấy gì / không được thấy gì" cho từng mục.
+
 ### Số đo
 
-**1 440 ca đơn vị** (+33) · bộ dò tài liệu **0 chỗ lệch** · sáu ngữ cảnh kiểm bằng cách mở lại
-tệp và bằng mắt trên trang PDF · bảng 90 ký hiệu có ca phủ toàn bộ.
+**1 443 ca đơn vị** (+36) · bộ dò tài liệu **0 chỗ lệch** · sáu ngữ cảnh kiểm bằng cách mở lại
+tệp **và bằng mắt trên trang PDF** · bảng 90 ký hiệu có ca phủ toàn bộ.

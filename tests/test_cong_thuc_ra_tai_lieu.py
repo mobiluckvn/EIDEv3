@@ -235,3 +235,30 @@ def test_phan_so_chi_dong_ngoac_khi_CAN():
     assert cong_thuc_nguoi_doc(r"\frac{PLLN}{PLLM}") == "PLLN/PLLM"
     assert cong_thuc_nguoi_doc(r"\frac{a+b}{c}") == "(a+b)/c"
     assert cong_thuc_nguoi_doc(r"\frac{a \times b}{c}") == "(a × b)/c"
+
+
+# ======================================= ba lỗi chỉ trang PDF bắt được, ngày 01/10/2026
+def test_can_bac_hai_go_ngoac_nhon():
+    """`\\sqrt` nằm trong bảng ký hiệu như một ký tự lẻ, nên `\\sqrt{R^2+X^2}` ra `√{R^2+X^2}`
+    — ngoặc nhọn của TeX lọt nguyên ra giấy."""
+    assert cong_thuc_nguoi_doc(r"\sqrt{R^2 + X^2}") == "√(R^2 + X^2)"
+    assert cong_thuc_nguoi_doc(r"\sqrt{2}") == "√2"
+
+
+def test_do_la_HAU_TO_khong_phai_so_mu():
+    """`2^{\\circ}` ra `2^°` vì luật `^{…}` chạy trước — mà độ không phải số mũ."""
+    assert cong_thuc_nguoi_doc(r"\pm 2^{\circ}") == "± 2°"
+    assert cong_thuc_nguoi_doc(r"45^\circ") == "45°"
+
+
+def test_mau_nhieu_HANG_phai_dong_ngoac():
+    """`1/2πτ` **đọc thành `(1/2)·π·τ`** — sai nghĩa, không chỉ xấu.
+
+    Đếm theo ký tự phép toán thì không bắt được: `2\\pi\\tau` không có dấu cộng hay khoảng
+    trắng nào. Phải đếm theo HẠNG — một lệnh TeX, một tên, hay một số là một hạng.
+    """
+    assert cong_thuc_nguoi_doc(r"\frac{1}{2\pi\tau}") == "1/(2πτ)"
+    assert cong_thuc_nguoi_doc(r"\frac{1}{2R}") == "1/(2R)"
+    # và không đóng ngoặc khi chỉ có một hạng
+    assert cong_thuc_nguoi_doc(r"\frac{1}{1000}") == "1/1000"
+    assert cong_thuc_nguoi_doc(r"\frac{f_{VCO}}{PLLP}") == "f_VCO/PLLP"

@@ -245,22 +245,46 @@ def doc_markdown(md: str) -> list[Khoi]:
 # Thứ tự có nghĩa: gỡ `\text{…}` TRƯỚC `\frac{…}{…}`. Ngược lại thì `\frac{8\text{ MHz}}{8}`
 # không khớp — mẫu của `\frac` không nhận ngoặc lồng, nên nó bỏ qua và cú pháp TeX lọt ra
 # trang giấy. Đo trên chính tài liệu kiến trúc: một phân số giữ nguyên `\frac{...}{...}`.
+# Một "hạng" của công thức: một lệnh TeX, một số, một tên, hoặc một ký tự lẻ.
+#
+# Số tách riêng khỏi tên đứng sau nó, vì trong TeX `2R` nghĩa là `2·R` — gộp chúng làm một
+# hạng thì `\frac{1}{2R}` ra `1/2R`, mà `1/2R` đọc thành `(1/2)·R`. Tên thì cho phép chứa chữ
+# số ở giữa (`R2`, `f_VCO`), chỉ không cho **bắt đầu** bằng chữ số.
+_HANG = re.compile(r"\\[A-Za-z]+|\d+(?:[.,]\d+)?|[A-Za-z_][A-Za-z0-9_.]*|\S")
+
+
+def _mot_hang(x: str) -> bool:
+    """Vế này có đúng một hạng không — tức bỏ ngoặc đi cũng không đổi nghĩa."""
+    return len(_HANG.findall(x)) == 1
+
+
+def _boc(x: str) -> str:
+    x = x.strip()
+    return x if _mot_hang(x) else f"({x})"
+
+
 def _phan_so(tu: str, mau: str) -> str:
     """`\\frac{a}{b}` → `a/b`; chỉ đóng ngoặc khi vế đó THẬT SỰ cần.
 
-    Đóng ngoặc vô điều kiện cho ra `(1)/(1000)` và `(PLLN)/(PLLM)` — đúng nhưng đọc vướng,
-    và trên một trang giấy đầy công thức thì cái vướng ấy cộng dồn. Chỉ cần ngoặc khi vế có
-    phép cộng/trừ/nhân/chia hoặc khoảng trắng, vì lúc ấy bỏ ngoặc sẽ đổi nghĩa.
-    """
-    def boc(x: str) -> str:
-        x = x.strip()
-        return f"({x})" if (not x or re.search(r"[+\-*/×·÷\s]", x)) else x
+    Đóng ngoặc vô điều kiện cho ra `(1)/(1000)` — đúng nhưng đọc vướng, và trên một trang đầy
+    công thức thì cái vướng ấy cộng dồn.
 
-    return f"{boc(tu)}/{boc(mau)}"
+    Nhưng đếm theo *ký tự phép toán* thì hỏng: `\\frac{1}{2\\pi\\tau}` không có dấu cộng hay
+    khoảng trắng nào, nên ra `1/2πτ` — mà `1/2πτ` **đọc thành `(1/2)·π·τ`**, sai nghĩa hẳn.
+    Thấy trên trang PDF, không con số nào của bộ kiểm kêu.
+
+    Nên đếm theo **hạng**: một lệnh TeX, một tên, hay một số là một hạng. Nhiều hơn một hạng
+    thì đóng ngoặc.
+    """
+    return f"{_boc(tu)}/{_boc(mau)}"
 
 
 _TEX = (
     (re.compile(r"\\(?:text|mathrm|mathbf|operatorname)\{([^{}]*)\}"), r"\1"),
+    # Độ là ký hiệu HẬU TỐ, không phải số mũ: `2^{\circ}` phải ra `2°`, không phải `2^°`.
+    # Đổi trước mọi luật mũ, nếu không thì `^{…}` biến nó thành `^\circ` rồi thành `^°`.
+    (re.compile(r"\^\s*\{?\s*\\(?:circ|degree)\s*\}?"), "°"),
+    (re.compile(r"\\sqrt\{([^{}]*)\}"), lambda m: "√" + _boc(m[1])),
     (re.compile(r"\\frac\{([^{}]*)\}\{([^{}]*)\}"), lambda m: _phan_so(m[1], m[2])),
     (re.compile(r"\\(?:quad|qquad|,|;|!)"), " "),
     # `\left(` / `\right]` là lệnh chỉnh cỡ ngoặc — bỏ đi là đúng. Nhưng không có
