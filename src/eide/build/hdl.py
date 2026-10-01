@@ -320,7 +320,14 @@ def _thieu(ten: str, de_lam_gi: str) -> KetQuaHdl:
 
 
 def _nguon_hdl(duong: Path) -> list[str]:
-    """Tệp `.v`/`.sv` trong cây nguồn, bỏ thư mục ẩn và thư mục dựng lại được."""
+    """Tệp `.v`/`.sv` trong cây nguồn, bỏ thư mục ẩn và thư mục dựng lại được.
+
+    Trả đường dẫn **tuyệt đối**. Mọi chặng chạy công cụ với `cwd` đặt ở gốc dự án, nên một
+    đường dẫn tương đối so với thư mục hiện tại của tiến trình gọi sẽ không tìm thấy — và lỗi
+    hiện ra là `Cannot find file containing module`, một câu trông như thiếu mô-đun chứ không
+    như sai đường dẫn. Đã trúng một lần ngày 01/10/2026.
+    """
+    duong = duong.resolve()
     if duong.is_file():
         return [str(duong)]
     bo = {"build", "obj_dir", "node_modules"}
@@ -337,6 +344,7 @@ def lint(*, goc: Path, nguon: Path, dinh: str = "") -> KetQuaHdl:
     vài phút mới biết. `--lint-only` **không** sinh tệp nào, nên đây là chặng duy nhất trong
     tệp này kết luận theo mã thoát — và nói rõ điều đó ra.
     """
+    goc = goc.resolve()
     kq = KetQuaHdl(chang="lint", cong_cu="verilator")
     v = _tim_lenh("verilator")
     if not v:
@@ -372,6 +380,7 @@ def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
     `FAIL`. Một testbench chạy xong mà không in gì thì **không đạt**, và lời từ chối nói rõ vì
     sao — đó là lỗi của testbench, không phải của thiết kế.
     """
+    goc = goc.resolve()
     kq = KetQuaHdl(chang="mo_phong", cong_cu=bo_may)
     ds = _nguon_hdl(nguon)
     if not ds:
@@ -442,6 +451,7 @@ def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
 def tong_hop(*, goc: Path, nguon: Path, dinh: str, bo_kit: str = "tangnano20k",
              ra: Path | None = None) -> KetQuaHdl:
     """Yosys `synth_gowin` → tệp JSON mạng cổng, kèm bảng đếm ô."""
+    goc = goc.resolve()
     kq = KetQuaHdl(chang="tong_hop", cong_cu="yosys")
     ys = _tim_lenh("yosys")
     if not ys:
@@ -471,6 +481,7 @@ def tong_hop(*, goc: Path, nguon: Path, dinh: str, bo_kit: str = "tangnano20k",
 def dat_di_day(*, goc: Path, json_mang: Path, cst: Path, bo_kit: str = "tangnano20k",
                tan_so_mhz: float = 27.0, ra: Path | None = None) -> KetQuaHdl:
     """nextpnr-himbaechel → tệp bố trí, kèm Fmax và mức dùng tài nguyên thật."""
+    goc = goc.resolve()
     kq = KetQuaHdl(chang="dat_di_day", cong_cu="nextpnr-himbaechel")
     np = _tim_lenh("nextpnr-himbaechel")
     if not np:
@@ -551,6 +562,7 @@ def _doc_chip_tu_pnr(pnr_json: Path) -> str:
 def dong_goi(*, goc: Path, pnr_json: Path, bo_kit: str = "tangnano20k",
              ra: Path | None = None) -> KetQuaHdl:
     """gowin_pack → tệp `.fs` nạp được vào FPGA."""
+    goc = goc.resolve()
     kq = KetQuaHdl(chang="dong_goi", cong_cu="gowin_pack")
     gp = _tim_lenh("gowin_pack")
     if not gp:
