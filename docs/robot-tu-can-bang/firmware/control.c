@@ -15,7 +15,23 @@ void control_init(control_system_t *cs) {
     cs->motor_enabled = false;
     cs->fall_triggered = false;
     filter_init(&cs->filter, 0.98f, CONTROL_LOOP_DT);
-    pid_init(&cs->pid, 15.0f, 0.8f, 0.5f, 100.0f, 2000.0f);
+    /* Khởi tạo PID theo thang tốc độ throttle max 25.000 xung/s (§7.6, Bảng 18) */
+    pid_init(&cs->pid, 180.0f, 10.0f, 6.0f, 1250.0f, 25000.0f);
+}
+
+static int16_t speed_to_throttle_internal(float speed_hz) {
+    float abs_spd = fabsf(speed_hz);
+    if (abs_spd < 10.0f) {
+        return 0; /* Xử lý tường minh: đứng im (§7.6) */
+    }
+    float thr_val = (50000.0f / abs_spd) - 1.0f;
+    int16_t thr = (int16_t)(thr_val + 0.5f);
+    if (thr < 1) {
+        thr = 1;
+    } else if (thr > 2000) {
+        thr = 2000;
+    }
+    return (speed_hz >= 0.0f) ? thr : -thr;
 }
 
 void control_reset(control_system_t *cs) {
@@ -59,9 +75,9 @@ int16_t control_update_4ms(control_system_t *cs, float accel_x_g, float accel_z_
                 cs->fall_triggered = true;
                 control_reset(cs);
             } else {
-                /* Tính toán PID cân bằng góc nghiêng với dấu đầu ra u phù hợp (§11.5) */
+                /* Tính toán PID cân bằng góc nghiêng và đổi sang throttle (§7.6, §11.5) */
                 float speed_out = -pid_calculate(&cs->pid, 0.0f, pitch, CONTROL_LOOP_DT);
-                cs->motor_speed = (int16_t)speed_out;
+                cs->motor_speed = speed_to_throttle_internal(speed_out);
             }
             break;
 

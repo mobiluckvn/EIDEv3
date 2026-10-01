@@ -49,8 +49,9 @@ void fsm_init(void) {
     /* Khởi tạo bộ lọc bù: alpha = 0.98, dt = 4 ms */
     filter_init(&s_filter, 0.98f, CONTROL_LOOP_DT);
 
-    /* Khởi tạo PID: Kp = 15.0, Ki = 0.8, Kd = 0.5, MaxI = 100.0, MaxOut = 2000.0 */
-    pid_init(&s_pid, 15.0f, 0.8f, 0.5f, 100.0f, 2000.0f);
+    /* Khởi tạo PID theo thang tốc độ throttle mới (§7.6, Bảng 18: max 25.000 xung/s):
+     * Kp = 180.0, Ki = 10.0, Kd = 6.0, MaxI = 1250.0, MaxOut = 25000.0 */
+    pid_init(&s_pid, 180.0f, 10.0f, 6.0f, 1250.0f, 25000.0f);
 
     s_state = STATE_INIT;
     s_sensor_error = false;

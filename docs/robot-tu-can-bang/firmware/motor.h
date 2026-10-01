@@ -7,7 +7,13 @@
 /* Khởi tạo chân I/O điều khiển driver động cơ bước A4988 */
 void motor_init(void);
 
-/* Cài đặt tốc độ bước cho hai bánh xe (xung/giây) */
+/* Cài đặt tốc độ bước cho hai bánh xe qua đại lượng throttle theo §7.6 (|thr| >= 1, 0 = đứng im) */
+void motor_set_throttle(int16_t throttle_left, int16_t throttle_right);
+
+/* Chuyển đổi tốc độ/tần số xung mong muốn (xung/giây) sang throttle theo §7.6 */
+int16_t motor_speed_to_throttle(float speed_hz);
+
+/* Cài đặt tốc độ bước cho hai bánh xe (hàm tương thích gọi throttle) */
 void motor_set_speed(int16_t speed_left, int16_t speed_right);
 
 /* Dừng hoàn toàn việc phát xung bước (Chân EN nối cứng GND nên dừng bằng cách tắt xung STEP) */

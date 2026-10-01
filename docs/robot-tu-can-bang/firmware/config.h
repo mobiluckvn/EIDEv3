@@ -15,7 +15,7 @@
 #define CONTROL_LOOP_MS      4         /* Tầng 2: Chu kỳ vòng cân bằng 4 ms (anh cho, chưa có tài liệu) */
 #define CONTROL_LOOP_DT      ((float)CONTROL_LOOP_MS / (float)TIMER0_TICK_HZ)
 
-/* Chân ngoại vi giao tiếp người dùng */
+/* Chân ngoại vi giao tiếp người dùng và điểm đo kiểm (§13.4) */
 #define BUZZER_PIN           PB2       /* D10 (PB2): Còi chip báo hiệu trạng thái (FR-01) */
 #define BUZZER_DDR           DDRB
 #define BUZZER_PORT          PORTB
@@ -24,6 +24,10 @@
 #define BUTTON_DDR           DDRB
 #define BUTTON_PINREG        PINB
 #define BUTTON_PORT          PORTB
+
+#define PROBE_ISR_PIN        PB5       /* D13 (PB5): Điểm đo thời gian thực thi ISR Tầng 1 (Bảng 13, §13.4) */
+#define PROBE_ISR_DDR        DDRB
+#define PROBE_ISR_PORT       PORTB
 
 /* Chân điều khiển Driver A4988 Động cơ Trái (Motor L) theo Bảng 13 (STEP2 = D7, DIR2 = D6) */
 #define MOTOR_L_STEP_PIN     PD7       /* D7 (PD7): Xung STEP động cơ trái (STEP2) */

@@ -21,6 +21,9 @@ void timer_init(void) {
     TCCR2B = (1 << CS21);               /* Prescaler 8 */
     OCR2A  = 39;
     TIMSK2 |= (1 << OCIE2A);            /* Bật ngắt so sánh kênh A */
+    /* Cấu hình chân điểm đo PROBE_ISR D13 (PB5) là OUTPUT, ban đầu LOW */
+    PROBE_ISR_DDR |= (1 << PROBE_ISR_PIN);
+    PROBE_ISR_PORT &= ~(1 << PROBE_ISR_PIN);
 }
 
 /* Ngắt Timer0: 1 ms hệ thống, đánh cờ kích hoạt Tầng 2 mỗi chu kỳ điều khiển */
@@ -33,9 +36,11 @@ ISR(TIMER0_COMPA_vect) {
     }
 }
 
-/* Ngắt Timer2: Tầng 1 sinh xung bước */
+/* Ngắt Timer2: Tầng 1 sinh xung bước kèm điểm đo PROBE_ISR D13 (§13.4, Mục 9) */
 ISR(TIMER2_COMPA_vect) {
+    PROBE_ISR_PORT |= (1 << PROBE_ISR_PIN);  /* Dựng xung PROBE_ISR D13 ở đầu ISR (sbi) */
     motor_isr_step();
+    PROBE_ISR_PORT &= ~(1 << PROBE_ISR_PIN); /* Hạ xung PROBE_ISR D13 ở cuối ISR (cbi) */
 }
 
 uint32_t timer_get_ms(void) {
