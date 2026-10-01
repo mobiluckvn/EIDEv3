@@ -56,6 +56,40 @@ class Budget:
     compact_at: float = 0.70          # §B1 "if ctx.tokens > 0.7 * window"
     max_ask_rounds: int = 2           # N4 "hoi mot cum, toi da 2 lan/luot"
 
+    def __post_init__(self) -> None:
+        """Noi han muc bang bien moi truong. Mac dinh van la so cua MDD-40 §B1.
+
+        Vi sao can noi — do duoc ngay 01/10/2026, viec FPGA:
+
+        Han 300 s/luot duoc chon cho viec vi dieu khien, noi moi buoc dai vai giay. Viec FPGA co
+        nhung buoc **dai hon han mot luot ngay tu ban chat cong viec**, khong phai vi cham:
+
+          - tai goi `oss-cad-suite`: 483 MB
+          - tong hop mot loi RISC-V bang Yosys roi dat-di day bang nextpnr: vai phut
+
+        Voi han 300 s, tac tu khong bao gio cham duoc cau goi `tool.install` den luc xong — no
+        het luot giua duong, va lan sau vao lai thi bat dau lai tu dau. Do la mot vong lap khong
+        bao gio ket thuc, khong phai mot buoc cham.
+
+        Ghi lech trong EIDE-DEV-LOG. Mac dinh KHONG doi: chi du an nao can thi dat bien.
+        """
+        import os as _os
+
+        def _so(ten: str, cu: float) -> float:
+            v = (_os.environ.get(ten) or "").strip()
+            if not v:
+                return cu
+            try:
+                x = float(v)
+            except ValueError:
+                return cu
+            # Tran tren co that: mot han muc vo han bien "tac tu dang lam" thanh "tac tu dang
+            # treo" ma khong ai biet khi nao nen dung cho.
+            return max(cu, min(x, 7200.0))
+
+        self.max_seconds = _so("EIDE_TRAN_GIAY_LUOT", self.max_seconds)
+        self.max_tool_calls = int(_so("EIDE_TRAN_LOI_GOI_LUOT", float(self.max_tool_calls)))
+
 
 @dataclass(slots=True)
 class ContextBudget:

@@ -6212,3 +6212,55 @@ Nạp lại, không cờ miễn: `chip_da_doi_chieu = ATmega328P`, khớp hộ c
 **1 473 ca đơn vị** (+30) · bộ dò tài liệu **0 chỗ lệch** · nạp thật vào ATmega328P ở
 `/dev/cu.usbserial-21410`, đọc ngược 32 768 byte, 0 byte lệch · 374 lời gọi mô hình ghi nguyên
 văn.
+
+---
+
+## DEV-319 · Nới được hạn thời gian một lượt — vì việc FPGA có bước dài hơn hạn ngay từ bản chất
+
+*01/10/2026. Lệch với MDD-40 §B1 và UC19.*
+
+### Tài liệu nói gì
+
+§B1 chốt ngân sách một lượt: **40 lời gọi công cụ, 300 giây**. UC19 nói rõ *"quá hạn lượt
+(300 s) thả người dùng ra"*. Hai con số ấy chọn cho việc vi điều khiển, nơi mỗi bước dài vài
+giây: biên dịch một firmware AVR mất dưới một giây, nạp qua avrdude mất bốn giây.
+
+### Mã làm khác
+
+`Budget.__post_init__` nay đọc hai biến môi trường `EIDE_TRAN_GIAY_LUOT` và
+`EIDE_TRAN_LOI_GOI_LUOT`. **Mặc định không đổi** — vẫn 300 s và 40 lời gọi. Chỉ dự án nào cần
+thì đặt biến.
+
+Hai chốt chặn để việc nới không thành vô hạn:
+- **Trần trên 7 200 giây.** Một hạn mức vô hạn biến "tác tử đang làm" thành "tác tử đang treo"
+  mà không ai biết khi nào nên dừng chờ.
+- **Không hạ được xuống dưới mặc định.** Biến này để nới, không để siết — siết hạn mức là cách
+  làm tác tử bỏ việc giữa đường mà vẫn báo xong.
+- Chuỗi không phải số thì giữ mặc định, không báo lỗi: một biến môi trường gõ sai không nên làm
+  cả phiên không chạy được.
+
+### Vì sao lệch
+
+Việc FPGA có những bước **dài hơn hạn một lượt ngay từ bản chất công việc**, không phải vì chậm:
+
+| Bước | Thời gian |
+|---|---|
+| Tải gói `oss-cad-suite` | **483 MB** |
+| Tổng hợp một lõi RISC-V bằng Yosys rồi đặt-đi dây bằng nextpnr | vài phút |
+
+Với hạn 300 giây, tác tử **không bao giờ chạm được** tới lúc một lời gọi `tool.install` xong. Nó
+hết lượt giữa đường; lần sau vào lại thì bắt đầu từ đầu. Đó là một vòng lặp không bao giờ kết
+thúc, không phải một bước chậm.
+
+Đo được ngày 01/10/2026: hai lượt liền tác tử tiêu hết 300 giây vào `env.check` và `tool.search`
+rồi hết lượt **trước khi gọi `tool.install` lần nào**.
+
+### Hướng đúng hơn, chưa làm
+
+Nới hạn mức là cách chữa chỗ đau, không phải cách chữa nguyên nhân. Cách đúng là cho
+`tool.install` và các bước dài khác **chạy ở chế độ nền**, báo tiến độ qua nhiều lượt, và giữ
+trạng thái để lượt sau tiếp tục chứ không làm lại. Khi đó hạn 300 giây của §B1 giữ nguyên được,
+vì lượt không còn phải chờ bước dài.
+
+Chưa làm vì nó cần thêm cơ chế trạng thái giữa các lượt. Ghi lại đây để không ai nhầm việc nới
+hạn mức là lời giải cuối.

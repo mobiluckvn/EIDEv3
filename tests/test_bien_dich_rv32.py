@@ -248,7 +248,12 @@ def test_lenh_cai_nextpnr_khong_ghim_cung_mot_ngay():
     assert "releases/latest" not in lenh, (
         "KHÔNG được lấy mù bản `latest`: ngày 01/10/2026 bản latest chỉ có tệp x64, nên trên "
         "máy Apple Silicon nó cho ra URL 404")
-    assert "sudo" not in lenh, "cài vào ~/.local, không cần quyền quản trị"
+    assert "sudo" not in lenh, "không được cần quyền quản trị"
+    assert "$HOME/.local" not in lenh, (
+        "KHÔNG cài vào ~/.local: trên máy này thư mục đó do root sở hữu (755, từ 2023), nên "
+        "tar báo Permission denied. Sửa quyền cần sudo — một điểm dừng phải hỏi người dùng, "
+        "cái giá quá đắt để cài một công cụ.")
+    assert "Application Support/EIDE" in lenh, "cài vào thư mục người dùng thật sự sở hữu"
 
 
 def test_tim_lenh_tim_ca_trong_oss_cad_suite(tmp_path, monkeypatch):
@@ -260,3 +265,61 @@ def test_tim_lenh_tim_ca_trong_oss_cad_suite(tmp_path, monkeypatch):
     monkeypatch.setattr(TC, "_OSS_CAD", tmp_path / "oss-cad-suite")
     assert TC._tim_lenh("nextpnr-himbaechel").endswith("oss-cad-suite/bin/nextpnr-himbaechel")
     assert TC._tim_lenh("khong-he-co-lenh-nay") == ""
+
+
+# --------------------------------------------------------------- hạn thời gian một lượt
+
+def test_han_luot_mac_dinh_khong_doi(monkeypatch):
+    """Mặc định phải đúng con số của MDD-40 §B1 — nới là việc của từng dự án."""
+    from eide.config import Budget
+    monkeypatch.delenv("EIDE_TRAN_GIAY_LUOT", raising=False)
+    monkeypatch.delenv("EIDE_TRAN_LOI_GOI_LUOT", raising=False)
+    b = Budget()
+    assert b.max_seconds == 300.0 and b.max_tool_calls == 40
+
+
+def test_han_luot_noi_duoc_bang_bien_moi_truong(monkeypatch):
+    from eide.config import Budget
+    monkeypatch.setenv("EIDE_TRAN_GIAY_LUOT", "1800")
+    monkeypatch.setenv("EIDE_TRAN_LOI_GOI_LUOT", "120")
+    b = Budget()
+    assert b.max_seconds == 1800.0 and b.max_tool_calls == 120
+
+
+def test_han_luot_khong_sieT_duoc_xuong_duoi_mac_dinh(monkeypatch):
+    """Siết hạn mức là cách làm tác tử bỏ việc giữa đường mà vẫn báo xong."""
+    from eide.config import Budget
+    monkeypatch.setenv("EIDE_TRAN_GIAY_LUOT", "10")
+    assert Budget().max_seconds == 300.0
+
+
+def test_han_luot_co_tran_tren(monkeypatch):
+    """Hạn vô hạn biến 'đang làm' thành 'đang treo' mà không ai biết khi nào nên dừng chờ."""
+    from eide.config import Budget
+    monkeypatch.setenv("EIDE_TRAN_GIAY_LUOT", "999999")
+    assert Budget().max_seconds == 7200.0
+
+
+def test_han_luot_chuoi_vo_nghia_thi_giu_mac_dinh(monkeypatch):
+    """Một biến gõ sai không nên làm cả phiên không chạy được."""
+    from eide.config import Budget
+    monkeypatch.setenv("EIDE_TRAN_GIAY_LUOT", "ba muoi")
+    assert Budget().max_seconds == 300.0
+
+
+def test_khong_cong_cu_nao_cai_vao_thu_muc_root_so_huu():
+    """Không lệnh cài nào được trỏ vào `~/.local` — root sở hữu, đo ngày 01/10/2026."""
+    from eide.build.toolchain import CAN_GI, CAN_GI_CHUNG
+    moi = CAN_GI_CHUNG + [c for ds in CAN_GI.values() for c in ds]
+    for c in moi:
+        assert "$HOME/.local" not in c["cach_cai"], f"{c['ten']} cài vào ~/.local"
+
+
+def test_tim_lenh_tim_ca_trong_thu_muc_cong_cu(tmp_path, monkeypatch):
+    """`gowin_pack` của pip nằm ở `cong-cu/bin`, không nằm trong PATH."""
+    import eide.build.toolchain as TC
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "gowin_pack").write_text("#!/bin/sh\n", "utf-8")
+    monkeypatch.setattr(TC, "_THU_MUC_CONG_CU", tmp_path)
+    monkeypatch.setattr(TC, "_OSS_CAD", tmp_path / "oss-cad-suite")
+    assert TC._tim_lenh("gowin_pack").endswith("bin/gowin_pack")

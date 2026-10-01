@@ -83,3 +83,62 @@ và `clear` của Console phải xoá luôn `notices`, vì anh Công hiểu `cle
 **không thể** phát hiện chuyện dồn đống, mãi mãi. Đúng loại lỗi mà dự án này gặp đi gặp lại:
 cơ chế đo có sẵn, nhưng bị bịt đúng chỗ cần thấy. Xuất thêm `tổng số` bên cạnh năm thẻ cuối,
 rồi mới đặt được ngưỡng cho nó.
+
+## 5 · Bảng Markdown dựng sai trên màn hình
+
+*Nêu ngày 01/10/2026, giữa phiên FPGA.*
+
+> "Lưu việc render markdown bảng nữa nhé mình thấy bị lỗi đấy."
+
+Đã tra `ui/EIDEApp/Sources/EIDE/Views/Markdown.swift`. Bảng **có** được nhận ra và **có** bộ
+dựng riêng (`BangMd`), nên đây không phải chuyện thiếu tính năng — là bốn lỗi cụ thể trong đó.
+Xếp theo mức dễ thấy trên màn hình:
+
+### 5.1 · Hàng lệch cột, vì không ai đối chiếu số ô với tiêu đề
+
+`BangMd` vẽ từng hàng bằng `ForEach(Array(h.enumerated()))` — tức nó đi theo **số ô của hàng
+đó**, không theo số cột của tiêu đề. Hàng nào thiếu ô thì vẽ thiếu cột, hàng nào thừa ô thì vẽ
+tràn ra ngoài tiêu đề. Không có khâu nào san cho bằng.
+
+Đây gần như chắc chắn là cái anh Công thấy, và nó đi cùng lỗi 5.2 bên dưới.
+
+### 5.2 · `oCua` cắt theo mọi dấu `|`, kể cả dấu nằm trong mã hoặc đã thoát
+
+```swift
+return t.components(separatedBy: "|").map { ... }
+```
+
+Một ô chứa `` `a|b` `` hoặc `\|` bị cắt thành hai ô. Hàng ấy thừa ô, và hậu quả hiện ra đúng
+dưới dạng lỗi 5.1: hàng lệch khỏi tiêu đề. Cần bỏ qua dấu `|` nằm trong dấu nháy ngược và dấu
+`\|` đã thoát.
+
+### 5.3 · Bề rộng cột tính theo số ký tự của MÃ NGUỒN, không theo chữ hiện ra
+
+```swift
+let dai = max(cot[j].count, hang.prefix(20).map { $0[j].count }.max() ?? 0)
+return min(max(CGFloat(dai) * 6.2 + 14, 70), tran)
+```
+
+Ô `**ĐẠT**` dài 7 ký tự trong mã mà chỉ hiện 3 chữ. Nên cột nào nhiều chữ đậm hoặc nhiều
+`` `mã` `` sẽ được cấp bề rộng cho cả dấu Markdown mà người đọc không thấy — cột rộng vô cớ,
+và cột bên cạnh bị ép hẹp theo. Phải đếm **sau khi** chạy `inline()`, không đếm trước.
+
+### 5.4 · Chỉ đo 20 hàng đầu
+
+`hang.prefix(20)`. Bảng dài hơn 20 hàng, mà hàng thứ 21 có ô dài hơn, thì cột không được nới —
+ô ấy phải tự ngắt dòng, nên bảng trông vỡ hàng ở đúng chỗ không ai ngờ. Bảng tuân thủ của dự án
+robot có **109 hàng**, nên đây không phải trường hợp hiếm.
+
+### Thêm: trần 170 px khi bảng có từ 4 cột
+
+`tran = cot.count >= 4 ? 170 : ...` — 170 px khoảng 27 ký tự. Các bảng so sánh trong báo cáo
+thường có 4–6 cột với ô dài hơn thế nhiều, nên chúng bị ép xuống cột rất hẹp rồi ngắt dòng
+liên tục. Không mất chữ, nhưng đọc rất khó. Cần tính lại theo bề rộng khung thật thay vì ba con
+số ghi cứng.
+
+### Cách đo
+
+**Không con số nào bắt được bốn lỗi này** — phải nhìn ảnh. Nhưng có thể dựng ca kiểm cho phần
+**tách**, là phần sai đầu tiên: cho `tach()` một bảng có ô chứa `|` trong mã, một bảng có hàng
+thiếu ô, một bảng có hàng thừa ô, rồi khẳng định mọi hàng ra đúng số ô bằng tiêu đề. Phần bề
+rộng thì cần ảnh, và `BangMd` đã có một chú thích nói đúng chuyện ấy từ 28/09.

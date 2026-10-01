@@ -88,11 +88,21 @@ FPU_HOP_LE: dict[str, tuple[str, ...]] = {
 # Thư mục con của một gói Arduino, dùng khi `avr-gcc` không nằm trong PATH.
 _ARDUINO15 = Path.home() / "Library/Arduino15/packages/arduino/tools/avr-gcc"
 
-# Chỗ giải nén gói oss-cad-suite. Nó KHÔNG có trong Homebrew (đã tra ngày 01/10/2026: `brew
+# Chỗ EIDE đặt công cụ nó tải về. Nó KHÔNG có trong Homebrew (đã tra ngày 01/10/2026: `brew
 # search nextpnr` chỉ có `nextpnr-ice40`), nên cách cài là tải tệp nén từ trang phát hành rồi
 # giải ra. Giải ra xong thì các lệnh nằm ở `bin/`, mà thư mục đó không tự vào PATH — nên phải
 # tìm thêm ở đây, đúng cách đã làm với gói Arduino ở trên.
-_OSS_CAD = Path.home() / ".local/oss-cad-suite"
+#
+# Vì sao KHÔNG dùng `~/.local` như thói quen trên Linux: đo được ngày 01/10/2026, trên máy này
+# `~/.local` do **root** sở hữu với quyền 755, tạo từ 2023. Không user nào ghi vào được, nên
+# `tar` báo "Failed to create dir: Permission denied". Sửa quyền thư mục ấy cần `sudo`, tức là
+# một điểm dừng phải hỏi người dùng — để cài một công cụ thì cái giá đó quá đắt, và nó biến một
+# việc không cần quyền quản trị thành việc cần.
+#
+# `~/Library/Application Support/EIDE` là chỗ đúng của macOS cho dữ liệu riêng của một ứng
+# dụng, do chính người dùng sở hữu, và EIDE đã dùng thư mục ấy cho việc khác.
+_THU_MUC_CONG_CU = (Path.home() / "Library/Application Support/EIDE/cong-cu")
+_OSS_CAD = _THU_MUC_CONG_CU / "oss-cad-suite"
 
 
 @dataclass(slots=True)
@@ -220,9 +230,10 @@ def _tim_lenh(ten: str) -> str:
             ung = thu_muc / "bin" / ten
             if ung.exists():
                 return str(ung)
-    ung = _OSS_CAD / "bin" / ten
-    if ung.exists():
-        return str(ung)
+    for thu in (_OSS_CAD / "bin", _THU_MUC_CONG_CU / "bin"):
+        ung = thu / ten
+        if ung.exists():
+            return str(ung)
     return ""
 
 
@@ -789,15 +800,21 @@ CAN_GI_FPGA_GOWIN = [
          '\n            print(a[\'browser_download_url\']); sys.exit(0)'
          '\nsys.exit(1)"); '
          'test -n "$U"; echo "tai: $U"; '
-         'mkdir -p "$HOME/.local"; curl -fL "$U" -o /tmp/oss-cad.tgz; '
-         'tar -xzf /tmp/oss-cad.tgz -C "$HOME/.local"; rm -f /tmp/oss-cad.tgz')},
+         'D="$HOME/Library/Application Support/EIDE/cong-cu"; mkdir -p "$D"; '
+         'curl -fL "$U" -o /tmp/oss-cad.tgz; '
+         'tar -xzf /tmp/oss-cad.tgz -C "$D"; rm -f /tmp/oss-cad.tgz')},
     # `gowin_pack` là một lệnh của gói Python Apicula (tên trên PyPI: `apycula`, 0.33). Nó
     # KHÔNG có trong Homebrew. Cài vào `~/.local/bin` bằng `--user` để không cần quyền quản trị
     # và không làm bẩn môi trường ảo của dự án.
     {"ten": "gowin_pack",
      "de_lam_gi": "đóng gói thành tệp cấu hình `.fs` nạp được vào FPGA (Apicula)",
      "bat_buoc": True,
-     "cach_cai": "python3 -m pip install --user --upgrade apycula"},
+     "cach_cai": (
+         'D="$HOME/Library/Application Support/EIDE/cong-cu"; mkdir -p "$D"; '
+         'python3 -m pip install --upgrade --target "$D/py" apycula; '
+         'mkdir -p "$D/bin"; '
+         'for f in "$D"/py/bin/*; do [ -e "$f" ] && ln -sf "$f" "$D/bin/"; done; '
+         'echo "apycula o $D/py"')},
     {"ten": "openFPGALoader", "de_lam_gi": "nạp `.fs` vào SRAM hoặc flash của kit",
      "bat_buoc": True, "cach_cai": "brew install openfpgaloader"},
     {"ten": "verilator",
