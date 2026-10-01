@@ -99,9 +99,15 @@ _ARDUINO15 = Path.home() / "Library/Arduino15/packages/arduino/tools/avr-gcc"
 # một điểm dừng phải hỏi người dùng — để cài một công cụ thì cái giá đó quá đắt, và nó biến một
 # việc không cần quyền quản trị thành việc cần.
 #
-# `~/Library/Application Support/EIDE` là chỗ đúng của macOS cho dữ liệu riêng của một ứng
-# dụng, do chính người dùng sở hữu, và EIDE đã dùng thư mục ấy cho việc khác.
-_THU_MUC_CONG_CU = (Path.home() / "Library/Application Support/EIDE/cong-cu")
+# Và vì sao KHÔNG dùng `~/Library/Application Support/EIDE` dù đó là chỗ đúng của macOS: tên
+# thư mục ấy **có dấu cách**. Đo được ngày 01/10/2026 — script bọc của gói oss-cad-suite viết
+# `exec $release_bindir_abs/tabbypy3 ...` mà KHÔNG bọc nháy biến, nên đường dẫn có dấu cách bị
+# cắt làm hai và `gowin_pack` báo "/Users/congvt/Library/Application: No such file or directory".
+# Đó là lỗi của gói, nhưng cách chữa phía mình là chọn đường dẫn không có dấu cách.
+#
+# `~/.eide` do người dùng sở hữu, không dấu cách, và trùng tên với dự án nên người đọc biết ngay
+# thư mục ấy của ai.
+_THU_MUC_CONG_CU = Path.home() / ".eide/cong-cu"
 _OSS_CAD = _THU_MUC_CONG_CU / "oss-cad-suite"
 
 
@@ -800,7 +806,7 @@ CAN_GI_FPGA_GOWIN = [
          '\n            print(a[\'browser_download_url\']); sys.exit(0)'
          '\nsys.exit(1)"); '
          'test -n "$U"; echo "tai: $U"; '
-         'D="$HOME/Library/Application Support/EIDE/cong-cu"; mkdir -p "$D"; '
+         'D="$HOME/.eide/cong-cu"; mkdir -p "$D"; '
          'curl -fL "$U" -o /tmp/oss-cad.tgz; '
          'tar -xzf /tmp/oss-cad.tgz -C "$D"; rm -f /tmp/oss-cad.tgz')},
     # `gowin_pack` là một lệnh của gói Python Apicula (tên trên PyPI: `apycula`, 0.33). Nó
@@ -810,7 +816,7 @@ CAN_GI_FPGA_GOWIN = [
      "de_lam_gi": "đóng gói thành tệp cấu hình `.fs` nạp được vào FPGA (Apicula)",
      "bat_buoc": True,
      "cach_cai": (
-         'D="$HOME/Library/Application Support/EIDE/cong-cu"; mkdir -p "$D"; '
+         'D="$HOME/.eide/cong-cu"; mkdir -p "$D"; '
          'python3 -m pip install --upgrade --target "$D/py" apycula; '
          'mkdir -p "$D/bin"; '
          'for f in "$D"/py/bin/*; do [ -e "$f" ] && ln -sf "$f" "$D/bin/"; done; '

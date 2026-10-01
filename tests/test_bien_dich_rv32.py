@@ -253,7 +253,11 @@ def test_lenh_cai_nextpnr_khong_ghim_cung_mot_ngay():
         "KHÔNG cài vào ~/.local: trên máy này thư mục đó do root sở hữu (755, từ 2023), nên "
         "tar báo Permission denied. Sửa quyền cần sudo — một điểm dừng phải hỏi người dùng, "
         "cái giá quá đắt để cài một công cụ.")
-    assert "Application Support/EIDE" in lenh, "cài vào thư mục người dùng thật sự sở hữu"
+    assert "$HOME/.eide" in lenh, "cài vào thư mục người dùng sở hữu, KHÔNG có dấu cách"
+    assert "Application Support" not in lenh, (
+        "KHÔNG cài vào ~/Library/Application Support: tên có DẤU CÁCH, mà script bọc của gói "
+        "oss-cad-suite không bọc nháy biến đường dẫn, nên gowin_pack báo "
+        "'/Users/.../Library/Application: No such file or directory'")
 
 
 def test_tim_lenh_tim_ca_trong_oss_cad_suite(tmp_path, monkeypatch):
@@ -323,3 +327,17 @@ def test_tim_lenh_tim_ca_trong_thu_muc_cong_cu(tmp_path, monkeypatch):
     monkeypatch.setattr(TC, "_THU_MUC_CONG_CU", tmp_path)
     monkeypatch.setattr(TC, "_OSS_CAD", tmp_path / "oss-cad-suite")
     assert TC._tim_lenh("gowin_pack").endswith("bin/gowin_pack")
+
+
+def test_duong_dan_cai_khong_co_dau_cach():
+    """Script bọc của oss-cad-suite không bọc nháy đường dẫn — dấu cách làm nó cắt làm hai.
+
+    Đo ngày 01/10/2026: `bin/gowin_pack` dòng 7 là `exec $release_bindir_abs/tabbypy3 ...`, biến
+    không bọc nháy. Cài vào `~/Library/Application Support/...` thì lệnh báo
+    `/Users/congvt/Library/Application: No such file or directory`. `nextpnr` và
+    `openFPGALoader` là tệp nhị phân nên không vướng; chỉ lệnh nào là script bọc mới vướng — tức
+    một lỗi chỉ hiện ở MỘT trong bốn công cụ.
+    """
+    from eide.build.toolchain import _OSS_CAD, _THU_MUC_CONG_CU
+    for d in (_OSS_CAD, _THU_MUC_CONG_CU):
+        assert " " not in str(d), f"đường dẫn có dấu cách: {d}"
