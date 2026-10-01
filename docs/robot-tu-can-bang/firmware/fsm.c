@@ -17,11 +17,15 @@ static float s_angle_gyro = 0.0f;
 static bool s_prev_btn_state = true;
 static uint32_t s_last_btn_time = 0;
 
-/* Quản lý còi phi chặn */
+/* Quản lý còi phi chặn theo bản tham chiếu app_balance.c */
 static uint32_t s_buzzer_off_time = 0;
 static bool s_sensor_error = false;
 static bool s_sensor_error_muted = false;
 static uint32_t s_last_calib_ms = 0;
+static uint32_t s_last_beep_time = 0;
+static uint8_t s_beep_count = 0;
+static uint32_t s_beep_interval = 0;
+static bool s_is_error_nga = false;
 
 /* Quản lý chế độ tự kiểm dấu (§13.4) */
 static bool s_diag_mode = false;
@@ -67,7 +71,13 @@ void fsm_init(void) {
     s_sensor_error = false;
     s_last_calib_ms = 0;
     s_last_measured_pitch = 0.0f;
+    s_last_beep_time = 0;
+    s_beep_count = 0;
+    s_is_error_nga = false;
     mpu6050_calib_reset();
+
+    /* Tiếng bíp 100 ms ngay khi bật nguồn (app_balance.c:38) */
+    buzzer_on_ms(100);
 }
 
 robot_state_t fsm_get_state(void) {
@@ -154,18 +164,25 @@ void fsm_update_background(void) {
                 motor_stop();
                 pid_reset();
                 buzzer_on_ms(100);
+            } else if (s_state == STATE_CALIBRATING) {
+                /* Bấm nút khi đang hiệu chuẩn -> Huỷ và quay lại dừng (app_balance.c:79-83) */
+                s_state = STATE_STOPPED;
+                buzzer_on_ms(100);
             } else if (s_state == STATE_STOPPED) {
                 /* Bấm nút khi đang dừng -> Bắt đầu hiệu chỉnh con quay (STATE_HIEU_CHINH theo bản tham chiếu) */
                 s_state = STATE_CALIBRATING;
                 mpu6050_calib_reset();
                 s_last_calib_ms = now;
+                s_last_beep_time = now;
+                s_beep_count = 1;
                 buzzer_on_ms(100);
             } else if (s_state == STATE_FALLEN) {
-                /* Bấm nút khi ngã -> Quay về trạng thái dừng chờ (FR-03) */
+                /* Bấm nút khi ngã -> Quay về trạng thái dừng chờ (FR-03, app_balance.c:169-173) */
                 s_state = STATE_STOPPED;
                 motor_stop();
                 pid_reset();
                 buzzer_on_ms(100);
+                s_is_error_nga = false;
             }
         }
     }
@@ -189,6 +206,13 @@ void fsm_update_background(void) {
         mpu6050_calib_reset();
         s_last_calib_ms = now;
     } else if (s_state == STATE_CALIBRATING) {
+        /* Tiếng bíp 100 ms mỗi 500 ms (tối đa 5 tiếng) trong lúc hiệu chỉnh (app_balance.c:85-89) */
+        if (now - s_last_beep_time >= 500 && s_beep_count < 5) {
+            buzzer_on_ms(100);
+            s_last_beep_time = now;
+            s_beep_count++;
+        }
+
         /* Giãn cách 3 ms mỗi mẫu: 500 mẫu = 1500 ms = 1,5 s theo §8.8 (phi chặn) */
         if (now - s_last_calib_ms >= 3) {
             s_last_calib_ms = now;
@@ -204,9 +228,33 @@ void fsm_update_background(void) {
                     s_state = STATE_DIAG_ANGLE;
                     buzzer_on_ms(200);
                 } else {
-                    /* Tự hiệu chuẩn thành công -> chuyển sang READY sẵn sàng cân bằng (app_balance.c:93) */
+                    /* Tự hiệu chuẩn thành công -> chuyển sang READY (app_balance.c:93-96: bíp 100 ms) */
                     s_state = STATE_READY;
                     buzzer_on_ms(100);
+                    s_last_beep_time = now;
+                    s_beep_count = 1;
+                }
+            }
+        }
+    } else if (s_state == STATE_READY) {
+        /* Tiếng bíp thứ 2 sau 150 ms để báo sẵn sàng (app_balance.c:108-112) */
+        if (now - s_last_beep_time >= 150 && s_beep_count < 2) {
+            buzzer_on_ms(100);
+            s_last_beep_time = now;
+            s_beep_count++;
+        }
+    } else if (s_state == STATE_FALLEN) {
+        /* Báo lỗi ngã: 3 tiếng bíp ngắn 50 ms dồn dập rồi nghỉ 600 ms lặp lại (app_balance.c:156-167) */
+        if (s_is_error_nga) {
+            if (now - s_last_beep_time >= s_beep_interval) {
+                buzzer_on_ms(50);
+                s_last_beep_time = now;
+                s_beep_count++;
+                if (s_beep_count < 3) {
+                    s_beep_interval = 100;
+                } else {
+                    s_beep_interval = 600;
+                    s_beep_count = 0;
                 }
             }
         }
@@ -269,7 +317,11 @@ void fsm_update_control_4ms(void) {
                 s_state = STATE_FALLEN;
                 motor_stop();
                 pid_compute(pitch, 0.0f, false);
-                buzzer_on_ms(200); /* Còi báo ngã */
+                s_is_error_nga = true;
+                s_last_beep_time = timer_get_ms();
+                s_beep_count = 1;
+                s_beep_interval = 100;
+                buzzer_on_ms(50); /* Bíp mở đầu chuỗi báo ngã */
             } else {
                 /* Tính toán PID ngõ ra theo bản tham chiếu */
                 float out = pid_compute(pitch, 0.0f, true);
