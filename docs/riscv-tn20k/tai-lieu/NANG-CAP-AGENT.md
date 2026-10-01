@@ -127,5 +127,71 @@ Thực hiện thử nghiệm gọi công cụ thực tế của EIDE để xác 
 - **Điểm thiếu của EIDE:** EIDE chưa có công cụ để Agent kích hoạt luồng tổng hợp và đóng gói HDL (chưa có nhóm công cụ `hdl.synth`, `hdl.pnr`, `hdl.pack` hoặc công cụ điều phối tương đương). Agent không đi đường tắt bằng shell lệnh hệ thống (`sh.run`).
 - **Nhu cầu nâng cấp:** Cần bổ sung công cụ trong EIDE cho phép Agent thực hiện tổng hợp Verilog, P&R và đóng gói bitstream Gowin.
 
+## Vòng bốn: nhóm công cụ `hdl.*` — phần lớn nhất còn thiếu, nay đã có
 
+Năm công cụ mới, bốn chặng của luồng FPGA cộng một chặng soát trước:
+
+| Công cụ | Làm gì | Chốt "đạt" bằng gì |
+|---|---|---|
+| `hdl.lint` | soát cú pháp bằng Verilator, vài giây | mã thoát 0 và không lỗi |
+| `hdl.sim` | chạy testbench | **PASS/FAIL do chính testbench in ra** |
+| `hdl.synth` | Yosys → mạng cổng | có tệp trên đĩa, không rỗng, kèm số LUT/FF đọc từ Yosys |
+| `hdl.pnr` | nextpnr → bố trí | có tệp, **và Fmax ≥ tần số định chạy** |
+| `hdl.bitstream` | gowin_pack → `.fs` | có tệp, không rỗng |
+
+`target.flash` có thêm `cach="openfpgaloader"`.
+
+**Kết quả thật**: Agent chạy thông cả bốn chặng, ra tệp `blinky.fs` **4 618 782 byte** —
+LUT 54/20 736 · FF 25/15 552 · Fmax 301,11 MHz.
+
+### Năm lỗi của chính tôi, tìm ra bằng cách chạy thật
+
+| # | Lỗi | Hiện ra thế nào |
+|---|---|---|
+| 16 | Đọc bảng tài nguyên Yosys sai thứ tự — tôi tưởng `tên số`, thật ra là `số tên` | bảng tài nguyên **rỗng**, im lặng |
+| 17 | Lấy khối "Local Count" thay vì "design hierarchy" | SoC có CPU bên trong bị đếm thiếu hàng nghìn ô |
+| 18 | Truyền mã chip từ bảng hằng số (`GW2AR-18C`) trong khi nextpnr ghi `GW2A-18C` | `gowin_pack` dừng. Chữa bằng cách **đọc tên chip từ chính tệp bố trí** |
+| 19 | `_goc()` đọc `ctx.project_root` thay vì `ctx.config.paths.project_root` | cả năm công cụ đổ `E5999` ngay lời gọi đầu — mà **mọi ca kiểm vẫn xanh**, vì chúng chỉ gọi lớp lõi |
+| 20 | **Lệnh thất bại mà tệp của lần chạy TRƯỚC còn sót thì chặng báo đạt** | `nextpnr` trả mã 1 với `ERROR`, `fmax_mhz=None`, chặng vẫn **đạt** — phép canh định thời bị bỏ qua hoàn toàn |
+
+Lỗi 19 đáng ghi riêng: nó cho thấy **bộ kiểm gọi lớp lõi không thay được bộ kiểm gọi qua đúng
+đường tác tử đi**. Hai mươi ba ca kiểm xanh trong khi công cụ không gọi nổi một lần.
+
+Lỗi 20 là lỗi nguy hiểm nhất của một dây chuyền nhiều chặng: chặng sau ăn tệp cũ, mọi thứ xanh,
+và bitstream mang thiết kế của lần sửa trước. Chữa bằng hai lớp: **xoá tệp ra trước khi chạy**
+(để "tệp có mặt" nghĩa là "lần chạy NÀY sinh ra nó"), và **mã thoát khác 0 thì không đạt dù tệp
+có mặt**.
+
+### Đo độ nhạy
+
+Mười một phép phá mã sản phẩm, chép đúng kết quả:
+
+| Phá gì | Bộ kiểm |
+|---|---|
+| bỏ canh tệp ra rỗng | **đỏ** |
+| bỏ xoá tệp cũ trước khi chạy | **đỏ** |
+| bỏ canh mã thoát | **đỏ** |
+| Fmax lấy đồng hồ nhanh nhất thay vì chậm nhất | **đỏ** |
+| bỏ canh không đạt định thời | **đỏ** |
+| không đọc tên chip từ tệp bố trí | **đỏ** |
+| kết luận mô phỏng theo mã thoát thay vì PASS | **đỏ** |
+| nới khoảng trắng khi đọc bảng Yosys | **đỏ** |
+| bỏ canh tệp ra không tồn tại | *chồng với phép canh mã thoát* |
+| đọc khối không tính mô-đun con | **đỏ** (sau khi sửa ca kiểm dùng tên ô khác nhau) |
+
+Phép phá *bỏ canh mã thoát* ban đầu **lọt**, vì hai lớp canh chồng nhau. Phân biệt được bằng
+đúng tình huống thật: công cụ **ghi tệp rồi mới đổ** — tệp có mặt, không rỗng, lệnh vẫn thất
+bại. Lúc đó chỉ lớp canh mã thoát bắt được.
+
+### Và một chuyện về ngữ cảnh, không về mã
+
+Trong dự án `riscv-tn20k`, Agent **không chạy nổi** bốn chặng dù công cụ đã sẵn: nó quay về báo
+cáo chuyện cài đặt. Mười mấy lượt bàn về chuỗi công cụ đã chiếm chỗ trong ngữ cảnh.
+
+Mở một dự án **cùng tệp, sạch lịch sử** (`riscv-tn20k-b`) và giao đúng câu ấy — nó làm xong
+ngay lượt đầu, sáu lời gọi công cụ.
+
+Đây là kết quả đáng ghi: **một tác tử có đủ công cụ, đủ thời gian và lời giao việc rõ vẫn có thể
+không làm được, chỉ vì lịch sử hội thoại kéo nó về việc cũ.** Và cách chữa rẻ nhất không phải
+sửa lời giao việc — là tách phiên.
 

@@ -1,0 +1,44 @@
+// Physical Constraints cho Sipeed Tang Nano 20K (GW2AR-LV18QN88C8/I7)
+// Nguồn thông số: docs/hardware-facts.md (Sipeed Wiki & Schematic)
+// Mọi chân trong tệp này đều đã được đối chiếu và xác minh nguồn.
+
+// --- 1. Clock hệ thống 27 MHz ---
+IO_LOC "sys_clk" 4;
+IO_PORT "sys_clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+// --- 2. 6 LED trên bo (tích cực thấp: 0=sáng, 1=tối) ---
+IO_LOC "led[0]" 15;
+IO_PORT "led[0]" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+IO_LOC "led[1]" 16;
+IO_PORT "led[1]" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+IO_LOC "led[2]" 17;
+IO_PORT "led[2]" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+IO_LOC "led[3]" 18;
+IO_PORT "led[3]" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+IO_LOC "led[4]" 19;
+IO_PORT "led[4]" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+IO_LOC "led[5]" 20;
+IO_PORT "led[5]" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+// --- 3. Nút bấm trên bo (tích cực thấp: 0=nhấn, 1=nhả) ---
+// S1 (User / Reset): PIN 88
+IO_LOC "btn_s1" 88;
+IO_PORT "btn_s1" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// S2 (User): PIN 87
+IO_LOC "btn_s2" 87;
+IO_PORT "btn_s2" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// --- 4. Cổng UART nối tới chip cầu USB BL616 ---
+// FPGA TX (truyền lên máy tính qua USB CDC): PIN 69
+IO_LOC "uart_tx" 69;
+IO_PORT "uart_tx" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8;
+
+// FPGA RX (nhận từ máy tính): PIN 70
+IO_LOC "uart_rx" 70;
+IO_PORT "uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP;

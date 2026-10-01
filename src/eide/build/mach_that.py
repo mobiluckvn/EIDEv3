@@ -342,6 +342,67 @@ def _hex_tu_elf(elf: Path) -> tuple[Path | None, str]:
     return ra, ""
 
 
+def nap_qua_openfpgaloader(anh: Path, *, bo_kit: str = "tangnano20k", giu_sau_tat: bool = False,
+                           timeout: float = 600.0) -> KetQuaNap:
+    """Nạp tệp `.fs` vào FPGA bằng openFPGALoader.
+
+    Khác hẳn nạp vi điều khiển ở một chỗ phải nói rõ với người dùng: FPGA có **hai đích**.
+
+    - Mặc định nạp vào **SRAM của chip**: chạy ngay, và **mất khi tắt nguồn**. Đây là đích
+      đúng cho vòng thử, vì nạp nhanh và không mòn bộ nhớ.
+    - `giu_sau_tat=True` nạp vào **flash ngoài trên kit**: giữ sau khi tắt nguồn, nhưng chậm
+      hơn và mỗi lần ghi đều mòn một ít.
+
+    Chọn nhầm đích là một lỗi im lặng: nạp vào SRAM rồi rút nguồn thì bo chạy lại bản cũ, và
+    người thử sẽ tưởng bitstream mới không có tác dụng.
+
+    openFPGALoader không có bước đọc ngược so từng byte như `st-flash` hay `avrdude`. Nó báo
+    thành công khi chuỗi JTAG nhận đủ. Nên hàm này **không** đặt `da_verify`, và chỗ gọi phải
+    nói ra điều đó — không được để người đọc tưởng đã đối chiếu.
+    """
+    dich = "flash (giữ sau khi tắt nguồn)" if giu_sau_tat else "SRAM (mất khi tắt nguồn)"
+    kq = KetQuaNap(cach="openfpgaloader", dich=f"{bo_kit} → {dich}")
+    exe = _tim_lenh("openFPGALoader")
+    if not exe:
+        kq.vi_sao_khong_dat = (
+            "Máy này chưa có `openFPGALoader` để nạp FPGA. EIDE không tự cài — cài qua cổng "
+            "G-TOOL (`tool.install` với `isa=\"fpga-gowin\"`).")
+        return kq
+    if not anh.exists() or anh.stat().st_size == 0:
+        kq.vi_sao_khong_dat = (
+            f"Không có tệp `{anh.name}` hoặc tệp rỗng. Chạy `hdl.bitstream` trước.")
+        return kq
+
+    kq.tep = str(anh)
+    kq.so_byte = anh.stat().st_size
+    kq.hash = _bam_tep(anh)
+    lenh = [exe, "-b", bo_kit] + (["-f"] if giu_sau_tat else []) + [str(anh)]
+    t0 = time.monotonic()
+    try:
+        r = subprocess.run(lenh, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        kq.vi_sao_khong_dat = f"openFPGALoader chạy quá {timeout:.0f} s và bị dừng."
+        return kq
+    kq.giay = time.monotonic() - t0
+    kq.nguyen_van = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
+    if r.returncode != 0:
+        kq.vi_sao_khong_dat = (
+            f"openFPGALoader trả mã {r.returncode}. Hai nguyên nhân thường gặp: kit chưa cắm, "
+            "hoặc máy chưa có quyền dùng thiết bị USB.")
+        return kq
+    kq.dat = True
+    # KHÔNG đặt `da_verify`: openFPGALoader không đọc ngược so từng byte.
+    kq.canh_bao.append(
+        "openFPGALoader KHÔNG đọc ngược để so từng byte như st-flash hay avrdude. Nó chỉ báo "
+        "chuỗi JTAG nhận đủ. Bằng chứng bitstream chạy đúng phải lấy từ chính bo — đèn, cổng "
+        "nối tiếp, hoặc điểm đo.")
+    if not giu_sau_tat:
+        kq.canh_bao.append(
+            "Đã nạp vào SRAM: **mất khi tắt nguồn**. Muốn giữ thì nạp lại với "
+            "`giu_sau_tat=true`.")
+    return kq
+
+
 def nap_qua_avrdude(anh: Path, cong: str, *, ma_chip: str = "m328p", baud: int = 57600,
                     timeout: float = 300.0) -> KetQuaNap:
     """Nạp `.hex` (hoặc `.elf`, tự đổi) vào AVR qua bootloader, rồi đọc ngược để so.

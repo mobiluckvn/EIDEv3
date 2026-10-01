@@ -154,7 +154,8 @@ def dang_ky(r: Registry) -> None:
                          "description": ("đường dẫn tệp ảnh. Bỏ trống: .eide/build/mach.bin "
                                          "cho ARM, .eide/build/mach.elf cho AVR")},
                  "cach": {"type": "string",
-                          "enum": ["tu_chon", "sao_tep", "st-flash", "avrdude"],
+                          "enum": ["tu_chon", "sao_tep", "st-flash", "avrdude",
+                                   "openfpgaloader"],
                           "description": ("tu_chon = st-flash nếu có, rồi avrdude cho bo AVR "
                                           "qua bootloader, cuối cùng mới sao tệp")},
                  "cong": {"type": "string",
@@ -164,6 +165,13 @@ def dang_ky(r: Registry) -> None:
                  "ma_chip_avrdude": {"type": "string",
                                      "description": "avrdude: mã -p, ví dụ m328p. Bỏ trống = "
                                                     "suy từ hộ chiếu chip của dự án"},
+                 "bo_kit_fpga": {"type": "string",
+                                 "description": "openfpgaloader: tên kit, mặc định tangnano20k"},
+                 "giu_sau_tat": {"type": "boolean",
+                                 "description": ("openfpgaloader: true = nạp vào flash trên "
+                                                 "kit (giữ sau khi tắt nguồn). Mặc định false "
+                                                 "= nạp vào SRAM, chạy ngay nhưng MẤT khi tắt "
+                                                 "nguồn")},
                  "dong_y_khong_doi_chieu_chip": {
                      "type": "boolean",
                      "description": ("true = người dùng đã biết rằng KHÔNG đối chiếu được ID "
@@ -175,7 +183,8 @@ def dang_ky(r: Registry) -> None:
             keywords=["nạp", "flash", "ghi firmware", "program", "nạp bo", "nạp chip"])
     def target_flash(ctx: Any, explain: dict[str, Any], tep: str = "", cach: str = "tu_chon",
                      dong_y_khong_doi_chieu_chip: bool = False, cong: str = "",
-                     baud_bootloader: int = 57600, ma_chip_avrdude: str = ""):
+                     baud_bootloader: int = 57600, ma_chip_avrdude: str = "",
+                     bo_kit_fpga: str = "tangnano20k", giu_sau_tat: bool = False):
         from ..build import mach_that as MT
 
         goc = ctx.config.paths.project_root
@@ -299,7 +308,11 @@ def dang_ky(r: Registry) -> None:
                                  if t["nap_duoc_bang"] == "avrdude"), "")
         o_dia = next((Path(t["duong_dan"]) for t in d["thiet_bi"]
                       if t["nap_duoc_bang"] == "sao_tep"), None)
-        if cach == "st-flash" or (cach == "tu_chon" and co_st):
+        if cach == "openfpgaloader":
+            # Đường FPGA KHÔNG bao giờ được chọn tự động. Nạp một tệp `.fs` vào một bo vi điều
+            # khiển, hoặc ngược lại, là chuyện phải do người gõ ra chứ không do máy đoán.
+            kq = MT.nap_qua_openfpgaloader(p, bo_kit=bo_kit_fpga, giu_sau_tat=giu_sau_tat)
+        elif cach == "st-flash" or (cach == "tu_chon" and co_st):
             kq = MT.nap_qua_st_flash(p)
         elif cach == "avrdude" or (cach == "tu_chon" and cong_avr):
             if not cong_avr:

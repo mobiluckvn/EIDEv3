@@ -482,7 +482,7 @@ def build_registry(features: Any = None) -> Registry:
         found = ctx.registry.search(query)
         return {"count": len(found), "tools": found, "note_vi": _khong_hop_thi_sao(found)}
 
-    from . import (ckm, design, dieu_phoi, ke_hoach, khoi, knowledge, mach_that,
+    from . import (ckm, design, dieu_phoi, hdl, ke_hoach, khoi, knowledge, mach_that,
                    nang_luc, sch, snapshots, tai_lieu, writing, xay_dung)  # noqa: E501
     writing.register(r)
     ke_hoach.register(r)
@@ -495,6 +495,7 @@ def build_registry(features: Any = None) -> Registry:
     khoi.register(r)
     xay_dung.register(r)
     mach_that.register(r)
+    hdl.register(r)
     dieu_phoi.register(r)
     # Cờ tắt (mặc định) thì `register` không đăng ký gì — xem Registry.add và SCH-44 §2.1.
     sch.register(r)
