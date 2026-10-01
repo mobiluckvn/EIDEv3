@@ -8,7 +8,7 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 - **Kiến trúc theo mô hình C4 (mã đang thế nào):** [`docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md`](docs/md/EIDE-C4-46_Kien_truc_theo_mo_hinh_C4.md)
 - **Thiết kế (nguồn sự thật):** [`docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md`](docs/review-v3/docs/md/EIDE-MDD-40_v3.0_Thiet_ke_Tong_the.md)
 - **Nhật ký sai lệch mã ↔ tài liệu:** [`docs/md/EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md)
-- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1443 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
+- **Bộ đo:** 76 TC usecase + 124 ô giao diện + 1472 ca đơn vị — [`docs/review-v3/test/`](docs/review-v3/test/)
 - **Việc thật tác tử đã làm xong:** [một RTOS viết từ số không thay FreeRTOS trên STM32F469I-DISCO](docs/rtos-tu-viet/) — [báo cáo 12 trang](docs/rtos-tu-viet/bao-cao/BAO-CAO-RTOS.docx) kèm thiết kế C4, thời gian, chi phí và ước lượng nếu thuê người
 - **Kết quả đo mới nhất (30/09/2026):** [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx)
 - **Đề tài:** PHÁT TRIỂN PHẦN MỀM NHÚNG CÓ ỨNG DỤNG TRÍ TUỆ NHÂN TẠO (AI)
@@ -512,7 +512,7 @@ Toàn bộ dấu vết đã đẩy lên git, không chỉ kết quả:
 | Vẽ sơ đồ mermaid (giao diện + tài liệu) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
 | Chia việc lớn → ghi từng chặng → hợp nhất | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã ↔ tài liệu thiết kế | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
-| Ca đơn vị | **1443** | `pytest tests/ -q` |
+| Ca đơn vị | **1472** | `pytest tests/ -q` |
 | Bo thật STM32F469I-DISCO | LCD 800×480 + cảm ứng + FreeRTOS đa tác vụ, đã xác nhận bằng mắt | [`docs/stm32f469-freertos/`](docs/stm32f469-freertos/) |
 | **RTOS tự viết thay FreeRTOS** trên cùng bo | nhân **689 dòng** chạy thật · LCD + cảm ứng + 6 tác vụ đạt · **0** ký hiệu nhân FreeRTOS · **−22 828 B** RAM | [§18](#18--bài-kiểm-lớn-nhất-một-rtos-viết-từ-số-không) · [`docs/rtos-tu-viet/`](docs/rtos-tu-viet/) |
 

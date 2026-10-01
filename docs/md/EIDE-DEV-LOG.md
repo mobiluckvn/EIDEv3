@@ -6127,3 +6127,69 @@ dựng ra, kèm bảng "phải thấy gì / không được thấy gì" cho từ
 
 **1 443 ca đơn vị** (+36) · bộ dò tài liệu **0 chỗ lệch** · sáu ngữ cảnh kiểm bằng cách mở lại
 tệp **và bằng mắt trên trang PDF** · bảng 90 ký hiệu có ca phủ toàn bộ.
+
+---
+
+### [DEV-318] 01/10/2026 · EIDE chỉ nạp được bo ST — tác tử đứng trước một bo Arduino mà bó tay
+
+Anh Công cắm bo robot MOBILUCK và bảo tác tử rà soát. Nó dò ra `/dev/cu.usbserial-21410`, rồi
+`target.detect` trả về **`nap_duoc = false`** với câu *"KHÔNG có đường nạp nào"* — cho một bo
+Arduino Nano đang cắm hẳn hoi.
+
+Gốc: cả đường nạp của EIDE chỉ biết **ST-LINK** — `st-flash` và ổ đĩa MSD của bo
+Discovery/Nucleo. `avrdude` có tên trong danh sách kiểm công cụ nhưng **không nằm trên đường
+nạp nào**. Tác tử biên dịch được firmware ATmega328P (`build.compile` gọi `avr-gcc` qua lõi
+`arduino:avr`) rồi dừng ở đó.
+
+Anh Công: *"Phải để agent làm chứ. Sai thì fix cho agent thông minh hơn."*
+
+#### Thêm gì
+
+| | |
+|---|---|
+| `doc_chu_ky_avr()` | bắt tay bootloader, đọc **chữ ký ba byte từ silicon** |
+| `nap_qua_avrdude()` | nạp `.hex` (tự đổi từ `.elf`), đòi dòng `verified` mới tính là xong |
+| `doc_nguoc_avr()` | đọc ngược Flash **từ chip** rồi so từng byte — bằng chứng độc lập |
+| `_byte_tu_ihex()` | đọc Intel HEX theo địa chỉ, dòng hỏng thì bỏ qua chứ không ném |
+
+`target.detect` nhận thêm `doc_chu_ky_avr`; `target.flash` nhận thêm cách `avrdude`;
+`target.verify` đọc `cach` của lần nạp gần nhất để chọn đúng đường đọc ngược — dùng `st-flash`
+đọc một con AVR thì không phải *"chưa đối chiếu được"*, mà là **đo nhầm con chip**, và câu trả
+lời sai ấy trông y hệt một câu trả lời đúng.
+
+#### Cổng USB nối tiếp KHÔNG phải bằng chứng có chip
+
+Nó là con chip cầu USB (CH340/FTDI) và vẫn hiện ra kể cả khi đã nhổ ATmega khỏi đế. Nên
+`do_bo()` khai *"có đường nạp"* chứ không khai *"có chip"*, và phép đọc chữ ký là một **lựa
+chọn tác tử phải nêu ra** — vì mọi thao tác avrdude đều **reset bo** qua DTR, mà reset một
+robot đang cân bằng là làm nó ngã.
+
+#### Một chữ `v`
+
+Lần chạy đầu trên bo thật: tác tử thử cả 57 600 và 115 200 baud, rồi báo trung thực *"chưa đọc
+được chữ ký"*. Chạy tay avrdude mới thấy nó in đúng một dòng:
+
+    Avrdude done.  Thank you.
+
+**avrdude 8.0 im lặng ở mức mặc định** — bắt tay xong, không in chữ ký. Thêm `-v`:
+
+    Device signature = 1E 95 0F (ATmega328P, ATA6614Q, LGT8F328P)
+
+Bo hoàn toàn khoẻ mạnh; thiếu một chữ `v` trong lệnh của tôi. Và ba phiên bản avrdude in chữ
+ký **ba kiểu khác nhau** — `0x1e950f` · `0x1e 0x95 0x0f` · `1E 95 0F` — cả ba đều "chạy xong",
+chỉ khác chỗ in. Đúng loại khác biệt chỉ lộ ra khi cắm bo thật.
+
+#### Một lỗ hổng do chính bộ kiểm bắt
+
+`ATmega8515` có trong bảng chữ ký mà **không có mã avrdude** — đọc ra tên chip rồi vẫn không
+nạp được. Ca `test_moi_chu_ky_deu_tra_duoc_ma_avrdude` canh đúng bất biến ấy.
+
+#### Kết quả trên bo thật
+
+Tác tử tự gọi `target.detect` với `doc_chu_ky_avr=true` và đọc được **`0x1E 0x95 0x0F` →
+ATmega328P**, khớp tài liệu. Chưa nạp — chờ anh Công xác nhận danh mục an toàn.
+
+### Số đo
+
+**1 472 ca đơn vị** (+29) · bộ dò tài liệu **0 chỗ lệch** · đo trên bo Arduino Nano thật đang
+cắm ở `/dev/cu.usbserial-21410`.

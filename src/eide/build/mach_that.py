@@ -134,9 +134,20 @@ def _cong_noi_tiep() -> list[BoTimDuoc]:
             # vừa mất thời gian, và "không thấy chữ nào" sẽ bị hiểu thành firmware chạy sai.
             vi_sao, la_bo = ("không nhận ra là cổng USB — có thể là thiết bị Bluetooth đã "
                              "ghép đôi"), False
+        # Cổng USB nối tiếp LÀ một đường nạp — qua bootloader, bằng avrdude. Trước đây trường
+        # này để trống nên `do_bo()` kết luận "KHÔNG có đường nạp nào" với một bo Arduino đang
+        # cắm hẳn hoi, và tác tử không có cách nào nạp.
+        #
+        # Nói "có đường nạp" KHÔNG phải nói "có chip": cổng này là con chip cầu USB, nó vẫn
+        # hiện ra kể cả khi đã nhổ ATmega khỏi đế. Muốn biết có chip thì phải bắt tay với
+        # bootloader — `doc_chu_ky_avr()`, và việc ấy reset bo.
+        nap_bang = "avrdude" if la_bo and tim_avrdude()[0] else ""
         ra.append(BoTimDuoc(loai="cong_noi_tiep", duong_dan=str(p), ten=ten,
-                            co_the_la_bo=la_bo,
-                            biet_bang_cach=f"/dev/{ten}: {vi_sao}"))
+                            co_the_la_bo=la_bo, nap_duoc_bang=nap_bang,
+                            biet_bang_cach=f"/dev/{ten}: {vi_sao}"
+                                           + (" · nạp được qua bootloader bằng avrdude "
+                                              "(chưa đọc chữ ký chip — việc ấy reset bo)"
+                                              if nap_bang else "")))
     return ra
 
 
@@ -182,6 +193,301 @@ def doc_id_chip() -> tuple[str, str, dict[str, int]]:
                     "nên chưa suy ra được tên chip để đối chiếu"), bo_nho
     return "", ("st-info chạy xong nhưng không thấy bo nào: "
                 + " ".join(out.split())[:200]), bo_nho
+
+
+# =========================================================================== AVR qua bootloader
+#
+# Trước khối này, cả đường nạp của EIDE chỉ biết ST-LINK: `st-flash` và ổ đĩa MSD của bo
+# Discovery/Nucleo. Bo robot MOBILUCK là bo đầu tiên không phải họ ST — Arduino Nano,
+# ATmega328P, nạp qua bootloader trên cổng USB-nối tiếp — và tác tử **không có đường nào để
+# nạp nó**. Nó biên dịch được (`build.compile` gọi `avr-gcc`) rồi dừng ở đó.
+#
+# Anh Công: *"Phải để agent làm chứ. Sai thì fix cho agent thông minh hơn."*
+#
+# Một chỗ phải cẩn thận: mọi thao tác avrdude đều **reset bo** qua đường DTR. Với bo đang chạy
+# firmware cân bằng thì reset là robot ngã. Nên phép dò chữ ký chip KHÔNG tự chạy trong
+# `do_bo()`; nó là một lựa chọn tác tử phải nêu ra và nói cho người biết.
+
+# Chữ ký ba byte đọc từ silicon → tên chip. Chỉ những chip thật sự gặp; thêm chip mới thì
+# thêm dòng, đừng đoán theo mẫu.
+_CHU_KY_AVR = {
+    "1e950f": "ATmega328P", "1e9514": "ATmega328",  "1e9516": "ATmega328PB",
+    "1e9507": "ATmega8",    "1e9306": "ATmega8515", "1e9403": "ATmega16",
+    "1e9702": "ATmega1280", "1e9801": "ATmega2560", "1e9587": "ATmega32U4",
+}
+
+# Tên chip → mã `-p` của avrdude.
+_MA_AVRDUDE = {
+    "ATmega328P": "m328p", "ATmega328": "m328", "ATmega328PB": "m328pb",
+    "ATmega2560": "m2560", "ATmega1280": "m1280", "ATmega32U4": "m32u4",
+    "ATmega8": "m8", "ATmega16": "m16", "ATmega8515": "m8515",
+}
+# Mọi chip đọc được chữ ký đều phải có mã để nạp — đọc ra tên rồi bảo "không biết nạp thế
+# nào" là một ngõ cụt tự mình đào. Có ca kiểm canh đúng bất biến này.
+
+# Nơi tìm avrdude, theo thứ tự ưu tiên. Bản của Arduino đi kèm tệp cấu hình riêng và biết
+# những bo mà bản Homebrew không có.
+_ARDUINO_AVRDUDE = Path.home() / "Library/Arduino15/packages/arduino/tools/avrdude"
+
+
+def tim_avrdude() -> tuple[str, str, str]:
+    """`(đường dẫn avrdude, đường dẫn avrdude.conf, vì sao không có)`.
+
+    Bản Arduino đi trước bản hệ thống: nó kèm `avrdude.conf` khớp với lõi `arduino:avr` mà
+    `build.compile` dùng để biên dịch. Hai bản khác phiên bản thì bảng chip cũng khác, và sự
+    khác ấy chỉ lộ ra đúng lúc nạp.
+    """
+    try:
+        thu_muc = sorted(_ARDUINO_AVRDUDE.iterdir(), reverse=True) if \
+            _ARDUINO_AVRDUDE.is_dir() else []
+    except OSError:
+        thu_muc = []
+    for d in thu_muc:
+        exe, conf = d / "bin" / "avrdude", d / "etc" / "avrdude.conf"
+        if exe.is_file():
+            return str(exe), (str(conf) if conf.is_file() else ""), ""
+    he_thong = shutil.which("avrdude")
+    if he_thong:
+        return he_thong, "", ""
+    return "", "", ("máy chưa có `avrdude` — cài bằng `brew install avrdude`, hoặc cài lõi "
+                    "`arduino:avr` bằng `arduino-cli core install arduino:avr`")
+
+
+def _lenh_avrdude(exe: str, conf: str, ma_chip: str, cong: str, baud: int,
+                  *lenh: str) -> list[str]:
+    c = [exe]
+    if conf:
+        c += ["-C", conf]
+    return c + ["-p", ma_chip, "-c", "arduino", "-P", cong, "-b", str(baud), *lenh]
+
+
+def doc_chu_ky_avr(cong: str, *, ma_chip: str = "m328p", baud: int = 57600,
+                   timeout: float = 30.0) -> tuple[str, str, str]:
+    """Đọc chữ ký ba byte TỪ SILICON qua bootloader. `(tên chip, chữ ký, vì sao không đọc)`.
+
+    Đây là phép đo thật, khác hẳn việc nhìn thấy một cổng `/dev/cu.usbserial-*`: cổng ấy là
+    con chip cầu USB (CH340/FTDI), nó vẫn hiện ra kể cả khi ai đó đã nhổ con ATmega ra khỏi
+    đế. Chỉ khi bắt tay được với bootloader mới biết có chip và chip nào.
+
+    **Thao tác này RESET bo** — avrdude kéo DTR để đưa chip vào bootloader. Người gọi phải
+    biết điều đó và nói cho người dùng.
+    """
+    exe, conf, thieu = tim_avrdude()
+    if not exe:
+        return "", "", thieu
+    try:
+        # `-v` là bắt buộc, không phải để cho đẹp: avrdude **8.0 im lặng** ở mức mặc định —
+        # nó bắt tay xong, in đúng một dòng "Avrdude done. Thank you." và KHÔNG in chữ ký.
+        # Đo được trên bo thật: lần đầu bài này báo "không đọc được chữ ký" cho một con
+        # ATmega328P hoàn toàn khoẻ mạnh, chỉ vì thiếu một chữ `v`.
+        r = subprocess.run(_lenh_avrdude(exe, conf, ma_chip, cong, baud, "-n", "-v"),
+                           capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as e:
+        return "", "", f"gọi avrdude thất bại: {type(e).__name__}: {e}"
+    out = ((r.stdout or "") + (r.stderr or ""))
+    ky = _chu_ky_tu_dau_ra(out)
+    if not ky:
+        return "", "", ("avrdude không đọc được chữ ký chip: "
+                        + " ".join(out.split())[-220:])
+    return _CHU_KY_AVR.get(ky, ""), ky, ("" if ky in _CHU_KY_AVR else
+                                         f"chữ ký {ky} chưa có trong bảng chip đã biết")
+
+
+# Ba phiên bản avrdude in chữ ký ba kiểu khác nhau. Dò cả ba, dài trước ngắn.
+#
+#   6.x (Arduino cũ)  Device signature = 0x1e950f
+#   7.x (Homebrew)    Device signature = 0x1e 0x95 0x0f
+#   8.x (Arduino nay) Device signature = 1E 95 0F (ATmega328P, ATA6614Q, LGT8F328P)
+#
+# Đây đúng loại khác biệt chỉ lộ ra khi cắm bo thật: cả ba đều "chạy xong", chỉ khác chỗ in.
+_MAU_CHU_KY = (
+    re.compile(r"[Dd]evice signature\s*=\s*0x([0-9a-fA-F]{6})"),
+    re.compile(r"[Dd]evice signature\s*=\s*0x([0-9a-fA-F]{2})\s+0x([0-9a-fA-F]{2})"
+               r"\s+0x([0-9a-fA-F]{2})"),
+    re.compile(r"[Dd]evice signature\s*=\s*([0-9a-fA-F]{2})\s+([0-9a-fA-F]{2})"
+               r"\s+([0-9a-fA-F]{2})"),
+)
+
+
+def _chu_ky_tu_dau_ra(out: str) -> str:
+    for mau in _MAU_CHU_KY:
+        m = mau.search(out)
+        if m:
+            return "".join(m.groups()).lower()
+    return ""
+
+
+def _hex_tu_elf(elf: Path) -> tuple[Path | None, str]:
+    """`.elf` → `.hex` bằng `avr-objcopy`. avrdude nhận ELF nhưng không mọi phiên bản."""
+    oc = shutil.which("avr-objcopy")
+    if not oc:
+        for d in (sorted((Path.home() / "Library/Arduino15/packages/arduino/tools/avr-gcc")
+                         .iterdir(), reverse=True)
+                  if (Path.home() / "Library/Arduino15/packages/arduino/tools/avr-gcc").is_dir()
+                  else []):
+            x = d / "bin" / "avr-objcopy"
+            if x.is_file():
+                oc = str(x)
+                break
+    if not oc:
+        return None, "máy chưa có `avr-objcopy` để đổi .elf thành .hex"
+    ra = elf.with_suffix(".hex")
+    try:
+        r = subprocess.run([oc, "-O", "ihex", "-R", ".eeprom", str(elf), str(ra)],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, f"avr-objcopy thất bại: {type(e).__name__}: {e}"
+    if r.returncode != 0 or not ra.is_file():
+        return None, f"avr-objcopy trả mã {r.returncode}: {(r.stderr or '')[:160]}"
+    return ra, ""
+
+
+def nap_qua_avrdude(anh: Path, cong: str, *, ma_chip: str = "m328p", baud: int = 57600,
+                    timeout: float = 300.0) -> KetQuaNap:
+    """Nạp `.hex` (hoặc `.elf`, tự đổi) vào AVR qua bootloader, rồi đọc ngược để so.
+
+    avrdude có `-U flash:w:...:i` tự verify và in `verified`. Không thấy dòng ấy thì **không
+    coi là nạp xong**, dù mã thoát bằng 0 — cùng một luật với đường `st-flash`.
+    """
+    kq = KetQuaNap(cach="avrdude", dich=f"{cong} @ {baud} baud")
+    exe, conf, thieu = tim_avrdude()
+    if not exe:
+        kq.vi_sao_khong_dat = thieu
+        return kq
+    if not anh.exists() or anh.stat().st_size == 0:
+        kq.vi_sao_khong_dat = f"Không có tệp {anh.name} hợp lệ để nạp."
+        return kq
+
+    tep_nap = anh
+    if anh.suffix.lower() == ".elf":
+        tep_nap_moi, vi_sao = _hex_tu_elf(anh)
+        if tep_nap_moi is None:
+            kq.vi_sao_khong_dat = vi_sao
+            return kq
+        tep_nap = tep_nap_moi
+        kq.canh_bao.append(f"Đã đổi {anh.name} thành {tep_nap.name} để nạp.")
+
+    kq.tep = tep_nap.name
+    kq.so_byte = tep_nap.stat().st_size
+    kq.hash = _hash_tep(tep_nap)
+
+    t0 = time.time()
+    try:
+        r = subprocess.run(
+            _lenh_avrdude(exe, conf, ma_chip, cong, baud,
+                          "-D", "-U", f"flash:w:{tep_nap}:i"),
+            capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as e:
+        kq.giay = time.time() - t0
+        kq.vi_sao_khong_dat = f"avrdude không chạy được: {type(e).__name__}: {e}"
+        return kq
+    kq.giay = time.time() - t0
+    kq.nguyen_van = ((r.stdout or "") + (r.stderr or "")).strip()
+    kq.da_verify = "verified" in kq.nguyen_van.lower()
+    if r.returncode != 0:
+        kq.vi_sao_khong_dat = (
+            f"avrdude trả mã {r.returncode}. Nếu nó dừng giữa lúc ghi thì Flash đang ở trạng "
+            "thái KHÔNG nhất quán — nạp lại. Hay gặp nhất: sai tốc độ bootloader (bo cũ dùng "
+            "57600, bo mới 115200), hoặc một chương trình khác đang giữ cổng nối tiếp.")
+        return kq
+    if not kq.da_verify:
+        kq.vi_sao_khong_dat = ("avrdude trả mã 0 nhưng KHÔNG in dòng verify. Không coi là nạp "
+                               "xong — đọc nguyên văn đầu ra.")
+        return kq
+    kq.dat = True
+    return kq
+
+
+def doc_nguoc_avr(anh: Path, cong: str, *, ma_chip: str = "m328p", baud: int = 57600,
+                  timeout: float = 300.0) -> dict[str, Any]:
+    """Đọc ngược Flash TỪ CHIP rồi so từng byte với tệp đã nạp.
+
+    avrdude đã tự verify lúc ghi, nhưng đó là verify của chính công cụ vừa ghi. Đọc lại bằng
+    một lượt riêng rồi so ở đây là bằng chứng độc lập — cùng lý do `target.verify` tồn tại cho
+    đường ST-LINK.
+    """
+    import tempfile
+
+    ra: dict[str, Any] = {"dat": False, "vi_sao": "", "so_byte_doc": 0, "so_byte_tep": 0}
+    exe, conf, thieu = tim_avrdude()
+    if not exe:
+        ra["vi_sao"] = thieu
+        return ra
+    goc = anh
+    if anh.suffix.lower() == ".elf":
+        goc_moi, vi_sao = _hex_tu_elf(anh)
+        if goc_moi is None:
+            ra["vi_sao"] = vi_sao
+            return ra
+        goc = goc_moi
+    if not goc.is_file():
+        ra["vi_sao"] = f"không có {goc.name} để so"
+        return ra
+
+    with tempfile.TemporaryDirectory() as d:
+        doc = Path(d) / "doc-nguoc.hex"
+        try:
+            r = subprocess.run(
+                _lenh_avrdude(exe, conf, ma_chip, cong, baud, "-U", f"flash:r:{doc}:i"),
+                capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as e:
+            ra["vi_sao"] = f"đọc ngược thất bại: {type(e).__name__}: {e}"
+            return ra
+        if r.returncode != 0 or not doc.is_file():
+            ra["vi_sao"] = ("avrdude đọc ngược trả mã "
+                            f"{r.returncode}: {' '.join((r.stderr or '').split())[-200:]}")
+            return ra
+        a, b = _byte_tu_ihex(goc), _byte_tu_ihex(doc)
+
+    ra["so_byte_tep"], ra["so_byte_doc"] = len(a), len(b)
+    if not a:
+        ra["vi_sao"] = "không đọc được byte nào từ tệp nguồn"
+        return ra
+    # Chip luôn đọc ra ĐỦ dung lượng Flash, phần sau chương trình là 0xFF. So đúng phần
+    # chương trình; so cả vùng trống sẽ báo lệch ở mọi lần nạp đúng.
+    lech = [i for i, (x, y) in enumerate(zip(a, b)) if x != y]
+    ra["so_byte_lech"] = len(lech)
+    ra["byte_lech_dau"] = lech[:8]
+    ra["dat"] = not lech and len(b) >= len(a)
+    if not ra["dat"]:
+        ra["vi_sao"] = (f"{len(lech)} byte khác nhau giữa tệp và thứ đọc từ chip"
+                        if lech else
+                        f"chip chỉ đọc được {len(b)} byte, ít hơn tệp ({len(a)})")
+    return ra
+
+
+def _byte_tu_ihex(p: Path) -> bytes:
+    """Đọc Intel HEX thành byte theo địa chỉ. Bỏ qua dòng hỏng thay vì ném ngoại lệ."""
+    vung: dict[int, int] = {}
+    nen = 0
+    try:
+        dong = p.read_text("utf-8", errors="replace").splitlines()
+    except OSError:
+        return b""
+    for d in dong:
+        d = d.strip()
+        if not d.startswith(":") or len(d) < 11:
+            continue
+        try:
+            n = int(d[1:3], 16)
+            dia = int(d[3:7], 16)
+            loai = int(d[7:9], 16)
+            than = bytes.fromhex(d[9:9 + n * 2])
+        except ValueError:
+            continue
+        if loai == 0:
+            for i, x in enumerate(than):
+                vung[nen + dia + i] = x
+        elif loai == 4 and len(than) == 2:
+            nen = int.from_bytes(than, "big") << 16
+        elif loai == 2 and len(than) == 2:
+            nen = int.from_bytes(than, "big") << 4
+        elif loai == 1:
+            break
+    if not vung:
+        return b""
+    het = max(vung)
+    return bytes(vung.get(i, 0xFF) for i in range(het + 1))
 
 
 def do_bo() -> dict[str, Any]:

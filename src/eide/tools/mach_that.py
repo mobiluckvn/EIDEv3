@@ -33,19 +33,86 @@ def _ho_chieu(ctx: Any) -> dict[str, Any] | None:
     return hc(ctx)
 
 
+def _goc_chip(s: str) -> str:
+    """`st.atmega328p@1.0.0` hoặc `ATmega328P` → `ATmega328P`.
+
+    Hộ chiếu chip ghi theo dạng `ns.part@semver`, còn bảng mã avrdude tra theo tên chip. Lấy
+    nhầm cả chuỗi hộ chiếu thì tra không ra, và lúc ấy công cụ sẽ báo "không biết mã chip"
+    cho một dự án đã ghim chip đàng hoàng.
+    """
+    from ..build import mach_that as MT
+
+    t = str(s or "").split("@", 1)[0].rsplit(".", 1)[-1]
+    thuong = t.lower()
+    return next((x for x in MT._MA_AVRDUDE if x.lower() == thuong), t)
+
+
+def _noi_avr(d: dict[str, Any]) -> str:
+    """Câu về phần AVR. Nói rõ ĐÃ ĐỌC hay CHƯA ĐỌC, và việc đọc đã reset bo."""
+    a = d.get("avr")
+    if a is None:
+        co_cong = any(t["loai"] == "cong_noi_tiep" and t["nap_duoc_bang"]
+                      for t in d.get("thiet_bi", []))
+        return ("Có cổng nạp AVR qua bootloader, nhưng CHƯA bắt tay với chip — cổng USB nối "
+                "tiếp vẫn hiện ra kể cả khi không có chip trong đế. Muốn biết chắc thì gọi "
+                "lại với `doc_chu_ky_avr=true`, và nói trước cho người dùng rằng việc đó "
+                "RESET bo. " if co_cong else "")
+    if a.get("doc_duoc"):
+        return (f"ĐÃ ĐỌC chữ ký từ silicon qua bootloader: `{a['chu_ky']}` "
+                f"→ {a.get('chip') or 'chip chưa có trong bảng'} "
+                f"(cổng {a['cong']}, {a['baud']} baud). Bo đã bị RESET khi đọc. ")
+    return (f"KHÔNG đọc được chữ ký AVR: {a.get('vi_sao', '')}. "
+            "Hay gặp: sai tốc độ bootloader (bo cũ 57600, bo mới 115200), hoặc một chương "
+            "trình khác đang giữ cổng. ")
+
+
 def dang_ky(r: Registry) -> None:
     @r.tool("target.detect", "Mạch thật",
             "Dò xem máy này đang cắm bo nào: ổ đĩa của bộ nạp, cổng nối tiếp, và ID chip đọc "
             "qua SWD nếu có công cụ. Nói rõ từng thứ biết được BẰNG CÁCH NÀO, và phân biệt "
-            "“mã chip suy từ nhãn ổ đĩa” với “ID chip đọc từ silicon”.",
-            {"type": "object", "properties": {}},
+            "“mã chip suy từ nhãn ổ đĩa” với “ID chip đọc từ silicon”. Với bo AVR nạp qua "
+            "bootloader (Arduino Nano/Uno), đặt `doc_chu_ky_avr=true` để ĐỌC CHỮ KÝ TỪ "
+            "SILICON — nhưng việc đó RESET bo, nên phải nói trước cho người dùng.",
+            {"type": "object",
+             "properties": {
+                 "doc_chu_ky_avr": {
+                     "type": "boolean",
+                     "description": ("true = bắt tay với bootloader AVR để đọc chữ ký ba byte "
+                                     "từ silicon. CẢNH BÁO: thao tác này RESET bo — nếu bo "
+                                     "đang chạy thì nó khởi động lại.")},
+                 "cong": {"type": "string",
+                          "description": "cổng nối tiếp; bỏ trống = tự chọn cổng USB đầu tiên"},
+                 "baud_bootloader": {
+                     "type": "integer",
+                     "description": "tốc độ bootloader, mặc định 57600 (bo Nano cũ); bo mới "
+                                    "thường 115200"}},
+             },
             risk="R1", core=False,
             keywords=["dò bo", "board", "bộ nạp", "st-link", "cổng", "usb", "detect",
-                      "mạch thật", "chip id"])
-    def target_detect(ctx: Any):
+                      "mạch thật", "chip id", "avr", "arduino", "chữ ký chip"])
+    def target_detect(ctx: Any, doc_chu_ky_avr: bool = False, cong: str = "",
+                      baud_bootloader: int = 57600):
         from ..build import mach_that as MT
 
         d = MT.do_bo()
+        # Đọc chữ ký AVR chỉ khi được bảo. Đây là phép đo THẬT trên silicon, nhưng nó reset
+        # bo — không được tự ý làm trong một công cụ R1 mà người dùng tưởng là chỉ nhìn.
+        if doc_chu_ky_avr:
+            c = cong or next((t["duong_dan"] for t in d["thiet_bi"]
+                              if t["loai"] == "cong_noi_tiep" and t["co_the_la_bo"]), "")
+            if not c:
+                d["avr"] = {"doc_duoc": False,
+                            "vi_sao": "không thấy cổng USB nối tiếp nào để bắt tay"}
+            else:
+                ten, ky, vi_sao = MT.doc_chu_ky_avr(c, baud=baud_bootloader)
+                d["avr"] = {"doc_duoc": bool(ky), "cong": c, "chu_ky": ky, "chip": ten,
+                            "baud": baud_bootloader, "vi_sao": vi_sao,
+                            "da_reset_bo": True}
+                if ten:
+                    # Chữ ký đọc từ silicon ĐÈ lên mọi phỏng đoán từ nhãn ổ đĩa: đây là bằng
+                    # chứng về chính con chip, không phải về cái bo mang nó.
+                    d["chip_doc_duoc"] = ten
+                    d["vi_sao_chua_doc_duoc_chip"] = ""
         hc = _ho_chieu(ctx) or {}
         chip_du_an = str(hc.get("chip") or "")
         doan = [t["chip_doan"] for t in d["thiet_bi"] if t["chip_doan"]]
@@ -74,7 +141,8 @@ def dang_ky(r: Registry) -> None:
                             "nạp — hỏi người dùng. ",
                     }.get(khop or "", ""))
                 + ("Không thấy bo: đưa `danh_sach_kiem_tra` cho người dùng làm theo thứ tự, "
-                   "và ĐỪNG báo nạp được." if d["danh_sach_kiem_tra"] else ""))}
+                   "và ĐỪNG báo nạp được." if d["danh_sach_kiem_tra"] else "")
+                + _noi_avr(d))}
 
     @r.tool("target.flash", "Mạch thật",
             "NẠP firmware vào bo thật. Không hoàn tác được: bản đang chạy trên chip bị ghi "
@@ -83,9 +151,19 @@ def dang_ky(r: Registry) -> None:
             {"type": "object",
              "properties": {
                  "tep": {"type": "string",
-                         "description": "đường dẫn .bin (bỏ trống: .eide/build/mach.bin)"},
-                 "cach": {"type": "string", "enum": ["tu_chon", "sao_tep", "st-flash"],
-                          "description": "tu_chon = dùng st-flash nếu có, không thì sao tệp"},
+                         "description": ("đường dẫn tệp ảnh. Bỏ trống: .eide/build/mach.bin "
+                                         "cho ARM, .eide/build/mach.elf cho AVR")},
+                 "cach": {"type": "string",
+                          "enum": ["tu_chon", "sao_tep", "st-flash", "avrdude"],
+                          "description": ("tu_chon = st-flash nếu có, rồi avrdude cho bo AVR "
+                                          "qua bootloader, cuối cùng mới sao tệp")},
+                 "cong": {"type": "string",
+                          "description": "avrdude: cổng nối tiếp; bỏ trống = tự chọn"},
+                 "baud_bootloader": {"type": "integer",
+                                     "description": "avrdude: mặc định 57600 (Nano cũ)"},
+                 "ma_chip_avrdude": {"type": "string",
+                                     "description": "avrdude: mã -p, ví dụ m328p. Bỏ trống = "
+                                                    "suy từ hộ chiếu chip của dự án"},
                  "dong_y_khong_doi_chieu_chip": {
                      "type": "boolean",
                      "description": ("true = người dùng đã biết rằng KHÔNG đối chiếu được ID "
@@ -96,11 +174,18 @@ def dang_ky(r: Registry) -> None:
             writes_artefact=True,
             keywords=["nạp", "flash", "ghi firmware", "program", "nạp bo", "nạp chip"])
     def target_flash(ctx: Any, explain: dict[str, Any], tep: str = "", cach: str = "tu_chon",
-                     dong_y_khong_doi_chieu_chip: bool = False):
+                     dong_y_khong_doi_chieu_chip: bool = False, cong: str = "",
+                     baud_bootloader: int = 57600, ma_chip_avrdude: str = ""):
         from ..build import mach_that as MT
 
         goc = ctx.config.paths.project_root
         p = (goc / tep).resolve() if tep else (goc / ".eide" / "build" / "mach.bin")
+        # Chuỗi công cụ AVR không sinh `.bin` — `build.compile` để lại `.elf`, và avrdude
+        # nhận `.hex` (tự đổi). Lùi về `.elf` thay vì báo thiếu tệp một cách khó hiểu.
+        if not p.exists() and not tep:
+            elf = goc / ".eide" / "build" / "mach.elf"
+            if elf.exists():
+                p = elf
         if not p.exists():
             return ToolResult(False, error=EideError(
                 "E4001",
@@ -187,10 +272,30 @@ def dang_ky(r: Registry) -> None:
 
         # Chọn cách nạp.
         co_st = any(t["nap_duoc_bang"] == "st-flash" for t in d["thiet_bi"])
+        cong_avr = cong or next((t["duong_dan"] for t in d["thiet_bi"]
+                                 if t["nap_duoc_bang"] == "avrdude"), "")
         o_dia = next((Path(t["duong_dan"]) for t in d["thiet_bi"]
                       if t["nap_duoc_bang"] == "sao_tep"), None)
         if cach == "st-flash" or (cach == "tu_chon" and co_st):
             kq = MT.nap_qua_st_flash(p)
+        elif cach == "avrdude" or (cach == "tu_chon" and cong_avr):
+            if not cong_avr:
+                return ToolResult(False, error=EideError(
+                    "E4011", "Chọn nạp bằng avrdude nhưng không thấy cổng nối tiếp nào.",
+                    hint_for_agent="Gọi target.detect xem máy có cổng USB nối tiếp không.",
+                    alternatives=["target.detect"], blame="user"))
+            ma = ma_chip_avrdude or MT._MA_AVRDUDE.get(_goc_chip(chip_du_an), "")
+            if not ma:
+                return ToolResult(False, error=EideError(
+                    "E4015",
+                    f"Không biết mã avrdude cho chip “{chip_du_an or '(dự án chưa ghim)'}”.",
+                    hint_for_agent=("Ghim chip bằng `passport.pin`, hoặc truyền thẳng "
+                                    "`ma_chip_avrdude` (ví dụ m328p). Đoán mã chip rồi nạp "
+                                    "nhầm họ chip là hỏng bo."),
+                    details={"chip_du_an": chip_du_an,
+                             "ma_da_biet": sorted(MT._MA_AVRDUDE)},
+                    alternatives=["passport.pin", "target.flash"], blame="agent"))
+            kq = MT.nap_qua_avrdude(p, cong_avr, ma_chip=ma, baud=baud_bootloader)
         elif o_dia is not None:
             kq = MT.nap_qua_o_dia(p, o_dia)
         else:
@@ -248,7 +353,24 @@ def dang_ky(r: Registry) -> None:
 
         goc = ctx.config.paths.project_root
         p = (goc / tep).resolve() if tep else (goc / ".eide" / "build" / "mach.bin")
-        d = MT.doc_nguoc_flash(p)
+        if not p.exists() and not tep and (goc / ".eide" / "build" / "mach.elf").exists():
+            p = goc / ".eide" / "build" / "mach.elf"
+        # Đọc ngược bằng ĐÚNG đường đã nạp. Lần nạp gần nhất ghi lại `cach` trong kho; dùng
+        # st-flash để đọc một con AVR thì không phải "chưa đối chiếu được", mà là đo nhầm
+        # con chip — và câu trả lời sai ấy trông y hệt một câu trả lời đúng.
+        cach_da_nap = str(((ctx.store.get(MA_NAP) or {}).get("canonical") or {}).get("cach", ""))
+        if cach_da_nap == "avrdude":
+            bo = MT.do_bo()
+            c = next((t["duong_dan"] for t in bo["thiet_bi"]
+                      if t["nap_duoc_bang"] == "avrdude"), "")
+            hc2 = _ho_chieu(ctx) or {}
+            ma = MT._MA_AVRDUDE.get(_goc_chip(str(hc2.get("chip") or "")), "m328p")
+            d = MT.doc_nguoc_avr(p, c, ma_chip=ma) if c else {
+                "dat": False, "do_duoc": False,
+                "vi_sao": "lần nạp trước dùng avrdude nhưng giờ không thấy cổng nối tiếp nào"}
+            d.setdefault("do_duoc", bool(d.get("so_byte_doc")))
+        else:
+            d = MT.doc_nguoc_flash(p)
         a = ctx.store.get(MA_NAP)
         c = (a or {}).get("canonical") or {}
         if a is not None:
