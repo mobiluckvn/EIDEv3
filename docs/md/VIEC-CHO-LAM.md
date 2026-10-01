@@ -41,3 +41,14 @@ Swift rất có thể vướng đúng loại ấy.
 **Không con số nào bắt được chuyện này** — phải nhìn màn hình. Bộ quét giao diện đã có ô "lời
 tác tử đã được DỰNG thành chữ, không còn dấu Markdown thô trên màn"; ô ấy đang xanh, nên việc
 đầu tiên là tìm xem nó xanh nhờ cơ chế nào.
+
+## 3 · Bản chụp giao diện cắt lời tác tử ở 3 000 ký tự
+
+*Thấy ngày 01/10/2026, phiên robot.*
+
+`UITestChannel.anhChup()` dùng `String(cuoi.prefix(3000))` cho `loi_tac_tu_cuoi`. Câu trả lời
+dài hơn bị cắt giữa chừng, nên **nhật ký phiên chép thiếu** — hai lần trong phiên robot: danh
+mục an toàn và phần thiết kế phép đo dấu đều mất phần đuôi.
+
+Nhật ký là sở cứ. Một sở cứ cắt mất đoạn cuối thì chỗ bị cắt luôn là chỗ không ai biết là đã
+mất. Nâng trần, hoặc ghi ra tệp riêng khi vượt trần và để lại đường dẫn.

@@ -51,8 +51,8 @@
  * THAM SỐ HIỆU CHUẨN BO HẠNG L (Tài liệu bàn giao §11)
  * ========================================================================= */
 #define CALIB_ACCEL_ZERO_RAW   102       /* Giá trị thô gia tốc tại điểm cân bằng (LSB, ±4 g) (§11.2) */
-#define CALIB_PITCH_OFFSET_DEG (-0.713f) /* Góc lệch lắp đặt cảm biến [°] (§11.2) */
-#define CALIB_AXIS_DIR_Z       (-1.0f)   /* Chiều trục trước-sau s = -1 (hạng L) (§11.5 Bảng 33) */
+#define CALIB_PITCH_OFFSET_DEG (0.713f)  /* Góc lệch lắp đặt cảm biến [°] (§11.2) */
+#define CALIB_AXIS_DIR_Z       (1.0f)    /* Chiều trục trước-sau s_net = +1 (nghiêng tới -> pitch > 0) (§13.4 Mục 4) */
 
 /* Mức logic chân DIR khi đi tới (§11 Bảng 33, Bảng 13) */
 #define DIR_FORWARD_LEFT       1         /* Bánh TRÁI: mức CAO (HIGH) = tiến */

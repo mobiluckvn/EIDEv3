@@ -22,9 +22,18 @@ static uint32_t s_buzzer_off_time = 0;
 static bool s_sensor_error = false;
 static uint32_t s_last_calib_ms = 0;
 
+/* Quản lý chế độ tự kiểm dấu (§13.4) */
+static bool s_diag_mode = false;
+static uint32_t s_diag_motor_start = 0;
+static volatile float s_last_measured_pitch = 0.0f;
+
 static void buzzer_on_ms(uint16_t duration_ms) {
     BUZZER_PORT |= (1 << BUZZER_PIN);
     s_buzzer_off_time = timer_get_ms() + duration_ms;
+}
+
+void fsm_enable_diagnostics(void) {
+    s_diag_mode = true;
 }
 
 void fsm_notify_sensor_error(void) {
@@ -56,6 +65,7 @@ void fsm_init(void) {
     s_state = STATE_INIT;
     s_sensor_error = false;
     s_last_calib_ms = 0;
+    s_last_measured_pitch = 0.0f;
     mpu6050_calib_reset();
 }
 
@@ -74,6 +84,35 @@ void fsm_update_background(void) {
         } else {
             BUZZER_PORT &= ~(1 << BUZZER_PIN);
         }
+    } else if (s_state == STATE_DIAG_ANGLE) {
+        /* Chế độ kiểm tra dấu góc (§13.4 Mục 4): còi kêu theo dấu góc */
+        if (s_buzzer_off_time > 0 && now < s_buzzer_off_time) {
+            BUZZER_PORT |= (1 << BUZZER_PIN);
+        } else {
+            s_buzzer_off_time = 0;
+            if (fabsf(s_last_measured_pitch) < 2.0f) {
+                /* Đứng thẳng: Còi IM LẶNG */
+                BUZZER_PORT &= ~(1 << BUZZER_PIN);
+            } else if (s_last_measured_pitch >= 3.0f) {
+                /* Nghiêng về TRƯỚC (dấu dương): Còi bíp CHẬM (chu kỳ 600 ms) */
+                uint16_t ph = (uint16_t)(now % 600);
+                if (ph < 80) {
+                    BUZZER_PORT |= (1 << BUZZER_PIN);
+                } else {
+                    BUZZER_PORT &= ~(1 << BUZZER_PIN);
+                }
+            } else if (s_last_measured_pitch <= -3.0f) {
+                /* Nghiêng ra SAU (dấu âm): Còi bíp NHANH (chu kỳ 200 ms) */
+                uint16_t ph = (uint16_t)(now % 200);
+                if (ph < 60) {
+                    BUZZER_PORT |= (1 << BUZZER_PIN);
+                } else {
+                    BUZZER_PORT &= ~(1 << BUZZER_PIN);
+                }
+            } else {
+                BUZZER_PORT &= ~(1 << BUZZER_PIN);
+            }
+        }
     } else {
         /* Tự động tắt còi phi chặn khi hết thời gian */
         if (s_buzzer_off_time > 0 && now >= s_buzzer_off_time) {
@@ -88,8 +127,15 @@ void fsm_update_background(void) {
         /* Bắt sườn xuống nút bấm */
         if (now - s_last_btn_time > 200) {
             s_last_btn_time = now;
-            /* Xử lý bấm nút (FR-03): khoá không cho chuyển READY nếu cảm biến đang lỗi */
-            if (s_sensor_error) {
+            /* Xử lý bấm nút trong chế độ chẩn đoán */
+            if (s_state == STATE_DIAG_ANGLE) {
+                /* Bấm nút ở Bài 1 -> Phát tiếng còi dài 600 ms phân cách và chuyển sang Bài 2 (§13.4 Mục 6) */
+                s_state = STATE_DIAG_MOTOR;
+                buzzer_on_ms(600); /* Tiếng còi dài 600 ms để phân biệt đang ở bài nào */
+                motor_enable();
+                motor_set_throttle(100, 100); /* Chạy tới chậm trong 3 giây (v ≈ 0,031 m/s) */
+                s_diag_motor_start = now;
+            } else if (s_sensor_error) {
                 /* Giữ nguyên trạng thái dừng khi cảm biến hỏng */
             } else if (s_state == STATE_BALANCING || s_state == STATE_READY) {
                 /* Bấm nút khi đang chạy hoặc sẵn sàng -> Dừng hẳn (FR-03) */
@@ -108,6 +154,17 @@ void fsm_update_background(void) {
     }
     s_prev_btn_state = current_btn;
 
+    /* Xử lý thời gian kết thúc Bài 2 trong chế độ chẩn đoán (§13.4 Mục 6) */
+    if (s_state == STATE_DIAG_MOTOR) {
+        if (now - s_diag_motor_start >= 3000) {
+            /* Hết 3 giây chạy tới: dừng động cơ và chuyển về STOPPED */
+            motor_stop();
+            s_state = STATE_STOPPED;
+            s_diag_mode = false;
+            buzzer_on_ms(200); /* Bíp báo kết thúc toàn bộ kiểm tra */
+        }
+    }
+
     /* Xử lý khởi tạo và hiệu chuẩn ở trạng thái INIT / CALIBRATING phi chặn (§8.8, §12.7) */
     if (s_state == STATE_INIT) {
         buzzer_on_ms(50); /* Báo hiệu đang khởi động (FR-01) */
@@ -123,11 +180,17 @@ void fsm_update_background(void) {
                 /* Cảm biến lỗi: chuyển sang STOPPED và kích hoạt mã bíp cảnh báo lỗi */
                 fsm_notify_sensor_error();
             } else if (done) {
-                /* Tự hiệu chuẩn thành công (FR-02) -> chuyển sang STOPPED CHỜ BẤM NÚT (§5) */
-                s_state = STATE_STOPPED;
                 motor_stop();
                 pid_reset(&s_pid);
-                buzzer_on_ms(200); /* Còi kêu báo hiệu chuẩn xong (FR-01) */
+                if (s_diag_mode) {
+                    /* Vào chế độ chẩn đoán Bài 1 kiểm dấu góc (§13.4 Mục 4) */
+                    s_state = STATE_DIAG_ANGLE;
+                    buzzer_on_ms(200);
+                } else {
+                    /* Tự hiệu chuẩn thành công -> chuyển sang STOPPED CHỜ BẤM NÚT */
+                    s_state = STATE_STOPPED;
+                    buzzer_on_ms(200);
+                }
             }
         }
     }
@@ -146,8 +209,17 @@ void fsm_update_control_4ms(void) {
     /* Cập nhật bộ lọc bù với tốc độ con quay trục Y nhân hệ số s = -1 (§11.5) */
     float gyro_pitch_rate = CALIB_AXIS_DIR_Z * imu.gyro_y_dps;
     float pitch = filter_update(&s_filter, accel_pitch, gyro_pitch_rate);
+    s_last_measured_pitch = pitch;
 
     switch (s_state) {
+        case STATE_DIAG_ANGLE:
+            motor_stop();
+            break;
+
+        case STATE_DIAG_MOTOR:
+            /* Giữ lệnh chạy tới trong Bài 2 */
+            break;
+
         case STATE_READY:
             /* Tự động kích hoạt khi đi qua điểm thăng bằng (FR-04) */
             if (fabsf(pitch) < (float)ANGLE_ACTIVE_DEG) {

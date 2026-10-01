@@ -10,8 +10,13 @@ typedef enum {
     STATE_READY,
     STATE_BALANCING,
     STATE_FALLEN,
-    STATE_STOPPED
+    STATE_STOPPED,
+    STATE_DIAG_ANGLE, /* Chế độ kiểm dấu góc: còi bíp theo chiều nghiêng (Mục 4) */
+    STATE_DIAG_MOTOR  /* Chế độ kiểm chiều động cơ: chạy tới 3 giây ở throttle chậm (Mục 6) */
 } robot_state_t;
+
+/* Kích hoạt chế độ chẩn đoán tự kiểm dấu khi giữ nút D12 lúc bật nguồn */
+void fsm_enable_diagnostics(void);
 
 /* Khởi tạo máy trạng thái và các chân ngoại vi nút bấm/còi */
 void fsm_init(void);
