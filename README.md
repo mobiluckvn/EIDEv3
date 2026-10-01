@@ -25,6 +25,7 @@ truy vết được tới datasheet; mọi thay đổi là một changeset hoàn
 | **Nhánh gộp được** | `branch.merge`: tệp bằng git (xung đột thì **huỷ phép gộp**), hiện vật so ba bên; cả hai bên cùng đổi thì **không tự trộn** | [§10](#10--lịch-sử-nhánh-bản-ưng-ý--ba-mức-lùi-lại) |
 | **Tác tử tự viết công cụ** | `tool.propose` đã **nổ thật**: xin một tệp PowerPoint, nó tự viết `doc.pptx` kèm bộ kiểm rồi dùng | [§12](#12--tự-kiểm-chứng-và-tự-bù-năng-lực) |
 | **Một RTOS viết từ số không** | Thay hẳn FreeRTOS trên STM32F469I-DISCO: nhân 689 dòng, tiền định đa mức ưu tiên, **chạy thật trên bo** — LCD 800×480 và cảm ứng lên đúng như bản cũ, tốn **ít hơn 22 828 B RAM** | [§18](#18--bài-kiểm-lớn-nhất-một-rtos-viết-từ-số-không) |
+| **Robot hai bánh ĐỨNG ĐƯỢC** | 1 820 dòng C trên ATmega328P từ một hồ sơ **đã lược bỏ phần thuật toán** — ISR 50 kHz **0 số thực, 0 phép chia**, kiểm bằng dịch ngược ảnh nhị phân. Và một báo cáo nói thẳng tám chỗ tác tử tự báo xanh khi đang sai | [báo cáo](docs/robot-tu-can-bang/BAO-CAO-SO-SANH.md) |
 
 Và một việc không thêm tính năng nào nhưng đáng kể hơn cả: rà toàn bộ sổ cái thấy **31/121
 công cụ chưa nổ lần nào**. Bảy đường dẫn bị đứt đã nối, phần còn lại được giao đúng loại việc
