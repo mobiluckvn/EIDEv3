@@ -64,9 +64,10 @@ Bảng dưới xếp theo *việc người cần làm*, không theo cách chia m
 mở tệp đó ra, đếm số đoạn, số bảng, số hình, rồi mới báo. Vì câu "ghi thành công" chỉ nói về
 lời gọi, không nói về tệp nằm trên đĩa.
 
-**Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà chưa có công cụ, nó
-viết `doc.pptx` kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ khi bộ kiểm chạy đúng. Việc này
-đã chạy thật, không phải tính năng trên giấy.
+**Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà trong kho chưa có
+công cụ nào làm được, nó tự viết một công cụ mới kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ
+đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 122 công cụ kể ở trên — nó sinh
+ra lúc chạy, trong đúng dự án đang làm. Việc này đã chạy thật, không phải tính năng trên giấy.
 
 ---
 

@@ -43,6 +43,38 @@ CHUOI_CONG_CU = {
                 "objcopy": "arm-none-eabi-objcopy", "cpu": "cortex-m3", "float": "soft"},
     "armv6-m": {"gcc": "arm-none-eabi-gcc", "size": "arm-none-eabi-size",
                 "objcopy": "arm-none-eabi-objcopy", "cpu": "cortex-m0plus", "float": "soft"},
+    # RISC-V 32 bit bare-metal, cho lõi mềm chạy trên FPGA (PicoRV32, NEORV32, VexRiscv…).
+    #
+    # Dùng `riscv64-unknown-elf-gcc` chứ không phải một trình biên dịch rv32 riêng: bản
+    # Homebrew là trình biên dịch đa thư viện, `--print-multi-lib` có sẵn `rv32i/ilp32` và
+    # `rv32im/ilp32`. Đo trên máy này ngày 01/10/2026: cả hai `-march` dưới đây dịch được.
+    #
+    # `_zicsr` cần, và đây là lý do ĐÃ ĐO chứ không phải lý do nhớ lại. Trên gcc 14.2.0 của máy
+    # này, ngày 01/10/2026:
+    #
+    #   -march=rv32i        + `rdcycle a0`        -> dịch được (nó là tên gọi tắt, as vẫn nhận)
+    #   -march=rv32i        + `csrr a0, cycle`    -> LỖI ở as
+    #   -march=rv32i_zicsr  + cả hai dạng         -> dịch được
+    #
+    # Nên bỏ `_zicsr` thì chương trình dùng `rdcycle` vẫn dịch, và người viết sẽ tin là không
+    # cần — tới khi đổi sang dạng `csrr` chung (để đọc `cycleh`, `instret`, hay thanh ghi tuỳ
+    # biến) thì mới vỡ, ở một lượt sửa không liên quan. Để sẵn `_zicsr` cho khỏi bẫy đó.
+    #
+    # Ghi chú về một lần nhầm: bản đầu của dòng chú thích này viết "thiếu _zicsr thì rdcycle
+    # không dịch được". Phép thử ở trên cho thấy câu đó sai. Giữ lại vết để lần sau không ai
+    # chép lại một lý do nghe hợp lý mà chưa đo.
+    #
+    # `objcopy` có mặt vì lõi mềm nạp chương trình bằng `$readmemh` lúc tổng hợp: phải đổi
+    # `.elf` thành `.hex` rồi mới nhúng được vào BRAM.
+    "rv32i": {"gcc": "riscv64-unknown-elf-gcc", "size": "riscv64-unknown-elf-size",
+              "objcopy": "riscv64-unknown-elf-objcopy",
+              "march": "rv32i_zicsr", "mabi": "ilp32"},
+    "rv32im": {"gcc": "riscv64-unknown-elf-gcc", "size": "riscv64-unknown-elf-size",
+               "objcopy": "riscv64-unknown-elf-objcopy",
+               "march": "rv32im_zicsr", "mabi": "ilp32"},
+    "rv32imac": {"gcc": "riscv64-unknown-elf-gcc", "size": "riscv64-unknown-elf-size",
+                 "objcopy": "riscv64-unknown-elf-objcopy",
+                 "march": "rv32imac_zicsr", "mabi": "ilp32"},
 }
 
 # FPU hợp lệ theo `cpu`. Bảng này tồn tại để một chuỗi FPU sai không lọt xuống trình biên dịch
@@ -83,6 +115,11 @@ class KetQuaBienDich:
     canh_bao: list[LoiBienDich] = field(default_factory=list)
     tep_ra: str = ""
     tep_bin: str = ""             # ảnh nhị phân thô, cần cho bo nạp kiểu ổ đĩa (ST-LINK MSD)
+    # Lõi mềm RISC-V trên FPGA nạp chương trình lúc TỔNG HỢP, bằng `$readmemh`. Đây là tệp đó —
+    # một từ 32 bit mỗi dòng, KHÔNG phải Intel HEX. Hai định dạng cùng đuôi `.hex` mà khác hẳn
+    # nhau, nên tách thành trường riêng để không ai đưa nhầm tệp cho nhầm công cụ.
+    tep_hex_readmemh: str = ""
+    so_tu_readmemh: int = 0
     thieu_libc: bool = False      # máy không có newlib → mọi hàm chuẩn sẽ không liên kết được
     flash: int = 0
     sram: int = 0
@@ -98,6 +135,8 @@ class KetQuaBienDich:
                 "loi": [x.to_dict() for x in self.loi[:40]],
                 "canh_bao": [x.to_dict() for x in self.canh_bao[:20]],
                 "tep_ra": self.tep_ra, "tep_bin": self.tep_bin,
+                "tep_hex_readmemh": self.tep_hex_readmemh,
+                "so_tu_readmemh": self.so_tu_readmemh,
                 "thieu_libc": self.thieu_libc,
                 "section": dict(self.section),
                 "flash": self.flash, "sram": self.sram,
@@ -114,24 +153,54 @@ _MAU_LOI = re.compile(
     r"^(?P<tep>[^\s:][^:]*):(?P<dong>\d+):(?P<cot>\d+):\s*"
     r"(?P<muc>error|warning|note|lỗi):\s*(?P<td>.*)$")
 
+# Lỗi của TRÌNH LIÊN KẾT có dạng khác: `đường/dẫn:dòng: thông điệp` — không có cột, không có
+# chữ "error:". Mẫu trên không khớp, nên trước ngày 01/10/2026 một lỗi cú pháp trong tệp
+# linker script hiện ra thành câu *"trả mã 1 nhưng không in ra lỗi nào có toạ độ"* — đúng lúc
+# `ld` đã nói rõ tệp nào dòng nào.
+#
+# Chuyện này quan trọng hơn vẻ ngoài với dự án FPGA: lõi mềm RISC-V không có linker script sẵn,
+# người phải tự viết từ bản đồ địa chỉ của chính thiết kế phần cứng. Nó là tệp bị sửa nhiều
+# nhất và sai nhiều nhất, mà lại là tệp duy nhất EIDE không đọc nổi lỗi.
+#
+# `ld:` ở đầu dòng bị bỏ qua: `ld` thường in `/đường/dẫn/tới/ld:tệp:dòng: lỗi`, nên phải cắt
+# phần tên chính nó ra trước, không thì "tệp" nhận được là đường dẫn tới `ld`.
+_MAU_LOI_LD = re.compile(
+    r"(?:^|[/\s])(?:ld|ld\.lld|collect2)?:?\s*"
+    r"(?P<tep>[^\s:][^:]*\.(?:ld|c|h|S|s|cpp|v|sv)):(?P<dong>\d+):\s*"
+    r"(?P<td>(?:syntax error|undefined reference|cannot find|multiple definition|"
+    r"region .* overflowed|section .* will not fit|non constant|.*)\S.*)$", re.I)
+
 
 def phan_tich_loi(dau_ra: str, *, goc: Path | None = None) -> list[LoiBienDich]:
     """Tách thông điệp trình biên dịch thành bản ghi có toạ độ."""
     ra: list[LoiBienDich] = []
+
+    def _tuong_doi(tep: str) -> str:
+        if goc is None:
+            return tep
+        try:
+            return str(Path(tep).resolve().relative_to(goc.resolve()))
+        except ValueError:
+            return tep
+
     for d in dau_ra.splitlines():
-        m = _MAU_LOI.match(d.strip())
-        if not m:
+        d = d.strip()
+        m = _MAU_LOI.match(d)
+        if m:
+            ra.append(LoiBienDich(
+                tep=_tuong_doi(m.group("tep")), dong=int(m.group("dong")),
+                cot=int(m.group("cot")),
+                muc=("error" if m.group("muc") == "lỗi" else m.group("muc")),
+                thong_diep=m.group("td").strip()))
             continue
-        tep = m.group("tep")
-        if goc is not None:
-            try:
-                tep = str(Path(tep).resolve().relative_to(goc.resolve()))
-            except ValueError:
-                pass
-        ra.append(LoiBienDich(tep=tep, dong=int(m.group("dong")),
-                              cot=int(m.group("cot")),
-                              muc=("error" if m.group("muc") == "lỗi" else m.group("muc")),
-                              thong_diep=m.group("td").strip()))
+        # Trình liên kết: `tệp:dòng: thông điệp`, không có cột. Cột = 0 nghĩa là "cả dòng",
+        # chứ không phải cột thứ 0 — ghi 1 ở đây sẽ trỏ người đọc vào ký tự đầu dòng như thể
+        # đã định vị được chỗ sai.
+        m = _MAU_LOI_LD.search(d)
+        if m:
+            ra.append(LoiBienDich(
+                tep=_tuong_doi(m.group("tep")), dong=int(m.group("dong")), cot=0,
+                muc="error", thong_diep=m.group("td").strip()))
     return ra
 
 
@@ -153,9 +222,14 @@ def tim_chuoi_cong_cu(isa: str) -> dict[str, str]:
     cau_hinh = CHUOI_CONG_CU.get(isa or "", {})
     if not cau_hinh:
         return {}
+    # `march`/`mabi` phải có mặt ở đây, không chỉ trong `CHUOI_CONG_CU`: bên gọi nhận biết một
+    # dự án RISC-V bằng cách xem `cc["march"]` có bắt đầu bằng "rv32" hay không. Quên mang hai
+    # khoá này sang thì mọi dự án RISC-V rơi xuống nhánh AVR và nhận về một câu nói thiếu
+    # `avr-gcc` — đúng loại lỗi chỉ dẫn người đi sai hướng. Đã trúng một lần ngày 01/10/2026.
     ra = {"isa": isa, "fqbn": cau_hinh.get("arduino_fqbn", ""),
           "mcu": cau_hinh.get("mcu", ""), "cpu": cau_hinh.get("cpu", ""),
-          "float": cau_hinh.get("float", "")}
+          "float": cau_hinh.get("float", ""),
+          "march": cau_hinh.get("march", ""), "mabi": cau_hinh.get("mabi", "")}
     for ten in ("arduino-cli", cau_hinh.get("gcc", ""), cau_hinh.get("size", ""),
                 cau_hinh.get("objcopy", "")):
         if ten:
@@ -294,6 +368,7 @@ def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
     build = thu_muc_build or (goc / ".eide" / "build")
     build.mkdir(parents=True, exist_ok=True)
     la_arm = bool(cc.get("cpu"))
+    la_rv32 = str(cc.get("march") or "").startswith("rv32")
 
     # Chọn công cụ theo DỰ ÁN LÀ GÌ, không theo MÁY CÓ GÌ.
     #
@@ -316,6 +391,17 @@ def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
         kq.lenh = [cc["avr-gcc"], f"-mmcu={cc.get('mcu', 'atmega328p')}", "-Os",
                    "-DF_CPU=16000000UL", "-std=gnu11", "-Wall", "-Wextra",
                    "-o", str(build / "mach.elf"), *nguon]
+    elif la_rv32 and cc.get("riscv64-unknown-elf-gcc"):
+        loi = _lenh_rv32(kq, cc, sketch=sketch, build=build)
+        if loi:
+            kq.vi_sao_khong_dat = loi
+            return kq
+    elif la_rv32:
+        kq.vi_sao_khong_dat = (
+            f"Máy này chưa có `riscv64-unknown-elf-gcc` để biên dịch cho {isa} "
+            f"(-march={cc.get('march')}). EIDE không tự cài — đó là việc của người dùng, qua "
+            "cổng G-TOOL (tool.install).")
+        return kq
     elif la_arm and cc.get("arm-none-eabi-gcc"):
         loi = _lenh_arm(kq, cc, sketch=sketch, build=build, fpu=fpu)
         if loi:
@@ -366,10 +452,93 @@ def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
             # không nạp được" là đúng loại nửa-thành-công phải nói ra, không được làm tròn lên.
             kq.vi_sao_khong_dat = loi_bin
             return kq
+    elif elf is not None and la_rv32:
+        kq.flash, kq.sram, kq.section = kich_thuoc_arm(
+            cc.get("riscv64-unknown-elf-size", ""), elf)
+        loi_hex = _sinh_hex_readmemh(kq, cc, elf=elf, build=build, goc=goc)
+        if loi_hex:
+            # Lõi mềm nạp chương trình lúc TỔNG HỢP, bằng `$readmemh` đọc một tệp hex. Không
+            # có tệp đó thì bitstream dựng ra mang một BRAM rỗng: FPGA cấu hình xong, CPU chạy,
+            # và nó chạy toàn lệnh 0. Đúng loại nửa-thành-công phải nói ra.
+            kq.vi_sao_khong_dat = loi_hex
+            return kq
     elif elf is not None:
         kq.flash, kq.sram = _doc_kich_thuoc(cc.get("avr-size", ""), elf)
     kq.dat = True
     return kq
+
+
+def _sinh_hex_readmemh(kq: "KetQuaBienDich", cc: dict[str, str], *, elf: Path, build: Path,
+                       goc: Path) -> str:
+    """`.elf` → `mach.hex` dạng `$readmemh` đọc được: một từ 32 bit mỗi dòng, hệ 16, không tiền tố.
+
+    Đây KHÔNG phải Intel HEX. `$readmemh` của Verilog đọc một định dạng khác hẳn: chỉ các chữ
+    số hệ 16 cách nhau bằng khoảng trắng, không có byte count, không có địa chỉ, không có tổng
+    kiểm. Đưa một tệp Intel HEX cho `$readmemh` thì nó nạp cả `:10000000` vào bộ nhớ như dữ
+    liệu — bitstream dựng ra vẫn xong, và CPU chạy rác.
+
+    Thứ tự byte là little-endian, vì RISC-V là little-endian và BRAM được đọc theo từ.
+    """
+    oc = cc.get("riscv64-unknown-elf-objcopy", "")
+    if not oc:
+        return ("Không có `riscv64-unknown-elf-objcopy` để đổi `.elf` thành tệp hex cho "
+                "`$readmemh`. Cài qua cổng G-TOOL (tool.install).")
+
+    # Canh bằng CHÍNH CON SỐ, trước khi gọi objcopy.
+    #
+    # Bản đầu chỉ dựa vào việc `objcopy` báo lỗi "has no sections". Bộ kiểm bắt được chỗ hở:
+    # nếu linker script có khai một section rỗng (ví dụ `.bss`) thì tệp ảnh *có* section, nên
+    # `objcopy` chạy được, sinh ra một tệp nhị phân rỗng, và EIDE báo **đạt** cho một chương
+    # trình không có một lệnh nào. Một phép đo xanh cho một tệp ảnh rỗng thì nó không đo gì cả.
+    #
+    # `kq.flash` đã được đọc từ `size -A` ngay trước lời gọi này, nên nó là con số thật.
+    if kq.flash <= 0:
+        return (
+            f"Biên dịch và liên kết trả 0, nhưng tệp ảnh có **{kq.flash} byte mã**. Không có "
+            "lệnh nào trong đó, nên đây không phải là biên dịch xong.\n\n"
+            "Nguyên nhân thường gặp: EIDE dịch với `-ffunction-sections -fdata-sections` và "
+            "liên kết với `--gc-sections`, nên section nào không ai với tới sẽ bị dọn. Trong "
+            "chương trình bare-metal **không ai gọi `_start`** — nó là điểm vào — nên linker "
+            "script phải nói rõ hai điều:\n"
+            "  1. `ENTRY(_start)` ở đầu tệp, để trình liên kết biết đâu là gốc.\n"
+            "  2. `KEEP(*(.init))` (hoặc đúng tên section chứa `_start`) để nó không bị dọn.\n\n"
+            "Thiếu hai dòng đó thì trình liên kết **vẫn trả mã 0**. Đây là chỗ duy nhất phát "
+            "hiện ra.")
+    thonhi = build / "mach.bin"
+    r = subprocess.run([oc, "-O", "binary", str(elf), str(thonhi)],
+                       capture_output=True, text=True)
+    if r.returncode != 0 or not thonhi.exists():
+        loi = (r.stderr or "").strip()
+        # "has no sections" là một câu đúng mà vô ích: nó nói hậu quả, không nói nguyên nhân.
+        # Nguyên nhân gần như luôn là một cặp: EIDE dịch với `-ffunction-sections` và
+        # `--gc-sections`, nên trình liên kết dọn mọi section không ai với tới. Chương trình
+        # bare-metal không có ai gọi `_start` — nó là điểm vào — nên nếu linker script không
+        # khai `ENTRY` và không `KEEP` section khởi động thì cả chương trình bị dọn sạch, và
+        # trình liên kết **vẫn trả mã 0**. Người đọc câu gốc sẽ đi tìm lỗi trong mã C.
+        if "no sections" in loi.lower():
+            return (
+                f"`objcopy` nói tệp ảnh không có section nào. Tệp `.elf` chỉ "
+                f"{elf.stat().st_size if elf.exists() else 0} byte, tức trình liên kết đã dọn "
+                "sạch chương trình.\n\n"
+                "Nguyên nhân thường gặp: EIDE dịch với `-ffunction-sections -fdata-sections` "
+                "và liên kết với `--gc-sections`, nên section nào không ai với tới sẽ bị dọn. "
+                "Trong chương trình bare-metal **không ai gọi `_start`** — nó là điểm vào — nên "
+                "linker script phải nói rõ hai điều:\n"
+                "  1. `ENTRY(_start)` ở đầu tệp, để trình liên kết biết đâu là gốc.\n"
+                "  2. `KEEP(*(.init))` (hoặc đúng tên section chứa `_start`) để nó không bị dọn.\n\n"
+                "Thiếu cả hai thì liên kết **vẫn trả mã 0** và sinh ra một tệp ảnh rỗng — đây là "
+                "chỗ duy nhất phát hiện ra.")
+        return f"`objcopy -O binary` trả mã {r.returncode}: {loi[:300]}"
+    raw = thonhi.read_bytes()
+    # Đệm cho đủ bội số 4: một từ thiếu byte sẽ thành một từ sai, không phải một từ ngắn.
+    if len(raw) % 4:
+        raw += b"\x00" * (4 - len(raw) % 4)
+    dong = [f"{int.from_bytes(raw[i:i + 4], 'little'):08x}" for i in range(0, len(raw), 4)]
+    ra = build / "mach.hex"
+    ra.write_text("\n".join(dong) + "\n", "utf-8")
+    kq.tep_hex_readmemh = str(ra.relative_to(goc)) if ra.is_relative_to(goc) else str(ra)
+    kq.so_tu_readmemh = len(dong)
+    return ""
 
 
 def _lenh_arm(kq: "KetQuaBienDich", cc: dict[str, str], *, sketch: Path, build: Path,
@@ -416,6 +585,51 @@ def _lenh_arm(kq: "KetQuaBienDich", cc: dict[str, str], *, sketch: Path, build: 
         "-T", ld[0], "-nostartfiles",
         "-Wl,--gc-sections", f"-Wl,-Map={build / 'mach.map'}",
         "-o", str(build / "mach.elf"), *nguon, *thu_vien]
+    return ""
+
+
+def _lenh_rv32(kq: "KetQuaBienDich", cc: dict[str, str], *, sketch: Path,
+               build: Path) -> str:
+    """Dựng lệnh biên dịch bare-metal RISC-V 32 bit. Trả chuỗi lý do nếu KHÔNG dựng được.
+
+    Khác `_lenh_arm` ở ba chỗ, và cả ba đều là chỗ làm giống ARM thì sai:
+
+    - **Không có `-mthumb`, không có `-mfloat-abi`.** RISC-V chọn phần dấu phẩy động bằng đuôi
+      `f`/`d` trong `-march` cộng với `-mabi`, chứ không bằng một cờ riêng.
+    - **`-mabi` phải đi cùng `-march`.** Trình biên dịch là bản đa thư viện; đưa một cặp
+      không có trong `--print-multi-lib` thì trình liên kết báo thiếu `libgcc`, một câu không
+      chỉ ra cặp cờ nào sai.
+    - **Luôn `-nostdlib`.** Lõi mềm trên FPGA không có đủ chỗ cho newlib, và bài này tự viết
+      `start.S`. Nhưng vẫn liên kết `libgcc` vì cấu hình RV32I **không có lệnh nhân** — phép
+      `a * b` trong C biến thành lời gọi `__mulsi3` nằm trong `libgcc`. Thiếu nó thì đúng cấu
+      hình H0 của đề bài không liên kết được.
+    """
+    kq.cong_cu = "riscv64-unknown-elf-gcc"
+    nguon, ld = _nguon_bare_metal(sketch)
+    if not nguon:
+        return f"Không có tệp .c/.s nào trong {sketch.name} để biên dịch."
+    if not ld:
+        return ("Chương trình bare-metal cho lõi RISC-V cần một linker script (`*.ld`) khai "
+                "địa chỉ và kích thước bộ nhớ. Với lõi mềm trên FPGA, các con số đó do CHÍNH "
+                "thiết kế phần cứng quyết định (đáy BRAM, đỉnh BRAM làm đỉnh ngăn xếp, bản đồ "
+                f"địa chỉ ngoại vi). Không thấy tệp .ld nào trong {sketch.name}. EIDE không tự "
+                "sinh — một địa chỉ đoán ra cho một chương trình dịch xong, nạp xong, rồi "
+                "không chạy.")
+    if len(ld) > 1:
+        return ("Có " + str(len(ld)) + " tệp .ld trong thư mục nguồn ("
+                + ", ".join(Path(x).name for x in ld)
+                + "). Không đoán dùng cái nào — chỉ giữ lại một, hoặc tách thư mục.")
+
+    march = cc.get("march") or "rv32i_zicsr"
+    mabi = cc.get("mabi") or "ilp32"
+    kq.lenh = [
+        cc["riscv64-unknown-elf-gcc"], f"-march={march}", f"-mabi={mabi}",
+        "-Os", "-g3", "-std=gnu11", "-Wall", "-Wextra",
+        "-ffreestanding", "-ffunction-sections", "-fdata-sections",
+        *_duong_include(sketch),
+        "-T", ld[0], "-nostartfiles", "-nostdlib",
+        "-Wl,--gc-sections", f"-Wl,-Map={build / 'mach.map'}",
+        "-o", str(build / "mach.elf"), *nguon, "-lgcc"]
     return ""
 
 
@@ -499,6 +713,58 @@ CAN_GI: dict[str, list[dict[str, Any]]] = {
                                        "brew install riscv-tools"},
     ],
 }
+
+# Hai ISA rv32 còn lại cần đúng bộ công cụ như `rv32imac`, chỉ khác `-march`. Sinh bằng mã chứ
+# không chép tay ba lần: chép tay thì sửa một chỗ quên hai chỗ, và chỗ quên chỉ hiện ra khi
+# người dùng chọn đúng ISA ấy.
+_CAN_GI_RV32 = [
+    {"ten": "riscv64-unknown-elf-gcc", "de_lam_gi": "biên dịch C cho lõi RISC-V 32 bit",
+     "bat_buoc": True,
+     "cach_cai": "brew tap riscv-software-src/riscv && brew install riscv-tools"},
+    {"ten": "riscv64-unknown-elf-size", "de_lam_gi": "đọc kích thước chương trình trong BRAM",
+     "bat_buoc": False,
+     "cach_cai": "brew tap riscv-software-src/riscv && brew install riscv-tools"},
+    {"ten": "riscv64-unknown-elf-objcopy",
+     "de_lam_gi": "đổi .elf thành tệp hex cho `$readmemh` nạp vào BRAM lúc tổng hợp",
+     "bat_buoc": True,
+     "cach_cai": "brew tap riscv-software-src/riscv && brew install riscv-tools"},
+]
+for _isa in ("rv32i", "rv32im"):
+    CAN_GI[_isa] = [dict(x) for x in _CAN_GI_RV32]
+
+# ------------------------------------------------------------------ chuỗi công cụ FPGA
+#
+# Đây là nhóm đầu tiên trong bảng này KHÔNG phải một ISA. Nó là một **luồng công cụ**: từ mã
+# Verilog tới tệp cấu hình nạp được vào FPGA, qua bốn chặng rời nhau — tổng hợp, đặt-đi dây,
+# đóng gói, nạp. Bốn chặng là bốn chương trình khác nhau, và chặng nào thiếu thì ba chặng kia
+# vô dụng, nên cả bốn đều `bat_buoc`.
+#
+# Vì sao `cach_cai` của ba chặng đầu là **cùng một lệnh**: Yosys, nextpnr và Apicula đi chung
+# trong gói `oss-cad-suite`. Cài rời từng cái thì phải tự khớp phiên bản giữa chúng, mà bản
+# không khớp cho ra lỗi ở chặng sau dưới dạng "unknown cell type" — một câu không chỉ ra rằng
+# nguyên nhân là phiên bản.
+#
+# `openFPGALoader` tách riêng vì nó là chặng nạp, dùng được độc lập với ba chặng kia.
+CAN_GI_FPGA_GOWIN = [
+    {"ten": "yosys", "de_lam_gi": "tổng hợp Verilog thành mạng cổng (`synth_gowin`)",
+     "bat_buoc": True, "cach_cai": "brew install oss-cad-suite"},
+    {"ten": "nextpnr-himbaechel",
+     "de_lam_gi": "đặt-đi dây cho chip Gowin, và báo Fmax đạt được",
+     "bat_buoc": True, "cach_cai": "brew install oss-cad-suite"},
+    {"ten": "gowin_pack",
+     "de_lam_gi": "đóng gói thành tệp cấu hình `.fs` nạp được vào FPGA (Apicula)",
+     "bat_buoc": True, "cach_cai": "brew install oss-cad-suite"},
+    {"ten": "openFPGALoader", "de_lam_gi": "nạp `.fs` vào SRAM hoặc flash của kit",
+     "bat_buoc": True, "cach_cai": "brew install openfpgaloader"},
+    {"ten": "verilator",
+     "de_lam_gi": "mô phỏng nhanh để ĐO SỐ CHU KỲ (Icarus quá chậm cho bài nhân ma trận)",
+     "bat_buoc": True, "cach_cai": "brew install verilator"},
+    {"ten": "iverilog", "de_lam_gi": "mô phỏng testbench nhỏ, kiểm từng khối",
+     "bat_buoc": False, "cach_cai": "brew install icarus-verilog"},
+    {"ten": "gtkwave", "de_lam_gi": "xem dạng sóng khi cần người nhìn mắt",
+     "bat_buoc": False, "cach_cai": "brew install --cask gtkwave"},
+]
+CAN_GI["fpga-gowin"] = CAN_GI_FPGA_GOWIN
 
 # Công cụ dùng chung, không phụ thuộc kiến trúc.
 CAN_GI_CHUNG = [

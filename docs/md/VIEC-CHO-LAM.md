@@ -12,7 +12,7 @@ một mục DEV.
 DEV-317 đã sửa phần **tài liệu xuất ra** — docx, pdf, pptx, xlsx đổi `$…$`, `$$…$$` và rào
 ` ```math ` sang ký hiệu toán. Nhưng đó là `xuat_ban.py` phía Python.
 
-**Console là đường khác**: nó dựng bằng `Views/Markdown.swift` trong app Swift. Phần công thức
+**Console là đường khác**: nó dựng bằng `ui/EIDEApp/Sources/EIDE/Views/Markdown.swift` trong app Swift. Phần công thức
 chưa hề được nối vào đó — tức cùng một câu tác tử viết ra sẽ đẹp trong tệp Word mà vẫn là
 `\frac{a}{b}` trên màn hình.
 
