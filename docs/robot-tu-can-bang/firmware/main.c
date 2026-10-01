@@ -5,13 +5,12 @@
 #include "motor.h"
 #include "fsm.h"
 #include <avr/interrupt.h>
+#include <avr/wdt.h>
 
 int main(void) {
-    /* Khởi tạo giao tiếp I2C phần cứng TWI */
-    i2c_init();
-
-    /* Khởi tạo cảm biến con quay quán tính MPU6050 */
-    mpu6050_init();
+    /* Xoá cờ reset trong MCUSR và tắt Watchdog ngay lệnh đầu tiên (§13.2, Phụ lục A.3) */
+    MCUSR = 0;
+    wdt_disable();
 
     /* Khởi tạo chân I/O điều khiển động cơ bước A4988 */
     motor_init();
@@ -24,6 +23,14 @@ int main(void) {
 
     /* Cho phép ngắt toàn cục */
     sei();
+
+    /* Khởi tạo giao tiếp I2C phần cứng TWI */
+    i2c_init();
+
+    /* Khởi tạo cảm biến con quay quán tính MPU6050 */
+    if (!mpu6050_init()) {
+        fsm_notify_sensor_error();
+    }
 
     /* Vòng lặp chính kết hợp Tầng 2 và Tầng 3 */
     while (1) {

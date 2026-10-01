@@ -32,6 +32,12 @@ bool i2c_start(uint8_t address) {
 
 void i2c_stop(void) {
     TWCR = (1 << TWINT) | (1 << TWSTO) | (1 << TWEN);
+    uint16_t timeout = I2C_TIMEOUT_CYCLES;
+    while (TWCR & (1 << TWSTO)) {
+        if (--timeout == 0) {
+            break; /* Hết thời gian chờ - tránh treo CPU */
+        }
+    }
 }
 
 bool i2c_write(uint8_t data) {

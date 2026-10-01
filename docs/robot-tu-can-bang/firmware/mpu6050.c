@@ -9,8 +9,8 @@
 #define REG_ACCEL_XOUT_H  0x3B
 #define REG_PWR_MGMT_1    0x6B
 
-/* Hệ số tỉ lệ nhạy cảm biến (anh cho, chưa có tài liệu) */
-#define ACCEL_SCALE_FACTOR 16384.0f
+/* Hệ số tỉ lệ nhạy cảm biến: ±4 g tương ứng 8192 LSB/g (Phụ lục A.3) */
+#define ACCEL_SCALE_FACTOR 8192.0f
 #define GYRO_SCALE_FACTOR  131.0f
 
 static float s_gyro_bias_x = 0.0f;
@@ -30,8 +30,8 @@ bool mpu6050_init(void) {
     if (!i2c_write_byte(MPU6050_ADDR, REG_GYRO_CONFIG, 0x00)) {
         return false;
     }
-    /* Đặt thang đo gia tốc */
-    if (!i2c_write_byte(MPU6050_ADDR, REG_ACCEL_CONFIG, 0x00)) {
+    /* Đặt thang đo gia tốc ±4 g (AFS_SEL = 1, bit [4:3] = 01 -> 0x08) */
+    if (!i2c_write_byte(MPU6050_ADDR, REG_ACCEL_CONFIG, 0x08)) {
         return false;
     }
     return true;

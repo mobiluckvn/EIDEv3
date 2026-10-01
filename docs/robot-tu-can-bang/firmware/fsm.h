@@ -25,4 +25,10 @@ void fsm_update_control_4ms(void);
 /* Lấy trạng thái hiện tại của robot */
 robot_state_t fsm_get_state(void);
 
+/* Báo lỗi cảm biến quán tính (MPU6050) và kích hoạt mã bíp cảnh báo */
+void fsm_notify_sensor_error(void);
+
+/* Kiểm tra xem hệ thống có đang ở trạng thái lỗi cảm biến không */
+bool fsm_has_sensor_error(void);
+
 #endif /* FSM_H_ */

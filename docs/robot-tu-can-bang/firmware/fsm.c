@@ -19,10 +19,21 @@ static uint32_t s_last_btn_time = 0;
 
 /* Quản lý còi phi chặn */
 static uint32_t s_buzzer_off_time = 0;
+static bool s_sensor_error = false;
 
 static void buzzer_on_ms(uint16_t duration_ms) {
     BUZZER_PORT |= (1 << BUZZER_PIN);
     s_buzzer_off_time = timer_get_ms() + duration_ms;
+}
+
+void fsm_notify_sensor_error(void) {
+    s_sensor_error = true;
+    s_state = STATE_STOPPED;
+    motor_stop();
+}
+
+bool fsm_has_sensor_error(void) {
+    return s_sensor_error;
 }
 
 void fsm_init(void) {
@@ -41,6 +52,7 @@ void fsm_init(void) {
     pid_init(&s_pid, 15.0f, 0.8f, 0.5f, 100.0f, 2000.0f);
 
     s_state = STATE_INIT;
+    s_sensor_error = false;
 }
 
 robot_state_t fsm_get_state(void) {
@@ -50,10 +62,20 @@ robot_state_t fsm_get_state(void) {
 void fsm_update_background(void) {
     uint32_t now = timer_get_ms();
 
-    /* Tự động tắt còi phi chặn khi hết thời gian */
-    if (s_buzzer_off_time > 0 && now >= s_buzzer_off_time) {
-        BUZZER_PORT &= ~(1 << BUZZER_PIN);
-        s_buzzer_off_time = 0;
+    /* Quản lý còi: nếu có lỗi cảm biến, phát mã bíp cảnh báo riêng biệt (3 bíp ngắn dồn dập mỗi giây) */
+    if (s_sensor_error) {
+        uint16_t phase = (uint16_t)(now % 1000);
+        if ((phase < 80) || (phase >= 160 && phase < 240) || (phase >= 320 && phase < 400)) {
+            BUZZER_PORT |= (1 << BUZZER_PIN);
+        } else {
+            BUZZER_PORT &= ~(1 << BUZZER_PIN);
+        }
+    } else {
+        /* Tự động tắt còi phi chặn khi hết thời gian */
+        if (s_buzzer_off_time > 0 && now >= s_buzzer_off_time) {
+            BUZZER_PORT &= ~(1 << BUZZER_PIN);
+            s_buzzer_off_time = 0;
+        }
     }
 
     /* Đọc nút nhấn D12 chống rung phi chặn */
@@ -62,8 +84,10 @@ void fsm_update_background(void) {
         /* Bắt sườn xuống nút bấm */
         if (now - s_last_btn_time > 200) {
             s_last_btn_time = now;
-            /* Xử lý bấm nút (FR-03) */
-            if (s_state == STATE_BALANCING || s_state == STATE_READY) {
+            /* Xử lý bấm nút (FR-03): khoá không cho chuyển READY nếu cảm biến đang lỗi */
+            if (s_sensor_error) {
+                /* Giữ nguyên trạng thái dừng khi cảm biến hỏng */
+            } else if (s_state == STATE_BALANCING || s_state == STATE_READY) {
                 /* Bấm nút khi đang chạy hoặc sẵn sàng -> Dừng hẳn (FR-03) */
                 s_state = STATE_STOPPED;
                 motor_stop();
@@ -89,8 +113,8 @@ void fsm_update_background(void) {
             s_state = STATE_READY;
             buzzer_on_ms(200); /* Còi kêu báo sẵn sàng (FR-01) */
         } else {
-            /* Cảm biến lỗi */
-            s_state = STATE_STOPPED;
+            /* Cảm biến lỗi: chuyển sang STOPPED và kích hoạt mã bíp cảnh báo lỗi */
+            fsm_notify_sensor_error();
         }
     }
 }
