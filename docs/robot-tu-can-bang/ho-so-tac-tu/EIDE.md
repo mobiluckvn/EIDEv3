@@ -24,6 +24,7 @@ _(chưa có giả định nào đang dùng)_
 - Ngôn ngữ trao đổi: tiếng Việt. Thuật ngữ kỹ thuật giữ nguyên tiếng Anh, giải thích khi lần đầu xuất hiện.
 - Mọi con số dùng để quyết định phải truy vết được tới tài liệu (N1).
 - Trước khi sửa bất kỳ tệp firmware nào, bắt buộc mở `tai-lieu/BANG-TRA-TUAN-THU.md` để đối chiếu các mục kỹ thuật liên quan đến vị trí sắp sửa; sửa xong bắt buộc cập nhật lại cột kết luận của những mục ấy. [run-065]
+- Sau mỗi lần nạp firmware, bắt buộc mở cổng nối tiếp đọc các dòng log khởi động đầu tiên để đối chiếu với dấu hiệu nhận dạng đặc thù của chương trình vừa nạp; nếu dòng in ra không khớp với bản vừa nạp thì coi như nạp sai dù trình nạp báo verified. [run-106]
 
 ## Đừng
 

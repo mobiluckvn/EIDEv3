@@ -1,0 +1,110 @@
+{
+  "$schema": "./board.schema.json",
+  "board": "BLKLab_Balancing_Robot_Shield_v1",
+  "mcu": "ATmega328P",
+  "core": "arduino:avr:nano",
+  "f_cpu_hz": 16000000,
+  "source_of_truth": {
+    "file": "docs/BLKLab_Huong_Dan_Phan_cung/BLKLab_Balancing_Robot_Nguyen_Ly.pdf",
+    "sheet_date": "2025-06-24",
+    "schematic_file": "D:\\BLK\\..\\sche_Balancing_Robot.SchDoc",
+    "extracted_by": "human (Vu Tri Cong) - doc chan tu net label tren khoi A1 'Vi dieu khien'",
+    "note": "Day la artifact 'Datasheet Injection' (muc 2.4.1 de an). Moi prompt sinh ma PHAI nhung file nay."
+  },
+  "resources": {
+    "flash_bytes": 32768,
+    "flash_bootloader_bytes": 2048,
+    "sram_bytes": 2048,
+    "eeprom_bytes": 1024,
+    "has_fpu": false,
+    "timers": ["Timer0 8-bit", "Timer1 16-bit", "Timer2 8-bit"],
+    "peripherals": ["UART0", "TWI/I2C", "SPI", "ADC 10-bit"]
+  },
+
+  "pinmap": [
+    { "arduino": "D0",  "avr_port": "PD0", "dir": "in",  "func": "UART0 RXD (hardware)", "net": "JQ6500_TX",   "peripheral": "JQ6500", "note": "Xung dot voi USB-Serial khi nap code -> phai rut JQ6500/HC05 (muc 2.3.4)" },
+    { "arduino": "D1",  "avr_port": "PD1", "dir": "out", "func": "UART0 TXD (hardware)", "net": "JQ6500_RX",   "peripheral": "JQ6500", "note": "Dung lam kenh telemetry khi thao JQ6500" },
+    { "arduino": "D2",  "avr_port": "PD2", "dir": "in",  "func": "INT0 / PCINT18",       "net": "SRF04_ECHO",  "peripheral": "SRF04",  "note": "Do echo bang ngat, KHONG dung pulseIn() (blocking)" },
+    { "arduino": "D3",  "avr_port": "PD3", "dir": "out", "func": "Digital Out",          "net": "SRF04_TRIG",  "peripheral": "SRF04",  "note": "Xung trigger 10us" },
+    { "arduino": "D4",  "avr_port": "PD4", "dir": "out", "func": "Digital Out",          "net": "DIR1",        "peripheral": "A4988_M1", "note": "Dong co PHAI - chieu quay. MUC THAP = TIEN (xem motor_wiring)" },
+    { "arduino": "D5",  "avr_port": "PD5", "dir": "out", "func": "Digital Out",          "net": "STEP1",       "peripheral": "A4988_M1", "note": "Dong co PHAI - xung buoc, do Tang 1 dieu khien. ⚠ Tan so ngat sinh xung KHAC NHAU giua hai cau hinh: firmware mau dung Timer2 o 50 kHz (chu ky 20 us); nhan the he truoc dung Timer1 o 20 kHz. Chu ky ngat la DON VI cua dai luong throttle, nen doi tan so la doi dac tinh dau ra. Xem hai khoi timer_allocation_v2 va timer_allocation." },
+    { "arduino": "D6",  "avr_port": "PD6", "dir": "out", "func": "Digital Out",          "net": "DIR2",        "peripheral": "A4988_M2", "note": "Dong co TRAI - chieu quay. MUC CAO = TIEN (xem motor_wiring)" },
+    { "arduino": "D7",  "avr_port": "PD7", "dir": "out", "func": "Digital Out",          "net": "STEP2",       "peripheral": "A4988_M2", "note": "Dong co TRAI - xung buoc" },
+    { "arduino": "D8",  "avr_port": "PB0", "dir": "out", "func": "SoftwareSerial TX",    "net": "HC05_RXD",    "peripheral": "HC05",   "note": "CANH BAO: tren schematic v1 chan D8 chi co stub, chua gan nhan net. Can do thong mach tren PCB that de xac nhan." },
+    { "arduino": "D9",  "avr_port": "PB1", "dir": "in",  "func": "SoftwareSerial RX",    "net": "HC05_TXD",    "peripheral": "HC05",   "note": "SoftwareSerial cam ngat -> chi duoc goi o Tang 3 (muc 2.3.4)" },
+    { "arduino": "D10", "avr_port": "PB2", "dir": "out", "func": "Digital Out",          "net": "COI",         "peripheral": "BUZZER", "note": "Coi chip qua R1=100R" },
+    { "arduino": "D11", "avr_port": "PB3", "dir": "out", "func": "Digital Out",          "net": "LED",         "peripheral": "WS2812", "note": "Chuoi 4 x WS2812 (L1..L4). Ghi bit-bang -> cam ngat ~30us/LED, chi chay o Tang 3" },
+    { "arduino": "D12", "avr_port": "PB4", "dir": "in",  "func": "Digital In (pull-up ngoai R5 10K)", "net": "BUTTON", "peripheral": "BUTTON", "note": "Co tu C9=104 chong doi" },
+    { "arduino": "D13", "avr_port": "PB5", "dir": "out", "func": "Digital Out",          "net": null,          "peripheral": "PROBE_ISR", "note": "KHONG co net tren schematic -> dung lam chan do jitter ISR bang oscilloscope (muc 3.1.2)" },
+    { "arduino": "A0",  "avr_port": "PC0", "dir": "in",  "func": "ADC0",                 "net": "ADC_BAT",     "peripheral": "BATTERY", "note": "Chia ap do dien ap pack. ⚠ He so ghi tren so do la 2,00 (R6/R7 = 10K/10K) nhung gia tri dien tro thuc lap tren PCB khac ban ve: he so XAC DINH BANG DO DAC la ~3,55. Firmware phai dung ADC_BAT_DIVIDER_X100 trong board_blk_v1.h, khong dung he so tren so do - he so 2,00 cho ra dien ap pack thap hon thuc te va dan toi ket luan sai rang pack da hong. Quy trinh xac dinh lai he so: xem so tay tham chieu phan cung." },
+    { "arduino": "A1",  "avr_port": "PC1", "dir": "out", "func": "Digital Out",          "net": null,          "peripheral": "PROBE_PID", "note": "Tu do -> dung lam chan do do tre vong PID" },
+    { "arduino": "A2",  "avr_port": "PC2", "dir": null,  "func": "free",                 "net": null,          "peripheral": null, "note": "Tu do" },
+    { "arduino": "A3",  "avr_port": "PC3", "dir": null,  "func": "free",                 "net": null,          "peripheral": null, "note": "Tu do" },
+    { "arduino": "A4",  "avr_port": "PC4", "dir": "bidir", "func": "TWI SDA",            "net": "SDA",         "peripheral": "MPU6050", "note": "I2C 400kHz" },
+    { "arduino": "A5",  "avr_port": "PC5", "dir": "bidir", "func": "TWI SCL",            "net": "SCL",         "peripheral": "MPU6050", "note": "I2C 400kHz" },
+    { "arduino": "A6",  "avr_port": null,  "dir": "in",  "func": "ADC6 (analog only)",   "net": null,          "peripheral": null, "note": "Tu do" },
+    { "arduino": "A7",  "avr_port": null,  "dir": "in",  "func": "ADC7 (analog only)",   "net": null,          "peripheral": null, "note": "Tu do" }
+  ],
+
+  "motor_wiring": {
+    "_nguon": "Suy ra tu ma nha cung cap chay duoc tren robot that: docs/BLKLab_Balancing_Robot_Code/V1_Balancing_Robot_HC05_JQ6500/V1_...ino, khoi sinh xung dong 570-606, doi chieu voi khoi tu can bang dong 370-373.",
+    "M1_la_banh": "phai",
+    "M2_la_banh": "trai",
+    "left_forward_dir_level": "HIGH",
+    "right_forward_dir_level": "LOW",
+    "_giai_thich": [
+      "Hai dong co NEMA17 duoc lap DOI XUNG GUONG tren khung. De ca hai cung day robot ve phia truoc, chung phai quay NGUOC CHIEU nhau trong khong gian.",
+      "Vi vay hai chan DIR PHAI o MUC NGUOC NHAU cho cung mot chieu di.",
+      "Dat ca hai chan DIR cung mot muc se lam robot XOAY TAI CHO thay vi tien - ma van bien dich sach va van co xung ra du hai chan STEP.",
+      "Day la loai loi ma so do nguyen ly KHONG the cho biet: schematic chi ve day noi, khong ve chieu lap dong co."
+    ],
+    "_can_xac_nhan": "Nap firmware len robot that, cho di toi, nhin hai banh. Neu chung quay nguoc nhau thi dao lai hai hang so tren."
+  },
+
+  "hard_wired_constraints": [
+    "A4988 #1: MS1/MS2/MS3 (net A4988_MS11/12/13) noi cung len 5V qua via V1/V2/V5 -> CO DINH 1/16 vi buoc. Phan mem KHONG duoc cau hinh lai.",
+    "A4988 #2: MS1/MS2/MS3 (net A4988_MS21/22/23) noi cung len 5V qua via V3/V4/V6 -> CO DINH 1/16 vi buoc.",
+    "A4988: chan RST noi voi SLP -> driver luon o trang thai hoat dong, khong co ngu.",
+    "A4988: chan EN keo xuong GND -> output stage luon bat.",
+    "Hai dong co lap doi xung guong -> hai chan DIR phai o MUC NGUOC NHAU cho cung chieu di (xem khoi motor_wiring).",
+    "Nguon: pin 2S 18650 -> D1(SS34) -> U1(78M05 SMD TO252) -> 5V. VMOT lay trực tiep truoc on ap.",
+    "MPU6050 khong co chan INT noi ve MCU (header JP1x8 chi co 5V/GND/SCL/SDA) -> PHAI polling theo tick, khong duoc dung data-ready interrupt.",
+    "HC05_STATE va HC05_EN khong noi ve MCU -> khong the doc trang thai ket noi bang phan mem."
+  ],
+
+  "i2c_devices": [
+    { "name": "MPU6050", "addr": "0x68", "who_am_i_reg": "0x75", "who_am_i_val": "0x68", "bus_hz": 400000 }
+  ],
+
+  "_cap_phat_timer": [
+    "HAI NHAN SONG SONG, MOI NHAN MOT CACH CAP PHAT. Day khong phai mau thuan, va khong ben nao sai.",
+    "timer_allocation     = NHAN v1 (firmware/nanoos). La thu MA BO SINH MA NHAM TOI: sau ung dung trong firmware/generated/ va flow_A/flow_B deu lien ket vao nhan nay. tools/aidd_loop.py chi nhung KHOI NAY vao prompt, va tools/validate_config.py doc Timer1.freq_hz de chan tac vu xin chay o Tang 1 (cua kiem G04).",
+    "timer_allocation_v2  = NHAN v2 (firmware/nanoos_v2 + firmware/can_bang_v2). La ban DA GIU DUOC ROBOT DUNG tren phan cung that, khong cap (02/09/2026). KHONG co cong cu nao doc khoi nay - no o day de nguoi va tac nhan doc.",
+    "⚠ SUA DUNG CHO: dang viet/sinh ung dung tren nhan v1 thi doc timer_allocation. Dang viet lai firmware tu dau de robot DUNG DUOC thi doc timer_allocation_v2.",
+    "⚠ DUNG 'HOP NHAT' HAI KHOI. Doi timer_allocation sang so cua v2 se lam hong flow_A, nhan v1 va cua kiem G04 cung luc: TIER1_ISR_HZ = 20000 trong board_blk_v1.h dang duoc nanoos.c, flow_A/main.c va drv_srf04.c dung song.",
+    "⚠ GIU NGUYEN DANG dict-long-dict cho CA HAI khoi. tools/noi_dung_nanoos.py duyet .items() roi goi v.get('owner') tren tung gia tri, nen mot khoa co gia tri KIEU CHUOI dat ben trong se lam no gay. Moi ghi chu van xuoi phai nam o khoi _cap_phat_timer nay."
+  ],
+
+  "timer_allocation": {
+    "Timer0": { "owner": "he thong", "mode": "Normal / overflow", "use": "millis()-tuong duong, dem thoi gian tho cho Tang 3" },
+    "Timer1": { "owner": "Tang 1 (Hard RT)", "mode": "CTC, OCR1A", "freq_hz": 20000, "use": "Sinh xung buoc bang bo tich luy pha (muc 2.3.3)" },
+    "Timer2": { "owner": "Tang 2 (Scheduler)", "mode": "CTC, OCR2A", "freq_hz": 1000, "use": "Tick 1ms cho bo lap lich cong tac" }
+  },
+
+  "timer_allocation_v2": {
+    "Timer2": { "owner": "Tang 1 (Hard RT)", "mode": "CTC, OCR2A, prescaler 8", "freq_hz": 50000, "use": "Sinh xung buoc bang BO DEM 20 us - chep dung co che cua nha san xuat. OCR2A = 16e6/8/50000 - 1 = 39. ⚠ 20 us la DON VI cua throttle: doi tan so ISR la doi don vi dau ra cua ca khau bu phi tuyen dong co." },
+    "Timer0": { "owner": "Tang 2 (Scheduler)", "mode": "CTC, OCR0A, prescaler 64", "freq_hz": 1000, "use": "Tick 1 ms cho bo lap lich. OCR0A = 16e6/64/1000 - 1 = 249. Chu ky dieu khien hieu dung = 4 tick = 4 ms." },
+    "Timer1": { "owner": "do dac", "mode": "chay tu do (khong sinh ngat)", "freq_hz": 16000000, "use": "1 nac = 62,5 ns. Do WCET tung tac vu trong vong lap lich. De trong co chu y - khong tac vu nao duoc chiem." }
+  },
+
+  "forbidden_in_generated_code": [
+    "malloc / calloc / free / new / delete / String",
+    "de quy (recursion)",
+    "delay() / delayMicroseconds() trong Tang 1 va Tang 2",
+    "pulseIn() cho SRF04",
+    "phep chia (/) hoac so thuc (float/double) ben trong ISR 20kHz",
+    "doc/ghi bien nhieu byte chia se voi ISR ma khong bao ATOMIC (cli/sei)",
+    "Serial.print() ben trong ISR",
+    "cau hinh lai chan MS1/MS2/MS3 cua A4988 bang phan mem (da khoa cung bang jumper)"
+  ]
+}

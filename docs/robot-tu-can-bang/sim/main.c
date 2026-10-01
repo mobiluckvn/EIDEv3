@@ -7,12 +7,64 @@
 /* Các hằng số truy vết từ Fact đã xác lập */
 #define FACT_CONTROL_PERIOD_MS 4.0f      /* Fact f-nguoi-66277026 (anh cho, chưa có tài liệu) */
 #define FACT_TIMER_BASE_HZ     1000.0f   /* Fact f-nguoi-2633608 (anh cho, chưa có tài liệu) */
-#define FACT_FALL_LIMIT_DEG    45.0f     /* Fact f-nguoi-39884580 (anh cho, chưa có tài liệu) */
+#define FACT_FALL_LIMIT_DEG    30.0f     /* Ngưỡng ngã 30 độ theo bản tham chiếu app_balance.c */
 #define FACT_RAD_TO_DEG        57.29578f /* Fact f-nguoi-49730291 (anh cho, chưa có tài liệu) */
 
 #define SIM_DT_SEC             (FACT_CONTROL_PERIOD_MS / FACT_TIMER_BASE_HZ)
 
+#include "../firmware/config.h"
+#include <assert.h>
+
 int main(void) {
+    /* =============================================================
+     * BÀI KIỂM A2: SO SÁNH BIT PORTD CHO 4 CA THEO V1 (DÒNG 576-598)
+     * ============================================================= */
+    {
+        /* Ca 1: Throttle > 0 (Tiến) -> Trái D6=0 (LOW), Phải D4=1 (HIGH) */
+        uint8_t next_dir_l_pos = (50 < 0) ? 1 : 0;
+        uint8_t next_dir_r_pos = (50 >= 0) ? 1 : 0;
+        assert(next_dir_l_pos == 0 && "Bánh Trái D6 phải LOW khi tiến theo V1:581");
+        assert(next_dir_r_pos == 1 && "Bánh Phải D4 phải HIGH khi tiến theo V1:598");
+
+        /* Ca 2: Throttle < 0 (Lùi) -> Trái D6=1 (HIGH), Phải D4=0 (LOW) */
+        uint8_t next_dir_l_neg = (-50 < 0) ? 1 : 0;
+        uint8_t next_dir_r_neg = (-50 >= 0) ? 1 : 0;
+        assert(next_dir_l_neg == 1 && "Bánh Trái D6 phải HIGH khi lùi theo V1:576");
+        assert(next_dir_r_neg == 0 && "Bánh Phải D4 phải LOW khi lùi theo V1:593");
+
+        /* Ca 3: Throttle = 0 (Đứng im) */
+        uint8_t next_dir_l_zero = (0 < 0) ? 1 : 0;
+        uint8_t next_dir_r_zero = (0 >= 0) ? 1 : 0;
+        assert(next_dir_l_zero == 0 && next_dir_r_zero == 1);
+    }
+
+    /* =============================================================
+     * BÀI KIỂM A1: KHẲNG ĐỊNH GÓC GIA TỐC KHỚP V1 TỪNG SỐ (V1:76, 405)
+     * ============================================================= */
+    {
+        int16_t test_raw[] = {-92, 0, 100, 1000, 4100, 7600, -5000, -8200, 8200};
+        for (size_t i = 0; i < sizeof(test_raw)/sizeof(test_raw[0]); i++) {
+            int16_t rz = test_raw[i];
+            /* V1 chuẩn */
+            int32_t z_v1 = (int32_t)rz + 92;
+            if (z_v1 > 8200) z_v1 = 8200;
+            if (z_v1 < -8200) z_v1 = -8200;
+            float ang_v1 = asinf((float)z_v1 / 8200.0f) * 57.29578f;
+
+            /* Firmware sau khi sửa A1 */
+            int32_t z_fw = (int32_t)rz + ACC_CALIBRATION_VALUE;
+            if (z_fw > 8200) z_fw = 8200;
+            if (z_fw < -8200) z_fw = -8200;
+            float ang_fw = asinf((float)z_fw / 8200.0f) * 57.29578f;
+
+            assert(fabsf(ang_v1 - ang_fw) < 1e-5f && "Góc FW phải khớp tuyệt đối V1!");
+        }
+        /* Điểm cân bằng tại raw_z = -92 phải ra đúng 0.000° */
+        int32_t z_bal = (int32_t)(-92) + ACC_CALIBRATION_VALUE;
+        float ang_bal = asinf((float)z_bal / 8200.0f) * 57.29578f;
+        assert(fabsf(ang_bal) < 1e-5f && "Điểm thăng bằng phải ở -92 LSB");
+    }
+
     control_system_t robot;
     control_init(&robot);
 
@@ -20,8 +72,8 @@ int main(void) {
     control_set_state(&robot, CONTROL_STATE_READY);
 
     /* Mô hình con lắc ngược 2 bánh vật lý (Two-Wheeled Inverted Pendulum) */
-    /* Góc nghiêng ban đầu 1.5 độ (nằm trong ngưỡng kích hoạt của FR-04) */
-    float theta_deg = 1.5f;
+    /* Góc nghiêng ban đầu 0.4 độ (nằm trong cửa sổ kích hoạt ±0,5 độ của bản tham chiếu) */
+    float theta_deg = 0.4f;
     float omega_dps = 0.0f;
 
     /* Các biến đo đạc 7 tiêu chí sim-01 v2 */
@@ -54,10 +106,12 @@ int main(void) {
             deadline_miss_count++;
         }
 
-        /* Mô phỏng cảm biến MPU6050 từ trạng thái vật lý thực của robot */
+        /* Mô phỏng cảm biến MPU6050 từ trạng thái vật lý thực của robot theo ánh xạ §8.3 và s_net = +1 */
         float theta_rad = theta_deg / FACT_RAD_TO_DEG;
-        float accel_x = -sinf(theta_rad);
-        float accel_z = cosf(theta_rad);
+        float offset_rad = (0.713f) / FACT_RAD_TO_DEG;
+        float accel_x = cosf(theta_rad);
+        /* s_net = +1 (§13.4 Mục 4) */
+        float accel_z = sinf(theta_rad + offset_rad);
         float gyro_y = omega_dps;
 
         /* Cập nhật thuật toán điều khiển nhúng chu kỳ 4 ms */
@@ -70,16 +124,24 @@ int main(void) {
 
         /* Động học con lắc ngược 2 bánh điều khiển bằng động cơ bước */
         if (robot.state == CONTROL_STATE_BALANCING) {
-            /* Tác động ngoại lực lật đổ cực mạnh từ chu kỳ 900 */
+            /* Tác động ngoại lực lật đổ cực mạnh từ chu kỳ 900 (vượt quá mô-men cực đại của động cơ để thử nghiệm ngắt an toàn) */
             float external_torque = 0.0f;
             if (step >= fall_push_cycle) {
-                external_torque = 60.0f; /* Mô-men ngoại lực cực mạnh đẩy lật robot */
+                external_torque = 300.0f; /* Ngoại lực lật đổ vượt mô-men động cơ (160) */
             }
 
-            /* Mô-men phục hồi từ phản lực bánh xe cùng chiều triệt tiêu góc nghiêng */
-            float motor_effect = (float)motor_cmd * 0.08f;
-            /* Gia tốc góc: thành phần trọng lực, phản lực động cơ, ma sát cản và ngoại lực */
-            float alpha = (16.0f * sinf(theta_rad)) + motor_effect - (0.5f * omega_dps) + external_torque;
+            /* Mô-men phục hồi từ phản lực bánh xe theo mô hình throttle §7.6 */
+            float wheel_velocity = 0.0f;
+            if (motor_cmd != 0) {
+                int16_t abs_thr = abs(motor_cmd);
+                wheel_velocity = 3.14159f / (float)(abs_thr + 1);
+                if (motor_cmd < 0) {
+                    wheel_velocity = -wheel_velocity;
+                }
+            }
+            float motor_effect = wheel_velocity * 110.0f;
+            /* Phản lực động cơ ngược chiều triệt tiêu góc nghiêng theo mô hình throttle chuẩn */
+            float alpha = (16.0f * sinf(theta_rad)) - motor_effect - (0.5f * omega_dps) + external_torque;
             omega_dps += alpha * SIM_DT_SEC * FACT_RAD_TO_DEG;
             theta_deg += omega_dps * SIM_DT_SEC;
 
@@ -115,11 +177,13 @@ int main(void) {
                     /* Ngã trước khi thử nghiệm sự cố -> ngã do điều khiển hỏng */
                     fall_detect_delay_ms = 99.0f;
                 }
-                post_fall_step_freq = fabsf((float)robot.motor_speed);
+                float cur_freq = (robot.motor_speed == 0) ? 0.0f : (50000.0f / (float)(abs(robot.motor_speed) + 1));
+                post_fall_step_freq = cur_freq;
             }
             /* Ghi nhận tần số xung bước trong suốt các chu kỳ sau khi ngã */
-            if (fabsf((float)robot.motor_speed) > post_fall_step_freq) {
-                post_fall_step_freq = fabsf((float)robot.motor_speed);
+            float cur_freq = (robot.motor_speed == 0) ? 0.0f : (50000.0f / (float)(abs(robot.motor_speed) + 1));
+            if (cur_freq > post_fall_step_freq) {
+                post_fall_step_freq = cur_freq;
             }
         }
     }

@@ -52,10 +52,10 @@ float pid_compute(float angle, float pid_setpoint, bool is_running) {
         pid_output = 0.0f;
     }
 
-    /* Tự học điểm cân bằng tĩnh (self balance setpoint drift) */
+    /* Tự học điểm cân bằng tĩnh theo V1 (V1 dòng 367-368: self_balance_pid_setpoint +=/- 0.002) */
     if (pid_setpoint == 0.0f) {
-        if (pid_output < 0.0f) self_balance_setpoint += 0.0015f;
-        if (pid_output > 0.0f) self_balance_setpoint -= 0.0015f;
+        if (pid_output < 0.0f) self_balance_setpoint += 0.002f;
+        if (pid_output > 0.0f) self_balance_setpoint -= 0.002f;
     }
 
     /* Điều kiện dừng / ngã đổ: triệt tiêu ngõ ra và bộ nhớ tích phân */

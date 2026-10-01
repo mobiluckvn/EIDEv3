@@ -1,7 +1,14 @@
 #include "motor.h"
 #include "config.h"
+#ifndef EIDE_SIM
 #include <avr/io.h>
 #include <util/atomic.h>
+#else
+#define ATOMIC_BLOCK(type)
+#define ATOMIC_RESTORESTATE
+extern uint8_t PORTD;
+extern uint8_t DDRD;
+#endif
 #include <stdlib.h>
 #include <math.h>
 
@@ -110,17 +117,20 @@ void motor_isr_step(void) {
     /* Yêu cầu 1: Hạ chân STEP ở đầu lần ngắt kế tiếp (xung STEP rộng đúng 20 µs) */
     port_val &= ~((1 << MOTOR_L_STEP_PIN) | (1 << MOTOR_R_STEP_PIN));
 
-    /* Áp mức DIR hiện thời đã được chốt từ nhịp trước */
-    if (s_cur_dir_l == DIR_FORWARD_LEFT) {
-        port_val |= (1 << MOTOR_L_DIR_PIN);  /* Trái HIGH = tiến (§11 Bảng 33) */
+    /* Áp mức DIR hiện thời: Bánh Trái D6, Bánh Phải D4 theo đúng V1 dòng 576-581 và 593-598:
+     * - Trái: throttle < 0 -> D6 = 1 (HIGH); throttle >= 0 -> D6 = 0 (LOW) (V1:576-581)
+     * - Phải: throttle < 0 -> D4 = 0 (LOW);  throttle >= 0 -> D4 = 1 (HIGH) (V1:593-598)
+     */
+    if (s_cur_dir_l) {
+        port_val |= (1 << MOTOR_L_DIR_PIN);  /* D6 = 1 (thấp hơn 0 / lùi) */
     } else {
-        port_val &= ~(1 << MOTOR_L_DIR_PIN); /* Trái LOW = lùi */
+        port_val &= ~(1 << MOTOR_L_DIR_PIN); /* D6 = 0 (lớn hơn hoặc bằng 0 / tiến) */
     }
 
-    if (s_cur_dir_r == DIR_FORWARD_RIGHT) {
-        port_val &= ~(1 << MOTOR_R_DIR_PIN); /* Phải LOW = tiến (§11 Bảng 33) */
+    if (s_cur_dir_r) {
+        port_val |= (1 << MOTOR_R_DIR_PIN);  /* D4 = 1 (lớn hơn hoặc bằng 0 / tiến) */
     } else {
-        port_val |= (1 << MOTOR_R_DIR_PIN);  /* Phải HIGH = lùi */
+        port_val &= ~(1 << MOTOR_R_DIR_PIN); /* D4 = 0 (thấp hơn 0 / lùi) */
     }
 
     if (!s_motor_active) {
@@ -142,7 +152,7 @@ void motor_isr_step(void) {
     } else {
         if (s_active_thr_l == 0) {
             s_active_thr_l = (uint16_t)abs(s_target_thr_l);
-            s_next_dir_l = (s_target_thr_l > 0) ? DIR_FORWARD_LEFT : !DIR_FORWARD_LEFT;
+            s_next_dir_l = (s_target_thr_l >= 0) ? DIR_FORWARD_LEFT : !DIR_FORWARD_LEFT;
             s_cur_dir_l = s_next_dir_l;
             s_count_l = 0;
         }
@@ -155,7 +165,7 @@ void motor_isr_step(void) {
 
             /* Yêu cầu 4: Chốt chiều và độ lớn cùng lúc tại điểm nạp lại bộ đếm */
             s_active_thr_l = (uint16_t)abs(s_target_thr_l);
-            s_next_dir_l = (s_target_thr_l > 0) ? DIR_FORWARD_LEFT : !DIR_FORWARD_LEFT;
+            s_next_dir_l = (s_target_thr_l >= 0) ? DIR_FORWARD_LEFT : !DIR_FORWARD_LEFT;
             s_cur_dir_l = s_next_dir_l;
         }
     }
@@ -170,7 +180,7 @@ void motor_isr_step(void) {
     } else {
         if (s_active_thr_r == 0) {
             s_active_thr_r = (uint16_t)abs(s_target_thr_r);
-            s_next_dir_r = (s_target_thr_r > 0) ? DIR_FORWARD_RIGHT : !DIR_FORWARD_RIGHT;
+            s_next_dir_r = (s_target_thr_r >= 0) ? DIR_FORWARD_RIGHT : !DIR_FORWARD_RIGHT;
             s_cur_dir_r = s_next_dir_r;
             s_count_r = 0;
         }
@@ -183,7 +193,7 @@ void motor_isr_step(void) {
 
             /* Yêu cầu 4: Chốt chiều và độ lớn cùng lúc tại điểm nạp lại bộ đếm */
             s_active_thr_r = (uint16_t)abs(s_target_thr_r);
-            s_next_dir_r = (s_target_thr_r > 0) ? DIR_FORWARD_RIGHT : !DIR_FORWARD_RIGHT;
+            s_next_dir_r = (s_target_thr_r >= 0) ? DIR_FORWARD_RIGHT : !DIR_FORWARD_RIGHT;
             s_cur_dir_r = s_next_dir_r;
         }
     }

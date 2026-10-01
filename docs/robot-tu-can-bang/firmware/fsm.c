@@ -5,7 +5,9 @@
 #include "filter.h"
 #include "pid.h"
 #include "motor.h"
+#include "uart.h"
 #include <math.h>
+#include <stdio.h>
 
 #define RAD_TO_DEG_FACTOR 57.29578f /* (anh cho, chưa có tài liệu) */
 
@@ -31,6 +33,28 @@ static bool s_is_error_nga = false;
 static bool s_diag_mode = false;
 static uint32_t s_diag_motor_start = 0;
 static volatile float s_last_measured_pitch = 0.0f;
+static volatile int16_t s_last_accel_z_raw = 0;
+
+/* Quản lý chế độ đo offset cơ khí tự động (giữ nút D12 >= 2s) */
+static uint32_t s_btn_press_start = 0;
+static bool s_offset_calib_mode = false;
+static int32_t s_offset_sum = 0;
+static uint16_t s_offset_samples = 0;
+static robot_state_t s_btn_state_at_press = STATE_STOPPED;
+static bool s_long_press_handled = false;
+static bool s_btn_is_held = false;
+
+/* Giám sát pin yếu theo V1 dòng 289-293 */
+static bool s_low_bat = false;
+static uint32_t s_last_bat_check_ms = 0;
+
+static uint16_t read_battery_adc(void) {
+    /* Đọc kênh ADC0 (chân A0 / PC0) theo V1 dòng 289 */
+    ADMUX = (1 << REFS0) | (BATTERY_ADC_CHANNEL & 0x07);
+    ADCSRA = (1 << ADEN) | (1 << ADSC) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
+    while (ADCSRA & (1 << ADSC));
+    return ADC;
+}
 
 static void buzzer_on_ms(uint16_t duration_ms) {
     BUZZER_PORT |= (1 << BUZZER_PIN);
@@ -88,8 +112,27 @@ float fsm_get_pitch(void) {
     return s_last_measured_pitch;
 }
 
+int16_t fsm_get_accel_z_raw(void) {
+    return s_last_accel_z_raw;
+}
+
 void fsm_update_background(void) {
     uint32_t now = timer_get_ms();
+
+    /* Định kỳ 500 ms kiểm tra điện áp pin qua ADC0 theo V1 dòng 289-293 */
+    if (now - s_last_bat_check_ms >= 500) {
+        s_last_bat_check_ms = now;
+        uint16_t bat_adc = read_battery_adc();
+        if (bat_adc < BATTERY_LOW_ADC_THRESHOLD) {
+            s_low_bat = true;
+            if (s_state == STATE_BALANCING) {
+                s_state = STATE_FALLEN;
+                motor_stop();
+            }
+        } else {
+            s_low_bat = false;
+        }
+    }
 
     /* Quản lý còi: nếu có lỗi cảm biến, phát mã bíp cảnh báo riêng biệt (nếu chưa bấm nút tắt còi) */
     if (s_sensor_error) {
@@ -142,42 +185,68 @@ void fsm_update_background(void) {
 
     /* Đọc nút nhấn D12 chống rung phi chặn */
     bool current_btn = (BUTTON_PINREG & (1 << BUTTON_PIN)) ? true : false;
+
+    /* 1. Bắt sườn xuống khi bắt đầu nhấn nút */
     if (s_prev_btn_state && !current_btn) {
-        /* Bắt sườn xuống nút bấm */
-        if (now - s_last_btn_time > 200) {
+        if (s_last_btn_time == 0 || now - s_last_btn_time > 200) {
             s_last_btn_time = now;
-            /* Xử lý bấm nút trong chế độ chẩn đoán */
-            if (s_state == STATE_DIAG_ANGLE) {
-                /* Bấm nút ở Bài 1 -> Phát tiếng còi dài 600 ms phân cách và chuyển sang Bài 2 (§13.4 Mục 6) */
-                s_state = STATE_DIAG_MOTOR;
-                buzzer_on_ms(600); /* Tiếng còi dài 600 ms để phân biệt đang ở bài nào */
-                motor_enable();
-                motor_set_throttle(100, 100); /* Chạy tới chậm trong 3 giây (v ≈ 0,031 m/s) */
-                s_diag_motor_start = now;
-            } else if (s_sensor_error) {
-                /* Bấm nút D12 khi đang báo lỗi: TẮT CÒI NGAY LẬP TỨC nhưng vẫn giữ cờ lỗi và log chữ */
+            s_btn_press_start = now;
+            s_btn_state_at_press = s_state;
+            s_long_press_handled = false;
+            s_btn_is_held = true;
+
+            /* Xử lý phản ứng tức thời cho trường hợp khẩn cấp */
+            if (s_sensor_error) {
                 s_sensor_error_muted = true;
                 BUZZER_PORT &= ~(1 << BUZZER_PIN);
             } else if (s_state == STATE_BALANCING || s_state == STATE_READY) {
-                /* Bấm nút khi đang chạy hoặc sẵn sàng -> Dừng hẳn (FR-03) */
+                /* Dừng khẩn cấp tức thời khi đang chạy */
                 s_state = STATE_STOPPED;
                 motor_stop();
                 pid_reset();
                 buzzer_on_ms(100);
-            } else if (s_state == STATE_CALIBRATING) {
-                /* Bấm nút khi đang hiệu chuẩn -> Huỷ và quay lại dừng (app_balance.c:79-83) */
+            }
+        }
+    }
+
+    /* 2. Trong khi nút đang được giữ: kiểm tra mốc nhấn giữ >= 2 giây */
+    if (!current_btn) {
+        if (!s_long_press_handled && s_btn_is_held && (now - s_btn_press_start >= 2000)) {
+            if (s_btn_state_at_press == STATE_STOPPED) {
+                s_long_press_handled = true;
+                s_offset_calib_mode = true;
+                s_offset_sum = 0;
+                s_offset_samples = 0;
+                buzzer_on_ms(200);
+                uart_send_line("[OFFSET] DANG DO 500 MAU TAI DIEM CAN BANG... GIU YEN XE!");
+            }
+        }
+    }
+
+    /* 3. Bắt sườn lên khi nhả nút */
+    if (!s_prev_btn_state && current_btn) {
+        if (!s_long_press_handled && s_btn_is_held) {
+            /* Nhấn nhả ngắn (< 2 giây): thực thi chuyển trạng thái theo s_btn_state_at_press */
+            if (s_btn_state_at_press == STATE_DIAG_ANGLE) {
+                s_state = STATE_DIAG_MOTOR;
+                buzzer_on_ms(600);
+                motor_enable();
+                motor_set_throttle(100, 100);
+                s_diag_motor_start = now;
+            } else if (s_btn_state_at_press == STATE_CALIBRATING) {
+                /* Đang hiệu chuẩn bấm nút -> Huỷ về dừng */
                 s_state = STATE_STOPPED;
                 buzzer_on_ms(100);
-            } else if (s_state == STATE_STOPPED) {
-                /* Bấm nút khi đang dừng -> Bắt đầu hiệu chỉnh con quay (STATE_HIEU_CHINH theo bản tham chiếu) */
+            } else if (s_btn_state_at_press == STATE_STOPPED) {
+                /* Đang dừng bấm nhả -> Bắt đầu hiệu chuẩn con quay */
                 s_state = STATE_CALIBRATING;
                 mpu6050_calib_reset();
                 s_last_calib_ms = now;
                 s_last_beep_time = now;
                 s_beep_count = 1;
                 buzzer_on_ms(100);
-            } else if (s_state == STATE_FALLEN) {
-                /* Bấm nút khi ngã -> Quay về trạng thái dừng chờ (FR-03, app_balance.c:169-173) */
+            } else if (s_btn_state_at_press == STATE_FALLEN) {
+                /* Xác nhận sau khi ngã về STOPPED */
                 s_state = STATE_STOPPED;
                 motor_stop();
                 pid_reset();
@@ -185,6 +254,8 @@ void fsm_update_background(void) {
                 s_is_error_nga = false;
             }
         }
+        s_btn_is_held = false;
+        s_long_press_handled = false;
     }
     s_prev_btn_state = current_btn;
 
@@ -267,19 +338,38 @@ void fsm_update_control_4ms(void) {
         return;
     }
 
-    /* Thuật toán tính góc theo bản tham chiếu drv_imu.c:46-61:
-     * - Trừ offset cơ khí ACCEL_BALANCE_OFFSET = -535
-     * - Kẹp dải ±8200 LSB (đúng 1 g ở thang đo ±4 g)
-     * - Tính góc gia tốc bằng asinf() một trục
-     * - Tích phân con quay với hệ số 0.000031
-     * - Trộn lọc bù: 0.9996 con quay + 0.0004 gia tốc
+    /* Lưu giá trị thô gia tốc trục trước-sau cho chẩn đoán và đo offset */
+    s_last_accel_z_raw = raw.accel_z;
+
+    /* Nếu đang ở chế độ đo offset: tích luỹ 500 mẫu liên tiếp */
+    if (s_offset_calib_mode) {
+        s_offset_sum += (int32_t)raw.accel_z;
+        s_offset_samples++;
+        if (s_offset_samples >= 500) {
+            int16_t offset_avg = (int16_t)(s_offset_sum / 500);
+            s_offset_calib_mode = false;
+            char msg[80];
+            snprintf(msg, sizeof(msg), "[OFFSET] KET QUA 500 MAU: Z_raw_avg = %d LSB", offset_avg);
+            uart_send_line(msg);
+            buzzer_on_ms(500); /* Bíp dài 500 ms báo hoàn tất */
+        }
+    }
+
+    /* Thuật toán tính góc theo đúng bản V1 của nhà cung cấp (V1 dòng 405-440):
+     * - CỘNG offset gia tốc điểm cân bằng ACC_CALIBRATION_VALUE = 92 (V1:405)
+     * - Kẹp dải ±8200 LSB (đúng 1 g ở thang đo ±4 g) (V1:407-408)
+     * - Tính góc gia tốc bằng asinf() một trục (V1:411)
+     * - Tích phân con quay pitch với hệ số 0.000031 (V1:436)
+     * - Bù trôi khi xoay: trừ gyro_yaw_raw * 0.0000003 (V1:437)
+     * - Trộn lọc bù: 0.9996 con quay + 0.0004 gia tốc (V1:438)
      */
-    int32_t accel_z = (int32_t)raw.accel_z - ACCEL_BALANCE_OFFSET;
+    int32_t accel_z = (int32_t)raw.accel_z + ACC_CALIBRATION_VALUE;
     if (accel_z > 8200) accel_z = 8200;
     if (accel_z < -8200) accel_z = -8200;
 
     float angle_acc = asinf((float)accel_z / 8200.0f) * RAD_TO_DEG_FACTOR;
     float gyro_y_corrected = (float)(raw.gyro_y - mpu6050_get_gyro_bias_y_raw());
+    int16_t gyro_yaw_raw = raw.gyro_x - mpu6050_get_gyro_bias_x_raw();
 
     float pitch;
     if (s_state == STATE_STOPPED || s_state == STATE_CALIBRATING) {
@@ -288,6 +378,7 @@ void fsm_update_control_4ms(void) {
         pitch = angle_acc;
     } else {
         s_angle_gyro += gyro_y_corrected * 0.000031f;
+        s_angle_gyro -= (float)gyro_yaw_raw * 0.0000003f; /* Bù trôi góc khi xoay (V1:437) */
         s_angle_gyro = s_angle_gyro * 0.9996f + angle_acc * 0.0004f;
         pitch = s_angle_gyro;
     }
@@ -303,8 +394,8 @@ void fsm_update_control_4ms(void) {
             break;
 
         case STATE_READY:
-            /* Tự động kích hoạt khi đi qua điểm thăng bằng: cửa sổ ±0,5° theo bản tham chiếu (app_balance.c:116) */
-            if (pitch > -0.5f && pitch < 0.5f) {
+            /* Tự động kích hoạt khi đi qua điểm thăng bằng và pin đủ: cửa sổ ±0,5° theo V1 (V1:414) */
+            if (!s_low_bat && pitch > -ANGLE_ACTIVE_DEG && pitch < ANGLE_ACTIVE_DEG) {
                 s_state = STATE_BALANCING;
                 pid_reset();
                 motor_enable();
@@ -312,8 +403,8 @@ void fsm_update_control_4ms(void) {
             break;
 
         case STATE_BALANCING:
-            /* Kiểm tra điều kiện ngã xe: vượt quá ±30° theo bản tham chiếu (app_balance.c:133) */
-            if (pitch > 30.0f || pitch < -30.0f) {
+            /* Kiểm tra điều kiện ngã xe hoặc pin yếu theo V1 (V1 dòng 319: low_bat == 1 || ngã) */
+            if (s_low_bat || pitch > ANGLE_FALL_LIMIT_DEG || pitch < -ANGLE_FALL_LIMIT_DEG) {
                 s_state = STATE_FALLEN;
                 motor_stop();
                 pid_compute(pitch, 0.0f, false);

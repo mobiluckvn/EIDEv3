@@ -126,7 +126,7 @@ uint16_t uart_get_dropped_lines(void) {
     return s_dropped_lines;
 }
 
-void uart_send_diag_telemetry(robot_state_t state, float pitch, int16_t thr_l, int16_t thr_r, uint16_t miss, uint16_t dropped) {
+void uart_send_diag_telemetry(robot_state_t state, float pitch, int16_t z_raw, int16_t thr_l, int16_t thr_r, uint16_t miss, uint16_t dropped) {
     const char *st_str = "UNK";
     switch (state) {
         case STATE_INIT:        st_str = "INIT"; break;
@@ -140,10 +140,11 @@ void uart_send_diag_telemetry(robot_state_t state, float pitch, int16_t thr_l, i
     }
 
     int16_t p_x10 = (int16_t)(pitch * 10.0f);
-    char buf[60];
-    snprintf(buf, sizeof(buf), "[%s] P:%d.%d Thr:%d/%d M:%u D:%u",
+    char buf[64];
+    snprintf(buf, sizeof(buf), "[%s] P:%d.%d Z:%d Thr:%d/%d M:%u D:%u",
              st_str,
              p_x10 / 10, abs(p_x10 % 10),
+             z_raw,
              thr_l, thr_r,
              miss, dropped);
     uart_send_line(buf);

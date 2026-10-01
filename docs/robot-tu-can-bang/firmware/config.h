@@ -1,7 +1,24 @@
 #ifndef CONFIG_H_
 #define CONFIG_H_
 
+#ifndef EIDE_SIM
 #include <avr/io.h>
+#else
+#include <stdint.h>
+extern volatile uint8_t sim_DDRB;
+extern volatile uint8_t sim_PORTB;
+extern volatile uint8_t sim_PINB;
+#define DDRB   sim_DDRB
+#define PORTB  sim_PORTB
+#define PINB   sim_PINB
+#define PB2    2
+#define PB4    4
+#define PB5    5
+#define PD4    4
+#define PD5    5
+#define PD6    6
+#define PD7    7
+#endif
 
 /* =========================================================================
  * CẤU HÌNH HỆ THỐNG VÀ PHẦN CỨNG MOBILUCK (ATmega328P @ 16 MHz)
@@ -48,25 +65,26 @@
 #define MOTOR_R_DIR_PORT     PORTD
 
 /* =========================================================================
- * THAM SỐ HIỆU CHUẨN BO HẠNG L (Tài liệu bàn giao §11)
+ * THAM SỐ ĐIỀU KHIỂN & CẢM BIẾN THEO BẢN V1 NHÀ CUNG CẤP
  * ========================================================================= */
-#define CALIB_ACCEL_ZERO_RAW   102       /* Giá trị thô gia tốc tại điểm cân bằng (LSB, ±4 g) (§11.2) */
-#define CALIB_PITCH_OFFSET_DEG (0.713f)  /* Góc lệch lắp đặt cảm biến [°] (§11.2) */
-#define CALIB_AXIS_DIR_Z       (1.0f)    /* Chiều trục trước-sau s_net = +1 (nghiêng tới -> pitch > 0) (§13.4 Mục 4) */
 
-/* Mức logic chân DIR khi đi tới theo Fact f-nguoi-34069670 (quan sát trực tiếp trên bo của anh Công) */
-#define DIR_FORWARD_LEFT       1         /* Bánh TRÁI: mức CAO (HIGH) = tiến */
-#define DIR_FORWARD_RIGHT      0         /* Bánh PHẢI: mức THẤP (LOW) = tiến */
+/* Mức logic chân DIR khi đi tới theo đúng bản V1 nhà cung cấp (V1 dòng 581, 598) */
+#define DIR_FORWARD_LEFT       0         /* Bánh TRÁI (D6): mức THẤP (LOW = 0) khi tiến (V1:581) */
+#define DIR_FORWARD_RIGHT      1         /* Bánh PHẢI (D4): mức CAO (HIGH = 1) khi tiến (V1:598) */
 
 /* GHI CHÚ PHẦN CỨNG ĐẶC BIỆT:
  * Chân EN của 2 driver A4988 nối cứng GND trên mạch bo mạch.
  * Dừng động cơ bắt buộc thực hiện bằng cách ngắt phát xung STEP (EIDE.md).
  */
 
-/* Cấu hình an toàn và góc nghiêng theo bản tham chiếu app_balance.c */
-#define ANGLE_FALL_LIMIT_DEG 30.0f     /* Ngưỡng ngã robot: ngắt xung bước khi vượt ±30 độ (app_balance.c:133) */
-#define ANGLE_ACTIVE_DEG     0.5f      /* Cửa sổ kích hoạt cân bằng: ±0,5 độ (app_balance.c:116) */
-#define ACCEL_BALANCE_OFFSET (-535)    /* Offset cơ khí trục Z gia tốc theo bản tham chiếu (drv_imu.c:9) */
+/* Cấu hình an toàn và góc nghiêng theo bản V1 nhà cung cấp */
+#define ANGLE_FALL_LIMIT_DEG   30.0f     /* Ngưỡng ngã robot: ngắt xung bước khi vượt ±30 độ (V1:319) */
+#define ANGLE_ACTIVE_DEG       0.5f      /* Cửa sổ kích hoạt cân bằng: ±0,5 độ (V1:414) */
+#define ACC_CALIBRATION_VALUE  92        /* Hằng số hiệu chuẩn gia tốc điểm cân bằng tĩnh (V1:76) */
+
+/* Giám sát nguồn pin theo bản V1 nhà cung cấp */
+#define BATTERY_ADC_CHANNEL    0         /* Kênh ADC0 (chân A0 / PC0) đọc qua cầu chia 10k/5k (V1:289) */
+#define BATTERY_LOW_ADC_THRESHOLD 420    /* Ngưỡng pin yếu ngắt động cơ: ADC < 420 (~6,4 V) (V1:290, 319) */
 
 /* Cấu hình MPU6050 */
 #define MPU6050_ADDR         0x68      /* Địa chỉ I2C mặc định MPU6050 */

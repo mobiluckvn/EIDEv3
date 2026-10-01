@@ -46,4 +46,7 @@ bool mpu6050_read_scaled(mpu6050_data_t *data);
 /* Lấy giá trị bias con quay trục Y dạng thô (LSB) */
 int16_t mpu6050_get_gyro_bias_y_raw(void);
 
+/* Lấy giá trị bias con quay trục X dạng thô (LSB, phục vụ bù trôi xoay V1 dòng 437) */
+int16_t mpu6050_get_gyro_bias_x_raw(void);
+
 #endif /* MPU6050_H_ */

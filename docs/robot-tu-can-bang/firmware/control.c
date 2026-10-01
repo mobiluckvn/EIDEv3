@@ -1,13 +1,9 @@
 #include "control.h"
+#include "config.h"
 #include "motor.h"
 #include <math.h>
 
 #define RAD_TO_DEG_FACTOR    57.29578f /* Fact f-nguoi-49730291 (anh cho, chưa có tài liệu) */
-#define ANGLE_FALL_LIMIT_DEG 45.0f     /* Fact f-nguoi-39884580 (anh cho, chưa có tài liệu) */
-#define ANGLE_ACTIVE_DEG     2.0f      /* FR-04 (anh cho, chưa có tài liệu) */
-#define CONTROL_PERIOD_MS    4.0f      /* Fact f-nguoi-66277026 (anh cho, chưa có tài liệu) */
-#define TIMER_BASE_HZ        1000.0f   /* Fact f-nguoi-2633608 (anh cho, chưa có tài liệu) */
-#define CONTROL_LOOP_DT      (CONTROL_PERIOD_MS / TIMER_BASE_HZ)
 
 void control_init(control_system_t *cs) {
     cs->state = CONTROL_STATE_INIT;

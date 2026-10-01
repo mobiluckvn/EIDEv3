@@ -33,6 +33,9 @@ robot_state_t fsm_get_state(void);
 /* Lấy góc nghiêng pitch đo được gần nhất */
 float fsm_get_pitch(void);
 
+/* Lấy giá trị thô gia tốc trục trước-sau (ZOUT) gần nhất */
+int16_t fsm_get_accel_z_raw(void);
+
 /* Báo lỗi cảm biến quán tính (MPU6050) và kích hoạt mã bíp cảnh báo */
 void fsm_notify_sensor_error(void);
 

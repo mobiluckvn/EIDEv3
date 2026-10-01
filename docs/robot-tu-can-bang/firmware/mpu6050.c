@@ -20,6 +20,7 @@
 static float s_gyro_bias_x = 0.0f;
 static float s_gyro_bias_y = 0.0f;
 static float s_gyro_bias_z = 0.0f;
+static int16_t s_gyro_bias_x_raw = 0;
 static int16_t s_gyro_bias_y_raw = 0;
 static char s_mpu_init_diag[64] = "CHUA_KHOI_TAO";
 
@@ -130,6 +131,7 @@ bool mpu6050_calib_step(bool *out_done) {
         s_gyro_bias_x = (float)s_calib_sum_gx / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
         s_gyro_bias_y = (float)s_calib_sum_gy / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
         s_gyro_bias_z = (float)s_calib_sum_gz / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
+        s_gyro_bias_x_raw = (int16_t)(s_calib_sum_gx / (int32_t)CALIB_SAMPLES);
         s_gyro_bias_y_raw = (int16_t)(s_calib_sum_gy / (int32_t)CALIB_SAMPLES);
         *out_done = true;
     }
@@ -155,6 +157,8 @@ bool mpu6050_calibrate_gyro(void) {
     s_gyro_bias_x = (float)sum_gx / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
     s_gyro_bias_y = (float)sum_gy / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
     s_gyro_bias_z = (float)sum_gz / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
+    s_gyro_bias_x_raw = (int16_t)(sum_gx / (int32_t)CALIB_SAMPLES);
+    s_gyro_bias_y_raw = (int16_t)(sum_gy / (int32_t)CALIB_SAMPLES);
 
     return true;
 }
@@ -178,4 +182,8 @@ bool mpu6050_read_scaled(mpu6050_data_t *data) {
 
 int16_t mpu6050_get_gyro_bias_y_raw(void) {
     return s_gyro_bias_y_raw;
+}
+
+int16_t mpu6050_get_gyro_bias_x_raw(void) {
+    return s_gyro_bias_x_raw;
 }

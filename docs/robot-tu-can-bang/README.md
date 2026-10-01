@@ -8,14 +8,20 @@ LLM.*
 Toàn bộ việc do tác tử làm qua giao diện EIDE thật. Thư mục này giữ **dấu vết**, không giữ bản
 kể lại.
 
+**Robot đã đứng được** (01/10/2026). Đọc trước:
+[**BAO-CAO-SO-SANH.md**](BAO-CAO-SO-SANH.md) — tác tử làm được gì, sai ở đâu, và vì sao robot
+chỉ đứng sau khi có một bản đã chạy được làm mốc đối chứng.
+
 | Thư mục | Nội dung |
 |---|---|
-| [`firmware/`](firmware/) | 938 dòng C cho ATmega328P, 8 mô-đun, kèm `mach.elf` đã biên dịch |
-| [`sim/`](sim/) | chương trình mô phỏng — biên dịch **chính mã firmware**, không chép lại |
+| [`firmware/`](firmware/) | **1 820 dòng C** cho ATmega328P, 10 mô-đun, kèm `mach.elf` · `mach.hex` đã nạp |
+| [`sim/`](sim/) | mô phỏng và hai bài kiểm — **biên dịch chính mã firmware**, không chép lại |
+| [`ncc/`](ncc/) | gói V1 của nhà cung cấp — firmware người viết, **mốc đối chứng đã đứng được** |
+| [`BANG-TRA-TUAN-THU.md`](BANG-TRA-TUAN-THU.md) | 109 hạng mục ràng buộc dựng từ tài liệu |
 | [`QUY-TRINH-NAP-VA-VAN-HANH.md`](QUY-TRINH-NAP-VA-VAN-HANH.md) | tài liệu cho người cầm bo mạch |
-| [`ho-so-tac-tu/`](ho-so-tac-tu/) | 3 899 sự kiện sổ cái · 51 changeset · transcript từng phiên |
-| [`nhat-ky-llm/`](nhat-ky-llm/) | **305 lời gọi mô hình, mỗi lời gọi kèm nguyên văn gửi đi và trả về** |
-| [`nhat-ky-phien/`](nhat-ky-phien/) | nhật ký người đọc + 15 ảnh chụp cửa sổ EIDE ở từng mốc |
+| [`ho-so-tac-tu/`](ho-so-tac-tu/) | **16 666 sự kiện** sổ cái · **249 changeset** · transcript |
+| [`nhat-ky-llm/`](nhat-ky-llm/) | **1 415 lời gọi mô hình**, nguyên văn trả về và lượt gửi mới |
+| [`nhat-ky-phien/`](nhat-ky-phien/) | nhật ký **65 bước** + **65 ảnh** chụp cửa sổ EIDE ở từng mốc |
 
 Dựng lại phiên: `.venv/bin/python tools/phien_robot_phan_mem.py`
 

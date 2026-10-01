@@ -52,3 +52,34 @@ mục an toàn và phần thiết kế phép đo dấu đều mất phần đuô
 
 Nhật ký là sở cứ. Một sở cứ cắt mất đoạn cuối thì chỗ bị cắt luôn là chỗ không ai biết là đã
 mất. Nâng trần, hoặc ghi ra tệp riêng khi vượt trần và để lại đường dẫn.
+
+## 4 · Cảnh báo dồn đống trên màn hình chat, không có cách nào bỏ đi
+
+*Nêu ngày 01/10/2026, cuối phiên robot.*
+
+> "Màn hình chat Agent quá nhiều cảnh báo cần ẩn nó đi hoặc xoá đi nếu đã clear nhé."
+
+Đã tra, lỗi rõ ràng chứ không phải cảm giác:
+
+| | |
+|---|---|
+| `notices.append` | **10 chỗ** — `EIDEApp.swift` 4, `AppState.swift` 6 |
+| `notices.removeAll` | **1 chỗ duy nhất**, `AppState.swift:172` — và chỗ ấy là `doiDuAn()` |
+
+Nghĩa là trong suốt một phiên, `state.notices` **chỉ tăng**. Cách duy nhất để nó rỗng lại là
+**đổi sang dự án khác** — điều không ai làm giữa lúc đang chạy việc. `ThongBaoView`
+(`ConsoleView.swift:214`) cũng **không có nút tắt**, nên một cảnh báo đã đọc rồi vẫn nằm đó
+tới hết phiên.
+
+Chúng được vẽ sau transcript trong cùng cột (`ConsoleView.swift:77`), nên càng dồn thì càng
+đẩy hội thoại lên. Lại không có khâu gộp trùng: cùng một cảnh báo nổ mười lần thì hiện mười
+thẻ.
+
+Cần: nút tắt từng thẻ · tự hết sau một khoảng với mức `info` · gộp cái trùng kèm số lần ·
+và `clear` của Console phải xoá luôn `notices`, vì anh Công hiểu `clear` là dọn cả màn.
+
+**Và một điểm mù phải sửa cùng lúc.** `UITestChannel.swift:489` chỉ xuất
+`notices.suffix(5)`. Nên dù có dồn một trăm thẻ, bộ quét giao diện vẫn chỉ thấy năm — nó
+**không thể** phát hiện chuyện dồn đống, mãi mãi. Đúng loại lỗi mà dự án này gặp đi gặp lại:
+cơ chế đo có sẵn, nhưng bị bịt đúng chỗ cần thấy. Xuất thêm `tổng số` bên cạnh năm thẻ cuối,
+rồi mới đặt được ngưỡng cho nó.

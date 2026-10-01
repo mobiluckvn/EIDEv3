@@ -70,6 +70,7 @@ int main(void) {
             last_telemetry_ms = now;
             uart_send_diag_telemetry(fsm_get_state(),
                                      fsm_get_pitch(),
+                                     fsm_get_accel_z_raw(),
                                      motor_get_throttle_l(),
                                      motor_get_throttle_r(),
                                      timer_get_deadline_miss(),

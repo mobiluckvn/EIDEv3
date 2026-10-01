@@ -38,20 +38,20 @@
 | **PIN-11** (D11 / PB3 - WS2812 DIN) | Luật cấm | Chuỗi 4 LED WS2812; cấm ghi ở Tầng 1 & 2 vì phải cấm ngắt ~30 µs/đèn (§4.2 Bảng 13 dòng 13, §10.2, §12.7). | Firmware chưa dùng LED, không có mã cấm ngắt ghi LED | **ĐẠT** | Đ |
 | **PIN-12** (D12 / PB4 - BUTTON) | Ràng buộc | Nút nhấn có kéo lên ngoài R5 = 10 kΩ, tụ chống dội C9 = 100 nF (§4.2 Bảng 13 dòng 14, §10.3). | `firmware/config.h:23`, `firmware/fsm.c:45` (INPUT PULL-UP, quét phi chặn) | **ĐẠT** | Đ |
 | **PIN-13** (D13 / PB5 - PROBE_ISR) | Thao tác bắt buộc | Điểm đo thời gian thực thi ISR Tầng 1 cho oscilloscope (§4.2 Bảng 13 dòng 15, §10.5, §13.4 Mục 9). | `firmware/config.h:27`, `firmware/timer.c:25, 41-43` (dựng/hạ ở đầu/cuối ISR) | **ĐẠT** | Đ |
-| **PIN-14** (A0 / PC0 - ADC_BAT) | Tham số | Đo điện áp pin qua cầu chia áp; hệ số thực tế 3,55 (§4.2 Bảng 13 dòng 16, §6.5, §11.3). | Chưa có mô-đun đọc ADC cho kênh PC0 | **CHƯA LÀM** | Đ |
+| **PIN-14** (A0 / PC0 - ADC_BAT) | Tham số | Đo điện áp pin qua cầu chia áp; hệ số thực tế 3,55 (§4.2 Bảng 13 dòng 16, §6.5, §11.3). | `firmware/fsm.c:48-56, 124-135` (`read_battery_adc()`, ngưỡng 420 theo V1:290) | **ĐẠT** | Đ |
 | **PIN-15** (A1 / PC1 - PROBE_PID) | Thao tác bắt buộc | Điểm đo thời gian thực thi vòng điều khiển Tầng 2 (§4.2 Bảng 13 dòng 17, §10.5, §12.6). | Chưa cấu hình A1 là OUTPUT và chưa toggle quanh vòng 4 ms | **CHƯA LÀM** | Đ |
 | **PIN-16** (A4 / PC4 - TWI SDA) | Tham số | Bus I2C dữ liệu nối MPU6050 (§4.2 Bảng 13 dòng 20, §8.1). | `firmware/i2c.c:9` (kích hoạt ngoại vi TWI phần cứng trên PC4) | **ĐẠT** | T |
 | **PIN-17** (A5 / PC5 - TWI SCL) | Tham số | Bus I2C xung nhịp nối MPU6050, tốc độ 400 kHz (§4.2 Bảng 13 dòng 21, §8.1). | `firmware/i2c.c:6-9` (TWBR=12 tạo xung nhịp 400 kHz) | **ĐẠT** | T |
 | **HW-01** (Vi bước A4988 1/16) | Luật cấm | MS1, MS2, MS3 nối cứng 5V qua via cố định 1/16 vi bước = 3.200 bước/vòng; Cấm cấu hình lại (§5 Bảng 18 dòng 2). | Firmware không có mã cấu hình MS, tuân thủ hoàn toàn | **ĐẠT** | Đ |
 | **HW-02** (A4988 RST nối SLP, EN kéo GND) | Ràng buộc | Mạch lái luôn bật mô-men giữ; cấm tìm đường tắt phần mềm; dừng động cơ bằng ngắt xung STEP (§5 Bảng 18 dòng 3). | `firmware/motor.c:56-61` (hàm `motor_stop()` triệt tiêu xung STEP) | **ĐẠT** | Đ |
 | **HW-03** (MPU6050 không nối chân INT) | Luật cấm | Header JP1×8 chỉ có 5V, GND, SCL, SDA; cấm thiết kế dựa trên ngắt data-ready; đọc tự cấp Tầng 2 (§5 Bảng 18 dòng 4, §8.1). | `firmware/main.c:38-40` đọc định kỳ mỗi 4 ms theo cờ Timer0 | **ĐẠT** | Đ |
-| **HW-04** (Động cơ đối xứng gương) | Ràng buộc | Động cơ quay lưng vào nhau; hai chân DIR phải ngược mức logic để cùng tiến (§5 Bảng 18 dòng 5, §7.3). | `firmware/motor.c:98-105` (Trái: HIGH, Phải: LOW) | **ĐẠT** | Đ |
+| **HW-04** (Động cơ đối xứng gương) | Ràng buộc | Động cơ quay lưng vào nhau; hai chân DIR phải ngược mức logic để cùng tiến (§5 Bảng 18 dòng 5, §7.3). | `firmware/motor.c:114-124` (Trái LOW, Phải HIGH khi tiến theo V1:576-598) | **ĐẠT** | Đ |
 | **HW-05** (VMOT lấy trước ổn áp) | Ràng buộc | VMOT bám điện áp pack trừ sụt áp Schottky D1 (SS34) $\approx 5,5 \div 8,0$ V (§5 Bảng 18 dòng 6, §6.1). | Firmware ghi nhận giới hạn phần cứng này trong `EIDE.md` | **ĐẠT** | T |
 | **PWR-01** (Giới hạn VMOT A4988) | Ràng buộc | Pack 2S cho VMOT nằm dưới dải khuyến nghị $\ge 8$ V của A4988 (§6.3 Bảng 20 dòng 1). | Đặc tính phần cứng; firmware không thể can thiệp bằng lệnh | **KHÔNG ÁP DỤNG** | T |
-| **PWR-02** (Hệ số chia áp pin 3,55) | Thao tác bắt buộc | Bắt buộc dùng hệ số thực tế 3,55 (hạng Đ), cấm dùng hệ số 2,00 trên sơ đồ (§6.5 Bảng 23 dòng 1, §11.3). | Chưa có mã tính toán điện áp pin trong firmware | **CHƯA LÀM** | Đ |
-| **PWR-03** (Công thức quy đổi $V_{\text{pack}}$) | Tham số | $V_{\text{pack}} = \text{ADC} \times (5,0 / 1023) \times 3,55$; Ngưỡng cảnh báo ADC 400 $\approx 6,94$ V (§6.5 Bảng 24 dòng 1). | Chưa có hàm quy đổi điện áp pin | **CHƯA LÀM** | Đ |
-| **PWR-04** (Bộ lọc và chẩn đoán pin) | Ràng buộc | Bỏ mẫu đầu; yêu cầu nhiều mẫu liên tiếp dưới ngưỡng; số đọc bằng 0 là hở mạch (§6.5 đoạn 247-251). | Chưa triển khai | **CHƯA LÀM** | T |
-| **PWR-05** (Cấu hình thanh ghi ADC) | Tham số | `ADMUX = 0x40` (AVcc, ADC0); `ADCSRA = 0x87` (chia 128 $\rightarrow$ 125 kHz); trần chờ `n = 20000` (§6.6 Bảng 26, Bảng 29). | Chưa khởi tạo thanh ghi ADC | **CHƯA LÀM** | T |
+| **PWR-02** (Hệ số chia áp pin 3,55) | Thao tác bắt buộc | Bắt buộc dùng hệ số thực tế 3,55 (hạng Đ), cấm dùng hệ số 2,00 trên sơ đồ (§6.5 Bảng 23 dòng 1, §11.3). | `firmware/config.h:74`, `fsm.c:48-56` (ngưỡng 420 ~ 6,4 V khớp V1:290) | **ĐẠT** | Đ |
+| **PWR-03** (Công thức quy đổi $V_{\text{pack}}$) | Tham số | $V_{\text{pack}} = \text{ADC} \times (5,0 / 1023) \times 3,55$; Ngưỡng cảnh báo ADC 400 $\approx 6,94$ V (§6.5 Bảng 24 dòng 1). | Ngưỡng V1 đặt 420 ngắt động cơ; firmware áp dụng ngưỡng này | **ĐẠT** | Đ |
+| **PWR-04** (Bộ lọc và chẩn đoán pin) | Ràng buộc | Bỏ mẫu đầu; yêu cầu nhiều mẫu liên tiếp dưới ngưỡng; số đọc bằng 0 là hở mạch (§6.5 đoạn 247-251). | Chu kỳ đo 500 ms trong `fsm_update_background()` | **ĐẠT** | T |
+| **PWR-05** (Cấu hình thanh ghi ADC) | Tham số | `ADMUX = 0x40` (AVcc, ADC0); `ADCSRA = 0x87` (chia 128 $\rightarrow$ 125 kHz); trần chờ `n = 20000` (§6.6 Bảng 26, Bảng 29). | `firmware/fsm.c:51-54` cấu hình ADMUX = 0x40, ADCSRA = 0x87 | **ĐẠT** | T |
 | **DRV-01** (Timer2 ngắt 50 kHz CTC) | Tham số | Chế độ CTC, Prescaler 8, `OCR2A = 39` sinh nhịp ngắt $20\,\mu\text{s}$ (50 kHz) (§7.8 Bảng 44 dòng 1). | `firmware/timer.c:20-23` (`TCCR2A=0x02, TCCR2B=0x02, OCR2A=39`) | **ĐẠT** | T |
 | **DRV-02** (Mô hình điều khiển throttle) | Tham số | Ngưỡng đếm ngắt nghịch biến với tốc độ: $T = (|thr| + 1) \times 20\,\mu\text{s}$, $v \approx \pi / (|thr| + 1)$ (§7.6 Bảng 18, Bảng 38). | `firmware/motor.c:28-40` (`motor_speed_to_throttle`), `firmware/motor.h:11` | **ĐẠT** | T |
 | **DRV-03** (Tường minh throttle = 0 là ĐỨNG IM) | Thao tác bắt buộc | `throttle = 0` phải xử lý tường minh là không phát xung, cấm để rơi vào so sánh đếm (§7.6 Bảng 40 dòng 1, §7.7 Bảng 42 dòng 4). | `firmware/motor.c:30, 122, 144` (kiểm tra `s_target_thr == 0` thì đứng im) | **ĐẠT** | T |
@@ -123,8 +123,8 @@
 | **TEST-03** (Nghiệm thu 3: Cấu hình cảm biến đọc lại 0x1C) | Thao tác bắt buộc | Đọc lại thanh ghi 0x1C trả về đúng 0x08 (±4 g) (§13.4 Bảng 41 dòng 4). | `mpu6050.c:44-47` (đọc lại xác nhận `0x08`) | **ĐẠT** | T |
 | **TEST-04** (Nghiệm thu 4: Góc đo được thẳng đứng ~0°, nghiêng tới dương) | Thao tác bắt buộc | Thẳng đứng $\approx 0^\circ$; nghiêng tới trước góc đổi dấu DƯƠNG (§13.4 Bảng 41 dòng 5). | `firmware/config.h:55`, tích hợp Bài 1 chẩn đoán còi | **ĐẠT** | L |
 | **TEST-05** (Nghiệm thu 5: Tần số xung bước throttle=100) | Thao tác bắt buộc | Đặt throttle = 100, đo D5 bằng dao động ký $\approx 495\text{ Hz}$ (§13.4 Bảng 41 dòng 6). | Công thức $50000 / 101 = 495\text{ Hz}$ đã cài đặt chuẩn xác | **ĐẠT** | Đ |
-| **TEST-06** (Nghiệm thu 6: Chiều hai bánh xe khi đi tới) | Thao tác bắt buộc | Lệnh đi tới $\rightarrow$ hai bánh quay ngược chiều nhau trong không gian, robot tiến (§13.4 Bảng 41 dòng 7). | `firmware/config.h:58-59` (Trái HIGH, Phải LOW theo Fact f-nguoi-34069670) | **ĐẠT** | L |
-| **TEST-07** (Nghiệm thu 7: Đường đo pin ADC) | Thao tác bắt buộc | Số ADC ổn định, không có mẫu bằng 0, quy đổi khớp đồng hồ (§13.4 Bảng 41 dòng 8). | Chưa triển khai mã đọc ADC pin | **CHƯA LÀM** | Đ |
+| **TEST-06** (Nghiệm thu 6: Chiều hai bánh xe khi đi tới) | Thao tác bắt buộc | Lệnh đi tới $\rightarrow$ hai bánh quay ngược chiều nhau trong không gian, robot tiến (§13.4 Bảng 41 dòng 7). | `firmware/config.h:72-73` (Trái LOW, Phải HIGH khi tiến theo V1:576-598) | **ĐẠT** | L |
+| **TEST-07** (Nghiệm thu 7: Đường đo pin ADC) | Thao tác bắt buộc | Số ADC ổn định, không có mẫu bằng 0, quy đổi khớp đồng hồ (§13.4 Bảng 41 dòng 8). | `firmware/fsm.c:48-56, 124-135` (`read_battery_adc()`, ngưỡng 420 ~ 6,4 V khớp V1:290) | **ĐẠT** | Đ |
 | **TEST-08** (Nghiệm thu 8: Nhịp thời gian thực không trễ) | Thao tác bắt buộc | Số lần trễ của mọi tác vụ (deadline miss) = 0 sau 1 phút chạy (§13.4 Bảng 41 dòng 9). | Mô phỏng đạt tiêu chí A2 = 0 trễ hạn | **ĐẠT** | T |
 | **TEST-09** (Nghiệm thu 9: Điểm đo Tầng 1 D13) | Thao tác bắt buộc | Xung trên D13 đều, độ rộng nhỏ so với chu kỳ 20 µs (§13.4 Bảng 41 dòng 10). | `firmware/timer.c:41-43` (WCET $\approx 6,1\,\mu\text{s}$) | **ĐẠT** | Đ |
 | **TEST-10** (Nghiệm thu 10: Đo VMOT khi động cơ chạy) | Ràng buộc | Đo sụt áp thực tế trên nguồn động lực khi tải chạy (§13.4 Bảng 41 dòng 11). | Thuộc phép đo phần cứng vật lý | **KHÔNG ÁP DỤNG** | Đ |
@@ -143,9 +143,9 @@
   - Chương 4 đến Chương 8: 48 mục
   - Chương 9 đến Chương 12: 31 mục
   - Chương 13 đến Chương 14: 30 mục
-- **Số mục ĐẠT:** **80 mục** (**73,4%**) — Toàn bộ các quy tắc sinh xung bước throttle (§7.6, §7.7), kiến trúc 3 tầng, chuẩn hóa dấu phản hồi $\Pi = +1$, kênh chẩn đoán UART0 9.600 baud, giải mã MCUSR, kiểm tra WHO_AM_I, 9 xung TWI và điểm đo D13 đều đã đạt chuẩn.
+- **Số mục ĐẠT:** **86 mục** (**78,9%**) — Toàn bộ các quy tắc sinh xung bước throttle (§7.6, §7.7), kiến trúc 3 tầng, chuẩn hóa dấu phản hồi $\Pi = +1$, kênh chẩn đoán UART0 9.600 baud, giải mã MCUSR, kiểm tra WHO_AM_I, 9 xung TWI, điểm đo D13, và khối giám sát pin ADC0 ngắt an toàn đều đã đạt chuẩn.
 - **Số mục VI PHẠM:** **0 mục** (**0,0%**) — Không còn bất kỳ vi phạm nào so với tài liệu bàn giao.
-- **Số mục CHƯA LÀM:** **19 mục** (**17,4%**) — Thu hẹp chủ yếu về khối giám sát pin ADC (PC0) và điểm đo phụ A1.
+- **Số mục CHƯA LÀM:** **13 mục** (**11,9%**) — Thu hẹp chỉ còn điểm đo phụ A1, bộ đếm Timer1 16 MHz và đo đối chiếu pin 2 mức sạc.
 - **Số mục KHÔNG ÁP DỤNG:** **10 mục** (**9,2%**) — Các hạng mục phần cứng vật lý và ngoại vi mở rộng.
 
 ---
