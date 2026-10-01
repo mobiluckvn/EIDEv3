@@ -134,6 +134,54 @@ module tb_pcpi_mac;
         end
     endtask
 
+    // Task kiểm tra lệnh âm tính: khối phải im hoàn toàn (ready=0, wait=0, wr=0, acc không đổi)
+    task check_negative_insn;
+        input [31:0] bad_insn;
+        input signed [31:0] test_rs1;
+        input signed [31:0] test_rs2;
+        input [80*8:1] test_name;
+        reg signed [31:0] saved_acc;
+        begin
+            saved_acc = ref_acc;
+            @(posedge clk);
+            #1;
+            pcpi_valid = 1'b1;
+            pcpi_insn  = bad_insn;
+            pcpi_rs1   = test_rs1;
+            pcpi_rs2   = test_rs2;
+
+            #1;
+            if (pcpi_ready !== 1'b0) begin
+                $display("FAIL: %0s - pcpi_ready phai bang 0 (got %b, insn=%08x)", test_name, pcpi_ready, bad_insn);
+                err_count = err_count + 1;
+            end
+            if (pcpi_wait !== 1'b0) begin
+                $display("FAIL: %0s - pcpi_wait phai bang 0 (got %b)", test_name, pcpi_wait);
+                err_count = err_count + 1;
+            end
+            if (pcpi_wr !== 1'b0) begin
+                $display("FAIL: %0s - pcpi_wr phai bang 0 (got %b)", test_name, pcpi_wr);
+                err_count = err_count + 1;
+            end
+
+            @(posedge clk);
+            #1;
+            pcpi_valid = 1'b0;
+            pcpi_insn  = 32'd0;
+            pcpi_rs1   = 32'd0;
+            pcpi_rs2   = 32'd0;
+
+            // Kiểm tra biến nội bộ acc không bị thay đổi lén
+            if (dut.acc !== saved_acc) begin
+                $display("FAIL: %0s - acc bi thay doi len! Truoc=%0d, Sau=%0d", test_name, saved_acc, dut.acc);
+                err_count = err_count + 1;
+            end
+
+            // Kiểm tra qua lệnh acc.rd hợp lệ xem giá trị acc có đúng không
+            insn_acc_rd_check(test_name);
+        end
+    endtask
+
     reg signed [31:0] rand_a, rand_b;
 
     initial begin
@@ -158,28 +206,26 @@ module tb_pcpi_mac;
         $display("Bat dau kiem tra don vi: pcpi_mac (nac 3a)");
         $display("=================================================");
 
-        // 1. Kiểm tra không phản hồi với lệnh lạ (ví dụ Standard RV32M MUL)
-        @(posedge clk);
-        #1;
-        pcpi_valid = 1;
-        pcpi_insn = 32'h02208133; // mul x2, x1, x2 (Standard RV32M)
-        pcpi_rs1 = 32'd10;
-        pcpi_rs2 = 32'd20;
-        #1;
-        if (pcpi_ready !== 1'b0 || pcpi_wait !== 1'b0 || pcpi_wr !== 1'b0) begin
-            $display("FAIL: Khối phản hồi lệnh không thuộc custom-0! ready=%b wait=%b wr=%b",
-                     pcpi_ready, pcpi_wait, pcpi_wr);
-            err_count = err_count + 1;
-        end else begin
-            $display("OK: Bo qua lenh khong thuoc custom-0 chuan xac.");
-        end
-        @(posedge clk);
-        #1;
-        pcpi_valid = 0;
-
-        // 2. Kiểm tra acc.clr ban đầu
+        // 1. Kiểm tra acc.clr ban đầu và nạp giá trị khác 0 để chuẩn bị thử nghiệm âm tính
         insn_acc_clr();
         insn_acc_rd_check("acc.clr ban dau");
+
+        insn_mac(32'sd10, 32'sd10); // ref_acc = 100
+        insn_acc_rd_check("Nap acc=100 truoc kiem tra am tinh");
+
+        // 2. Kiểm tra các ca âm tính: khối phải IM HOÀN TOÀN (ready=0, wait=0, wr=0, acc không đổi)
+        $display("Kiem tra cac ca am tinh (khoi phai im hoan toan)...");
+        // Ca 0: Lệnh chuẩn RV32M MUL (sai cả opcode lẫn funct7)
+        check_negative_insn(32'h02208133, 32'sd10, 32'sd20, "Ca am tinh 0: RV32M MUL");
+
+        // Ca 1: funct7 = 7'b0000000 đúng nhưng opcode khác custom-0 (dùng opcode OP=7'b0110011)
+        // insn: funct7=0000000, rs2=2, rs1=1, funct3=001 (mac), rd=3, opcode=0110011 (OP)
+        check_negative_insn({7'b0000000, 5'd2, 5'd1, 3'b001, 5'd3, 7'b0110011}, 32'sd20, 32'sd30, "Ca am tinh 1: funct7=0 dung, opcode khac custom-0");
+
+        // Ca 2: opcode = 7'b0001011 (custom-0) đúng nhưng funct7 != 7'b0000000 (dùng funct7=7'b0000001)
+        // insn: funct7=0000001, rs2=2, rs1=1, funct3=001 (mac), rd=3, opcode=7'b0001011 (custom-0)
+        check_negative_insn({7'b0000001, 5'd2, 5'd1, 3'b001, 5'd3, 7'b0001011}, 32'sd50, 32'sd60, "Ca am tinh 2: opcode custom-0 dung, funct7 khac 0");
+        $display("OK: Tat ca cac ca am tinh deu pass (khoi im hoan toan, acc khong doi).");
 
         // 3. Kiểm tra các trường hợp biên đặc biệt theo đề bài (-128, 127)
         $display("Kiem tra cac ca bien: -128 va 127...");

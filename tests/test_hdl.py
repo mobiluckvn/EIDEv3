@@ -17,6 +17,7 @@ giả lập `yosys` chỉ kiểm chính bản giả lập.
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -521,3 +522,98 @@ def test_numpy_dung_ham_kiem_rieng_chu_khong_tim_trong_PATH():
     np = next(c for c in CAN_GI["python-so-lieu"] if c["ten"] == "numpy")
     assert np.get("kiem") == "numpy"
     assert "numpy" in _KIEM_RIENG
+
+
+# =============================================================== tab Thiết kế cho dự án FPGA
+
+class _KhoGia:
+    """Kho giả tối thiểu cho `surfaces.design`.
+
+    Cần cả `list` chứ không chỉ `get`: khối kiến trúc phần mềm (A5.6) duyệt kho để tìm phương
+    án đã chốt. Bản đầu chỉ có `get` và năm ca kiểm đổ với `AttributeError` — một lời nhắc
+    rằng kho giả phải giả đủ bề mặt mà bên gọi dùng, không chỉ bề mặt mình đang nghĩ tới.
+    """
+
+    def __init__(self, **muc):
+        self._m = muc
+
+    def get(self, ma):
+        return self._m.get(ma)
+
+    def list(self, *a, **k):
+        return []
+
+
+def _pnr_gia(**ghi_de):
+    c = {"dat": True, "fmax_mhz": 134.93, "so_byte_ra": 151148,
+         "tai_nguyen": {"dung": {"LUT4": {"dung": 2180, "tong": 20736, "ty_le": 0.1051},
+                                 "DFF": {"dung": 820, "tong": 15552, "ty_le": 0.0527},
+                                 "VCC": {"dung": 1, "tong": 1, "ty_le": 1.0}},
+                        "dong_ho": [{"dong_ho": "clk", "fmax_mhz": 134.93,
+                                     "ket": "PASS", "dich_mhz": 27.0}]}}
+    c.update(ghi_de)
+    return {"canonical": c, "stale": False}
+
+
+def test_tab_thiet_ke_hien_tai_nguyen_fpga():
+    """Tab Thiết kế dựng cho dự án bo mạch in; dự án FPGA đi qua thì TRẮNG XOÁ.
+
+    Dữ liệu đã nằm sẵn trong kho (`hdl.pnr` ghi `build:hdl:pnr` sau mỗi lần đặt-đi dây) —
+    thiếu đúng một khối đọc nó ra. Anh Công nêu ngày 02/10/2026.
+    """
+    import eide.surfaces as S
+
+    m = S.design(_KhoGia(**{"build:hdl:pnr": _pnr_gia()}), None)
+    k = next(x for x in m["blocks"] if x["code"] == "A5.11")
+    assert "134.93" in k["summary"] and "27" in k["summary"]
+    assert "ĐẠT" in k["summary"]
+    ten = [r[0] for r in k["rows"]]
+    assert "LUT4" in ten and "DFF" in ten
+
+
+def test_bang_tai_nguyen_bo_nguyen_thuy_toan_cuc():
+    """VCC/GND/GSR luôn 1/1 = 100 % và luôn đứng đầu khi sắp theo tỷ lệ.
+
+    Để chúng lại thì ba dòng đáng nhìn bị đẩy xuống, và người đọc học rằng cột tỷ lệ không có
+    nghĩa — lúc một ô thật sự chạm trần thì họ cũng bỏ qua.
+    """
+    import eide.surfaces as S
+
+    m = S.design(_KhoGia(**{"build:hdl:pnr": _pnr_gia()}), None)
+    k = next(x for x in m["blocks"] if x["code"] == "A5.11")
+    assert "VCC" not in [r[0] for r in k["rows"]]
+
+
+def test_canh_bao_vuot_nguong_chi_gan_cho_o_LOGIC():
+    """Ngưỡng 85 % của đề bài là ngưỡng cho LOGIC, không phải cho mọi loại ô."""
+    import eide.surfaces as S
+
+    pnr = _pnr_gia()
+    pnr["canonical"]["tai_nguyen"]["dung"]["LUT4"] = {"dung": 19000, "tong": 20736,
+                                                      "ty_le": 0.916}
+    pnr["canonical"]["tai_nguyen"]["dung"]["IOB"] = {"dung": 380, "tong": 384, "ty_le": 0.99}
+    m = S.design(_KhoGia(**{"build:hdl:pnr": pnr}), None)
+    k = next(x for x in m["blocks"] if x["code"] == "A5.11")
+    d = {r[0]: r[3] for r in k["rows"]}
+    assert "vượt ngưỡng" in d["LUT4"], "LUT quá 85 % phải có cảnh báo"
+    assert "vượt ngưỡng" not in d["IOB"], "chân vào-ra 99 % là bình thường, không phải lỗi"
+
+
+def test_dat_ma_khong_doc_duoc_fmax_thi_noi_ra():
+    """Một bảng tài nguyên đẹp dễ làm người đọc tin rằng định thời cũng đã được kiểm."""
+    import eide.surfaces as S
+
+    pnr = _pnr_gia(fmax_mhz=None)
+    pnr["canonical"]["tai_nguyen"]["dong_ho"] = []
+    m = S.design(_KhoGia(**{"build:hdl:pnr": pnr}), None)
+    k = next(x for x in m["blocks"] if x["code"] == "A5.11")
+    assert "CHƯA được kiểm" in k["summary"]
+
+
+def test_chua_dat_di_day_thi_noi_ro_vi_sao_trong():
+    """Khối trống phải nói vì sao trống và cần gì — không được chỉ im lặng."""
+    import eide.surfaces as S
+
+    m = S.design(_KhoGia(), None)
+    k = next(x for x in m["blocks"] if x["code"] == "A5.11")
+    assert "hdl.pnr" in json.dumps(k, ensure_ascii=False)

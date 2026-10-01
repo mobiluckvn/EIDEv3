@@ -504,10 +504,97 @@ def design(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
                    "không mua nhầm theo một hướng sau đó bị bỏ.",
             can_gi="Chốt phương án, rồi bảo tác tử ghi danh sách linh kiện."))
 
+    khoi.extend(_khoi_chip_fpga(store))
     khoi.extend(_khoi_kien_truc_phan_mem(store, goc))
     khoi.extend(_khoi_ban_do_mach(store))
     khoi.extend(_khoi_so_do(store))
     return _don_gian("design", "A5", "Thiết kế", khoi)
+
+
+# Ngưỡng đề bài FPGA đặt cho tài nguyên logic. Vượt thì phải dừng lại tối ưu, không phải một
+# gợi ý — nên nó hiện ngay trong bảng chứ không nằm trong tài liệu ai đó phải nhớ.
+_TRAN_LUT = 0.85
+
+
+def _khoi_chip_fpga(store: Any) -> list[dict[str, Any]]:
+    """A5.11 + A5.12 — thiết kế CHIP trên FPGA, và bản đồ địa chỉ.
+
+    Vì sao hai khối này tồn tại, nói ngắn: tab Thiết kế được dựng cho dự án **bo mạch in** —
+    danh sách linh kiện, bản đồ mạch, sơ đồ nguyên lý. Một dự án FPGA đi qua tab ấy thì **trắng
+    xoá**, kể cả khi vừa tổng hợp xong một CPU và đo được Fmax.
+
+    Mà dữ liệu thì đã nằm sẵn trong kho: `hdl.pnr` ghi `build:hdl:pnr` sau mỗi lần đặt-đi dây.
+    Thiếu đúng một khối đọc nó ra. Đây là mẫu lỗi dự án này gặp đi gặp lại — cơ chế có sẵn,
+    đường dẫn tới nó đứt.
+
+    Khác với dự án vi điều khiển ở một chỗ cốt lõi: với FPGA, **chip chưa tồn tại cho tới khi
+    ta thiết kế nó**. Số tài nguyên và Fmax không phải thông số tra datasheet — chúng là *kết
+    quả* của thiết kế, và chúng đổi mỗi lần sửa RTL. Vì thế chúng thuộc về tab Thiết kế, không
+    thuộc về tab Mạch thật.
+    """
+    pnr = store.get("build:hdl:pnr")
+    bits = store.get("build:hdl:bitstream")
+    if not pnr:
+        return [empty(
+            "A5.11", "Chip trên FPGA — tài nguyên và định thời",
+            chua_co="Chưa đặt-đi dây thiết kế nào lên chip.",
+            vi_sao="Số ô dùng và tần số chạy được là KẾT QUẢ của thiết kế, không phải thông số "
+                   "tra được. Chúng chỉ có sau khi chạy `hdl.pnr`, và chúng đổi mỗi lần sửa "
+                   "mã HDL.",
+            can_gi="Tổng hợp bằng `hdl.synth`, rồi đặt-đi dây bằng `hdl.pnr`.")]
+
+    c = pnr["canonical"]
+    dung = (c.get("tai_nguyen") or {}).get("dung") or {}
+    fmax = c.get("fmax_mhz")
+    dong_ho = (c.get("tai_nguyen") or {}).get("dong_ho") or []
+    dich = next((d.get("dich_mhz") for d in dong_ho if d.get("dich_mhz")), None)
+
+    hang = []
+    for ten, v in sorted(dung.items(), key=lambda x: -x[1].get("ty_le", 0)):
+        if not v.get("dung"):
+            continue
+        # Bỏ nguyên thuỷ toàn cục (VCC, GND, GSR). Chip có đúng MỘT cái mỗi loại, nên chúng
+        # luôn hiện "1/1 100 %" và luôn nằm đầu bảng khi sắp theo tỷ lệ — đẩy ba dòng thật sự
+        # đáng nhìn xuống dưới, và dạy người đọc rằng cột tỷ lệ không có nghĩa.
+        if v.get("tong", 0) <= 1:
+            continue
+        ty = v.get("ty_le", 0)
+        # Chỉ gắn nhãn ngưỡng cho ô LOGIC. Gắn cho mọi loại thì một dòng `VCC 1/1 100%` sẽ
+        # hiện cảnh báo đỏ cho một thứ luôn luôn bằng 1 — và một cảnh báo luôn đỏ thì người
+        # đọc học cách bỏ qua nó, kể cả khi nó đỏ thật.
+        la_logic = ten.upper().startswith(("LUT", "MUX2_LUT", "ALU", "DFF"))
+        nhan = ""
+        if la_logic and ty > _TRAN_LUT:
+            nhan = f"  ⚠ vượt ngưỡng {_TRAN_LUT:.0%}"
+        hang.append([ten, f"{v['dung']:,}", f"{v['tong']:,}", f"{ty * 100:.1f} %" + nhan])
+
+    tom = f"{len(hang)} loại ô"
+    if fmax is not None:
+        tom += f" · Fmax {fmax:.2f} MHz"
+        if dich:
+            tom += f" / cần {dich:.0f} MHz" + (" — ĐẠT" if fmax >= dich else " — KHÔNG ĐẠT")
+    elif c.get("dat"):
+        # Đạt mà không đọc được Fmax thì phép canh định thời không đo gì. Nói ra ở đây, vì
+        # một bảng tài nguyên đẹp dễ làm người đọc tin rằng định thời cũng đã được kiểm.
+        tom += " · KHÔNG đọc được Fmax — định thời CHƯA được kiểm"
+
+    ra = [block("A5.11", "Chip trên FPGA — tài nguyên và định thời", "table",
+                summary=tom,
+                columns=["Loại ô", "Dùng", "Tổng của chip", "Tỷ lệ"],
+                rows=hang)]
+
+    if bits:
+        b = bits["canonical"]
+        ra.append(block(
+            "A5.13", "Tệp cấu hình đã dựng", "table",
+            summary=f"{b.get('so_byte_ra', 0):,} byte",
+            columns=["Mục", "Giá trị"],
+            rows=[["Tệp", b.get("tep_ra", "")],
+                  ["Kích thước", f"{b.get('so_byte_ra', 0):,} byte"],
+                  ["Chip (đọc từ tệp bố trí)",
+                   (b.get("tai_nguyen") or {}).get("chip_doc_tu_tep_bo_tri", "")],
+                  ["Dựng bằng", b.get("cong_cu", "")]]))
+    return ra
 
 
 def _khoi_kien_truc_phan_mem(store: Any, goc: str = "") -> list[dict[str, Any]]:

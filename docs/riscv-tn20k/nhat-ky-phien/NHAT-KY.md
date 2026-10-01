@@ -2287,3 +2287,118 @@ G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích t
 
 ![b3a-pcpi-mac](anh/28-b3a-pcpi-mac.png)
 
+
+
+---
+
+*(chạy tiếp lúc 02/10/2026 05:46:10)*
+
+## Bước 29. Bài 3a · vá hai lỗ của bộ kiểm
+
+**Anh gõ:**
+
+> Phần đọc giao thức PCPI của bạn **đúng cả ba điểm** — mình kiểm lại từng số dòng: README dòng 480, `pcpi_timeout_counter` ở `picorv32.v:1215`, gộp OR ở dòng 328–329. Và bạn nêu đúng hệ quả nguy hiểm nhất: khối ngoài tích cực `ready` sai lúc sẽ cướp lệnh của bộ nhân nội bộ.
+> 
+> Khối `pcpi_mac.v` chạy đúng. Nhưng mình phá mã sản phẩm năm cách, và **bộ kiểm chỉ bắt được hai**:
+> 
+> | Phá gì trong `pcpi_mac.v` | Bộ kiểm |
+> |---|---|
+> | không cộng dồn (`acc = tích`) | **đỏ** ✓ |
+> | `acc.clr` không xoá | **đỏ** ✓ |
+> | **nhận mọi opcode** (bỏ `opcode == 0001011`) | **xanh — lỗ** |
+> | **bỏ kiểm `funct7`** | **xanh — lỗ** |
+> | bỏ dấu (nhân không dấu) | xanh — *nhưng không phải lỗ, xem dưới* |
+> 
+> **Hai lỗ ấy che nhau.** Testbench chỉ có **một** ca âm tính, và lệnh dùng cho ca ấy sai **cả** opcode **lẫn** `funct7`. Nên phá một phép kiểm thì phép kiểm kia vẫn chặn — không phép kiểm nào được đo riêng.
+> 
+> Lỗ này đắt: hậu quả của nó là **cướp lệnh bộ nhân nội bộ**, mà chuyện ấy chỉ vỡ ở cấu hình H1/H2 cộng PCPI — đúng chỗ Bài 3 cần đo.
+> 
+> **Việc lượt này: thêm hai ca âm tính, mỗi ca chỉ sai MỘT thứ.**
+> - Một lệnh có `funct7 = 0000000` đúng nhưng **opcode khác** custom-0 → khối phải im.
+> - Một lệnh có **opcode custom-0 đúng** nhưng `funct7 ≠ 0000000` → khối phải im.
+> - "Im" nghĩa là `pcpi_ready = 0`, `pcpi_wait = 0`, `pcpi_wr = 0`, và `acc` **không đổi**. Kiểm cả bốn, nhất là `acc` không đổi — một khối giữ `ready` thấp mà vẫn lén cộng vào `acc` thì vẫn hỏng.
+> 
+> Rồi **tự chạy phép đo độ nhạy**: phá lại đúng năm chỗ trên, chép nguyên kết quả vào báo cáo. Bốn phép đầu phải đỏ.
+> 
+> Còn phép phá **bỏ dấu** thì đừng viết thêm ca kiểm cho nó: với hai toán hạng 32 bit, 32 bit thấp của tích **giống hệt nhau** dù hiểu có dấu hay không dấu — tính chất của bù hai, không phải chỗ hở. Dấu chỉ phân biệt được khi mở rộng quá 32 bit, tức ở nấc 3b nơi bốn tích 8×8 cộng vào thanh ghi rộng hơn. Ca kiểm dấu để dành cho chỗ ấy.
+
+**Tác tử:**
+
+> ### Kết quả nâng cấp bộ kiểm đơn vị `tb_pcpi_mac` và đo độ nhạy (Mutation Testing)
+> 
+> Tác tử kiểm chứng độc lập (**verifier**) đã thẩm tra trực tiếp từng dòng mã và hiện vật mô phỏng trong kho (`build:hdl:sim`), xác nhận kết luận: **ĐẠT** (tầng tin cậy **VÀNG**).
+> 
+> ---
+> 
+> ### 1. Bổ sung các ca kiểm âm tính cô lập (`bai3/sim/tb_pcpi_mac.v`)
+> 
+> Trước đây, testbench chỉ có 1 ca âm tính dùng lệnh `mul x2, x1, x2` (RV32M tiêu chuẩn: `32'h02208133`) — lệnh này **sai cả opcode lẫn funct7**, làm hai phép kiểm che nhau và không phát hiện trường hợp `acc` bị cập nhật lén khi khối giữ `ready = 0`.
+> 
+> Bộ kiểm đã được bổ sung task `check_negative_insn` (dòng 138–183) kiểm tra đầy đủ 4 điều kiện của trạng thái **"im hoàn toàn"**:
+> - `pcpi_ready === 1'b0`
+> - `pcpi_wait === 1'b0`
+> - `pcpi_wr === 1'b0`
+> - **`acc` không đổi**: so sánh trực tiếp thanh ghi nội bộ `dut.acc` với `saved_acc` và kiểm chứng qua lệnh kiến trúc `acc.rd` hợp lệ.
+> 
+> Hai ca kiểm cô lập cụ thể (dòng 221–227):
+> - **Ca âm tính 1 (Cô lập opcode)**: `funct7 = 7'b0000000` đúng, `funct3 = 3'b001` (mac), nhưng `opcode = 7'b0110011` (lệnh R-type OP của RV32I, khác custom-0 `7'b0001011`).
+> - **Ca âm tính 2 (Cô lập funct7)**: `opcode = 7'b0001011` (custom-0) đúng, `funct3 = 3'b001` (mac), nhưng `funct7 = 7'b0000001` (khác `7'b0000000`).
+> 
+> ---
+> 
+> ### 2. Bảng kết quả đo độ nhạy (Mutation Testing)
+> 
+> Đã lần lượt thực hiện 5 phép phá mã trên `bai3/rtl/pcpi_mac.v` và chạy mô phỏng qua `hdl.sim`:
+> 
+> | STT | Phép phá mã trong `pcpi_mac.v` | Kết quả bộ kiểm | Chi tiết phát hiện lỗi từ công cụ |
+> |---|---|:---:|---|
+> | **1** | Không cộng dồn (`acc = tích`) | **ĐỎ** (FAIL) | Bắt được **231 lỗi** `Mismatch in acc.rd` ở chuỗi tích luỹ biên và vòng lặp ngẫu nhiên 1 200 bộ. |
+> | **2** | `acc.clr` không xoá (`acc` giữ nguyên) | **ĐỎ** (FAIL) | Bắt được **246 lỗi** `Mismatch in acc.rd` ngay khi xóa bộ tích luỹ giữa các đợt tính. |
+> | **3** | Nhận mọi opcode (bỏ kiểm `opcode == 7'b0001011`) | **ĐỎ** (FAIL) | Bắt trúng tại **Ca âm tính 1**: <br>• `pcpi_ready phai bang 0 (got 1, insn=002091b3)` <br>• `acc bi thay doi len! Truoc=100, Sau=700` <br>• `Mismatch in acc.rd! Actual=700, Expected=100` |
+> | **4** | Bỏ kiểm `funct7` (bỏ kiểm `funct7 == 7'b0000000`) | **ĐỎ** (FAIL) | Bắt trúng tại **Ca âm tính 2**: <br>• `pcpi_ready phai bang 0 (got 1, insn=0220918b)` <br>• `acc bi thay doi len! Truoc=100, Sau=3100` <br>• `Mismatch in acc.rd! Actual=3100, Expected=100` |
+> | **5** | Bỏ dấu (nhân không dấu: bỏ `$signed`) | **XANH** (PASS) | **0 lỗi**. Trong hệ bù hai, 32 bit thấp của tích $A \times B \pmod{2^{32}}$ đồng nhất giữa có dấu và không dấu (để dành ca kiểm dấu cho nấc 3b). |
+> 
+> *Trạng thái hiện tại*: Tệp RTL `bai3/rtl/pcpi_mac.v` đã được đưa về bản chuẩn gốc (có đủ kiểm tra `opcode`, `funct7` và `$signed`), toàn bộ 251 phép kiểm tra độc lập trong `tb_pcpi_mac` đạt **PASS 100%**.
+> 
+> ---
+> 
+> ### Báo cáo 5 dòng
+> 
+> 1. **Đã làm**: Thêm task `check_negative_insn` và 2 ca âm tính cô lập riêng opcode / funct7 vào `tb_pcpi_mac.v`; thực hiện đủ 5 phép phá mã đo độ nhạy, kh
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. tool.search          ok  {"query": "hdl"}
+ 2. fs.glob              ok  {"pattern": "**/*pcpi*"}
+ 3. fs.read              ok  {"offset": 1, "path": "bai3/rtl/pcpi_mac.v", "limit": 100}
+ 4. fs.read              ok  {"path": "bai3/sim/tb_pcpi_mac.v", "offset": 1, "limit": 120}
+ 5. fs.read              ok  {"path": "bai3/sim/tb_pcpi_mac.v", "limit": 150, "offset": 121}
+ 6. hdl.sim              ok  {"explain": {"why": "Kiểm tra trạng thái ban đầu của testbench trước khi bổ sung ca kiểm v
+ 7. fs.read              ok  {"offset": 117, "limit": 30, "path": "bai3/sim/tb_pcpi_mac.v"}
+ 8. fs.edit              ok  {"old_string": "    // Task đọc bộ tích luỹ và so sánh với mô hình tham chiếu\n    task in
+ 9. fs.read              ok  {"limit": 35, "path": "bai3/sim/tb_pcpi_mac.v", "offset": 185}
+10. fs.read              ok  {"limit": 35, "offset": 215, "path": "bai3/sim/tb_pcpi_mac.v"}
+11. fs.edit              ok  {"old_string": "        // 1. Kiểm tra không phản hồi với lệnh lạ (ví dụ Standard RV32M MU
+12. hdl.sim              ok  {"dinh": "tb_pcpi_mac", "explain": {"why": "Kiểm tra tính đúng đắn của bộ test trước khi t
+13. fs.edit              ok  {"explain": {"why": "Đo độ nhạy của bộ kiểm đối với lỗi không tích luỹ", "summary": "Mutat
+14. hdl.sim              LỖI E4030 {"explain": {"sources": [{"tier": "VANG", "kind": "changeset", "ref": "cs-0043"}], "diff_p
+15. fs.edit              ok  {"path": "bai3/rtl/pcpi_mac.v", "explain": {"confidence": "VANG", "next": "Chuẩn bị phá mã
+16. fs.edit              ok  {"old_string": "            if (is_acc_clr) begin\n                acc <= 32'sd0;\n       
+17. hdl.sim              LỖI E4030 {"explain": {"sources": [{"tier": "VANG", "kind": "changeset", "ref": "cs-0045"}], "why": 
+18. fs.edit              ok  {"new_string": "            if (is_acc_clr) begin\n                acc <= 32'sd0;\n       
+19. fs.edit              ok  {"explain": {"confidence": "VANG", "sources": [{"kind": "doc", "tier": "VANG", "ref": "EID
+20. hdl.sim              LỖI E4030 {"explain": {"sources": [{"tier": "VANG", "kind": "changeset", "ref": "cs-0047"}], "next":
+21. fs.edit              ok  {"explain": {"sources": [{"tier": "VANG", "kind": "doc", "ref": "EIDE.md §Bài 3"}], "diff_
+22. fs.edit              ok  {"path": "bai3/rtl/pcpi_mac.v", "new_string": "    wire is_custom0 = pcpi_valid && (opcode
+23. hdl.sim              LỖI E4030 {"nguon": "bai3/sim", "dinh": "tb_pcpi_mac", "explain": {"diff_prev": "Chạy sim với Mutati
+24. fs.edit              ok  {"old_string": "    wire is_custom0 = pcpi_valid && (opcode == 7'b0001011);", "new_string"
+25. fs.edit              ok  {"path": "bai3/rtl/pcpi_mac.v", "new_string": "            end else if (is_mac) begin\n   
+26. hdl.sim              ok  {"nguon": "bai3/sim", "explain": {"sources": [{"ref": "cs-0051", "kind": "changeset", "tie
+27. fs.edit              ok  {"explain": {"confidence": "VANG", "why": "Đảm bảo mã RTL ở trạng thái đúng đắn chuẩn mực 
+28. hdl.sim              ok  {"nguon": "bai3/sim", "explain": {"confidence": "VANG", "sources": [{"kind": "changeset", 
+29. task.run             ok  {"subagent": "verifier", "explain": {"diff_prev": "Chưa có lượt kiểm chứng độc lập cho các
+```
+
+![b3a-va-bo-kiem](anh/29-b3a-va-bo-kiem.png)
+
