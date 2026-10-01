@@ -849,8 +849,52 @@ def _kiem_libc_arm(isa: str) -> str:
     return duong_libc(gcc, str(cf.get("cpu") or "cortex-m4")) if gcc else ""
 
 
+# Môi trường ảo Python của EIDE, cho các gói tính toán mà dự án cần (NumPy để làm mô hình
+# chuẩn, matplotlib để vẽ biểu đồ).
+#
+# Vì sao phải là môi trường ảo chứ không `pip install --user`: Python của Homebrew đánh dấu
+# "externally managed" theo PEP 668, nên `--user` bị chặn thẳng. Gợi ý `--break-system-packages`
+# trong thông báo lỗi đúng tên của nó — nó phá môi trường hệ thống, và EIDE không được làm thế
+# với máy của người dùng. Đề bài của anh Công cũng nêu đúng cách này: *"venv + pip"*.
+_VENV_PY = _THU_MUC_CONG_CU / "py"
+
+
+def _kiem_goi_python(ten_goi: str) -> str:
+    """Gói Python có nhập được trong môi trường ảo của EIDE không.
+
+    Trả đường dẫn trình thông dịch nếu có, "" nếu không — cùng giao kèo `_tim_lenh`, để bảng
+    môi trường hiện nó như mọi công cụ khác.
+    """
+    py = _VENV_PY / "bin" / "python3"
+    if not py.exists():
+        return ""
+    r = subprocess.run([str(py), "-c", f"import {ten_goi}"], capture_output=True)
+    return str(py) if r.returncode == 0 else ""
+
+
 # Thứ cần có mà KHÔNG phải một lệnh trong PATH thì dò bằng hàm riêng ở đây.
-_KIEM_RIENG: dict[str, Any] = {"libc_arm": _kiem_libc_arm}
+_KIEM_RIENG: dict[str, Any] = {
+    "libc_arm": _kiem_libc_arm,
+    "numpy": lambda _isa: _kiem_goi_python("numpy"),
+    "matplotlib": lambda _isa: _kiem_goi_python("matplotlib"),
+}
+
+# Gói Python cho phần tính toán và vẽ biểu đồ. Một lệnh cài dựng cả môi trường ảo rồi cài cả
+# hai gói, vì dựng môi trường ảo hai lần là thừa và dễ lệch phiên bản.
+_LENH_CAI_PY = (
+    'D="$HOME/.eide/cong-cu/py"; '
+    'test -x "$D/bin/python3" || python3 -m venv "$D"; '
+    '"$D/bin/pip" install -q --upgrade pip numpy matplotlib; '
+    'echo "da cai vao $D"')
+
+CAN_GI["python-so-lieu"] = [
+    {"ten": "numpy", "kiem": "numpy",
+     "de_lam_gi": "mô hình chuẩn để đối chiếu kết quả tính của phần cứng",
+     "bat_buoc": True, "cach_cai": _LENH_CAI_PY},
+    {"ten": "matplotlib", "kiem": "matplotlib",
+     "de_lam_gi": "vẽ biểu đồ số chu kỳ theo cấu hình",
+     "bat_buoc": False, "cach_cai": _LENH_CAI_PY},
+]
 
 
 def _phien_ban(duong_dan: str) -> str:

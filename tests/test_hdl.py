@@ -485,3 +485,39 @@ def test_resume_khong_bao_tac_tu_lam_lai_viec_cu(tmp_path):
     assert "hỏi người dùng" in src, "còn dở thật thì hỏi, không tự quyết"
     assert "việc cũ chỉ được làm lại khi người" in src, (
         "lời dặn cuối khối phải nói rõ: nói ra ≠ làm nốt")
+
+
+# =============================================================== gói Python cho tính toán
+
+def test_lenh_cai_python_dung_moi_truong_ao():
+    """KHÔNG được `pip install --user`, và tuyệt đối không `--break-system-packages`.
+
+    Python của Homebrew đánh dấu "externally managed" theo PEP 668 nên `--user` bị chặn. Gợi ý
+    `--break-system-packages` trong thông báo lỗi đúng tên của nó — nó phá môi trường hệ thống
+    của người dùng, và EIDE không được làm thế để cài một gói cho mình.
+    """
+    from eide.build.toolchain import CAN_GI
+
+    for c in CAN_GI["python-so-lieu"]:
+        l = c["cach_cai"]
+        assert "venv" in l, f"{c['ten']}: phải dựng môi trường ảo"
+        assert "--break-system-packages" not in l, f"{c['ten']}: không được phá môi trường hệ thống"
+        assert "--user" not in l, f"{c['ten']}: --user bị PEP 668 chặn trên máy này"
+        assert "sudo" not in l
+
+
+def test_kiem_goi_python_tra_rong_khi_chua_co(monkeypatch, tmp_path):
+    """Chưa có môi trường ảo thì trả rỗng, KHÔNG ném ngoại lệ."""
+    import eide.build.toolchain as TC
+
+    monkeypatch.setattr(TC, "_VENV_PY", tmp_path / "khong-he-co")
+    assert TC._kiem_goi_python("numpy") == ""
+
+
+def test_numpy_dung_ham_kiem_rieng_chu_khong_tim_trong_PATH():
+    """`numpy` không phải một lệnh — tìm nó trong PATH thì luôn ra 'thiếu'."""
+    from eide.build.toolchain import CAN_GI, _KIEM_RIENG
+
+    np = next(c for c in CAN_GI["python-so-lieu"] if c["ten"] == "numpy")
+    assert np.get("kiem") == "numpy"
+    assert "numpy" in _KIEM_RIENG
