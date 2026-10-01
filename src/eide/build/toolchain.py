@@ -88,6 +88,12 @@ FPU_HOP_LE: dict[str, tuple[str, ...]] = {
 # Thư mục con của một gói Arduino, dùng khi `avr-gcc` không nằm trong PATH.
 _ARDUINO15 = Path.home() / "Library/Arduino15/packages/arduino/tools/avr-gcc"
 
+# Chỗ giải nén gói oss-cad-suite. Nó KHÔNG có trong Homebrew (đã tra ngày 01/10/2026: `brew
+# search nextpnr` chỉ có `nextpnr-ice40`), nên cách cài là tải tệp nén từ trang phát hành rồi
+# giải ra. Giải ra xong thì các lệnh nằm ở `bin/`, mà thư mục đó không tự vào PATH — nên phải
+# tìm thêm ở đây, đúng cách đã làm với gói Arduino ở trên.
+_OSS_CAD = Path.home() / ".local/oss-cad-suite"
+
 
 @dataclass(slots=True)
 class LoiBienDich:
@@ -214,6 +220,9 @@ def _tim_lenh(ten: str) -> str:
             ung = thu_muc / "bin" / ten
             if ung.exists():
                 return str(ung)
+    ung = _OSS_CAD / "bin" / ten
+    if ung.exists():
+        return str(ung)
     return ""
 
 
@@ -746,14 +755,49 @@ for _isa in ("rv32i", "rv32im"):
 #
 # `openFPGALoader` tách riêng vì nó là chặng nạp, dùng được độc lập với ba chặng kia.
 CAN_GI_FPGA_GOWIN = [
+    # `yosys` CÓ trong Homebrew (0.69, đã tra 01/10/2026) và bản đó kèm sẵn `synth_gowin`.
     {"ten": "yosys", "de_lam_gi": "tổng hợp Verilog thành mạng cổng (`synth_gowin`)",
-     "bat_buoc": True, "cach_cai": "brew install oss-cad-suite"},
+     "bat_buoc": True, "cach_cai": "brew install yosys"},
+    # `nextpnr-himbaechel` KHÔNG có trong Homebrew — `brew search nextpnr` chỉ ra
+    # `nextpnr-ice40`, một bản khác chip. Cách cài là tải gói oss-cad-suite của trang phát hành
+    # rồi giải nén. Lệnh dưới đây tự tra bản mới nhất thay vì ghim một ngày, vì một ngày ghim
+    # cứng sẽ hết hạn và lúc đó lỗi hiện ra là "404", một câu không nói được phải sửa gì.
+    #
+    # Không cần quyền quản trị: tải về thư mục của người dùng rồi giải ra `~/.local`.
     {"ten": "nextpnr-himbaechel",
      "de_lam_gi": "đặt-đi dây cho chip Gowin, và báo Fmax đạt được",
-     "bat_buoc": True, "cach_cai": "brew install oss-cad-suite"},
+     "bat_buoc": True,
+     # Lệnh này tìm bản phát hành mới nhất **có tệp cho đúng kiến trúc máy này**, chứ không
+     # lấy mù bản `latest`. Lý do đã đo được ngày 01/10/2026: bản `latest` hôm ấy chỉ có tệp
+     # `darwin-x64`, không có `darwin-arm64` — nên lấy `latest` trên máy Apple Silicon cho ra
+     # một URL 404, rồi `tar` báo "not in gzip format", một câu không chỉ ra nguyên nhân thật.
+     # Mười một bản trước đó đều có arm64, nên quét lùi là đủ.
+     #
+     # Dùng `python3` để đọc JSON, không dùng `sed`: biểu thức `sed` cho việc này phải lồng ba
+     # lớp nháy, và một lớp thoát sai lại cho ra đúng cái URL rỗng ấy.
+     "cach_cai": (
+         'set -e; '
+         'case "$(uname -m)" in arm64) P=darwin-arm64;; x86_64) P=darwin-x64;; '
+         '*) echo "chua biet kien truc $(uname -m)"; exit 1;; esac; '
+         'U=$(curl -fsSL '
+         '"https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases?per_page=20" '
+         '| P=$P python3 -c '
+         '"import json,os,sys'
+         '\nfor r in json.load(sys.stdin):'
+         '\n    for a in r[\'assets\']:'
+         '\n        if os.environ[\'P\'] in a[\'name\']:'
+         '\n            print(a[\'browser_download_url\']); sys.exit(0)'
+         '\nsys.exit(1)"); '
+         'test -n "$U"; echo "tai: $U"; '
+         'mkdir -p "$HOME/.local"; curl -fL "$U" -o /tmp/oss-cad.tgz; '
+         'tar -xzf /tmp/oss-cad.tgz -C "$HOME/.local"; rm -f /tmp/oss-cad.tgz')},
+    # `gowin_pack` là một lệnh của gói Python Apicula (tên trên PyPI: `apycula`, 0.33). Nó
+    # KHÔNG có trong Homebrew. Cài vào `~/.local/bin` bằng `--user` để không cần quyền quản trị
+    # và không làm bẩn môi trường ảo của dự án.
     {"ten": "gowin_pack",
      "de_lam_gi": "đóng gói thành tệp cấu hình `.fs` nạp được vào FPGA (Apicula)",
-     "bat_buoc": True, "cach_cai": "brew install oss-cad-suite"},
+     "bat_buoc": True,
+     "cach_cai": "python3 -m pip install --user --upgrade apycula"},
     {"ten": "openFPGALoader", "de_lam_gi": "nạp `.fs` vào SRAM hoặc flash của kit",
      "bat_buoc": True, "cach_cai": "brew install openfpgaloader"},
     {"ten": "verilator",

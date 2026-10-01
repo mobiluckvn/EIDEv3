@@ -209,3 +209,54 @@ def test_thieu_linker_script_thi_noi_ra(tmp_path):
     kq = bien_dich(goc=tmp_path, sketch=sw, isa="rv32i")
     assert not kq.dat
     assert ".ld" in kq.vi_sao_khong_dat and "BRAM" in kq.vi_sao_khong_dat
+
+
+# --------------------------------------------------------------- bảng công cụ FPGA
+
+def test_bang_fpga_co_du_bon_chang():
+    """Bốn chặng của luồng FPGA phải đủ: thiếu một chặng thì ba chặng kia vô dụng."""
+    from eide.build.toolchain import CAN_GI
+    ten = {c["ten"] for c in CAN_GI["fpga-gowin"]}
+    for can in ("yosys", "nextpnr-himbaechel", "gowin_pack", "openFPGALoader"):
+        assert can in ten, f"thiếu chặng {can}"
+    bb = {c["ten"] for c in CAN_GI["fpga-gowin"] if c["bat_buoc"]}
+    assert {"yosys", "nextpnr-himbaechel", "gowin_pack", "openFPGALoader"} <= bb
+
+
+def test_lenh_cai_khong_con_lenh_khong_ton_tai():
+    """`brew install oss-cad-suite` KHÔNG tồn tại — đã tra ngày 01/10/2026.
+
+    Ca này canh một lỗi mình tự gây ra: bản đầu viết lệnh ấy cho ba công cụ, nghe hợp lý mà
+    sai. Một lệnh cài không tồn tại nằm trong bảng còn tệ hơn không có dòng nào: người dùng
+    duyệt nó ở cổng G-TOOL, nó chạy, nó thất bại, và lời từ chối nói về Homebrew chứ không nói
+    rằng chính EIDE ghi sai.
+    """
+    from eide.build.toolchain import CAN_GI
+    for c in CAN_GI["fpga-gowin"]:
+        assert "oss-cad-suite" not in c["cach_cai"] or "github.com" in c["cach_cai"], (
+            f"{c['ten']}: `brew install oss-cad-suite` không có thật")
+
+
+def test_lenh_cai_nextpnr_khong_ghim_cung_mot_ngay():
+    """Phải tự tra bản phát hành, không ghim ngày — ghim thì hết hạn rồi báo 404."""
+    from eide.build.toolchain import CAN_GI
+    c = next(x for x in CAN_GI["fpga-gowin"] if x["ten"] == "nextpnr-himbaechel")
+    lenh = c["cach_cai"]
+    assert "api.github.com" in lenh, "phải tra bản phát hành qua API"
+    assert "uname -m" in lenh, "phải chọn tệp theo kiến trúc máy"
+    assert "darwin-arm64" in lenh and "darwin-x64" in lenh
+    assert "releases/latest" not in lenh, (
+        "KHÔNG được lấy mù bản `latest`: ngày 01/10/2026 bản latest chỉ có tệp x64, nên trên "
+        "máy Apple Silicon nó cho ra URL 404")
+    assert "sudo" not in lenh, "cài vào ~/.local, không cần quyền quản trị"
+
+
+def test_tim_lenh_tim_ca_trong_oss_cad_suite(tmp_path, monkeypatch):
+    """Lệnh trong `~/.local/oss-cad-suite/bin` không tự vào PATH — phải tìm thêm ở đó."""
+    import eide.build.toolchain as TC
+    gia = tmp_path / "oss-cad-suite" / "bin"
+    gia.mkdir(parents=True)
+    (gia / "nextpnr-himbaechel").write_text("#!/bin/sh\n", "utf-8")
+    monkeypatch.setattr(TC, "_OSS_CAD", tmp_path / "oss-cad-suite")
+    assert TC._tim_lenh("nextpnr-himbaechel").endswith("oss-cad-suite/bin/nextpnr-himbaechel")
+    assert TC._tim_lenh("khong-he-co-lenh-nay") == ""
