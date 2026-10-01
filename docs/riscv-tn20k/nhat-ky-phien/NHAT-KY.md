@@ -2194,3 +2194,96 @@ G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích t
 
 ![b2-testbench-rieng](anh/27-b2-testbench-rieng.png)
 
+
+
+---
+
+*(chạy tiếp lúc 01/10/2026 23:39:37)*
+
+## Bước 28. Bài 3 · nấc 3a — đọc giao thức PCPI rồi viết khối MAC
+
+**Anh gõ:**
+
+> Anh Công duyệt làm tiếp **Bài 3**. Luật của bài đã ghi vào `EIDE.md`.
+> 
+> **Việc lượt này: nấc 3a — khối MAC vô hướng.** Mục đích của nấc này **không phải tốc độ** mà là kiểm chứng luồng PCPI chạy được từ đầu tới cuối. Đề bài nói rõ thế.
+> 
+> Hai việc, theo thứ tự:
+> 
+> **Một — đọc giao thức trước khi viết.** `third_party/picorv32/README.md` đã có trong dự án. Đề bài bắt xác minh ba điểm, và dặn đừng đoán:
+> - (a) phối hợp thế nào khi **đồng thời** bật bộ nhân nội bộ — `ENABLE_MUL` và `ENABLE_FAST_MUL` cũng dùng PCPI bên trong, nên hai khối có thể tranh nhau;
+> - (b) **thời hạn trả lời** trước khi CPU báo lệnh không hợp lệ;
+> - (c) cách giữ CPU chờ bằng `pcpi_wait`.
+> 
+> Báo mình ba điểm ấy bằng lời của bạn, kèm số dòng trong README. Đây là phần mình cần nhất: nếu hiểu sai giao thức thì khối viết ra sẽ hoặc treo CPU, hoặc bị CPU bỏ qua — và cả hai trông giống hệt 'lệnh không chạy'.
+> 
+> **Hai — viết `bai3/rtl/pcpi_mac.v`**: thanh ghi `acc` 32 bit, ba lệnh `acc.clr` · `mac` · `acc.rd` theo bảng mã trong `EIDE.md`.
+> 
+> Rồi viết **testbench đơn vị** `bai3/sim/tb_pcpi_mac.v`:
+> - **ít nhất 1 000 bộ giá trị ngẫu nhiên**, và **phải có cả −128 lẫn 127** — đề bài nêu đích danh hai giá trị biên ấy vì chúng là chỗ phép nhân có dấu hay sai nhất;
+> - so với một mô hình tham chiếu viết **ngay trong testbench**, không so với chính khối;
+> - tự in `PASS`/`FAIL`, và `FAIL` phải kèm bộ giá trị nào sai.
+> 
+> Chạy `hdl.sim`. Chưa ghép vào SoC, chưa viết phần mềm lượt này.
+
+**Tác tử:**
+
+> > **Thông báo bối cảnh**: Lượt chạy `run-037` từ phiên trước đã dừng giữa chừng và 5 thẻ cổng `G-DATA` cũ đã hết hiệu lực; lượt này tập trung hoàn thành trọn vẹn nấc **3a** của Bài 3.
+> 
+> ---
+> 
+> ### Một — Báo cáo xác minh giao thức PCPI từ `third_party/picorv32/README.md`
+> 
+> Đối chiếu trực tiếp giữa tài liệu `third_party/picorv32/README.md` và mã nguồn lõi `third_party/picorv32/picorv32.v` cho thấy 3 điểm cốt lõi sau:
+> 
+> #### (a) Phối hợp khi đồng thời bật bộ nhân nội bộ (`ENABLE_MUL` / `ENABLE_FAST_MUL`)
+> * **Số dòng tài liệu**: `third_party/picorv32/README.md`, dòng 247–267 và dòng 467–477.
+> * **Đối chiếu mã nguồn**: `third_party/picorv32/picorv32.v`, dòng 326–345.
+> * **Cơ chế phối hợp**:
+>   - Tín hiệu phát lệnh (`pcpi_valid`, `pcpi_insn`, `pcpi_rs1`, `pcpi_rs2`) được CPU phát song song tới cả bộ nhân nội bộ và cổng PCPI ngoài.
+>   - Các tín hiệu phản hồi `pcpi_wait` và `pcpi_ready` bên trong CPU được gộp bằng cổng **OR logic**:
+>     ```verilog
+>     pcpi_int_wait  = |{ENABLE_PCPI && pcpi_wait,  (ENABLE_MUL || ENABLE_FAST_MUL) && pcpi_mul_wait,  ENABLE_DIV && pcpi_div_wait};
+>     pcpi_int_ready = |{ENABLE_PCPI && pcpi_ready, (ENABLE_MUL || ENABLE_FAST_MUL) && pcpi_mul_ready, ENABLE_DIV && pcpi_div_ready};
+>     ```
+>   - Khi có khối trả lời `ready`, CPU ưu tiên lấy dữ liệu `pcpi_rd` và cờ ghi `pcpi_wr` từ cổng PCPI ngoài trước (qua khối `case (1'b1)` ở dòng 333–344).
+>   - **Quy tắc phối hợp bắt buộc**: Khối ngoài **chỉ được tích cực `pcpi_ready` và `pcpi_wait` khi giải mã đúng opcode dành riêng cho mình** (`custom-0 = 7'b0001011`). Khi CPU gặp lệnh nhân chuẩn của RISC-V M-extension (opcode `0110011`), khối ngoài phải giữ `pcpi_ready = 0`, `pcpi_wait = 0`, `pcpi_wr = 0` để bộ nhân nội bộ xử lý. Nếu khối ngoài giữ ready sai lệch, nó sẽ cướp lệnh và làm sai lệch toàn bộ bộ nhân nội bộ.
+> 
+> #### (b) Thời hạn trả lời trước khi CPU báo lệnh không hợp lệ
+> * **Số dòng tài liệu**: `third_party/picorv32/README.md`, dòng 479–481:
+>   > *"When no external PCPI core acknowledges the instruction within 16 clock cycles, then an illegal instruction exception is raised and the respective interrupt handler is called."*
+> * **Đối chiếu mã nguồn**: `third_party/picorv32/picorv32.v`, dòng 1215–1216 và 1424–1429.
+> * **Chi tiết kỹ thuật**: PicoRV32 dùng một bộ đếm lùi 4 bit `pcpi_timeout_counter`. Khi `pcpi_valid` bật lên, nếu sau đúng **16 chu kỳ clock** mà không có bất kỳ khối nào phản hồi (bằng cách kéo `pcpi_wait` hoặc `pcpi_ready` lên mức cao), cờ `pcpi_timeout` sẽ kích hoạt ngoại lệ lệnh bất hợp pháp (Illegal Instruction Trap).
+> 
+> #### (c) Cách giữ CPU chờ bằng `pcpi_wait`
+> * **Số dòng tài liệu**: `third_party/picorv32/README.md`, dòng 481–485:
+>   > *"A PCPI core that needs more than a couple of cycles to execute an instruction, should assert `pcpi_wait` as soon as the instruction has been decoded successfully and keep it asserted until it asserts `pcpi_ready`. This will prevent the PicoRV32 core from raising an illegal instruction exception."*
+> * **Đối chiếu mã nguồn**: `third_party/picorv32/picor
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. tool.search          ok  {"query": "hdl"}
+ 2. fs.read              ok  {"offset": 1, "limit": 100, "path": "third_party/picorv32/README.md"}
+ 3. fs.grep              ok  {"glob": "third_party/picorv32/README.md", "pattern": "pcpi"}
+ 4. fs.read              ok  {"path": "third_party/picorv32/README.md", "limit": 70, "offset": 450}
+ 5. fs.read              ok  {"path": "third_party/picorv32/README.md", "offset": 245, "limit": 50}
+ 6. fs.grep              ok  {"glob": "third_party/picorv32/picorv32.v", "pattern": "pcpi_"}
+ 7. fs.glob              ok  {"pattern": "bai3/**"}
+ 8. fs.glob              ok  {"pattern": "bai*/**"}
+ 9. fs.glob              ok  {"pattern": "rtl/**"}
+10. fs.read              ok  {"offset": 1, "limit": 100, "path": "rtl/soc_top.v"}
+11. fs.grep              ok  {"pattern": "module picorv32_pcpi_fast_mul", "glob": "third_party/picorv32/picorv32.v"}
+12. fs.read              ok  {"path": "third_party/picorv32/picorv32.v", "limit": 45, "offset": 2318}
+13. fs.read              ok  {"limit": 35, "path": "third_party/picorv32/picorv32.v", "offset": 2395}
+14. fs.write             ok  {"path": "bai3/rtl/pcpi_mac.v", "explain": {"why": "Thực hiện nấc 3a theo đề bài để kiểm c
+15. fs.write             ok  {"path": "bai3/sim/tb_pcpi_mac.v", "content": "`timescale 1ns / 1ps\n\n`include \"bai3/rtl
+16. hdl.lint             ok  {"nguon": "bai3/sim/tb_pcpi_mac.v", "dinh": "tb_pcpi_mac", "explain": {"sources": [{"tier"
+17. hdl.sim              LỖI E4030 {"dinh": "tb_pcpi_mac", "nguon": "bai3/sim", "bo_may": "iverilog", "explain": {"diff_prev"
+18. fs.edit              ok  {"old_string": "            @(posedge clk);\n            #1;\n            pcpi_valid = 1'b
+19. hdl.sim              ok  {"explain": {"next": "Đọc kết quả PASS/FAIL", "sources": [{"ref": "cs-0040", "kind": "chan
+20. task.run             ok  {"viec": "Thẩm tra độc lập kết quả mô phỏng kiểm chứng khối pcpi_mac (nấc 3a):\n1. Đọc tệp
+```
+
+![b3a-pcpi-mac](anh/28-b3a-pcpi-mac.png)
+

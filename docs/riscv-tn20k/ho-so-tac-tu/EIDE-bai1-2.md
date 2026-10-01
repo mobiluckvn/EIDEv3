@@ -78,3 +78,45 @@ Số đo tài nguyên ba cấu hình, **đã đo**, đừng đo lại:
 | H0 | 2 239 | 628 | không |
 | H1 | 2 554 (+315) | 907 (+279) | không |
 | H2 | 2 271 (+32) | 785 (+157) | 1× MULT36X36 |
+
+## Bài 3 — lệnh tuỳ biến và đơn vị vector mini
+
+Mục tiêu: giảm số chu kỳ trên mỗi phép nhân-cộng của bài nhân ma trận **I8**, bằng phần cứng
+gắn vào CPU qua giao diện đồng xử lý **PCPI**. Ba nấc, mỗi nấc gần hơn với mô hình vector RVV.
+
+Bật `ENABLE_PCPI=1`. Tín hiệu vào khối: `pcpi_valid`, `pcpi_insn`, `pcpi_rs1`, `pcpi_rs2`.
+Trả về: `pcpi_wr`, `pcpi_rd`, `pcpi_wait`, `pcpi_ready`.
+
+**Phải đọc README của PicoRV32 để xác minh giao thức**, nhất là ba điểm đề bài nêu:
+(a) phối hợp thế nào khi đồng thời bật bộ nhân nội bộ — `ENABLE_MUL`/`ENABLE_FAST_MUL` cũng
+dùng PCPI bên trong; (b) thời hạn trả lời trước khi CPU báo lệnh không hợp lệ; (c) cách giữ CPU
+chờ bằng `pcpi_wait`. Đừng đoán ba điểm này.
+
+Mã lệnh: vùng **custom-0** = `0001011`, định dạng R, `funct7 = 0000000`.
+
+| `funct3` | Lệnh | Nghĩa | Nấc |
+|---|---|---|---|
+| 000 | `acc.clr` | acc ← 0 | 3a |
+| 001 | `mac rs1, rs2` | acc ← acc + rs1 × rs2 (có dấu, 32 bit) | 3a |
+| 010 | `acc.rd rd` | rd ← acc | 3a |
+| 011 | `dot4 rs1, rs2` | acc ← acc + Σ int8(rs1[8i+7:8i]) × int8(rs2[8i+7:8i]) | 3b |
+
+Trong C gọi bằng `.insn r 0x0B, funct3, 0, rd, rs1, rs2`, gói trong macro ở
+`bai3/sw/custom_insn.h`. **Không sửa trình biên dịch.**
+
+### Kiểm chứng cho mọi nấc
+
+- **Testbench đơn vị** cho khối tăng tốc, so với mô hình tham chiếu viết ngay trong testbench,
+  **ít nhất 1 000 bộ giá trị ngẫu nhiên**, gồm các giá trị biên **−128** và **127**.
+- **Testbench hệ thống** chạy nhân ma trận đầy đủ, dùng lại `gen_data.py` và tổng kiểm của Bài 2.
+- Kết quả ghi thêm vào bảng với `hw` = `P3a`, `P3b`, `P3c`.
+
+### Mục tiêu số
+
+Nấc 3b phải đạt **cpm ≤ ½ cpm của H2 tốt nhất** (I8, N=16). Không đạt thì phải phân tích nút
+thắt bằng cách đếm chu kỳ nạp/ghi so với chu kỳ tính — **không được im lặng bỏ qua**.
+
+### Điểm dừng bắt buộc
+
+Nấc **3c** (đơn vị vector mini): `docs/bai3-arch.md` phải được anh Công **duyệt trước khi viết
+một dòng RTL nào**. Đó là điểm dừng số 4 của đề bài.
