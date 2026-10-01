@@ -11,7 +11,7 @@
 
 static robot_state_t s_state = STATE_INIT;
 static comp_filter_t s_filter;
-static pid_controller_t s_pid;
+static float s_angle_gyro = 0.0f;
 
 /* Quản lý nút nhấn phi chặn */
 static bool s_prev_btn_state = true;
@@ -56,14 +56,14 @@ void fsm_init(void) {
     BUTTON_DDR &= ~(1 << BUTTON_PIN);
     BUTTON_PORT |= (1 << BUTTON_PIN);
 
-    /* Khởi tạo bộ lọc bù: alpha = 0.98, dt = 4 ms */
-    filter_init(&s_filter, 0.98f, CONTROL_LOOP_DT);
+    /* Khởi tạo bộ lọc bù theo bản tham chiếu: alpha = 0.9996, dt = 4 ms */
+    filter_init(&s_filter, 0.9996f, CONTROL_LOOP_DT);
 
-    /* Khởi tạo PID theo thang tốc độ throttle mới (§7.6, Bảng 18: max 25.000 xung/s):
-     * Kp = 180.0, Ki = 10.0, Kd = 6.0, MaxI = 1250.0, MaxOut = 25000.0 */
-    pid_init(&s_pid, 180.0f, 10.0f, 6.0f, 1250.0f, 25000.0f);
+    /* Khởi tạo PID theo bản tham chiếu (Kp=12.0, Ki=0.4, Kd=10.0) */
+    pid_init();
 
-    s_state = STATE_INIT;
+    /* Ban đầu ở trạng thái dừng chờ bấm nút D12 (STATE_CHO_NUT trong bản tham chiếu) */
+    s_state = STATE_STOPPED;
     s_sensor_error = false;
     s_last_calib_ms = 0;
     s_last_measured_pitch = 0.0f;
@@ -152,14 +152,20 @@ void fsm_update_background(void) {
                 /* Bấm nút khi đang chạy hoặc sẵn sàng -> Dừng hẳn (FR-03) */
                 s_state = STATE_STOPPED;
                 motor_stop();
-                pid_reset(&s_pid);
+                pid_reset();
                 buzzer_on_ms(100);
-            } else if (s_state == STATE_STOPPED || s_state == STATE_FALLEN) {
-                /* Bấm nút khi đang dừng/ngã/hiệu chuẩn xong -> Đưa về sẵn sàng (FR-03) */
-                s_state = STATE_READY;
+            } else if (s_state == STATE_STOPPED) {
+                /* Bấm nút khi đang dừng -> Bắt đầu hiệu chỉnh con quay (STATE_HIEU_CHINH theo bản tham chiếu) */
+                s_state = STATE_CALIBRATING;
+                mpu6050_calib_reset();
+                s_last_calib_ms = now;
+                buzzer_on_ms(100);
+            } else if (s_state == STATE_FALLEN) {
+                /* Bấm nút khi ngã -> Quay về trạng thái dừng chờ (FR-03) */
+                s_state = STATE_STOPPED;
                 motor_stop();
-                pid_reset(&s_pid);
-                buzzer_on_ms(50);
+                pid_reset();
+                buzzer_on_ms(100);
             }
         }
     }
@@ -192,15 +198,15 @@ void fsm_update_background(void) {
                 fsm_notify_sensor_error();
             } else if (done) {
                 motor_stop();
-                pid_reset(&s_pid);
+                pid_reset();
                 if (s_diag_mode) {
                     /* Vào chế độ chẩn đoán Bài 1 kiểm dấu góc (§13.4 Mục 4) */
                     s_state = STATE_DIAG_ANGLE;
                     buzzer_on_ms(200);
                 } else {
-                    /* Tự hiệu chuẩn thành công -> chuyển sang STOPPED CHỜ BẤM NÚT */
-                    s_state = STATE_STOPPED;
-                    buzzer_on_ms(200);
+                    /* Tự hiệu chuẩn thành công -> chuyển sang READY sẵn sàng cân bằng (app_balance.c:93) */
+                    s_state = STATE_READY;
+                    buzzer_on_ms(100);
                 }
             }
         }
@@ -208,18 +214,35 @@ void fsm_update_background(void) {
 }
 
 void fsm_update_control_4ms(void) {
-    mpu6050_data_t imu;
-    if (!mpu6050_read_scaled(&imu)) {
+    mpu6050_raw_data_t raw;
+    if (!mpu6050_read_raw(&raw)) {
         return;
     }
 
-    /* Tính góc nghiêng pitch từ gia tốc kế theo ánh xạ §8.3 (X đứng, Z trước-sau) và tham số §11 */
-    float forward_accel_z = CALIB_AXIS_DIR_Z * imu.accel_z_g; /* s = -1 cho bo hạng L (§11.5) */
-    float accel_pitch = (atan2f(forward_accel_z, imu.accel_x_g) * RAD_TO_DEG_FACTOR) - CALIB_PITCH_OFFSET_DEG;
+    /* Thuật toán tính góc theo bản tham chiếu drv_imu.c:46-61:
+     * - Trừ offset cơ khí ACCEL_BALANCE_OFFSET = -535
+     * - Kẹp dải ±8200 LSB (đúng 1 g ở thang đo ±4 g)
+     * - Tính góc gia tốc bằng asinf() một trục
+     * - Tích phân con quay với hệ số 0.000031
+     * - Trộn lọc bù: 0.9996 con quay + 0.0004 gia tốc
+     */
+    int32_t accel_z = (int32_t)raw.accel_z - ACCEL_BALANCE_OFFSET;
+    if (accel_z > 8200) accel_z = 8200;
+    if (accel_z < -8200) accel_z = -8200;
 
-    /* Cập nhật bộ lọc bù với tốc độ con quay trục Y nhân hệ số s = -1 (§11.5) */
-    float gyro_pitch_rate = CALIB_AXIS_DIR_Z * imu.gyro_y_dps;
-    float pitch = filter_update(&s_filter, accel_pitch, gyro_pitch_rate);
+    float angle_acc = asinf((float)accel_z / 8200.0f) * RAD_TO_DEG_FACTOR;
+    float gyro_y_corrected = (float)(raw.gyro_y - mpu6050_get_gyro_bias_y_raw());
+
+    float pitch;
+    if (s_state == STATE_STOPPED || s_state == STATE_CALIBRATING) {
+        /* Khi chưa hiệu chuẩn hoặc đang hiệu chuẩn: chốt góc bằng góc gia tốc tĩnh */
+        s_angle_gyro = angle_acc;
+        pitch = angle_acc;
+    } else {
+        s_angle_gyro += gyro_y_corrected * 0.000031f;
+        s_angle_gyro = s_angle_gyro * 0.9996f + angle_acc * 0.0004f;
+        pitch = s_angle_gyro;
+    }
     s_last_measured_pitch = pitch;
 
     switch (s_state) {
@@ -232,26 +255,27 @@ void fsm_update_control_4ms(void) {
             break;
 
         case STATE_READY:
-            /* Tự động kích hoạt khi đi qua điểm thăng bằng (FR-04) */
-            if (fabsf(pitch) < (float)ANGLE_ACTIVE_DEG) {
+            /* Tự động kích hoạt khi đi qua điểm thăng bằng: cửa sổ ±0,5° theo bản tham chiếu (app_balance.c:116) */
+            if (pitch > -0.5f && pitch < 0.5f) {
                 s_state = STATE_BALANCING;
-                pid_reset(&s_pid);
+                pid_reset();
                 motor_enable();
             }
             break;
 
         case STATE_BALANCING:
-            /* Kiểm tra điều kiện ngã xe (FR-05) */
-            if (fabsf(pitch) > (float)ANGLE_FALL_LIMIT_DEG) {
+            /* Kiểm tra điều kiện ngã xe: vượt quá ±30° theo bản tham chiếu (app_balance.c:133) */
+            if (pitch > 30.0f || pitch < -30.0f) {
                 s_state = STATE_FALLEN;
                 motor_stop();
-                pid_reset(&s_pid);
-                buzzer_on_ms(300); /* Còi báo ngã */
+                pid_compute(pitch, 0.0f, false);
+                buzzer_on_ms(200); /* Còi báo ngã */
             } else {
-                /* Tính toán PID cân bằng với dấu đầu ra u phù hợp (§11.5) */
-                float speed_out = -pid_calculate(&s_pid, 0.0f, pitch, CONTROL_LOOP_DT);
-                int16_t motor_spd = (int16_t)speed_out;
-                motor_set_speed(motor_spd, motor_spd);
+                /* Tính toán PID ngõ ra theo bản tham chiếu */
+                float out = pid_compute(pitch, 0.0f, true);
+                /* Gọi hàm throttle phi tuyến dùng chung (bỏ trùng lặp với control.c) */
+                int16_t motor = motor_calc_throttle_from_pid(out);
+                motor_set_throttle(motor, motor);
             }
             break;
 

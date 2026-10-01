@@ -13,3 +13,7 @@ float filter_update(comp_filter_t *f, float accel_angle, float gyro_rate) {
     f->angle = f->alpha * (f->angle + gyro_rate * f->dt) + (1.0f - f->alpha) * accel_angle;
     return f->angle;
 }
+
+void filter_set_angle(comp_filter_t *f, float angle) {
+    f->angle = angle;
+}

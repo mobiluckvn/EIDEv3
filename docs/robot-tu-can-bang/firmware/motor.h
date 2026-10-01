@@ -25,6 +25,9 @@ void motor_enable(void);
 /* Hàm thực thi trong ISR ngắt Timer2 50 kHz (Tầng 1) */
 void motor_isr_step(void);
 
+/* Ánh xạ phi tuyến từ đầu ra PID sang giá trị throttle (app_balance.c:141-149) */
+int16_t motor_calc_throttle_from_pid(float out);
+
 /* Đọc lệnh throttle hiện tại của hai bánh xe */
 int16_t motor_get_throttle_l(void);
 int16_t motor_get_throttle_r(void);

@@ -20,6 +20,7 @@
 static float s_gyro_bias_x = 0.0f;
 static float s_gyro_bias_y = 0.0f;
 static float s_gyro_bias_z = 0.0f;
+static int16_t s_gyro_bias_y_raw = 0;
 static char s_mpu_init_diag[64] = "CHUA_KHOI_TAO";
 
 const char* mpu6050_get_init_diag(void) {
@@ -129,6 +130,7 @@ bool mpu6050_calib_step(bool *out_done) {
         s_gyro_bias_x = (float)s_calib_sum_gx / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
         s_gyro_bias_y = (float)s_calib_sum_gy / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
         s_gyro_bias_z = (float)s_calib_sum_gz / ((float)CALIB_SAMPLES * GYRO_SCALE_FACTOR);
+        s_gyro_bias_y_raw = (int16_t)(s_calib_sum_gy / (int32_t)CALIB_SAMPLES);
         *out_done = true;
     }
 
@@ -172,4 +174,8 @@ bool mpu6050_read_scaled(mpu6050_data_t *data) {
     data->gyro_z_dps = ((float)raw.gyro_z / GYRO_SCALE_FACTOR) - s_gyro_bias_z;
 
     return true;
+}
+
+int16_t mpu6050_get_gyro_bias_y_raw(void) {
+    return s_gyro_bias_y_raw;
 }

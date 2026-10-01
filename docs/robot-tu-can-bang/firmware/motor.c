@@ -45,6 +45,17 @@ int16_t motor_speed_to_throttle(float speed_hz) {
     return (speed_hz >= 0.0f) ? thr : -thr;
 }
 
+int16_t motor_calc_throttle_from_pid(float out) {
+    if (out > 0.0f) {
+        float out_nl = 405.0f - (5500.0f / (out + 9.0f));
+        return (int16_t)(400.0f - out_nl);
+    } else if (out < 0.0f) {
+        float out_nl = -405.0f - (5500.0f / (out - 9.0f));
+        return (int16_t)(-400.0f - out_nl);
+    }
+    return 0;
+}
+
 void motor_set_throttle(int16_t throttle_left, int16_t throttle_right) {
     /* Yêu cầu 6 (§7.7, Bảng 43): Truy cập nguyên tử với biến 16 bit chia sẻ */
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {

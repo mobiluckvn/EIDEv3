@@ -54,18 +54,19 @@
 #define CALIB_PITCH_OFFSET_DEG (0.713f)  /* Góc lệch lắp đặt cảm biến [°] (§11.2) */
 #define CALIB_AXIS_DIR_Z       (1.0f)    /* Chiều trục trước-sau s_net = +1 (nghiêng tới -> pitch > 0) (§13.4 Mục 4) */
 
-/* Mức logic chân DIR khi đi tới (§11 Bảng 33, Bảng 13) */
-#define DIR_FORWARD_LEFT       1         /* Bánh TRÁI: mức CAO (HIGH) = tiến */
-#define DIR_FORWARD_RIGHT      0         /* Bánh PHẢI: mức THẤP (LOW) = tiến */
+/* Mức logic chân DIR khi đi tới theo bản tham chiếu drv_stepper.c đã chạy tốt trên bo */
+#define DIR_FORWARD_LEFT       0         /* Bánh TRÁI: mức THẤP (LOW) = tiến (drv_stepper.c:52) */
+#define DIR_FORWARD_RIGHT      1         /* Bánh PHẢI: mức CAO (HIGH) = tiến (drv_stepper.c:82) */
 
 /* GHI CHÚ PHẦN CỨNG ĐẶC BIỆT:
  * Chân EN của 2 driver A4988 nối cứng GND trên mạch bo mạch.
  * Dừng động cơ bắt buộc thực hiện bằng cách ngắt phát xung STEP (EIDE.md).
  */
 
-/* Cấu hình an toàn và góc nghiêng (FR-04, FR-05) */
-#define ANGLE_FALL_LIMIT_DEG 45        /* Ngưỡng ngã robot: ngắt xung bước khi vượt 45 độ (anh cho, chưa có tài liệu) */
-#define ANGLE_ACTIVE_DEG     2         /* Ngưỡng kích hoạt khi qua điểm cân bằng */
+/* Cấu hình an toàn và góc nghiêng theo bản tham chiếu app_balance.c */
+#define ANGLE_FALL_LIMIT_DEG 30.0f     /* Ngưỡng ngã robot: ngắt xung bước khi vượt ±30 độ (app_balance.c:133) */
+#define ANGLE_ACTIVE_DEG     0.5f      /* Cửa sổ kích hoạt cân bằng: ±0,5 độ (app_balance.c:116) */
+#define ACCEL_BALANCE_OFFSET (-535)    /* Offset cơ khí trục Z gia tốc theo bản tham chiếu (drv_imu.c:9) */
 
 /* Cấu hình MPU6050 */
 #define MPU6050_ADDR         0x68      /* Địa chỉ I2C mặc định MPU6050 */

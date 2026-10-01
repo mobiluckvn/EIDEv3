@@ -14,4 +14,7 @@ void filter_init(comp_filter_t *f, float alpha, float dt);
 /* Cập nhật bộ lọc bù với dữ liệu gia tốc và con quay */
 float filter_update(comp_filter_t *f, float accel_angle, float gyro_rate);
 
+/* Đặt trực tiếp góc của bộ lọc bù (ví dụ khi kết thúc hiệu chuẩn) */
+void filter_set_angle(comp_filter_t *f, float angle);
+
 #endif /* FILTER_H_ */

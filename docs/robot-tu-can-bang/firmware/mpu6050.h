@@ -43,4 +43,7 @@ bool mpu6050_calib_step(bool *out_done);
 /* Đọc dữ liệu đã trừ offset hiệu chuẩn và đổi sang đơn vị vật lý */
 bool mpu6050_read_scaled(mpu6050_data_t *data);
 
+/* Lấy giá trị bias con quay trục Y dạng thô (LSB) */
+int16_t mpu6050_get_gyro_bias_y_raw(void);
+
 #endif /* MPU6050_H_ */

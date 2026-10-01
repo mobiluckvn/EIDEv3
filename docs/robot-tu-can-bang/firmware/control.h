@@ -19,7 +19,6 @@ typedef enum {
 typedef struct {
     control_state_t state;
     comp_filter_t filter;
-    pid_controller_t pid;
     float current_pitch;
     int16_t motor_speed;
     bool motor_enabled;

@@ -1,23 +1,21 @@
 #ifndef PID_H_
 #define PID_H_
 
-typedef struct {
-    float kp;
-    float ki;
-    float kd;
-    float integral;
-    float prev_error;
-    float integral_max;
-    float out_max;
-} pid_controller_t;
+#include <stdbool.h>
 
-/* Khởi tạo thông số bộ điều khiển PID */
-void pid_init(pid_controller_t *pid, float kp, float ki, float kd, float integral_max, float out_max);
+/* Khởi tạo bộ điều khiển PID theo bản tham chiếu */
+void pid_init(void);
 
-/* Cập nhật tính toán PID với sai số và khoảng thời gian dt */
-float pid_calculate(pid_controller_t *pid, float setpoint, float current_val, float dt);
+/* Cài đặt hệ số Kp, Ki, Kd */
+void pid_set_tunings(float kp, float ki, float kd);
 
-/* Xoá bộ tích phân khi dừng động cơ hoặc chuyển trạng thái */
-void pid_reset(pid_controller_t *pid);
+/* Tính toán ngõ ra PID theo góc nghiêng, điểm đặt và trạng thái vận hành */
+float pid_compute(float angle, float pid_setpoint, bool is_running);
+
+/* Reset bộ nhớ tích phân và điểm cân bằng tự học */
+void pid_reset(void);
+
+/* Lấy điểm cân bằng tự học hiện tại */
+float pid_get_self_balance_setpoint(void);
 
 #endif /* PID_H_ */
