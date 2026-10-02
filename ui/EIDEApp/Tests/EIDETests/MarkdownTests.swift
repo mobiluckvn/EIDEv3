@@ -338,3 +338,77 @@ final class CongThucGiuaDongTests: XCTestCase {
         XCTAssertTrue(MathText.laCongThucChuKhongPhaiTien("\\alpha \\le 0.05"))
     }
 }
+
+/// Dòng hội thoại — **cả hai vai** đều phải qua bộ dựng markdown.
+///
+/// Anh Công báo hai lần rằng dấu `**` còn nguyên trên màn hình. Lần thứ hai là đúng câu vừa gõ
+/// cho tác tử: *"Bản kết quả phải trả lời **bốn câu**"*. Bốn ca kiểm trước của tôi đều thử trên
+/// `chuThuan()` — tức trên đường của **lời tác tử** — nên chúng xanh trong khi đường của **lời
+/// người** vẫn là chữ trơn, với lý do viết hẳn trong mã: *"họ gõ gì hiện nấy"*.
+///
+/// Bài học: *"còn dấu sao trên màn không"* là một câu hỏi về MỘT ĐƯỜNG DẪN cụ thể. Hỏi nó trên
+/// một đường rồi kết luận cho cả màn hình là nhảy bước.
+final class DongHoiThoaiTests: XCTestCase {
+
+    func test_cau_cua_NGUOI_cung_phai_duoc_dung() {
+        // Câu thật anh Công chỉ ra.
+        let ra = Markdown.chuThuan("Bản kết quả phải trả lời **bốn câu**, mỗi câu kèm con số")
+        XCTAssertFalse(ra.contains("*"), "còn dấu sao: “\(ra)”")
+        XCTAssertTrue(ra.contains("bốn câu"))
+    }
+
+    func test_bieu_thuc_nguoi_go_KHONG_bi_hieu_thanh_dau_nhan() {
+        // Cái giá của việc dựng markdown cho câu người gõ. Ba thứ đỡ, và đây là ca canh chúng.
+        for (vao, con) in [("tính a * b * c rồi so", "a * b * c"),
+                           ("biến ten_bien_x trong mã", "ten_bien_x"),
+                           ("đường C:\\Users\\cong", "C:\\Users\\cong")] {
+            let ra = Markdown.chuThuan(vao)
+            XCTAssertTrue(ra.contains(con), "“\(vao)” bị hiểu sai → “\(ra)”")
+        }
+    }
+
+    func test_bang_trong_cau_nguoi_go_cung_thanh_bang() {
+        let k = Markdown.tach("| a | b |\n|---|---|\n| 1 | 2 |")
+        guard case .bang(let cot, let hang) = k.first else {
+            return XCTFail("bảng người gõ không thành bảng: \(k)")
+        }
+        XCTAssertEqual(cot, ["a", "b"])
+        XCTAssertEqual(hang, [["1", "2"]])
+    }
+}
+
+/// Canh chính CHỖ CHỌN bộ dựng, không chỉ canh bộ dựng.
+///
+/// Ba ca `DongHoiThoaiTests` phía trên thử `Markdown.chuThuan` — và chúng **vẫn xanh với mã
+/// cũ**, vì `chuThuan` chưa bao giờ hỏng. Thứ hỏng là một câu `if` trong thân `View`:
+///
+///     if nhan == "BẠN" { Text(tach.1) } else { MarkdownView(text: tach.1) }
+///
+/// Đây là lần thứ ba trong một ngày tôi viết một bộ ca kiểm xanh cả khi đường dẫn đứt — hai
+/// lần trước là khối A8.0 và khối A5.10, cả hai đều xanh khi tôi bỏ hẳn khối ra khỏi tab.
+/// `View` của SwiftUI không gọi được từ ca kiểm, nên ca này đọc chính MÃ NGUỒN. Cách ấy thô,
+/// nhưng nó bắt được đúng cái đã hỏng — và một ca thô mà bắt được thì hơn một ca đẹp mà không.
+final class ChonBoDungTests: XCTestCase {
+
+    func test_dong_hoi_thoai_KHONG_con_nhanh_chu_tron_cho_cau_cua_nguoi() throws {
+        let u = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/EIDE/Views/ConsoleView.swift")
+        let ma = try String(contentsOf: u, encoding: .utf8)
+
+        guard let i = ma.range(of: "struct DongTranscript") else {
+            return XCTFail("không tìm thấy DongTranscript — tên đã đổi, ca kiểm này mù")
+        }
+        guard let j = ma.range(of: "private var tach:", range: i.upperBound..<ma.endIndex) else {
+            return XCTFail("không tìm thấy cuối thân DongTranscript")
+        }
+        let than = String(ma[i.upperBound..<j.lowerBound])
+
+        XCTAssertFalse(than.contains("nhan == \"BẠN\""),
+            "còn nhánh rẽ theo vai trong thân dòng hội thoại — câu của người sẽ lại là chữ "
+            + "trơn, và dấu `**` lọt ra màn hình đúng như anh Công báo hai lần")
+        XCTAssertTrue(than.contains("MarkdownView(text: tach.1)"),
+            "dòng hội thoại phải dựng bằng MarkdownView cho CẢ HAI vai")
+    }
+}

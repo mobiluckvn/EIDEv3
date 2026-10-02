@@ -191,18 +191,26 @@ struct DongTranscript: View {
                 .foregroundStyle(mau)
                 .frame(width: 46, alignment: .leading)
                 .padding(.top, 2)
-            // Câu của người là chữ trơn (họ gõ gì hiện nấy); lời tác tử qua bộ dựng
-            // markdown + công thức — nó sinh tiêu đề, bảng so sánh, khối mã và ký hiệu
-            // toán, và để nguyên thì người đọc phải tự giải mã `|---|---|`.
-            if nhan == "BẠN" {
-                Text(tach.1)
-                    .font(.system(size: 12))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                MarkdownView(text: tach.1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            // CẢ HAI vai đều qua bộ dựng markdown.
+            //
+            // Bản trước để câu của người là chữ trơn, với lý do viết ra hẳn trong mã: *"họ gõ
+            // gì hiện nấy"*. Lý do ấy đúng nếu người gõ văn trơn. Nhưng trong đề án này lời
+            // giao việc **là markdown** — bảng so sánh, chữ đậm, khối mã, công thức — và anh
+            // Công báo hai lần rằng dấu `**` còn nguyên trên màn hình. Lần thứ hai là đúng
+            // câu mình vừa gõ cho tác tử: *"phải trả lời **bốn câu**"*.
+            //
+            // Cái giá phải trả, nói ra chứ không giấu: một biểu thức hay đường dẫn người gõ có
+            // thể bị hiểu thành dấu nhấn. Ba thứ đỡ cho chuyện đó, và cả ba đều có ca kiểm:
+            //
+            // - luật "flanking" của CommonMark: `a * b * c` giữ nguyên, vì dấu sao có khoảng
+            //   trắng hai bên không mở được dấu nhấn;
+            // - dấu `_` giữa từ không mở dấu nhấn, nên `ten_bien_x` giữ nguyên;
+            // - N6: bộ dựng **không bao giờ nuốt nội dung** — dấu không đóng thì in nguyên.
+            //
+            // Nên cái mất nhiều nhất là một đoạn bị in nghiêng ngoài ý muốn; còn cái được là
+            // người đọc không phải tự giải mã `|---|---|` trong chính câu mình vừa gõ.
+            MarkdownView(text: tach.1)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

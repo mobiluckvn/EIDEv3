@@ -6785,3 +6785,45 @@ im lặng và vẫn xanh.
 > nhau.
 
 Bộ kiểm: Python 1573 → **1575**, Swift 31 → **36**.
+
+## [DEV-329] Câu của NGƯỜI cũng phải qua bộ dựng Markdown
+
+*02/10/2026. `ui/EIDEApp/Sources/EIDE/Views/ConsoleView.swift`.*
+
+Anh Công báo lần thứ hai rằng dấu `**` còn nguyên trên màn hình, và lần này chỉ đúng câu mình
+vừa gõ cho tác tử:
+
+> Bản kết quả phải trả lời `**bốn câu**`, mỗi câu kèm con số lấy từ CSV
+
+Chỗ hỏng là một câu `if` trong thân `DongTranscript`, kèm lý do viết hẳn ra:
+
+```swift
+// Câu của người là chữ trơn (họ gõ gì hiện nấy); lời tác tử qua bộ dựng markdown
+if nhan == "BẠN" { Text(tach.1) } else { MarkdownView(text: tach.1) }
+```
+
+Lý do ấy **đúng nếu người gõ văn trơn**. Nhưng trong đề án này lời giao việc *là* markdown —
+bảng so sánh, chữ đậm, khối mã, công thức. Nay cả hai vai đi qua cùng một bộ dựng.
+
+Cái giá, nói ra chứ không giấu: một biểu thức hay đường dẫn người gõ có thể bị hiểu thành dấu
+nhấn. Ba thứ đỡ, và cả ba đều có ca kiểm — luật *flanking* của CommonMark giữ `a * b * c`
+nguyên vẹn; dấu `_` giữa từ không mở dấu nhấn nên `ten_bien_x` giữ nguyên; và N6: bộ dựng
+không bao giờ nuốt nội dung. Mất nhiều nhất là một đoạn in nghiêng ngoài ý muốn.
+
+### Lần thứ ba trong một ngày tôi viết bộ ca kiểm xanh cả khi đường dẫn đứt
+
+Ba ca đầu tôi viết cho chỗ này thử `Markdown.chuThuan` — và chúng **vẫn xanh với mã cũ**, vì
+`chuThuan` chưa bao giờ hỏng. Thứ hỏng là chỗ **chọn** bộ dựng.
+
+Hai lần trước cùng hình dạng: khối A8.0 và khối A5.10, cả hai bộ ca kiểm đều xanh khi tôi bỏ
+hẳn khối ra khỏi tab. Ba lần trong một ngày thì không còn là tai nạn — nó là một thói:
+
+> Tôi kiểm **thứ làm việc**, rồi kết luận cho **việc đã được làm**. Hai điều ấy cách nhau một
+> đường dẫn, và đường dẫn là chỗ hay đứt nhất.
+
+`View` của SwiftUI không gọi được từ ca kiểm, nên `ChonBoDungTests` đọc chính **mã nguồn** của
+`ConsoleView.swift` và khẳng định thân `DongTranscript` không còn nhánh rẽ theo vai. Cách ấy
+thô, nhưng nó bắt được đúng cái đã hỏng — tôi phá lại và nó đỏ. Một ca thô mà bắt được thì hơn
+một ca đẹp mà không.
+
+Bộ kiểm Swift: 36 → **40**.
