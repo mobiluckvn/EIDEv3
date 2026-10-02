@@ -6423,3 +6423,45 @@ Bài 2      H0 618,04 · H1 83,40 · H2 49,40 — trùng đúng đường cơ s�
 Và một ca thật cho DEV-320 vừa làm: chạy Bài 2 với mã máy `rv32im` trên cấu hình `CFG_MUL=0`
 thì **không ra dòng RESULT nào** (CPU bẫy lệnh lạ), kèm đúng cảnh báo *"Mã máy chứa 15 lệnh
 của phần `m` nhưng cấu hình CPU TẮT bộ nhân"*. Chỗ vá ấy bắt được ca thật, không chỉ ca kiểm.
+
+## [DEV-323] Duyệt cổng xong phải nói ra, nếu không mô hình tự dựng lời giải thích
+
+*02/10/2026. `src/eide/loop.py`.*
+
+Hai lượt liền trong phiên FPGA: thẻ cổng `G-QUAL` hiện ra, người dùng bấm Duyệt, và tác tử
+báo lại rằng **lời giao việc đã bị cắt mất**, rồi xin gửi lại đề bài.
+
+Tôi tin ngay. Ghi luôn một mục việc-chờ-làm rằng cổng xén dữ liệu. **Sai.** Tra sổ cái thì
+lời giao việc còn nguyên **770 ký tự, đủ cả đầu lẫn đuôi**.
+
+Nguyên nhân thật nằm ở nhánh duyệt cổng chặn một lời gọi công cụ — nhánh **không phát lời
+nhắc nào**. Mô hình thấy đúng hai thứ mâu thuẫn và liền nhau:
+
+```
+E4003  "DỪNG LẠI, đừng gọi lại tool này, kết thúc lượt và chờ quyết định"
+       ← rồi ngay sau là kết quả CỦA CHÍNH công cụ ấy, không ai giải thích
+```
+
+Nó dung hoà bằng cách dựng ra một lời giải thích: đề bài đã bị mất. Lời ấy nghe hợp lý, và
+nó tốn hai lượt cùng một mục tài liệu ghi sai nguyên nhân.
+
+Nhánh **từ chối** đã có lời nhắc (*"Đừng tìm đường khác để làm việc đó"*) và đã có ca kiểm.
+Nhánh cổng do S0 phát cũng có. Chỉ nhánh thường gặp nhất là không — và nó không có vì không
+ai thấy thiếu: lời gọi vẫn chạy, kết quả vẫn về, mọi thứ xanh.
+
+Nay lời nhắc nói ba điều, mỗi điều chữa một cách hiểu sai đã xảy ra thật: cổng đã được duyệt
+và lời gọi đã chạy thay; `E4003` hết hiệu lực; **đề bài vẫn là lời người dùng giao ở đầu
+lượt, nó không bị mất và không cần hỏi lại**.
+
+Ca kiểm `test_duyet_cong_chan_loi_goi_thi_PHAI_noi_ra` canh cả ba câu ấy, không chỉ canh có
+lời nhắc.
+
+> Một khoảng trống trong ngữ cảnh không làm mô hình im lặng. Nó làm mô hình dựng ra một lời
+> giải thích, và lời ấy nghe hợp lý.
+
+Và một điều về chính tôi, đáng ghi hơn chỗ vá: suốt phiên này tôi áp đúng một quy tắc cho tác
+tử — *lời báo của nó là lời kể, phải kiểm* — rồi tin ngay một lời kể của nó về chính EIDE, và
+ghi cái sai ấy thành tài liệu. Một lời kể sai về **nguyên nhân** đắt hơn một lỗi, vì nó gửi
+người đọc sau đi sai hướng.
+
+Bộ kiểm: 1547 → **1548**.

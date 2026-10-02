@@ -1408,6 +1408,28 @@ class Agent:
                                           "</system-reminder>"})
             return self._tool_loop(ctx, None)
 
+        # Nói ra rằng cổng đã được duyệt, TRƯỚC khi kết quả công cụ xuất hiện.
+        #
+        # Thiếu dòng này thì mô hình thấy đúng hai thứ mâu thuẫn, liền nhau: lời từ chối
+        # E4003 — *"DỪNG LẠI, đừng gọi lại tool này, kết thúc lượt và chờ quyết định"* — rồi
+        # ngay sau là một kết quả CỦA CHÍNH công cụ ấy, không ai giải thích vì sao.
+        #
+        # Ngày 02/10/2026 chuyện ấy xảy ra hai lượt liền trong phiên FPGA. Tác tử dung hoà hai
+        # thứ ấy bằng cách kết luận **lời giao việc đã bị cắt mất**, rồi xin người dùng gửi
+        # lại đề bài. Lời giao việc không hề bị cắt — tôi đã kiểm trong sổ, còn nguyên 770 ký
+        # tự cả đầu lẫn đuôi. Tức là một lời kể sai sinh ra từ một khoảng trống trong ngữ
+        # cảnh, và nó tốn hai lượt cùng một mục việc-chờ-làm ghi sai nguyên nhân.
+        #
+        # Nhánh TỪ CHỐI và nhánh cổng do S0 phát đều đã có lời nhắc. Chỉ nhánh thường gặp
+        # nhất là không.
+        self.messages.append({"role": "user", "_he_thong": True, "text": (
+            f"<system-reminder>\nNgười dùng ĐÃ DUYỆT cổng {gid} "
+            f"({pend['card'].get('title')}). Lời gọi `{call['tool']}` bị chặn trước đó nay "
+            "đã được chạy thay bạn — kết quả của nó là tin nhắn ngay sau đây.\n\n"
+            "Lời từ chối `E4003` trước đó đã hết hiệu lực. **Tiếp tục đúng việc đang làm**: "
+            "đề bài vẫn là lời người dùng giao ở đầu lượt, nó không bị mất và không cần hỏi "
+            "lại.\n</system-reminder>")})
+
         spec = self.registry.get(call["tool"])
         res = self.registry.run(call["tool"], call["args"], ctx)
         self.hooks.post_tool_use(call, res, ctx)

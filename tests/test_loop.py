@@ -516,3 +516,46 @@ def test_da_ghi_duoc_gi_do_thi_KHONG_nhac(make_agent):
     ctx.cong_cu_da_goi = ["fs.read"] * 12
     ctx.da_ghi_gi_do = True
     assert agent._nhac_neu_dang_quay_vong(ctx) == ""
+
+
+def test_duyet_cong_chan_loi_goi_thi_PHAI_noi_ra(make_agent):
+    """DEV-323 — nhánh duyệt cổng chặn một lời gọi công cụ cũng phải có lời nhắc.
+
+    Thiếu nó, mô hình thấy đúng hai thứ mâu thuẫn và liền nhau: lời từ chối `E4003` —
+    *"DỪNG LẠI, đừng gọi lại tool này, kết thúc lượt và chờ quyết định"* — rồi ngay sau là
+    một kết quả CỦA CHÍNH công cụ ấy, không ai giải thích vì sao.
+
+    Ngày 02/10/2026 chuyện này xảy ra hai lượt liền trong phiên FPGA. Tác tử dung hoà hai thứ
+    ấy bằng cách kết luận **lời giao việc đã bị cắt mất**, rồi xin người dùng gửi lại đề bài.
+    Lời giao việc không hề bị cắt — sổ cái còn nguyên 770 ký tự, cả đầu lẫn đuôi. Một lời kể
+    sai sinh ra từ một khoảng trống trong ngữ cảnh.
+
+    Nhánh TỪ CHỐI đã có lời nhắc (và đã có ca kiểm). Nhánh cổng do S0 phát cũng có. Chỉ nhánh
+    thường gặp nhất là không có.
+    """
+    from eide.protocol.rpc import Core
+
+    ex = {"summary": "nạp bản vừa dịch", "why": "chạy thử trên bo", "sources": [],
+          "diff_prev": "—", "next": "đọc log", "confidence": "BAC"}
+    agent = make_agent([Response(tool_calls=[ToolCall("c1", "target.flash", {"explain": ex})])])
+    seen = []
+    core = Core(agent.ledger, agent.ids, agent.turn, on_emit=seen.append)
+    core.console_act({"kind": "say", "text": "nạp firmware lên bo đi"})
+
+    the = [c for c in _cards(seen) if c.get("type") == "gate"]
+    assert the, "phải dựng thẻ cổng trước đã"
+    gid = the[0]["gate_id"]
+
+    agent.llm.script = [Response(text="Đã nạp xong.")]
+    agent.llm._i = 0
+    core.console_act({"kind": "decide", "data": {"gate_id": gid, "approved": True}})
+
+    nhac = [m.get("text", "") for m in agent.messages if m.get("role") == "user"]
+    duyet = [t for t in nhac if "ĐÃ DUYỆT" in t and gid in t]
+    assert duyet, f"không có lời nhắc nào nói cổng {gid} đã được duyệt. Các lời nhắc: {nhac}"
+
+    t = duyet[-1]
+    # Ba điều lời nhắc phải nói, và mỗi điều chữa một cách hiểu sai đã xảy ra thật:
+    assert "E4030" in t or "E4003" in t, "phải nói lời từ chối trước đó đã hết hiệu lực"
+    assert "Tiếp tục" in t, "phải bảo nó tiếp tục, không để nó tự đoán"
+    assert "không bị mất" in t, "phải nói thẳng đề bài còn nguyên — đó là chỗ nó kể sai"

@@ -159,23 +159,39 @@ Hai chỗ nên sửa:
   phần nào chưa kiểm được — một báo cáo thiếu có nói rõ chỗ thiếu thì dùng được, còn
   `chua_du_du_kien` thì không dùng được gì.
 
-## 7 · Cổng duyệt nổ giữa lượt làm mất phần còn lại của lời giao việc
+## 7 · ~~Cổng duyệt nổ giữa lượt làm mất lời giao việc~~ — ĐÃ VÁ, VÀ NGUYÊN NHÂN KHÁC
 
-*02/10/2026.*
+*02/10/2026. Mục này tôi ghi sai lần đầu. Giữ lại cả phần sai, vì cách sai đáng ghi hơn bản
+sửa.*
 
-Lượt 55 của phiên FPGA: thẻ cổng `G-QUAL` hiện ra, người dùng bấm Duyệt, và Agent báo lại:
+Lượt 55 và 56 của phiên FPGA, thẻ cổng `G-QUAL` hiện ra, người dùng bấm Duyệt, và Agent báo:
 
-> *"nội dung chỉ thị chi tiết của anh ở lượt trước (sau đoạn 'Việc lượt này: mở đường để quét
-> được N và k…') đã bị ngắt quãng do cơ chế kích hoạt cổng an toàn"*
+> *"nội dung chỉ thị chi tiết của anh ở lượt trước đã bị ngắt quãng do cơ chế kích hoạt cổng
+> an toàn"*
 
-Nên nó phải hỏi lại toàn bộ đề bài. Một lượt mất trắng, và nếu người dùng không đọc kỹ thì sẽ
-tưởng Agent lười hoặc hiểu sai.
+Tôi tin ngay và ghi vào đây rằng cổng xén mất lời giao việc. **Điều đó không đúng.** Tôi tra
+sổ cái: lời giao việc còn **nguyên 770 ký tự, đủ cả đầu lẫn đuôi**. Không có truncation nào.
 
-Đây **cùng một loại lỗi** với lỗi hộp thư ngày 01/10/2026 (`inbox.jsonl` không được dọn nên app
-phát lại lời giao việc cũ nhất, mất bốn lượt để tìm ra): **lời giao việc không tới được Agent
-nguyên vẹn, mà biểu hiện ra lại giống như Agent làm sai.**
+Nguyên nhân thật nằm ở `loop.py`, nhánh duyệt cổng chặn một lời gọi công cụ. Nhánh ấy **không
+phát lời nhắc nào**. Nên mô hình thấy đúng hai thứ mâu thuẫn và liền nhau:
 
-> Trước khi hỏi *"vì sao nó làm sai"*, hỏi *"nó có nhận được đề bài không"*.
+```
+E4003  "DỪNG LẠI, đừng gọi lại tool này, kết thúc lượt và chờ quyết định"
+       ← rồi ngay sau là một kết quả CỦA CHÍNH công cụ ấy, không ai giải thích
+```
 
-Cần: khi cổng nổ, **giữ nguyên lời giao việc** và phát lại đầy đủ sau khi cổng được duyệt —
-cổng là chuyện của luồng điều khiển, không được xén dữ liệu vào.
+Nó dung hoà hai thứ ấy bằng cách dựng ra một lời giải thích: đề bài đã bị mất. Nhánh **từ
+chối** và nhánh cổng do S0 phát đều đã có lời nhắc; chỉ nhánh thường gặp nhất là không.
+
+Đã vá (DEV-323): lời nhắc nói ba điều — cổng đã duyệt, lời gọi đã chạy thay, `E4003` hết hiệu
+lực, **và đề bài không bị mất, không cần hỏi lại**. Ca kiểm
+`test_duyet_cong_chan_loi_goi_thi_PHAI_noi_ra` canh cả ba.
+
+**Bài học không nằm ở chỗ vá.** Tôi đã áp đúng một quy tắc cho Agent suốt phiên này — *lời báo
+của nó là lời kể, phải kiểm* — rồi tin ngay một lời kể của nó về chính EIDE, và ghi cái sai ấy
+thành tài liệu. Một lời kể sai về nguyên nhân thì đắt hơn một lỗi, vì nó gửi người đọc sau đi
+sai hướng.
+
+> Một khoảng trống trong ngữ cảnh không làm mô hình im lặng. Nó làm mô hình dựng ra một lời
+> giải thích, và lời ấy nghe hợp lý.
+
