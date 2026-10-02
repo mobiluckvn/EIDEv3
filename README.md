@@ -315,7 +315,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **1 473 ca**
+### Mức 1 — Ca đơn vị: **1 575 ca Python + 40 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -323,6 +323,21 @@ Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được
 
 Đo từng hàm, từng luật chặn, từng mã lỗi. Chạy nhanh, không tốn tiền mô hình. Mức này **không**
 nói được sản phẩm có dùng được không — nó chỉ nói mã làm đúng cái nó định làm.
+
+Phần giao diện mới có bộ kiểm từ 02/10/2026:
+
+```bash
+cd ui/EIDEApp && swift test        # 40 ca
+```
+
+Trước đó **cả giao diện chưa từng có một ca kiểm nào** — `Package.swift` chỉ khai một mục tiêu
+chạy được, không có mục tiêu kiểm. Đó là lý do thật khiến năm việc anh Công nêu về màn hình đều
+kết thúc bằng câu *"không con số nào bắt được, phải nhìn màn hình"*. Câu ấy đúng với bề rộng cột
+và màu sắc, nhưng **sai với phần tách khối, tách ô, đổi ký hiệu** — những phần ấy là hàm thuần,
+vào chuỗi ra chuỗi.
+
+Và một phép đo về chính bộ kiểm: **13 trong 40 ca đỏ khi trả lại mã cũ**. Con số ấy quan trọng
+hơn con số 40, vì nó nói bộ kiểm có canh được gì không.
 
 ### Mức 2 — Ca đi qua giao thức thật, không tốn tiền mô hình
 
@@ -390,7 +405,8 @@ thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc ph
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị | **1 473** | `pytest -q` |
+| Ca đơn vị Python | **1 575** | `pytest -q` |
+| Ca đơn vị giao diện | **40** · 13 ca đỏ khi trả lại mã cũ | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
 | Vẽ sơ đồ (trên màn hình và trong tệp) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
@@ -578,13 +594,51 @@ chi phí nhân ma trận làm đường cơ sở, rồi thêm phần cứng chuy
 | | |
 |---|---|
 | SoC in "Hello" qua UART | testbench giải mã từng bit, nhận đúng `Hello from PicoRV32 on Tang Nano 20K, cycle=126` |
-| Fmax | **134,93 MHz**, cần 27 |
-| Tài nguyên | LUT **2 180/20 736** · FF 820/15 552 · BSRAM 16/46 |
-| Nhân ma trận | bốn cách viết, mọi kết quả khớp mô hình NumPy |
-| Đường cơ sở | **719,48 chu kỳ** cho mỗi phép nhân-cộng, ở cấu hình không có bộ nhân cứng |
+| Fmax | **106,01 MHz**, cần 27 |
+| Tài nguyên | LUT **2 211/20 736** (10,7 %) · BSRAM 16/46 |
+| Nhân ma trận | **96 trên 96 ô** của ma trận cấu hình, mọi ô tổng kiểm đúng |
+| Nhanh nhất | **37,09 chu kỳ** mỗi phép nhân-cộng, so với 602,83 ở cấu hình không có bộ nhân |
+
+#### Bài toán thứ hai: đo đủ 96 ô, và một kết quả ngược trực giác
+
+Đề bài đòi một ma trận cấu hình đầy đủ: **4 kích thước ma trận × 2 kiểu dữ liệu × 4 cách viết ×
+3 cấu hình CPU = 96 ô**. Mỗi ô là một con số chu kỳ máy, và mỗi ô phải có tổng kiểm trùng đáp án
+do Python tính độc lập — nên con số nào cũng nói về **một phép tính đúng**, không chỉ về tốc độ.
+
+| | chu kỳ mỗi phép nhân-cộng | so với cấu hình không bộ nhân |
+|---|---|---|
+| không có bộ nhân, nhân bằng phần mềm | 602,83 | 1× |
+| bộ nhân tuần tự dựng bằng LUT | 71,09 | 8,48× |
+| bộ nhân một chu kỳ dùng khối DSP | **37,09** | **16,25×** |
+
+Và đây là chỗ đáng kể nhất, một con số đi ngược điều ai cũng đoán:
+
+| | LUT | flip-flop | khối DSP |
+|---|---|---|---|
+| không có bộ nhân | 2 352 | 627 | 0 |
+| bộ nhân bằng LUT | 2 562 (+210) | 907 (+280) | 0 |
+| bộ nhân bằng DSP | **2 232 (−120)** | 785 (+158) | 1 |
+
+Cấu hình nhanh nhất **dùng ít tài nguyên logic hơn** cấu hình chậm nhất. Nó có thêm một khối
+nhân mà lại nhỏ đi 120 ô LUT. Con số ấy ngược trực giác nên tôi chạy lại hai lần, và bảng chi
+tiết chỉ ra chỗ khác: khi có bộ nhân phần cứng, đường dữ liệu cần **ít tầng dồn kênh hơn** —
+ít hơn 99 ô LUT1 và hàng chục ô dồn kênh — đổi lại bộ tổng hợp gói logic vào LUT rộng hơn. Đó
+là kết quả trên thiết kế này, không phải một quy luật chung, và tài liệu nói rõ như vậy.
+
+Hai kết quả nữa từ 96 ô ấy:
+
+**Dùng số 32 bit gần như không tốn thêm gì.** Tỷ lệ so với số 8 bit là 1,002–1,035 ở hai cấu
+hình có bộ nhân. Lý do nằm trong kiến trúc: trên lõi này phép nhân là 32×32 dù dữ liệu 8 bit hay
+32 bit, nên kiểu dữ liệu chỉ đổi lưu lượng bộ nhớ.
+
+**Cách viết tốt nhất thắng 21 trên 24 tổ hợp — và ba tổ hợp còn lại có lời giải thích.** Agent
+tự tìm ra cả ba, kể cả một ngoại lệ chênh đúng 0,3 %, rồi giải thích bằng cơ chế: cách viết
+thắng ở đó giữ tổng trong thanh ghi và chỉ ghi ra bộ nhớ một lần, còn cách kia phải nạp rồi ghi
+lại ô kết quả mỗi vòng lặp. Đó là phần tôi chưa nghĩ tới khi tự đọc bảng số.
 
 **Chưa làm được:** chạy trên bo thật — kit đã đặt mua, đang chờ về, và đề bài cấm Agent tự đặt
-hàng · Bài 2 mới 4 trên 96 phép đo.
+hàng. Mọi con số trên đây là số **mô phỏng**; đề bài đòi số mô phỏng và số đo trên bo chênh
+không quá 1 %, và đó là phép đo duy nhất còn thiếu.
 
 **Agent tự viết 1 407 dòng** — Verilog, C, hợp ngữ, linker script, Python, ràng buộc chân.
 
@@ -696,23 +750,42 @@ xong.
 
 ## 8 · Những chỗ chưa làm được
 
+Bảy việc về màn hình anh Công nêu đã làm xong ngày 02/10/2026 — và ba trong bảy việc **chẩn
+đoán sai nguyên nhân**, chỉ biết khi có chỗ đứng để đo:
+
+| Việc anh Công nêu | Nguyên nhân thật |
+|---|---|
+| công thức toán chưa dựng ở chat | *"chưa hề nối vào"* là **sai** — đã nối từ trước. Lỗi thật: hai bảng ký hiệu lệch **41 mục**, và phía chat đổi `\sum` thành chữ Sigma Hy Lạp thay vì ký hiệu phép tổng |
+| dấu `**` lọt ra màn hình | phần lời Agent **đã đúng**; lỗi ở **lời người gõ** — nó đi một đường khác, cố ý để chữ trơn |
+| bảng Markdown dựng sai | bốn lỗi, và là việc duy nhất chẩn đoán trúng hoàn toàn |
+| cảnh báo dồn đống | 10 chỗ thêm, 1 chỗ xoá — và chỗ xoá ấy chỉ chạy khi đổi dự án |
+| bản chụp cắt lời Agent | cắt ở 3 000 ký tự, nay 20 000 và ghi bản đủ ra tệp |
+| màn hình Thiết kế trắng | dữ liệu có sẵn trong kho, thiếu khối đọc nó ra |
+| kết quả bộ kiểm chip không hiện ở đâu | tab Mô phỏng đọc một khoá khác với khoá công cụ HDL ghi vào |
+
+Bốn việc cuối cùng một hình dạng, và nó là mẫu lặp đi lặp lại trong dự án này: **cơ chế có sẵn,
+đường dẫn tới nó đứt.** Không phải thiếu tính năng — là thiếu một dòng nối.
+
+Ba lần trong cùng ngày tôi viết bộ ca kiểm **xanh cả khi đường dẫn đứt**: tôi kiểm *thứ làm
+việc*, rồi kết luận cho *việc đã được làm*. Hai điều ấy cách nhau một đường dẫn, và đường dẫn
+là chỗ hay đứt nhất. Nay mỗi khối có một ca đi qua đúng đường người dùng đi.
+
 Nói ra để người đọc không phải tự tìm:
 
 - **12 trong 127 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
   bo, chưa viết xong.
-- **Công thức toán chưa dựng thành hình trên màn hình chat.** Phần tệp Word, PDF, PowerPoint
-  thì đã xong, nhưng màn hình chat đi đường khác và chưa nối phần công thức vào.
-- **Một số dấu Markdown còn lọt ra màn hình chat**, ví dụ `**`. Cần rà hết bảng dấu, không chỉ
-  vá một chỗ.
-- **Cảnh báo dồn trên màn hình chat và không có cách bỏ đi.** Có 10 chỗ thêm cảnh báo mà chỉ 1
-  chỗ xoá, và chỗ xoá ấy lại chỉ chạy khi đổi dự án.
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
 - **Sáu ca kiểm cần người trực tiếp làm**, chưa tự động hoá được.
 - **Robot còn 23 trong 109 điều kiện chưa làm**, phần lớn là các điểm đo để cắm máy hiện sóng.
 - **Việc FPGA chưa chạy trên bo thật.** Kit đã đặt mua, đang chờ về, nên mọi con số hiện có
-  đều là số mô phỏng. Bài 2 mới 4 trên 96 phép đo. Và `tool.install` mở một thẻ duyệt **mới**
-  mỗi lần gọi lại, nên một việc cài có thể để lại hàng chục thẻ treo — thẻ được duyệt sang
-  lượt sau, mà Agent thử lại trong cùng lượt.
+  đều là số mô phỏng — kể cả 96 ô của Bài 2. Đề bài đòi số mô phỏng và số đo trên bo chênh
+  không quá 1 %, và đó là phép đo duy nhất còn thiếu.
+- **`tool.install` mở một thẻ duyệt mới mỗi lần gọi lại**, nên một việc cài có thể để lại hàng
+  chục thẻ treo — thẻ được duyệt sang lượt sau, mà Agent thử lại trong cùng lượt.
+- **Agent không có công cụ chạy một tệp Python.** Nó viết được `gen_data.py`, `plot.py`,
+  `parse_log.py`, nhưng không tự chạy được chúng — nên nó không kiểm được chính công cụ nó vừa
+  sửa, và một lần đã báo "đã xác minh thành công" cho một tệp đang vỡ. Lời báo ấy đúng về mô
+  phỏng mà sai về công cụ: nó xác minh qua **sản phẩm** đã sinh ra trước đó.
 - **Tác tử xác minh con có hạn 10 lời gọi, quá chặt.** Nó cày hết hạn vào `ledger.query` rồi
   trả về `chua_du_du_kien` mà chưa kịp nộp báo cáo — nên lời xác minh biến mất đúng lúc cần
   nó nhất.
