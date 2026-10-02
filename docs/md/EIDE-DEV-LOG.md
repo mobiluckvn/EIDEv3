@@ -6465,3 +6465,51 @@ ghi cái sai ấy thành tài liệu. Một lời kể sai về **nguyên nhân*
 người đọc sau đi sai hướng.
 
 Bộ kiểm: 1547 → **1548**.
+
+## [DEV-324] `ledger.query` cắt ở 220 ký tự mà không nói — và nó làm tôi sai hai lần
+
+*02/10/2026. `src/eide/tools/builtin.py`.*
+
+Ba lượt liền trong phiên FPGA: thẻ cổng ngắt lượt, người dùng duyệt, rồi tác tử báo rằng lời
+giao việc đã bị cắt và xin gửi lại đề bài.
+
+Tôi sai hai lần trước khi tìm ra.
+
+**Lần một:** tin ngay, ghi vào `VIEC-CHO-LAM` rằng cổng xén dữ liệu, commit.
+
+**Lần hai:** tra sổ cái, thấy lời giao việc còn nguyên **770 ký tự cả đầu lẫn đuôi**, kết luận
+tác tử kể sai, viết lại mục ấy kèm một bài học về việc đừng tin lời kể của tác tử, commit lần
+nữa. Và vá DEV-323 (nhánh duyệt cổng thiếu lời nhắc) — chỗ vá ấy đúng, nhưng nó không phải
+nguyên nhân của hiện tượng.
+
+**Nguyên nhân thật:**
+
+```python
+ra.append({... "tom_tat": chu[:220]})
+```
+
+`ledger.query` cắt **mọi** sự kiện ở 220 ký tự và không nói gì. Tôi tra **tệp**
+`.eide/ledger.jsonl` nên thấy đủ. Tác tử đọc **qua công cụ** nên thấy 220 ký tự đầu của một
+lời giao việc 770 ký tự — và nó báo đúng rằng đề bài bị cắt.
+
+**Cả hai đều báo đúng về thứ mình nhìn thấy.** Chỗ hỏng là công cụ cắt trong im lặng, nên
+không bên nào biết hai bên đang xem hai thứ khác nhau. Và tôi đã dùng cái thấy của mình để
+bác cái thấy của nó, rồi ghi kết luận ấy thành tài liệu.
+
+Nay: bản tóm lên **1 200 ký tự** (một lời giao việc dài hơn 220 ký tự là chuyện thường), và
+khi còn cắt thì đánh dấu `da_cat` + `do_dai_that`, kèm lời nhắc nói rõ *đây là bản tóm* và
+chỉ đường đọc đủ — *hỏi người dùng, hoặc đọc thẳng `.eide/ledger.jsonl`*, đừng suy từ phần
+thấy được.
+
+Ca kiểm `test_ledger_query_noi_ra_khi_da_cat` canh bốn điều: sự kiện dài bị đánh dấu, sự kiện
+ngắn **không** bị đánh dấu (không cảnh báo bừa), có `do_dai_that`, và lời nhắc chỉ được đường
+đọc đủ.
+
+> Khi hai bên báo hai điều trái nhau, câu hỏi đầu tiên không phải *"ai sai"* mà là **"hai bên
+> có đang xem cùng một thứ không"**.
+
+Đây là lần thứ ba trong đề án một công cụ **cắt hoặc bỏ dữ liệu trong im lặng** rồi gây ra một
+kết luận sai: `_chay` gán đè `canh_bao` (DEV-320), tệp ra còn sót từ lần trước làm chặng trượt
+báo đạt (01/10), và nay là chỗ này. Mẫu chung: **im lặng trông giống hoạt động bình thường.**
+
+Bộ kiểm: 1548 → **1549**.

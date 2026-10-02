@@ -42,6 +42,13 @@ module tb_bai2;
 
     // Reset ban đầu và nạp mã BRAM
     initial begin
+        if (`CFG_MUL == 0) begin
+            $display("CONFIG,hw=H0");
+        end else if (`CFG_FAST_MUL == 0) begin
+            $display("CONFIG,hw=H1");
+        end else begin
+            $display("CONFIG,hw=H2");
+        end
         btn_s1 = 0;
         $readmemh(".eide/build/mach.hex", uut.ram.mem);
         #200;

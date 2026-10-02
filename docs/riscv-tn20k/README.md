@@ -10,6 +10,8 @@ ngoài phạm vi — xem [`bai3/NGOAI-PHAM-VI.md`](bai3/NGOAI-PHAM-VI.md).
 
 **Đang chờ kit về.** Thư mục này giữ dấu vết, không giữ bản kể lại.
 
+> Đang ở đâu, làm gì tiếp: [`TRANG-THAI-TAM-DUNG.md`](TRANG-THAI-TAM-DUNG.md)
+
 ---
 
 ## 1 · Đã mô phỏng được những gì

@@ -28,7 +28,7 @@ void *memset(void *s, int c, size_t n) {
 #define LED_REG         (*(volatile uint32_t *)0x20000000)
 
 #ifndef HW_CONFIG
-#define HW_CONFIG "H2"
+#define HW_CONFIG "?"
 #endif
 
 #ifndef DTYPE_STR

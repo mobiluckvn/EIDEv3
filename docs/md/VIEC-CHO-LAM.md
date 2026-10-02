@@ -159,39 +159,43 @@ Hai chỗ nên sửa:
   phần nào chưa kiểm được — một báo cáo thiếu có nói rõ chỗ thiếu thì dùng được, còn
   `chua_du_du_kien` thì không dùng được gì.
 
-## 7 · ~~Cổng duyệt nổ giữa lượt làm mất lời giao việc~~ — ĐÃ VÁ, VÀ NGUYÊN NHÂN KHÁC
+## 7 · ~~Cổng duyệt làm mất lời giao việc~~ — ĐÃ VÁ. Và tôi sai hai lần trước khi tìm ra
 
-*02/10/2026. Mục này tôi ghi sai lần đầu. Giữ lại cả phần sai, vì cách sai đáng ghi hơn bản
-sửa.*
+*02/10/2026. Giữ cả hai lần sai, vì đường đi tới câu trả lời đáng ghi hơn câu trả lời.*
 
-Lượt 55 và 56 của phiên FPGA, thẻ cổng `G-QUAL` hiện ra, người dùng bấm Duyệt, và Agent báo:
+**Hiện tượng.** Ba lượt liền, thẻ cổng `G-QUAL` hiện ra, người dùng bấm Duyệt, rồi Agent báo
+rằng lời giao việc đã bị cắt và xin gửi lại đề bài.
 
-> *"nội dung chỉ thị chi tiết của anh ở lượt trước đã bị ngắt quãng do cơ chế kích hoạt cổng
-> an toàn"*
+**Lần sai thứ nhất — tôi tin ngay.** Ghi vào đây rằng cổng xén dữ liệu, rồi commit.
 
-Tôi tin ngay và ghi vào đây rằng cổng xén mất lời giao việc. **Điều đó không đúng.** Tôi tra
-sổ cái: lời giao việc còn **nguyên 770 ký tự, đủ cả đầu lẫn đuôi**. Không có truncation nào.
+**Lần sai thứ hai — tôi tra sổ cái và kết luận Agent kể sai.** Lời giao việc còn nguyên 770 ký
+tự trong `.eide/ledger.jsonl`, đủ cả đầu lẫn đuôi. Tôi viết lại mục này nói rằng Agent dựng ra
+một lời giải thích, và ghi thêm một bài học về việc đừng tin lời kể của tác tử. Commit lần nữa.
 
-Nguyên nhân thật nằm ở `loop.py`, nhánh duyệt cổng chặn một lời gọi công cụ. Nhánh ấy **không
-phát lời nhắc nào**. Nên mô hình thấy đúng hai thứ mâu thuẫn và liền nhau:
+**Nguyên nhân thật.** `ledger.query` cắt **mọi** sự kiện ở `chu[:220]` và **không nói gì**:
 
-```
-E4003  "DỪNG LẠI, đừng gọi lại tool này, kết thúc lượt và chờ quyết định"
-       ← rồi ngay sau là một kết quả CỦA CHÍNH công cụ ấy, không ai giải thích
+```python
+ra.append({... "tom_tat": chu[:220]})
 ```
 
-Nó dung hoà hai thứ ấy bằng cách dựng ra một lời giải thích: đề bài đã bị mất. Nhánh **từ
-chối** và nhánh cổng do S0 phát đều đã có lời nhắc; chỉ nhánh thường gặp nhất là không.
+Tôi tra **tệp** sổ cái nên thấy đủ 770 ký tự. Agent đọc **qua `ledger.query`** nên chỉ thấy 220
+ký tự đầu. **Cả hai đều báo đúng về thứ mình nhìn thấy.** Chỗ hỏng là công cụ cắt mà không nói,
+nên không bên nào biết hai bên đang xem hai thứ khác nhau — và tôi đã dùng cái thấy của mình để
+bác cái thấy của nó.
 
-Đã vá (DEV-323): lời nhắc nói ba điều — cổng đã duyệt, lời gọi đã chạy thay, `E4003` hết hiệu
-lực, **và đề bài không bị mất, không cần hỏi lại**. Ca kiểm
-`test_duyet_cong_chan_loi_goi_thi_PHAI_noi_ra` canh cả ba.
+**Đã vá hai chỗ:**
 
-**Bài học không nằm ở chỗ vá.** Tôi đã áp đúng một quy tắc cho Agent suốt phiên này — *lời báo
-của nó là lời kể, phải kiểm* — rồi tin ngay một lời kể của nó về chính EIDE, và ghi cái sai ấy
-thành tài liệu. Một lời kể sai về nguyên nhân thì đắt hơn một lỗi, vì nó gửi người đọc sau đi
-sai hướng.
+- **DEV-324** — `ledger.query` nâng bản tóm lên 1 200 ký tự, và khi còn cắt thì đánh dấu
+  `da_cat` kèm `do_dai_that`, cộng một lời nhắc chỉ đường đọc đủ. Cắt thì phải nói.
+- **DEV-323** — nhánh duyệt cổng chặn một lời gọi công cụ nay phát lời nhắc. Thiếu nó, mô hình
+  thấy `E4003` *"DỪNG LẠI"* rồi ngay sau là kết quả của chính công cụ ấy, không ai giải thích.
+  Chỗ này là lỗi thật, độc lập với chỗ trên.
 
-> Một khoảng trống trong ngữ cảnh không làm mô hình im lặng. Nó làm mô hình dựng ra một lời
-> giải thích, và lời ấy nghe hợp lý.
+**Bài học, và nó không phải bài học tôi tưởng.** Lần viết trước tôi rút ra *"đừng tin lời kể
+của tác tử"*. Nhưng lần này lời kể của nó **đúng về hiện tượng** và chỉ sai về cơ chế — còn
+tôi thì sai về cả hiện tượng. Bài học đúng là:
+
+> Khi hai bên báo hai điều trái nhau, câu hỏi đầu tiên không phải *"ai sai"* mà là **"hai bên
+> có đang xem cùng một thứ không"**. Ở đây không: một bên đọc tệp, một bên đọc qua một công cụ
+> cắt chuỗi trong im lặng.
 

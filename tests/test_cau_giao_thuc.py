@@ -281,3 +281,45 @@ def _doc_so_cai(cau):
 def _so_lenh_ve_be_mat(cau):
     """11 surface.set + 1 ui.set + 1 history.update = 13 lệnh vẽ, đều được ghi sổ."""
     return 13
+
+
+def test_ledger_query_noi_ra_khi_da_cat(tmp_path):
+    """DEV-324 — cắt thì phải nói, và nói còn bao nhiêu chưa đọc.
+
+    02/10/2026: một thẻ cổng ngắt lượt; tác tử dùng `ledger.query` để đọc lại lời giao việc
+    và thấy 220 ký tự đầu của một lời giao việc 770 ký tự. Nó báo đúng rằng đề bài bị cắt.
+    Tôi tra TỆP sổ cái, thấy đủ 770 ký tự, kết luận nó kể sai, rồi ghi kết luận ấy vào tài
+    liệu. Cả hai đều báo đúng về thứ mình nhìn thấy — chỗ hỏng là công cụ cắt mà không nói.
+    """
+    from types import SimpleNamespace
+
+    from eide.tools import build_registry
+    from eide.tools.builtin import _DAI_TOM_TAT
+
+    dai = "X" * (_DAI_TOM_TAT + 900)
+
+    class _So:
+        def read(self):
+            return [SimpleNamespace(seq=1, ts="t", kind="human_act",
+                                    data={"text": dai, "run_id": "r1"}),
+                    SimpleNamespace(seq=2, ts="t", kind="human_act",
+                                    data={"text": "ngắn", "run_id": "r1"})]
+
+    ctx = SimpleNamespace(ledger=_So())
+    q = next(t for t in build_registry().all() if t.name == "ledger.query")
+    kq = q.fn(ctx)
+    d = kq if isinstance(kq, dict) else getattr(kq, "data", {}) or {}
+
+    cat = [e for e in d["su_kien"] if e.get("da_cat")]
+    assert len(cat) == 1, "đúng một sự kiện phải bị đánh dấu là đã cắt"
+    assert cat[0]["do_dai_that"] > _DAI_TOM_TAT, "phải nói độ dài thật"
+    assert len(cat[0]["tom_tat"]) == _DAI_TOM_TAT
+
+    ngan = [e for e in d["su_kien"] if not e.get("da_cat")]
+    assert len(ngan) == 1, "sự kiện ngắn KHÔNG được đánh dấu — không cảnh báo bừa"
+
+    # Lời nhắc phải nói ba điều: có cắt, đây là bản tóm, và cách đọc đủ.
+    nhac = d["note_vi"]
+    assert "bị cắt" in nhac
+    assert "BẢN TÓM" in nhac
+    assert "hỏi người dùng" in nhac, "phải chỉ đường đọc đủ, không để nó tự suy"

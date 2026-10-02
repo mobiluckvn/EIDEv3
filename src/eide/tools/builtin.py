@@ -20,6 +20,11 @@ from ..errors import (
 from ..protocol import uicommand as uic
 from .registry import Registry, ToolResult
 
+# Lời giao việc của người dùng dài hơn 220 ký tự là chuyện thường. Một bản tóm
+# ngắn hơn thế thì tác tử đọc lại lời giao việc qua `ledger.query` sẽ thấy một câu
+# bị chặt giữa ý — và nó sẽ suy nốt phần còn lại. Đã trúng ngày 02/10/2026.
+_DAI_TOM_TAT = 1200
+
 MAX_READ_BYTES = 200_000       # đọc quá mức này thì phải nói ra, không cắt lặng lẽ
 MAX_GLOB_HITS = 300
 MAX_GREP_HITS = 200
@@ -357,14 +362,36 @@ def build_registry(features: Any = None) -> Registry:
             chu = _json.dumps(ev.data, ensure_ascii=False, default=str)
             if low and low not in chu.lower():
                 continue
-            ra.append({"seq": ev.seq, "ts": ev.ts, "loai": ev.kind,
-                       "run_id": ev.data.get("run_id", ""),
-                       "tom_tat": chu[:220]})
+            # NÓI RA khi đã cắt, và nói luôn còn bao nhiêu chưa đọc.
+            #
+            # Bản trước lặng lẽ cắt ở 220 ký tự. Ngày 02/10/2026 chuyện ấy tốn bốn lượt và
+            # hai mục tài liệu ghi sai nguyên nhân: một thẻ cổng ngắt lượt, tác tử dùng
+            # `ledger.query` để đọc lại lời giao việc, và thấy **220 ký tự đầu của một lời
+            # giao việc 770 ký tự**. Nó báo đúng rằng đề bài bị cắt. Tôi tra TỆP sổ cái, thấy
+            # đủ 770 ký tự, và kết luận rằng nó kể sai — rồi ghi kết luận ấy vào tài liệu.
+            #
+            # Cả hai đều báo đúng về thứ mình nhìn thấy. Chỗ hỏng là công cụ cắt mà không
+            # nói, nên không bên nào biết hai bên đang xem hai thứ khác nhau.
+            cat = len(chu) > _DAI_TOM_TAT
+            muc = {"seq": ev.seq, "ts": ev.ts, "loai": ev.kind,
+                   "run_id": ev.data.get("run_id", ""),
+                   "tom_tat": chu[:_DAI_TOM_TAT]}
+            if cat:
+                muc["da_cat"] = True
+                muc["do_dai_that"] = len(chu)
+            ra.append(muc)
         tong = len(ra)
-        return {"tong": tong, "su_kien": ra[-n:],
-                "note_vi": ("" if tong else
-                            "Sổ cái không có sự kiện nào khớp. Nói THẲNG là không tìm "
-                            "thấy — đừng dựng lại câu chuyện từ trí nhớ.")}
+        so_cat = sum(1 for x in ra[-n:] if x.get("da_cat"))
+        nhac = ""
+        if not tong:
+            nhac = ("Sổ cái không có sự kiện nào khớp. Nói THẲNG là không tìm thấy — đừng "
+                    "dựng lại câu chuyện từ trí nhớ.")
+        elif so_cat:
+            nhac = (f"{so_cat} sự kiện bị cắt ở {_DAI_TOM_TAT} ký tự (xem `da_cat` và "
+                    "`do_dai_that`). Đây là BẢN TÓM, không phải nguyên văn. Nếu cần đọc đủ "
+                    "— nhất là khi đọc lại lời người dùng giao việc — thì đừng suy từ phần "
+                    "thấy được: hỏi người dùng, hoặc đọc thẳng `.eide/ledger.jsonl`.")
+        return {"tong": tong, "su_kien": ra[-n:], "note_vi": nhac}
 
     @r.tool("ledger.verify", "Lịch sử",
             "Kiểm tính toàn vẹn của sổ cái (chuỗi hash). Gọi khi nghi ngờ lịch sử bị sửa.",
