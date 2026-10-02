@@ -6319,3 +6319,39 @@ chính bộ kiểm bắt được. Nay cộng thêm, không gán.
 
 Bộ kiểm: 1538 → **1546**. Trong đó hai ca đi qua `registry.call`, vì bài học `_goc()` còn đó:
 lớp lõi xanh không nói gì về việc lớp công cụ có nối đúng không.
+
+## [DEV-321] Hết hạn phải diệt cả nhóm tiến trình, không chỉ tiến trình con
+
+*02/10/2026. `src/eide/build/hdl.py`.*
+
+Một lượt `hdl.synth` chạm hạn 1 800 giây. Công cụ báo trượt đúng, và `hdl.pnr` sau đó từ chối
+đúng — *"Không có tệp mạng cổng `soc_top.json`. Chạy `hdl.synth` trước."* Mọi thứ nhìn như đã
+xử lý xong.
+
+Nhưng `yosys` không tự chạy ABC. Nó gọi `sh -c yosys-abc …`. Còn
+`subprocess.run(timeout=…)` chỉ diệt **đúng tiến trình con trực tiếp** — nên `sh` và
+`yosys-abc` sống sót. Tôi phát hiện ra khi thấy một `yosys-abc` đã chạy **49 phút** trong khi
+lượt sinh ra nó đã bị dừng và đã báo trượt từ lâu.
+
+Nó không chỉ chiếm chỗ. Nó **giành CPU của lượt chạy kế tiếp**, nên lượt sau chậm đi, và cái
+chậm ấy bị đọc thành đặc tính của thiết kế. Một phép đo thời gian bị tiến trình mồ côi làm
+lệch là một phép đo sai mà trông không có gì sai cả — và trong đề án này thời gian tổng hợp
+đang là một con số ta dùng để kết luận.
+
+Nay `_chay` dùng `subprocess.Popen(..., start_new_session=True)` để đặt tiến trình vào một
+nhóm riêng, rồi `_diet_ca_nhom()` gửi `SIGTERM` cho cả nhóm (cho công cụ kịp dọn tệp tạm) và
+`SIGKILL` cho những gì còn sống.
+
+Ca kiểm `test_het_han_diet_ca_chau_khong_chi_con` cho `sh` đẻ một tiến trình cháu sống lâu,
+ghi pid của nó ra tệp, rồi canh xem cháu có chết theo không. Và tôi đã kiểm rằng ca ấy **đo
+được thật** — chạy hai cách cạnh nhau trên cùng một kịch bản:
+
+```
+subprocess.run(timeout=) — cách cũ : cháu còn sống = True
+diệt cả nhóm — cách mới            : cháu còn sống = False
+```
+
+Phép so ấy quan trọng hơn bản thân ca kiểm: một ca kiểm xanh với mã đã vá chưa nói được nó
+có bắt được lỗi cũ không.
+
+Bộ kiểm: 1546 → **1547**.

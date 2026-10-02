@@ -675,3 +675,51 @@ def test_hdl_sim_khong_canh_bao_khi_kho_trong(tmp_path):
                 nguon="rtl", dinh="tb", dinh_nghia={"CFG_MUL": "1"})
     d = kq if isinstance(kq, dict) else getattr(kq, "data", {}) or {}
     assert not any(c.get("ma") == "ISA_KHONG_KHOP" for c in (d.get("canh_bao") or []))
+
+
+# ========================================= hết hạn phải diệt CẢ NHÓM, không chỉ con trực tiếp
+#
+# Ngày 02/10/2026: một lượt `hdl.synth` chạm hạn 1 800 giây, báo trượt đúng, và `hdl.pnr` từ
+# chối đúng vì không có tệp mạng cổng. Mọi thứ nhìn như đã xử lý xong.
+#
+# Nhưng `yosys` gọi `sh -c yosys-abc ...`, và `subprocess.run(timeout=...)` chỉ diệt `yosys`.
+# `sh` với `yosys-abc` sống sót, và 49 phút sau vẫn đang cày — giành CPU của lượt chạy kế
+# tiếp. Lượt sau chậm đi, và một phép đo thời gian bị tiến trình mồ côi làm lệch là một phép
+# đo sai mà trông không có gì sai cả.
+
+def test_het_han_diet_ca_chau_khong_chi_con(tmp_path):
+    """Tiến trình cháu phải chết theo, không được sống sót sau khi lượt chạy đã bị dừng."""
+    import os
+    import signal
+    import time
+
+    from eide.build.hdl import KetQuaHdl, _chay
+
+    dau = tmp_path / "chau.pid"
+    # `sh` đẻ ra một tiến trình cháu sống lâu, ghi pid của nó ra tệp, rồi tự chờ.
+    kich = (f"sh -c 'echo $$ > {dau}; exec sleep 300' & sleep 300")
+    kq = KetQuaHdl(chang="thu")
+    _chay(kq, ["/bin/sh", "-c", kich], cwd=tmp_path, han=2)
+
+    assert kq.ma_thoat is None, "phải báo là hết hạn"
+    assert "chạy quá 2 giây" in kq.vi_sao_khong_dat
+
+    assert dau.exists(), "tiến trình cháu chưa kịp ghi pid — ca kiểm không đo được gì"
+    pid = int(dau.read_text().strip())
+
+    # Cho hệ điều hành một nhịp để thu dọn.
+    for _ in range(30):
+        try:
+            os.kill(pid, 0)
+        except (ProcessLookupError, PermissionError):
+            return                                  # cháu đã chết — đúng
+        time.sleep(0.1)
+
+    # Còn sống: dọn rồi mới báo trượt, để ca kiểm không để lại rác trên máy.
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+    raise AssertionError(
+        f"tiến trình cháu {pid} còn sống sau khi lượt chạy đã bị dừng — đúng cái lỗi "
+        "để lại yosys-abc mồ côi cày 49 phút ngày 02/10/2026")

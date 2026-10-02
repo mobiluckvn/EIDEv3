@@ -218,6 +218,30 @@ def doc_ket_qua_pnr(dau_ra: str) -> tuple[float | None, dict[str, Any], list[dic
 
 # ------------------------------------------------------------------ chạy một chặng
 
+def _diet_ca_nhom(p: subprocess.Popen, cho_giay: float = 3.0) -> None:
+    """Diệt cả nhóm tiến trình, không chỉ tiến trình con trực tiếp.
+
+    Thử `SIGTERM` trước để công cụ kịp dọn tệp tạm, rồi `SIGKILL` cho những gì còn sống.
+    Nếu nhóm đã tan thì `ProcessLookupError` là chuyện bình thường, không phải lỗi.
+    """
+    import signal
+
+    try:
+        nhom = os.getpgid(p.pid)
+    except ProcessLookupError:
+        return
+    for tin_hieu in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(nhom, tin_hieu)
+        except ProcessLookupError:
+            return
+        try:
+            p.wait(timeout=cho_giay if tin_hieu == signal.SIGTERM else 1.0)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
 def _chay(kq: KetQuaHdl, lenh: list[str], *, cwd: Path, han: int,
           goc: Path | None = None) -> None:
     """Chạy một chương trình, ghi nguyên văn và thông điệp vào `kq`. KHÔNG kết luận `dat`."""
@@ -235,17 +259,30 @@ def _chay(kq: KetQuaHdl, lenh: list[str], *, cwd: Path, han: int,
         moi.setdefault("XDG_DATA_HOME", str(kho))
         moi.setdefault("XDG_CACHE_HOME", str(kho / "cache"))
         moi["LC_ALL"] = "C"
-        r = subprocess.run(kq.lenh, capture_output=True, text=True, cwd=str(cwd),
-                           timeout=han, env=moi)
-        kq.ma_thoat = r.returncode
-        kq.nguyen_van = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
-    except subprocess.TimeoutExpired:
-        kq.ma_thoat = None
-        kq.nguyen_van = f"(quá hạn {han} s — đã dừng)"
-        kq.vi_sao_khong_dat = (
-            f"`{Path(kq.lenh[0]).name}` chạy quá {han} giây và bị dừng. Đây KHÔNG phải kết "
-            "luận về thiết kế — chỉ là hết hạn chờ. Thiết kế lớn thì nới hạn; thiết kế có "
-            "vòng lặp tổ hợp thì công cụ sẽ chạy mãi, hãy xem lại mã trước khi nới.")
+        # `start_new_session=True` đặt tiến trình vào một NHÓM riêng, và lúc hết hạn ta diệt
+        # cả nhóm. Bản trước dùng `subprocess.run(timeout=...)`, mà nó chỉ diệt đúng tiến
+        # trình con trực tiếp. `yosys` gọi `sh -c yosys-abc ...`, nên diệt `yosys` xong thì
+        # `sh` và `yosys-abc` SỐNG SÓT và tiếp tục cày. Ngày 02/10/2026 một `yosys-abc` mồ
+        # côi chạy 49 phút sau khi lượt tổng hợp của nó đã bị dừng và đã báo trượt — nó
+        # giành CPU của lượt chạy kế tiếp, nên lượt sau chậm đi mà không ai biết vì sao.
+        # Một phép đo thời gian bị một tiến trình mồ côi làm lệch là một phép đo sai mà
+        # trông không có gì sai cả.
+        p = subprocess.Popen(kq.lenh, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             text=True, cwd=str(cwd), env=moi, start_new_session=True)
+        try:
+            ra, loi = p.communicate(timeout=han)
+            kq.ma_thoat = p.returncode
+            kq.nguyen_van = ((ra or "") + "\n" + (loi or "")).strip()
+        except subprocess.TimeoutExpired:
+            _diet_ca_nhom(p)
+            ra, loi = p.communicate()
+            kq.ma_thoat = None
+            kq.nguyen_van = (((ra or "") + "\n" + (loi or "")).strip()
+                             + f"\n(quá hạn {han} s — đã dừng cả nhóm tiến trình)").strip()
+            kq.vi_sao_khong_dat = (
+                f"`{Path(kq.lenh[0]).name}` chạy quá {han} giây và bị dừng. Đây KHÔNG phải "
+                "kết luận về thiết kế — chỉ là hết hạn chờ. Thiết kế lớn thì nới hạn; thiết "
+                "kế có vòng lặp tổ hợp thì công cụ sẽ chạy mãi, hãy xem lại mã trước khi nới.")
     except FileNotFoundError:
         kq.ma_thoat = None
         kq.vi_sao_khong_dat = f"Không chạy được `{kq.lenh[0]}` — không thấy tệp lệnh."
