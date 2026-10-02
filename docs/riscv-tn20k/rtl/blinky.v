@@ -1,3 +1,5 @@
+`timescale 1ns / 1ps
+
 // Blinky test cho Sipeed Tang Nano 20K (Gowin GW2AR-18C)
 // Clock 27 MHz, nhay LED0 (PIN 15, active-low) voi chu ky ~1s (0.5s sang, 0.5s toi)
 module blinky (

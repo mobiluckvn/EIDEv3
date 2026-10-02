@@ -2,14 +2,15 @@
 #include <stddef.h>
 #include "custom_insn.h"
 
-/* Bộ nhớ và dữ liệu ma trận kiểm thử n=4, I8 */
-#include "../../data_4_I8.h"
+/* Bộ nhớ và dữ liệu ma trận kiểm thử n=16, I8 */
+#include "../../data_16_I8.h"
 
 #define UART_TX_REG     (*(volatile uint32_t *)0x10000000)
 #define UART_STATUS_REG (*(volatile uint32_t *)0x10000004)
 #define LED_REG         (*(volatile uint32_t *)0x20000000)
 
 static acc_t mat_c[MATRIX_N * MATRIX_N];
+static elem_t mat_b_trans[MATRIX_N * MATRIX_N] __attribute__((aligned(4)));
 
 /* Freestanding memcpy va memset */
 void *memcpy(void *dest, const void *src, size_t n) {
@@ -111,49 +112,76 @@ static uint32_t compute_checksum(int n, const acc_t *c) {
     return chk;
 }
 
-/* Hàm nhân ma trận V1 phần mềm gốc (đối chứng) */
-void matmul_v1_sw(int n, const elem_t *a, const elem_t *b, acc_t *c) {
-    for (int i = 0; i < n; i++) {
-        acc_t *ci = &c[i * n];
+/* Chuyển vị ma trận B: b_t[j][k] = b[k][j] bằng cộng con trỏ thuần tuý */
+void transpose_b(int n, const elem_t *b, elem_t *b_t) {
+    const elem_t *b_ptr = b;
+    for (int k = 0; k < n; k++) {
+        elem_t *b_t_col = b_t + k;
         for (int j = 0; j < n; j++) {
-            ci[j] = 0;
-        }
-        for (int k = 0; k < n; k++) {
-            acc_t a_ik = (acc_t)a[i * n + k];
-            const elem_t *bk = &b[k * n];
-            for (int j = 0; j < n; j++) {
-                ci[j] += a_ik * (acc_t)bk[j];
-            }
+            *b_t_col = *b_ptr++;
+            b_t_col += n;
         }
     }
 }
 
 /*
- * Hàm nhân ma trận V1 dùng tăng tốc MAC nấc 3a qua PCPI:
- * acc.clr xoá thanh ghi tích luỹ phần cứng
- * mac rs1, rs2 cộng dồn tích a[i][k] * b[k][j]
- * acc.rd ghi kết quả ra C[i][j]
+ * Nhân ma trận nấc 3b dùng lệnh dot4 qua PCPI:
+ * B đã được chuyển vị trước thành b_t để mỗi cột là một vector hàng liên tiếp.
+ * Toàn bộ duyệt mảng bằng cộng con trỏ để không phụ thuộc phép nhân chỉ số.
  */
-void matmul_v1_p3a(int n, const elem_t *a, const elem_t *b, acc_t *c) {
+void matmul_v1_p3b(int n, const elem_t *a, const elem_t *b_t, acc_t *c) {
+    const elem_t *a_row_ptr = a;
+    acc_t *c_row_ptr = c;
     for (int i = 0; i < n; i++) {
+        const uint32_t *a_row = (const uint32_t *)a_row_ptr;
+        const elem_t *b_col_ptr = b_t;
         for (int j = 0; j < n; j++) {
+            const uint32_t *b_col = (const uint32_t *)b_col_ptr;
             custom_acc_clr();
-            for (int k = 0; k < n; k++) {
-                custom_mac((int32_t)a[i * n + k], (int32_t)b[k * n + j]);
+            for (int k = 0; k < n; k += 4) {
+                uint32_t a_val = a_row[k / 4];
+                uint32_t b_val = b_col[k / 4];
+                custom_dot4(a_val, b_val);
             }
-            c[i * n + j] = custom_acc_rd();
+            c_row_ptr[j] = custom_acc_rd();
+            b_col_ptr += n;
         }
+        a_row_ptr += n;
+        c_row_ptr += n;
     }
 }
 
-typedef void (*matmul_fn_t)(int n, const elem_t *a, const elem_t *b, acc_t *c);
+int main(void) {
+    LED_REG = 0x01;
+    uart_puts("=== BAI 3: CUSTOM INSTRUCTION BENCHMARK (P3b - dot4) ===\r\n");
 
-static void run_benchmark(const char *ver_name, const char *hw_name, matmul_fn_t fn, uint64_t overhead) {
-    uint64_t min_cycles = (uint64_t)-1;
+    uint64_t overhead = measure_rdcycle_overhead();
 
+    // 1. Đo riêng chi phí chuyển vị ma trận B (chạy 3 lần lấy min)
+    uint64_t min_trans_cycles = (uint64_t)-1;
     for (int run = 0; run < 3; run++) {
         uint64_t t0 = get_cycle64();
-        fn(MATRIX_N, (const elem_t *)mat_a, (const elem_t *)mat_b, mat_c);
+        transpose_b(MATRIX_N, (const elem_t *)mat_b, mat_b_trans);
+        uint64_t t1 = get_cycle64();
+
+        uint64_t diff = (t1 >= t0) ? (t1 - t0) : 0;
+        if (diff > overhead) diff -= overhead;
+        else diff = 0;
+
+        if (diff < min_trans_cycles) min_trans_cycles = diff;
+    }
+
+    uart_puts("TRANSPOSE,n=");
+    uart_put_u64((uint64_t)MATRIX_N);
+    uart_puts(",cycles=");
+    uart_put_u64(min_trans_cycles);
+    uart_puts("\r\n");
+
+    // 2. Đo nhân ma trận P3b với B đã chuyển vị (chạy 3 lần lấy min)
+    uint64_t min_cycles = (uint64_t)-1;
+    for (int run = 0; run < 3; run++) {
+        uint64_t t0 = get_cycle64();
+        matmul_v1_p3b(MATRIX_N, (const elem_t *)mat_a, mat_b_trans, mat_c);
         uint64_t t1 = get_cycle64();
 
         uint64_t diff = (t1 >= t0) ? (t1 - t0) : 0;
@@ -173,11 +201,7 @@ static void run_benchmark(const char *ver_name, const char *hw_name, matmul_fn_t
 
     uart_puts("RESULT,n=");
     uart_put_u64((uint64_t)MATRIX_N);
-    uart_puts(",dtype=I8,ver=");
-    uart_puts(ver_name);
-    uart_puts(",hw=");
-    uart_puts(hw_name);
-    uart_puts(",cycles=");
+    uart_puts(",dtype=I8,ver=V1,hw=P3b,cycles=");
     uart_put_u64(min_cycles);
     uart_puts(",macs=");
     uart_put_u64((uint64_t)macs);
@@ -191,19 +215,6 @@ static void run_benchmark(const char *ver_name, const char *hw_name, matmul_fn_t
     uart_puts(",ok=");
     uart_putc((char)('0' + ok));
     uart_puts("\r\n");
-}
-
-int main(void) {
-    LED_REG = 0x01;
-    uart_puts("=== BAI 3: CUSTOM INSTRUCTION BENCHMARK (P3a) ===\r\n");
-
-    uint64_t overhead = measure_rdcycle_overhead();
-
-    /* Đo phiên bản V1 gốc (phần mềm thuần) để đối chiếu */
-    run_benchmark("V1_SW", "H0", matmul_v1_sw, overhead);
-
-    /* Đo phiên bản V1 dùng tăng tốc MAC nấc 3a */
-    run_benchmark("V1", "P3a", matmul_v1_p3a, overhead);
 
     uart_puts("=== BENCHMARK COMPLETED ===\r\n");
     uart_puts("DONE\r\n");

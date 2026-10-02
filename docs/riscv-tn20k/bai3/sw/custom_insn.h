@@ -25,4 +25,9 @@ static inline int32_t custom_acc_rd(void) {
     return res;
 }
 
+/* funct3 = 011: dot4 rs1, rs2 (acc <- acc + dot4(rs1, rs2)) */
+static inline void custom_dot4(uint32_t rs1, uint32_t rs2) {
+    __asm__ volatile (".insn r 0x0B, 3, 0, x0, %0, %1" : : "r"(rs1), "r"(rs2));
+}
+
 #endif /* BAI3_CUSTOM_INSN_H */
