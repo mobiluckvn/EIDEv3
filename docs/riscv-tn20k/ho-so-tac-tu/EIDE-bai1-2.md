@@ -1,5 +1,14 @@
 # Lõi RISC-V trên Sipeed Tang Nano 20K — BÀI 1
 
+
+> **Ghi chú 02/10/2026.** Bài 3 đã được đưa ra khỏi phạm vi đề án. Những phần dưới đây nói về
+> Bài 3 **chỉ còn giá trị tham khảo**, không còn là yêu cầu. Bản phân tích giữ nguyên như lúc
+> nộp — xem [`bai3/NGOAI-PHAM-VI.md`](../bai3/NGOAI-PHAM-VI.md) để biết đã đo được gì và vì sao
+> dừng.
+>
+> Số thật của phạm vi hai bài, đo ngày 02/10/2026: **LUT4 2 211/20 736 = 10,7 %**,
+> BSRAM 16/46, Fmax 106,01 MHz trên yêu cầu 27 MHz.
+
 Đề bài đầy đủ: `tai-lieu-de-bai.md`. Giai đoạn này làm **Bài 1**.
 
 ## Đã xong, đừng làm lại

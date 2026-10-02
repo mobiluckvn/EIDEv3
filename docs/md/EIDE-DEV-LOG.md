@@ -6355,3 +6355,71 @@ Phép so ấy quan trọng hơn bản thân ca kiểm: một ca kiểm xanh vớ
 có bắt được lỗi cũ không.
 
 Bộ kiểm: 1546 → **1547**.
+
+## [DEV-322] Bỏ Bài 3 khỏi đặc tả FPGA, và một kết quả âm đáng giữ
+
+*02/10/2026. `docs/fpga/yeu-cau-agent-riscv-tang-nano-20k.md`, `README.md`,
+`docs/riscv-tn20k/`, `docs/md/DE-XUAT-CAU-TRUC-FPGA.md`, và `rtl/` của dự án.*
+
+Anh Công đưa Bài 3 ra khỏi phạm vi. Đặc tả nay gồm hai bài. Đã sửa: cắt hẳn mục BÀI 3 khỏi
+đặc tả, mười hai chỗ nhắc nó ở ngoài mục ấy, bối cảnh A1 từ ba mục tiêu còn hai, A2 bỏ lời
+hứa về lệnh tuỳ biến và vector, điểm dừng bắt buộc từ sáu còn năm (và đánh số lại cho liền),
+bảng khả thi bỏ hai dòng 3a/3b/3c.
+
+Tài liệu Agent đã nộp thì **thêm ghi chú, không viết lại** — một bản phân tích có ngày tháng
+là hiện vật, sửa nội dung nó là xoá dấu vết. Áp cho `nang-luc-kit.md` (hai bản),
+`ho-so-tac-tu/EIDE-bai1-2.md`.
+
+Giữ lại kho lưu `docs/riscv-tn20k/bai3/` kèm `NGOAI-PHAM-VI.md`, vì số đo thật xoá đi thì
+không dựng lại được.
+
+### Kết quả âm: mô phỏng đúng không nói gì về việc có nạp được
+
+Nấc 3c **đúng về chức năng**: `cpm=3.84`, tổng kiểm `0x08EA34EA` trùng đáp án Python độc lập,
+bộ kiểm đơn vị bắt 7/7 phép phá. Nhưng tổng hợp lên chip **không về đích**.
+
+Biểu hiện đầu tiên chỉ là *chậm*: 5 giây thành hơn 30 phút rồi chạm hạn. Tôi đoán sai **hai
+lần** — lần đầu nghĩ do bộ dồn kênh đọc tệp thanh ghi vector (Agent chốt toán hạng vào
+`opa`/`opb`, vẫn chậm), lần sau nghĩ do phép làm phẳng toàn mạch. Nguyên nhân chỉ lộ ra khi
+tổng hợp **riêng mô-đun bộ nhớ**:
+
+```
+Module bram: replaced 819152 cells with 5635760 new cells
+  262144  DFFE          ◀── cả 32 KB thành flip-flop
+  786384  $_MUX_
+Extracted 2474345 AND gates ... 262516 inputs
+```
+
+Thêm cổng thứ hai vào BRAM làm **suy luận BSRAM đứt hoàn toàn**. Cả 32 KB bị dựng thành
+262 144 thanh ghi trên một chip có 15 552 — vượt 17 lần. `yosys-abc` cày 30 phút để tối ưu
+một mạng 2,47 triệu cổng cho một mạch không bao giờ nạp được.
+
+Nguyên nhân ở **cấu trúc**, không ở số cổng: bản hai cổng đặt cả hai cổng trong cùng một khối
+`always @(posedge clk)`, mỗi cổng vừa đọc vừa ghi với cho phép ghi theo từng byte, trên cùng
+một mảng. Gowin BSRAM không có nguyên thuỷ nào như thế.
+
+> Một thiết kế mô phỏng đúng chưa nói gì về việc nó có nạp được không. Hai câu hỏi ấy khác
+> nhau, và chúng được trả lời bởi hai công cụ khác nhau.
+
+Chính đặc tả Bài 3 đã đặt đúng câu hỏi này — mục kiến trúc điểm (3): *"luồng công cụ ... theo
+kết quả kiểm tra BRAM hai cổng ở G1"*. Câu hỏi đặt đúng mà chưa ai trả lời trước khi viết RTL.
+
+### `rtl/` đã trả về bản chạy được, và chứng minh lại
+
+Dự án đang ở trạng thái **không vừa chip**, nên phải trả về. `bram.v` bỏ cổng B; `soc_top.v`
+bỏ include `bai3/`, bỏ `ENABLE_VMINI`, `ENABLE_PCPI` mặc định 0, vẫn giữ các dây PCPI buộc về
+mức không tích cực — `pcpi_wait` thả nổi thì CPU có thể treo vĩnh viễn ở một lệnh lạ, một kiểu
+hỏng không hiện ra lúc mô phỏng nếu chương trình không dùng lệnh lạ nào.
+
+Đo lại sau khi trả về:
+
+```
+tổng hợp   4,6 giây (từ >1800)   LUT4 2 211/20 736 = 10,7 %   BSRAM 16/46 suy luận lại được
+đặt-đi-dây 20,0 giây             Fmax 106,01 MHz, cần 27
+Bài 1      nhận đúng "Hello from PicoRV32" hai lần, PASS
+Bài 2      H0 618,04 · H1 83,40 · H2 49,40 — trùng đúng đường cơ sở cũ
+```
+
+Và một ca thật cho DEV-320 vừa làm: chạy Bài 2 với mã máy `rv32im` trên cấu hình `CFG_MUL=0`
+thì **không ra dòng RESULT nào** (CPU bẫy lệnh lạ), kèm đúng cảnh báo *"Mã máy chứa 15 lệnh
+của phần `m` nhưng cấu hình CPU TẮT bộ nhân"*. Chỗ vá ấy bắt được ca thật, không chỉ ca kiểm.

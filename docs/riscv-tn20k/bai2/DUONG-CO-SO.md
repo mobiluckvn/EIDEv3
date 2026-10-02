@@ -19,7 +19,7 @@ Số chu kỳ trên mỗi phép nhân-cộng. Thấp hơn là tốt hơn.
 | H1 | 72,51 | 8,29 lần |
 | **H2** | **38,51** | **15,61 lần** |
 
-### Mục tiêu nấc 3b
+### Mục tiêu nấc 3b *(Bài 3 đã ra khỏi phạm vi 02/10/2026 — mục này còn để tham khảo)*
 
 Đề bài: *"cpm ≤ ½ cpm của H2 tốt nhất"*.
 

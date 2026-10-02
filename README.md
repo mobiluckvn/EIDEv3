@@ -583,8 +583,8 @@ chi phí nhân ma trận làm đường cơ sở, rồi thêm phần cứng chuy
 | Nhân ma trận | bốn cách viết, mọi kết quả khớp mô hình NumPy |
 | Đường cơ sở | **719,48 chu kỳ** cho mỗi phép nhân-cộng, ở cấu hình không có bộ nhân cứng |
 
-**Chưa làm được:** chạy trên bo thật (chưa có kit, và đề bài cấm Agent tự đặt hàng) · Bài 2 mới
-4 trên 96 phép đo · Bài 3 chưa bắt đầu.
+**Chưa làm được:** chạy trên bo thật — kit đã đặt mua, đang chờ về, và đề bài cấm Agent tự đặt
+hàng · Bài 2 mới 4 trên 96 phép đo.
 
 **Agent tự viết 1 407 dòng** — Verilog, C, hợp ngữ, linker script, Python, ràng buộc chân.
 
@@ -598,6 +598,44 @@ sai; nguyên nhân thật là hộp thư nối giữa bộ điều khiển phiê
 app phát lại lời giao việc **cũ nhất**. Agent chưa bao giờ nhận được câu được gõ.
 
 > Trước khi hỏi *"vì sao nó làm sai"*, hỏi *"nó có nhận được đề bài không"*.
+
+#### Bài toán thứ ba: làm xong, đo được, rồi bỏ khỏi phạm vi
+
+Đặc tả ban đầu có bài thứ ba — thêm phần cứng chuyên dụng vào CPU để giảm chi phí nhân ma
+trận, qua ba nấc. Ngày 02/10/2026 anh Công đưa bài này ra khỏi phạm vi. Phần việc đã làm được
+giữ lại trong [`docs/riscv-tn20k/bai3/`](docs/riscv-tn20k/bai3/), đánh dấu ngoài phạm vi, vì
+nó là số đo thật và nó trả lời một câu mà hai bài còn lại không trả lời.
+
+| Cấu hình | chu kỳ mỗi phép nhân-cộng | so với phần mềm thuần |
+|---|---|---|
+| phần mềm thuần, không bộ nhân | 601,19 | 1× |
+| bộ nhân nhanh dùng DSP | 38,51 | 15,6× |
+| lệnh tuỳ biến `dot4` | 12,93 | 46× |
+| đơn vị vector mini | **3,84** | **157×** |
+
+Mọi con số đều kèm tổng kiểm trùng đáp án do Python tính độc lập, nên chúng nói về phép tính
+đúng chứ không chỉ về tốc độ.
+
+Nhưng nấc cuối **đúng về chức năng mà không vừa chip**, và lý do chỉ lộ ra khi tổng hợp riêng
+khối bộ nhớ. Đơn vị vector cần một cổng thứ hai vào bộ nhớ; thêm cổng ấy làm **suy luận khối
+nhớ cứng đứt hoàn toàn**, và cả 32 KB bị dựng thành 262 144 thanh ghi trên một chip có 15 552
+— vượt 17 lần. Trước đó công cụ chỉ biểu hiện là *chạy chậm*: 5 giây thành hơn 30 phút. Mô
+phỏng vẫn chạy đúng từ đầu đến cuối; chỉ silicon là không nhận.
+
+> Một thiết kế mô phỏng đúng chưa nói gì về việc nó có nạp được không. Hai câu hỏi ấy khác
+> nhau, và chúng được trả lời bởi hai công cụ khác nhau.
+
+Hai bài học về cách làm cũng ghi lại ở đây, vì chúng áp dụng cho mọi việc sau:
+
+**Giao một việc mỗi lượt.** Ba lượt liền Agent đọc tài liệu rồi kết lượt mà không ghi gì. Không
+phải hết ngân sách — hạn 220 lời gọi, nó dùng 13–17. Đề dài có bảng và sáu mục thì nó đọc rồi
+dừng; đề một câu một việc thì nó làm ngay. Tám lượt ngắn liên tiếp sau đó đều ra sản phẩm.
+
+**Một phép phá mã không giết được mã có hai nghĩa.** Đo độ nhạy bộ kiểm lần đầu ra 2/7. Nhưng
+ba trong năm phép "lọt" là lỗi của chính phép phá do tôi viết — một phép không tạo ra treo thật,
+một phép chuỗi tìm không khớp, một phép nhắm vào chốt luôn đúng. Sửa lại thì ra 7/7. Phải phân
+biệt *bộ kiểm yếu* với *phép phá rỗng* trước khi kết luận, nếu không ta đi vá một bộ kiểm không
+hỏng.
 
 Xem đầy đủ: [`docs/riscv-tn20k/`](docs/riscv-tn20k/) — trong đó
 [`NANG-CAP-AGENT.md`](docs/riscv-tn20k/tai-lieu/NANG-CAP-AGENT.md) ghi từng chỗ EIDE không làm
@@ -671,10 +709,13 @@ Nói ra để người đọc không phải tự tìm:
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
 - **Sáu ca kiểm cần người trực tiếp làm**, chưa tự động hoá được.
 - **Robot còn 23 trong 109 điều kiện chưa làm**, phần lớn là các điểm đo để cắm máy hiện sóng.
-- **Việc FPGA mới xong Bài 1 phần mô phỏng.** Chưa chạy trên bo thật vì chưa có kit; Bài 2
-  mới 4 trên 96 phép đo; Bài 3 chưa bắt đầu. Và `tool.install` mở một thẻ duyệt **mới** mỗi
-  lần gọi lại, nên một việc cài có thể để lại hàng chục thẻ treo — thẻ được duyệt sang lượt
-  sau, mà Agent thử lại trong cùng lượt.
+- **Việc FPGA chưa chạy trên bo thật.** Kit đã đặt mua, đang chờ về, nên mọi con số hiện có
+  đều là số mô phỏng. Bài 2 mới 4 trên 96 phép đo. Và `tool.install` mở một thẻ duyệt **mới**
+  mỗi lần gọi lại, nên một việc cài có thể để lại hàng chục thẻ treo — thẻ được duyệt sang
+  lượt sau, mà Agent thử lại trong cùng lượt.
+- **Tác tử xác minh con có hạn 10 lời gọi, quá chặt.** Nó cày hết hạn vào `ledger.query` rồi
+  trả về `chua_du_du_kien` mà chưa kịp nộp báo cáo — nên lời xác minh biến mất đúng lúc cần
+  nó nhất.
 
 Danh sách đầy đủ, kèm chỗ cần sửa trong mã:
 [`docs/md/VIEC-CHO-LAM.md`](docs/md/VIEC-CHO-LAM.md).

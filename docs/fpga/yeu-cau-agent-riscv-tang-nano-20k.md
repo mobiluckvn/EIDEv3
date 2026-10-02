@@ -1,5 +1,5 @@
 # ĐẶC TẢ BÀI TOÁN CHO TÁC TỬ (AGENT)
-## Lõi RISC‑V trên Sipeed Tang Nano 20K: từ "Hello" đến nhân ma trận và lệnh tuỳ biến
+## Lõi RISC‑V trên Sipeed Tang Nano 20K: từ "Hello" đến nhân ma trận
 
 - Phiên bản: 1.1, ngày 01/10/2026. So với v1.0: bổ sung môi trường macOS và mô tả chi tiết từng bài.
 - Người giao việc: CongVT
@@ -10,15 +10,16 @@
 ## PHẦN A. BỐI CẢNH VÀ CÁCH LÀM VIỆC
 
 ### A1. Bối cảnh
-CongVT muốn tiến dần tới việc đưa phép nhân ma trận (lõi tính toán của mô hình AI) xuống phần cứng FPGA. Bước đầu dùng một kit giá rẻ, Sipeed Tang Nano 20K (chip Gowin GW2AR‑18), với ba mục tiêu:
+CongVT muốn tiến dần tới việc đưa phép nhân ma trận (lõi tính toán của mô hình AI) xuống phần cứng FPGA. Bước đầu dùng một kit giá rẻ, Sipeed Tang Nano 20K (chip Gowin GW2AR‑18), với hai mục tiêu:
 
 1. Biến FPGA thành một CPU RISC‑V nhỏ chạy được chương trình C.
 2. Đo chính xác chi phí nhân ma trận trên CPU đó, gọi là **đường cơ sở (baseline)**.
-3. Thêm phần cứng chuyên dụng (lệnh tuỳ biến, sau đó là đơn vị vector mini) để giảm chi phí đó. Đây là bước chuẩn bị cho tập lệnh vector RISC‑V (RVV) sau này.
+
+Việc thêm phần cứng chuyên dụng để giảm chi phí ấy từng là mục tiêu thứ ba, và đã được đưa ra khỏi phạm vi ngày 02/10/2026 — xem PHẦN I.
 
 ### A2. Kết quả cuối cùng mong muốn
 - Một kho mã (repository) Git chạy lại được toàn bộ từ đầu trên macOS bằng vài lệnh `make`.
-- Một bảng số liệu so sánh **số chu kỳ trên mỗi phép nhân‑cộng (cycles/MAC)** giữa các cấu hình: phần mềm thuần, bộ nhân phần cứng, lệnh tuỳ biến, vector mini.
+- Một bảng số liệu so sánh **số chu kỳ trên mỗi phép nhân‑cộng (cycles/MAC)** giữa các cấu hình CPU: không có bộ nhân, bộ nhân tuần tự, bộ nhân nhanh dùng DSP.
 - Số liệu đo trên **mô phỏng** và trên **kit thật** khớp nhau.
 
 ### A3. Quy tắc bắt buộc cho tác tử
@@ -44,7 +45,7 @@ CongVT muốn tiến dần tới việc đưa phép nhân ma trận (lõi tính 
 | Tổng hợp, đặt‑đi dây, đóng gói bitstream (luồng chính) | Yosys (`synth_gowin`), nextpnr‑himbaechel, Apicula (`gowin_pack`) | Bộ **oss‑cad‑suite** bản darwin (arm64 hoặc x64) | Chạy hoàn toàn bằng dòng lệnh, phù hợp tự động hoá |
 | Nạp bitstream | openFPGALoader | có trong oss‑cad‑suite hoặc Homebrew | Board: `tangnano20k` [XÁC MINH] |
 | Luồng đối chiếu | Gowin EDA **Education** bản macOS (miễn phí, không cần license) | Tải từ gowinsemi.com (cần tài khoản) | Dùng để đối chiếu timing/tài nguyên và làm dự phòng. Bản cũ có thể cần script sửa liên kết thư viện của cộng đồng |
-| Mô phỏng nhanh, đo chu kỳ | **Verilator** | Homebrew hoặc oss‑cad‑suite | Bắt buộc cho Bài 2, Bài 3 |
+| Mô phỏng nhanh, đo chu kỳ | **Verilator** | Homebrew hoặc oss‑cad‑suite | Bắt buộc cho Bài 2 |
 | Mô phỏng testbench nhỏ | Icarus Verilog + GTKWave | oss‑cad‑suite | Cho unit test |
 | Mô phỏng VHDL | GHDL | chỉ khi chọn NEORV32 | Phải kiểm tra chạy được trên kiến trúc máy |
 | Biên dịch phần mềm RISC‑V | GCC bare‑metal: `riscv64-unknown-elf-gcc` (Homebrew tap riscv) hoặc `riscv-none-elf-gcc` (xPack) | | Cờ: `-march=rv32i_zicsr` hoặc `rv32im_zicsr`, `-mabi=ilp32` |
@@ -56,7 +57,6 @@ CongVT muốn tiến dần tới việc đưa phép nhân ma trận (lõi tính 
 2. **Blinky toolchain mở:** tổng hợp ví dụ nháy LED cho Tang Nano 20K đến tận file `.fs`. Chưa cần kit.
 3. **BRAM hai cổng:** tổng hợp và đặt‑đi dây một module RAM hai cổng tối giản (đọc/ghi độc lập trên hai cổng) bằng toolchain mở.
    - Nếu lỗi (ví dụ thiếu primitive DPB/DPX9), ghi lại thông báo lỗi và thử lại bằng Gowin EDA.
-   - Kết quả quyết định luồng công cụ cho nấc 3c.
 4. **Tổng hợp thử PicoRV32 trần** (không SoC) để biết tài nguyên lõi chiếm.
 
 ---
@@ -72,12 +72,11 @@ riscv-tn20k/
 │   ├── env.md             # G1: môi trường
 │   ├── decisions.md       # các quyết định thiết kế + lý do
 │   ├── third_party.md     # lõi/thư viện bên ngoài + license + commit
-│   ├── bai3-arch.md       # thiết kế nấc 3c (chờ duyệt)
 │   └── troubleshooting.md
 ├── constraints/tangnano20k.cst
 ├── third_party/picorv32/  # git submodule
 ├── rtl/                   # mã HDL chung (uart_tx, bram, soc_top…)
-├── bai1/  bai2/  bai3/    # mỗi bài: rtl/ sw/ sim/ results/
+├── bai1/  bai2/           # mỗi bài: rtl/ sw/ sim/ results/
 └── tools/                 # gen_data.py, parse_log.py, plot.py
 ```
 
@@ -127,9 +126,8 @@ Làm đủ Phần B. **Nghiệm thu:** 4 kiểm tra ở mục B3 có kết quả
 **Quyết định lõi:** mặc định **PicoRV32** (Verilog), vì:
 - Nhỏ.
 - Có bộ đếm chu kỳ (`rdcycle`).
-- Có giao diện đồng xử lý **PCPI** (Pico Co‑Processor Interface) cho Bài 3.
 
-NEORV32 (VHDL) chỉ dùng khi CongVT yêu cầu. Khi đó Bài 3 dùng CFU (Custom Functions Unit) thay PCPI.
+NEORV32 (VHDL) chỉ dùng khi CongVT yêu cầu.
 
 ---
 
@@ -189,7 +187,7 @@ NEORV32 (VHDL) chỉ dùng khi CongVT yêu cầu. Khi đó Bài 3 dùng CFU (Cus
 
 ### BÀI 2. Nhân ma trận bằng C, đo số chu kỳ
 
-**Bài toán:** tính C = A × B cho ma trận vuông N×N trên CPU của Bài 1. Đo chính xác số chu kỳ máy cho từng cách cài đặt và từng cấu hình CPU, để có **đường cơ sở** so sánh cho Bài 3.
+**Bài toán:** tính C = A × B cho ma trận vuông N×N trên CPU của Bài 1. Đo chính xác số chu kỳ máy cho từng cách cài đặt và từng cấu hình CPU, để biết **cấu hình CPU nào đổi được gì**, và đổi bao nhiêu.
 
 **Tham số thử nghiệm:**
 - N ∈ {4, 8, 16, 32}. Tác tử tính dung lượng: 3 ma trận × N² × kích thước phần tử phải vừa BRAM cùng với chương trình. N nào không vừa thì ghi rõ và bỏ.
@@ -245,74 +243,6 @@ RESULT,n=16,dtype=I8,ver=V1,hw=H2,cycles=123456,macs=4096,cpm=30.14,chk=0x1A2B3C
 
 ---
 
-### BÀI 3. Lệnh tuỳ biến và đơn vị vector mini
-
-**Bài toán:** giảm cycles/MAC của nhân ma trận `I8` bằng phần cứng chuyên dụng gắn vào CPU, đi qua ba nấc. Mỗi nấc gần hơn với mô hình vector RVV.
-
-**Cơ chế:** bật `ENABLE_PCPI=1`. PicoRV32 chuyển các lệnh nó không tự xử lý ra giao diện PCPI:
-- Tín hiệu vào khối PCPI: `pcpi_valid`, `pcpi_insn`, `pcpi_rs1`, `pcpi_rs2`.
-- Tín hiệu trả về: `pcpi_wr`, `pcpi_rd`, `pcpi_wait`, `pcpi_ready`.
-
-Tác tử phải đọc README của PicoRV32 để xác minh chính xác giao thức, nhất là ba điểm:
-- (a) cách phối hợp khi đồng thời bật bộ nhân nội bộ (`ENABLE_MUL`/`ENABLE_FAST_MUL` cũng dùng PCPI bên trong);
-- (b) thời hạn trả lời trước khi CPU báo lệnh không hợp lệ;
-- (c) cách giữ CPU chờ bằng `pcpi_wait`.
-
-**Mã hoá lệnh:** dùng vùng opcode **custom‑0** = `0001011`, định dạng R. Phân biệt lệnh bằng `funct3`, `funct7 = 0000000`:
-
-| funct3 | Lệnh | Ngữ nghĩa | Nấc |
-|---|---|---|---|
-| 000 | `acc.clr` | acc ← 0 | 3a |
-| 001 | `mac rs1, rs2` | acc ← acc + rs1 × rs2 (có dấu, 32‑bit) | 3a |
-| 010 | `acc.rd rd` | rd ← acc | 3a |
-| 011 | `dot4 rs1, rs2` | acc ← acc + Σᵢ₌₀..₃ int8(rs1[8i+7:8i]) × int8(rs2[8i+7:8i]) | 3b |
-| 100–111 | dành cho nấc 3c (dùng thêm custom‑1 = `0101011` nếu cần) | | 3c |
-
-Trong C, gọi lệnh bằng chỉ thị `.insn r 0x0B, funct3, 0, rd, rs1, rs2` gói trong macro ở `bai3/sw/custom_insn.h`. Không sửa trình biên dịch.
-
-#### Nấc 3a: MAC vô hướng
-- Module `pcpi_mac.v`: thanh ghi `acc` 32‑bit, cài 3 lệnh trên.
-- Viết lại vòng lặp trong của V1 dùng `mac`.
-- **Mục đích:** kiểm chứng luồng PCPI từ đầu đến cuối. Chưa đặt mục tiêu tốc độ.
-
-#### Nấc 3b: SIMD trong thanh ghi, `dot4`
-- Module `pcpi_dot4.v`: 4 bộ nhân 8×8 có dấu và cây cộng. Ưu tiên dùng DSP; ghi số DSP sử dụng.
-- Phần mềm: chuyển vị B trước (Bᵀ), để 4 phần tử liên tiếp của một cột B nằm trong một từ 32‑bit. Hàng của A cũng đọc theo từ 32‑bit. Vòng lặp trong: mỗi lần nạp 1 từ A + 1 từ Bᵀ, gọi `dot4`. Chi phí chuyển vị được đo và báo cáo riêng.
-- **Mục tiêu:** cpm của 3b ≤ ½ cpm của H2 tốt nhất (I8, N=16).
-
-#### Nấc 3c: đơn vị vector mini (tiền RVV)
-- **Ý tưởng:** đơn vị vector có tệp thanh ghi riêng và tự nạp dữ liệu từ BRAM, để CPU không phải nạp từng từ.
-- **Thông số khởi điểm** (tác tử điều chỉnh theo tài nguyên còn lại):
-  - 4–8 thanh ghi vector.
-  - VLEN = 128 bit (16 × int8).
-  - 1–2 làn (lane).
-- **Tập lệnh tối thiểu:** `vsetvl` (đặt độ dài vector), `vload` / `vstore` (nạp/ghi giữa BRAM và thanh ghi vector, địa chỉ nền lấy từ rs1), `vdot` (tích vô hướng int8 vào acc), `vredsum` (cộng dồn thành vô hướng). Mã hoá cụ thể do tác tử đề xuất.
-- **Vấn đề kiến trúc phải giải quyết trong `docs/bai3-arch.md`:**
-  1. PCPI không có cổng bộ nhớ. Đơn vị vector cần cổng riêng vào BRAM qua RAM hai cổng: cổng A cho CPU, cổng B cho vector.
-  2. Đồng bộ: CPU bị giữ bằng `pcpi_wait` trong lúc `vload`/`vstore` chạy, để tránh xung đột dữ liệu.
-  3. Luồng công cụ: toolchain mở hay Gowin EDA, theo kết quả kiểm tra BRAM hai cổng ở G1.
-  4. Ước lượng tài nguyên và cpm kỳ vọng.
-- **Điểm dừng:** tài liệu này phải được CongVT duyệt **trước khi viết RTL**.
-- **Hướng tiếp theo (ngoài phạm vi):** chuyển sang mã hoá chuẩn RVV (opcode OP‑V) theo hồ sơ Zve32x, hoặc chuyển sang kit lớn hơn với lõi RVV mã nguồn mở như Vicuna.
-
-**Kiểm chứng cho mọi nấc:**
-- **Testbench đơn vị** cho khối tăng tốc, so với mô hình tham chiếu viết trong testbench, với ít nhất 1.000 bộ giá trị ngẫu nhiên, gồm các giá trị biên −128 và 127.
-- **Testbench hệ thống** chạy nhân ma trận đầy đủ, dùng lại `gen_data.py` và checksum của Bài 2.
-- Kết quả ghi thêm vào CSV với `hw` = `P3a`, `P3b`, `P3c`.
-
-**Sản phẩm bàn giao:**
-- `bai3/rtl/*.v`, `bai3/sw/custom_insn.h`, `docs/bai3-arch.md`.
-- `results/all.csv` và biểu đồ cpm: H0 → H1 → H2 → P3a → P3b → P3c.
-- Bảng tài nguyên (LUT, FF, BSRAM, DSP, Fmax) mỗi nấc.
-
-**Nghiệm thu:**
-- Checksum đúng 100%.
-- 3b đạt mục tiêu ≤ ½ cpm của H2. Nếu không đạt, phân tích nút thắt bằng cách đếm chu kỳ nạp/ghi so với chu kỳ tính.
-- Đạt timing ở tần số chạy.
-- LUT ≤ 85%.
-
----
-
 ## PHẦN E. MUA KIT, NẠP VÀ CHẠY THẬT (G4)
 
 ### E1. Lập phương án mua: tác tử KHÔNG tự đặt hàng
@@ -325,7 +255,7 @@ Trong C, gọi lệnh bằng chỉ thị `.insn r 0x0B, funct3, 0, rd, rs1, rs2`
   - Breadboard và dây cắm (tuỳ chọn).
 - **Gửi bảng cho CongVT duyệt.**
 
-Lưu ý: G0 → Bài 3 (phần mô phỏng) không cần kit, có thể làm song song trong lúc chờ hàng.
+Lưu ý: G0 → Bài 2 (phần mô phỏng) không cần kit, có thể làm song song trong lúc chờ hàng.
 
 ### E2. Kiểm tra khi nhận kit (trên macOS)
 1. Cắm kit. Chạy `ls /dev/tty.*` và `openFPGALoader --detect` [XÁC MINH cú pháp]. Ghi lại tên cổng serial và kết quả nhận chip vào `docs/env.md`.
@@ -340,7 +270,6 @@ Lưu ý: G0 → Bài 3 (phần mô phỏng) không cần kit, có thể làm son
 | 2 | Bài 1, nạp SRAM | Thấy `Hello…` |
 | 3 | Bài 1, nạp flash, cấp lại nguồn | Vẫn chạy |
 | 4 | Bài 2: H0, H1, H2 | `ok=1`, lệch sim ≤ 1% |
-| 5 | Bài 3: 3a → 3b → (3c sau khi duyệt) | Như nghiệm thu từng nấc |
 
 Các bước cần người thao tác vật lý (cắm cáp, nhấn reset, nhìn LED): tác tử ghi rõ "CẦN NGƯỜI" và hướng dẫn từng thao tác cho CongVT.
 
@@ -356,9 +285,8 @@ Các bước cần người thao tác vật lý (cắm cáp, nhấn reset, nhìn
 1. Sau G0, nếu thông số nào không xác minh được từ nguồn chính thức.
 2. Trước khi cài phần mềm cần quyền quản trị hoặc tải bản Gowin EDA cần tài khoản.
 3. Trước khi đặt mua kit (E1).
-4. Trước khi viết RTL nấc 3c (duyệt `docs/bai3-arch.md`).
-5. Khi LUT > 85% hoặc không đạt timing sau 2 lần tối ưu.
-6. Khi bước tiếp theo cần thao tác vật lý trên kit.
+4. Khi LUT > 85% hoặc không đạt timing sau 2 lần tối ưu.
+5. Khi bước tiếp theo cần thao tác vật lý trên kit.
 
 ---
 
@@ -386,5 +314,26 @@ Nguồn đã dùng: …
 | Công cụ trên macOS | Cao | Toolchain mở (Apicula) hỗ trợ Tang Nano 20K; Gowin EDA Education có bản macOS |
 | Bài 1 | Rất cao | Chủ yếu là đúng chân UART/clock |
 | Bài 2 | Cao | Thời gian mô phỏng: phải dùng Verilator |
-| Bài 3a, 3b | Cao | Giao thức PCPI khi bật cùng bộ nhân nội bộ |
-| Bài 3c | Trung bình | Hỗ trợ BRAM hai cổng trong toolchain mở; độ phức tạp phân xử bộ nhớ |
+
+---
+
+## PHẦN I. LỊCH SỬ THAY ĐỔI ĐẶC TẢ
+
+### 02/10/2026 — bỏ BÀI 3 (lệnh tuỳ biến và đơn vị vector mini)
+
+CongVT quyết định đưa Bài 3 ra khỏi phạm vi. Đặc tả nay gồm **hai bài**: Bài 1 (SoC in
+"Hello" qua UART) và Bài 2 (nhân ma trận, đo số chu kỳ).
+
+Phần việc đã làm được giữ trong `docs/riscv-tn20k/bai3/`, đánh dấu **ngoài phạm vi**. Giữ
+lại vì đó là số đo thật, xoá đi thì không dựng lại được, và vì nó trả lời được một câu mà
+Bài 2 không trả lời: tăng tốc bằng phần cứng chuyên dụng đổi được bao nhiêu.
+
+Chặng cuối của Bài 3 cũng để lại một kết quả đáng giữ. Nấc 3c **đúng về chức năng** — tổng
+kiểm khớp đáp án độc lập, cpm 3,84 — nhưng **không vừa chip**, và nguyên nhân chỉ lộ ra khi
+tổng hợp riêng `bram.v`: thêm cổng thứ hai làm **suy luận BSRAM đứt hoàn toàn**, cả 32 KB bị
+dựng thành 262 144 flip-flop trên một chip chỉ có 15 552. Vượt 17 lần.
+
+Điều ấy nói rằng điểm (3) trong phần kiến trúc của Bài 3 cũ — *"luồng công cụ: toolchain mở
+hay Gowin EDA, theo kết quả kiểm tra BRAM hai cổng ở G1"* — là một câu hỏi đặt đúng mà chưa
+ai trả lời trước khi viết RTL. Nếu sau này quay lại bài này, **phép kiểm BRAM hai cổng phải
+là việc đầu tiên**, trước cả bản thiết kế kiến trúc.

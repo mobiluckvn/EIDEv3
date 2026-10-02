@@ -151,9 +151,33 @@ void matmul_v1_p3b(int n, const elem_t *a, const elem_t *b_t, acc_t *c) {
     }
 }
 
+/*
+ * Nhân ma trận nấc 3c dùng đơn vị vector mini qua PCPI:
+ * Mỗi hàng A nạp một lần vào v0, rồi vòng qua 16 cột của Bt:
+ * vload v1, vdot v0, v1, acc.rd, lưu vào C.
+ */
+void matmul_v1_p3c(int n, const elem_t *a, const elem_t *b_t, acc_t *c) {
+    custom_vsetvl(n);
+    const elem_t *a_row_ptr = a;
+    acc_t *c_row_ptr = c;
+    for (int i = 0; i < n; i++) {
+        custom_vload(0, a_row_ptr);
+        const elem_t *b_col_ptr = b_t;
+        for (int j = 0; j < n; j++) {
+            custom_vload(1, b_col_ptr);
+            custom_acc_clr();
+            custom_vdot(0, 1);
+            c_row_ptr[j] = custom_acc_rd();
+            b_col_ptr += n;
+        }
+        a_row_ptr += n;
+        c_row_ptr += n;
+    }
+}
+
 int main(void) {
     LED_REG = 0x01;
-    uart_puts("=== BAI 3: CUSTOM INSTRUCTION BENCHMARK (P3b - dot4) ===\r\n");
+    uart_puts("=== BAI 3: CUSTOM INSTRUCTION BENCHMARK (P3c - vector mini) ===\r\n");
 
     uint64_t overhead = measure_rdcycle_overhead();
 
@@ -177,11 +201,11 @@ int main(void) {
     uart_put_u64(min_trans_cycles);
     uart_puts("\r\n");
 
-    // 2. Đo nhân ma trận P3b với B đã chuyển vị (chạy 3 lần lấy min)
+    // 2. Đo nhân ma trận P3c với B đã chuyển vị (chạy 3 lần lấy min)
     uint64_t min_cycles = (uint64_t)-1;
     for (int run = 0; run < 3; run++) {
         uint64_t t0 = get_cycle64();
-        matmul_v1_p3b(MATRIX_N, (const elem_t *)mat_a, mat_b_trans, mat_c);
+        matmul_v1_p3c(MATRIX_N, (const elem_t *)mat_a, mat_b_trans, mat_c);
         uint64_t t1 = get_cycle64();
 
         uint64_t diff = (t1 >= t0) ? (t1 - t0) : 0;
@@ -201,7 +225,7 @@ int main(void) {
 
     uart_puts("RESULT,n=");
     uart_put_u64((uint64_t)MATRIX_N);
-    uart_puts(",dtype=I8,ver=V1,hw=P3b,cycles=");
+    uart_puts(",dtype=I8,ver=V1,hw=P3c,cycles=");
     uart_put_u64(min_cycles);
     uart_puts(",macs=");
     uart_put_u64((uint64_t)macs);

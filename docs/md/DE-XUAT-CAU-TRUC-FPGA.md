@@ -59,7 +59,7 @@ riscv-tn20k-b/
 ├── docs/             hardware-facts.md  env.md  nang-luc-kit.md  third_party.md
 ├── bai1/  sw/  sim/
 ├── bai2/  sw/  sim/  tools/
-└── bai3/  rtl/  sim/
+└── bai3/  rtl/  sim/        (nay ngoài phạm vi)
 ```
 
 Ba chỗ không nói lên cấu trúc thật:
@@ -96,7 +96,6 @@ riscv-tn20k/                        ◀── SOLUTION: cả đề án
 │   └── KET-QUA.md                  số đo của cả hai tầng
 │
 ├── bai2-nhan-ma-tran/              ◀── DỰ ÁN 2 — cùng khuôn
-├── bai3-tang-toc/                  ◀── DỰ ÁN 3 — cùng khuôn
 └── ket-qua-chung/                  bảng so ba bài · biểu đồ cpm
 ```
 
@@ -183,8 +182,16 @@ Nấc 3a vừa rồi PASS với hai lỗ, và chỉ phép đo độ nhạy mới
 | 2 | **A5.12 bản đồ địa chỉ** | là giao kèo hai tầng, và nó đang nằm trong chú thích mã |
 | 3 | **A5.10 cây mô-đun** | cần viết bộ đọc quan hệ gọi mô-đun Verilog |
 | 4 | **A8 + A9** | mở rộng khối có sẵn |
-| 5 | **Dọn lại cấu trúc thư mục** | làm cuối, vì nó đụng vào đường dẫn ở nhiều chỗ, và nên làm khi ba bài đã rõ hình |
+| 5 | **Dọn lại cấu trúc thư mục** | nay làm được: rào cản đã hết, xem dưới |
 
-Việc 5 có một rủi ro phải nói trước: đổi cấu trúc thư mục lúc Bài 3 đang dở sẽ làm hỏng mọi
-đường dẫn trong các lời gọi công cụ đã ghi vào sổ, và làm bản ghi cũ khó đọc lại. Nên để tới
-khi Bài 3 xong, hoặc làm bằng một changeset riêng không kèm việc gì khác.
+Việc 5 từng có một rào cản: đổi cấu trúc thư mục lúc Bài 3 đang dở sẽ làm hỏng mọi đường dẫn
+trong các lời gọi công cụ đã ghi vào sổ, và làm bản ghi cũ khó đọc lại.
+
+**Rào cản ấy đã hết.** Ngày 02/10/2026 Bài 3 ra khỏi phạm vi, nên đề án còn hai dự án và không
+còn việc nào đang dở giữa chặng. Vẫn nên làm bằng một changeset riêng không kèm việc gì khác —
+không phải vì rủi ro trùng việc, mà vì một changeset chỉ đổi đường dẫn thì đọc lại được, còn
+một changeset vừa đổi đường dẫn vừa đổi mã thì không ai tách ra được nữa.
+
+Và cấu trúc đề xuất nay chỉ còn **hai dự án**: `bai1-soc-hello/` và `bai2-nhan-ma-tran/`. Mã
+của Bài 3 chuyển vào `ngoai-pham-vi/bai3-tang-toc/`, giữ nguyên hai tầng `chip/` và
+`phan-mem/` để còn đọc lại được.

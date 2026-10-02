@@ -1,10 +1,14 @@
 # Lõi RISC-V trên FPGA Sipeed Tang Nano 20K — hồ sơ phiên làm việc
 
 Anh Công giao: *dựng một CPU RISC-V trên FPGA, chạy chương trình C trên CPU đó, đo chi phí nhân
-ma trận, rồi thêm phần cứng chuyên dụng để giảm chi phí ấy.* Đề bài đầy đủ ở
-[`docs/fpga/`](../fpga/) — 391 dòng, ba bài, hai cổng chuẩn bị, **sáu điểm dừng bắt buộc**.
+ma trận.* Đề bài đầy đủ ở [`docs/fpga/`](../fpga/) — **hai bài**, hai cổng chuẩn bị, **năm điểm
+dừng bắt buộc**.
 
-**Đang làm.** Thư mục này giữ dấu vết, không giữ bản kể lại.
+Đặc tả từng có bài thứ ba (thêm phần cứng chuyên dụng để giảm chi phí nhân ma trận). Ngày
+02/10/2026 anh Công đưa nó ra khỏi phạm vi; phần đã làm giữ ở [`bai3/`](bai3/) có đánh dấu
+ngoài phạm vi — xem [`bai3/NGOAI-PHAM-VI.md`](bai3/NGOAI-PHAM-VI.md).
+
+**Đang chờ kit về.** Thư mục này giữ dấu vết, không giữ bản kể lại.
 
 ---
 
@@ -70,8 +74,8 @@ Tài nguyên ba cấu hình CPU, **đo thật** bằng cách tổng hợp lại 
 H2 chỉ tốn thêm **32 LUT** mà có bộ nhân một chu kỳ, vì nó đẩy phép nhân xuống khối DSP cứng.
 H1 làm bằng LUT nên tốn gấp mười lần logic.
 
-Tính cả kịch bản Bài 3 nặng nhất, LUT dùng khoảng **19 %** — còn dư hơn 13 600 LUT trước ngưỡng
-85 % đề bài đặt. Nâng BRAM lên 64 KB đã đo được: 32/46 khối, Fmax còn 102 MHz.
+Với hai bài còn trong phạm vi, LUT dùng **10,7 %** (2 211/20 736) — còn dư hơn 18 500 LUT trước
+ngưỡng 85 % đề bài đặt. Nâng BRAM lên 64 KB đã đo được: 32/46 khối, Fmax còn 102 MHz.
 
 ---
 
@@ -79,11 +83,10 @@ Tính cả kịch bản Bài 3 nặng nhất, LUT dùng khoảng **19 %** — c�
 
 | | Vì sao |
 |---|---|
-| **Chạy trên bo thật** | chưa có kit. Đề bài mục E1 bắt lập bảng so giá ba nơi rồi trình người duyệt; tác tử **không được tự đặt hàng** |
+| **Chạy trên bo thật** | kit **đã đặt mua, đang chờ về**. Đề bài mục E1 bắt lập bảng so giá ba nơi rồi trình người duyệt; tác tử **không được tự đặt hàng** |
 | **Đối chiếu số đo mô phỏng với số đo thật** | cần kit. Đề bài đòi chênh ≤ 1 % |
 | **Bài 2 đủ ma trận cấu hình** | mới 4 trên **96** phép đo (4 N × 2 kiểu × 4 cách × 3 cấu hình). Cần bộ điều khiển sinh lại dữ liệu, dịch lại, dựng lại mô phỏng cho từng tổ hợp |
 | **Bài 2 bảng CSV và biểu đồ** | `parse_log.py`, `plot.py` chưa viết |
-| **Bài 3 cả ba nấc** | chưa bắt đầu. Nấc 3c còn là **điểm dừng bắt buộc** — tài liệu kiến trúc phải được duyệt trước khi viết RTL |
 | **Gowin EDA** | đã tải bản Education cho macOS (655 MB), **chưa cài**. Đó là luồng đối chiếu, không phải luồng chính |
 | **Bảng 12 thông số** | có đủ 12 dòng 12 link, nhưng **5 dòng trỏ vào một trang tra cứu** chứ không phải tài liệu cụ thể. Chưa coi là xong |
 

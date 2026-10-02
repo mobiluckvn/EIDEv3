@@ -142,3 +142,19 @@ số ghi cứng.
 **tách**, là phần sai đầu tiên: cho `tach()` một bảng có ô chứa `|` trong mã, một bảng có hàng
 thiếu ô, một bảng có hàng thừa ô, rồi khẳng định mọi hàng ra đúng số ô bằng tiêu đề. Phần bề
 rộng thì cần ảnh, và `BangMd` đã có một chú thích nói đúng chuyện ấy từ 28/09.
+
+## 6 · Tác tử xác minh con có hạn 10 lời gọi, quá chặt
+
+*02/10/2026.*
+
+Lượt chốt toán hạng nấc 3c, Agent gọi tác tử xác minh con. Nó **cày hết 10 lời gọi vào
+`ledger.query` và `fs.read` rồi trả về `chua_du_du_kien`** mà chưa kịp nộp báo cáo đúng lược
+đồ. Nên lời xác minh biến mất đúng lúc cần nó nhất — lúc có một kết quả trượt phải đối soát.
+
+Hai chỗ nên sửa:
+
+- **Nới hạn** cho tác tử xác minh, hoặc tính riêng: lời gọi để *đọc bằng chứng* không nên tiêu
+  cùng một ngân sách với lời gọi để *làm việc*.
+- **Nộp báo cáo trước khi hết hạn.** Khi còn 2 lời gọi, buộc nó nộp những gì đã có kèm ghi rõ
+  phần nào chưa kiểm được — một báo cáo thiếu có nói rõ chỗ thiếu thì dùng được, còn
+  `chua_du_du_kien` thì không dùng được gì.

@@ -94,6 +94,8 @@ module pcpi_vmini (
     reg [1:0] active_vs1;
     reg [1:0] active_vs2;
     reg [31:0] base_addr;
+    reg [127:0] opa;
+    reg [127:0] opb;
 
     // Thanh ghi tích luỹ acc (32-bit có dấu)
     reg signed [31:0] acc;
@@ -120,44 +122,44 @@ module pcpi_vmini (
         if (state == STATE_DOT) begin
             case (step)
                 3'd0: begin
-                    m_a0 = (vl > 5'd0)  ? $signed(vreg[active_vs1][  7:  0]) : 8'sd0;
-                    m_b0 = (vl > 5'd0)  ? $signed(vreg[active_vs2][  7:  0]) : 8'sd0;
-                    m_a1 = (vl > 5'd1)  ? $signed(vreg[active_vs1][ 15:  8]) : 8'sd0;
-                    m_b1 = (vl > 5'd1)  ? $signed(vreg[active_vs2][ 15:  8]) : 8'sd0;
-                    m_a2 = (vl > 5'd2)  ? $signed(vreg[active_vs1][ 23: 16]) : 8'sd0;
-                    m_b2 = (vl > 5'd2)  ? $signed(vreg[active_vs2][ 23: 16]) : 8'sd0;
-                    m_a3 = (vl > 5'd3)  ? $signed(vreg[active_vs1][ 31: 24]) : 8'sd0;
-                    m_b3 = (vl > 5'd3)  ? $signed(vreg[active_vs2][ 31: 24]) : 8'sd0;
+                    m_a0 = (vl > 5'd0)  ? $signed(opa[  7:  0]) : 8'sd0;
+                    m_b0 = (vl > 5'd0)  ? $signed(opb[  7:  0]) : 8'sd0;
+                    m_a1 = (vl > 5'd1)  ? $signed(opa[ 15:  8]) : 8'sd0;
+                    m_b1 = (vl > 5'd1)  ? $signed(opb[ 15:  8]) : 8'sd0;
+                    m_a2 = (vl > 5'd2)  ? $signed(opa[ 23: 16]) : 8'sd0;
+                    m_b2 = (vl > 5'd2)  ? $signed(opb[ 23: 16]) : 8'sd0;
+                    m_a3 = (vl > 5'd3)  ? $signed(opa[ 31: 24]) : 8'sd0;
+                    m_b3 = (vl > 5'd3)  ? $signed(opb[ 31: 24]) : 8'sd0;
                 end
                 3'd1: begin
-                    m_a0 = (vl > 5'd4)  ? $signed(vreg[active_vs1][ 39: 32]) : 8'sd0;
-                    m_b0 = (vl > 5'd4)  ? $signed(vreg[active_vs2][ 39: 32]) : 8'sd0;
-                    m_a1 = (vl > 5'd5)  ? $signed(vreg[active_vs1][ 47: 40]) : 8'sd0;
-                    m_b1 = (vl > 5'd5)  ? $signed(vreg[active_vs2][ 47: 40]) : 8'sd0;
-                    m_a2 = (vl > 5'd6)  ? $signed(vreg[active_vs1][ 55: 48]) : 8'sd0;
-                    m_b2 = (vl > 5'd6)  ? $signed(vreg[active_vs2][ 55: 48]) : 8'sd0;
-                    m_a3 = (vl > 5'd7)  ? $signed(vreg[active_vs1][ 63: 56]) : 8'sd0;
-                    m_b3 = (vl > 5'd7)  ? $signed(vreg[active_vs2][ 63: 56]) : 8'sd0;
+                    m_a0 = (vl > 5'd4)  ? $signed(opa[ 39: 32]) : 8'sd0;
+                    m_b0 = (vl > 5'd4)  ? $signed(opb[ 39: 32]) : 8'sd0;
+                    m_a1 = (vl > 5'd5)  ? $signed(opa[ 47: 40]) : 8'sd0;
+                    m_b1 = (vl > 5'd5)  ? $signed(opb[ 47: 40]) : 8'sd0;
+                    m_a2 = (vl > 5'd6)  ? $signed(opa[ 55: 48]) : 8'sd0;
+                    m_b2 = (vl > 5'd6)  ? $signed(opb[ 55: 48]) : 8'sd0;
+                    m_a3 = (vl > 5'd7)  ? $signed(opa[ 63: 56]) : 8'sd0;
+                    m_b3 = (vl > 5'd7)  ? $signed(opb[ 63: 56]) : 8'sd0;
                 end
                 3'd2: begin
-                    m_a0 = (vl > 5'd8)  ? $signed(vreg[active_vs1][ 71: 64]) : 8'sd0;
-                    m_b0 = (vl > 5'd8)  ? $signed(vreg[active_vs2][ 71: 64]) : 8'sd0;
-                    m_a1 = (vl > 5'd9)  ? $signed(vreg[active_vs1][ 79: 72]) : 8'sd0;
-                    m_b1 = (vl > 5'd9)  ? $signed(vreg[active_vs2][ 79: 72]) : 8'sd0;
-                    m_a2 = (vl > 5'd10) ? $signed(vreg[active_vs1][ 87: 80]) : 8'sd0;
-                    m_b2 = (vl > 5'd10) ? $signed(vreg[active_vs2][ 87: 80]) : 8'sd0;
-                    m_a3 = (vl > 5'd11) ? $signed(vreg[active_vs1][ 95: 88]) : 8'sd0;
-                    m_b3 = (vl > 5'd11) ? $signed(vreg[active_vs2][ 95: 88]) : 8'sd0;
+                    m_a0 = (vl > 5'd8)  ? $signed(opa[ 71: 64]) : 8'sd0;
+                    m_b0 = (vl > 5'd8)  ? $signed(opb[ 71: 64]) : 8'sd0;
+                    m_a1 = (vl > 5'd9)  ? $signed(opa[ 79: 72]) : 8'sd0;
+                    m_b1 = (vl > 5'd9)  ? $signed(opb[ 79: 72]) : 8'sd0;
+                    m_a2 = (vl > 5'd10) ? $signed(opa[ 87: 80]) : 8'sd0;
+                    m_b2 = (vl > 5'd10) ? $signed(opb[ 87: 80]) : 8'sd0;
+                    m_a3 = (vl > 5'd11) ? $signed(opa[ 95: 88]) : 8'sd0;
+                    m_b3 = (vl > 5'd11) ? $signed(opb[ 95: 88]) : 8'sd0;
                 end
                 default: begin // step == 3'd3
-                    m_a0 = (vl > 5'd12) ? $signed(vreg[active_vs1][103: 96]) : 8'sd0;
-                    m_b0 = (vl > 5'd12) ? $signed(vreg[active_vs2][103: 96]) : 8'sd0;
-                    m_a1 = (vl > 5'd13) ? $signed(vreg[active_vs1][111:104]) : 8'sd0;
-                    m_b1 = (vl > 5'd13) ? $signed(vreg[active_vs2][111:104]) : 8'sd0;
-                    m_a2 = (vl > 5'd14) ? $signed(vreg[active_vs1][119:112]) : 8'sd0;
-                    m_b2 = (vl > 5'd14) ? $signed(vreg[active_vs2][119:112]) : 8'sd0;
-                    m_a3 = (vl > 5'd15) ? $signed(vreg[active_vs1][127:120]) : 8'sd0;
-                    m_b3 = (vl > 5'd15) ? $signed(vreg[active_vs2][127:120]) : 8'sd0;
+                    m_a0 = (vl > 5'd12) ? $signed(opa[103: 96]) : 8'sd0;
+                    m_b0 = (vl > 5'd12) ? $signed(opb[103: 96]) : 8'sd0;
+                    m_a1 = (vl > 5'd13) ? $signed(opa[111:104]) : 8'sd0;
+                    m_b1 = (vl > 5'd13) ? $signed(opb[111:104]) : 8'sd0;
+                    m_a2 = (vl > 5'd14) ? $signed(opa[119:112]) : 8'sd0;
+                    m_b2 = (vl > 5'd14) ? $signed(opb[119:112]) : 8'sd0;
+                    m_a3 = (vl > 5'd15) ? $signed(opa[127:120]) : 8'sd0;
+                    m_b3 = (vl > 5'd15) ? $signed(opb[127:120]) : 8'sd0;
                 end
             endcase
         end else begin
@@ -191,6 +193,8 @@ module pcpi_vmini (
             active_vd   <= 2'd0;
             active_vs1  <= 2'd0;
             active_vs2  <= 2'd0;
+            opa         <= 128'd0;
+            opb         <= 128'd0;
             base_addr   <= 32'd0;
             vreg[0]     <= 128'd0;
             vreg[1]     <= 128'd0;
@@ -230,6 +234,8 @@ module pcpi_vmini (
                         else if (is_vdot) begin
                             active_vs1 <= reg_vs1;
                             active_vs2 <= reg_vs2;
+                            opa        <= vreg[reg_vs1];
+                            opb        <= vreg[reg_vs2];
                             state      <= STATE_DOT;
                             step       <= 3'd0;
                             reg_wait   <= 1'b1;

@@ -19,7 +19,7 @@ Tài liệu ghi lại cấu hình máy chủ và hiện trạng công cụ trên
 | `nextpnr-himbaechel` | **ĐÃ CÓ** | nextpnr trong oss-cad-suite | `/Users/congvt/.eide/cong-cu/oss-cad-suite/bin/nextpnr-himbaechel` | Đặt-đi dây cho chip Gowin GW2A-18C |
 | `gowin_pack` | **ĐÃ CÓ** | Apicula trong oss-cad-suite | `/Users/congvt/.eide/cong-cu/oss-cad-suite/bin/gowin_pack` | Đóng gói bitstream `.fs` |
 | `openFPGALoader` | **ĐÃ CÓ** | `v1.1.1` | `/Users/congvt/.eide/cong-cu/oss-cad-suite/bin/openFPGALoader` | Nạp bitstream vào SRAM / Flash của kit |
-| `verilator` | **ĐÃ CÓ** | `5.052` | `/opt/homebrew/bin/verilator` | Mô phỏng nhanh, đo số chu kỳ (Bài 2, Bài 3) |
+| `verilator` | **ĐÃ CÓ** | `5.052` | `/opt/homebrew/bin/verilator` | Mô phỏng nhanh, đo số chu kỳ (Bài 2) |
 | `iverilog` | **ĐÃ CÓ** | có sẵn | `/opt/homebrew/bin/iverilog` | Mô phỏng testbench nhỏ, kiểm từng khối |
 | `gtkwave` | **ĐÃ CÓ** | có sẵn trong gói | `/Users/congvt/.eide/cong-cu/oss-cad-suite/bin/gtkwave` | Xem dạng sóng tín hiệu |
 | `cc` | **ĐÃ CÓ** | `Apple clang version 21.0.0` | `/usr/bin/cc` | Biên dịch mô phỏng C máy chủ |

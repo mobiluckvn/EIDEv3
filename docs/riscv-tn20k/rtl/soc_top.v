@@ -1,13 +1,12 @@
 `timescale 1ns / 1ps
 
 `include "third_party/picorv32/picorv32.v"
-`include "bai3/rtl/pcpi_dot4.v"
 
 module soc_top #(
     parameter INIT_FILE       = ".eide/build/mach.hex",
     parameter ENABLE_MUL      = 0,
     parameter ENABLE_FAST_MUL = 0,
-    parameter ENABLE_PCPI     = 1
+    parameter ENABLE_PCPI     = 0
 ) (
     input  wire       clk_27m,      // Thạch anh 27 MHz (PIN 4)
     input  wire       btn_s1,       // Nút S1 (PIN 88, Active-Low)
@@ -97,27 +96,14 @@ module soc_top #(
         .trace_data  ()
     );
 
-    generate
-        if (ENABLE_PCPI) begin : gen_pcpi
-            pcpi_dot4 u_pcpi_dot4 (
-                .clk        (clk_27m),
-                .resetn     (sys_resetn),
-                .pcpi_valid (pcpi_valid),
-                .pcpi_insn  (pcpi_insn),
-                .pcpi_rs1   (pcpi_rs1),
-                .pcpi_rs2   (pcpi_rs2),
-                .pcpi_wr    (pcpi_wr),
-                .pcpi_rd    (pcpi_rd),
-                .pcpi_wait  (pcpi_wait),
-                .pcpi_ready (pcpi_ready)
-            );
-        end else begin : gen_no_pcpi
-            assign pcpi_wr    = 1'b0;
-            assign pcpi_rd    = 32'd0;
-            assign pcpi_wait  = 1'b0;
-            assign pcpi_ready = 1'b0;
-        end
-    endgenerate
+    // Không có khối đồng xử lý ngoài. Vẫn giữ các dây PCPI và buộc chúng về mức không
+    // tích cực, chứ không bỏ hẳn: `picorv32` nhận chúng là cổng vào, và `pcpi_wait` thả nổi
+    // thì CPU có thể treo vĩnh viễn ở một lệnh nó không hiểu — một kiểu hỏng không hiện ra
+    // lúc mô phỏng nếu chương trình không dùng lệnh lạ nào.
+    assign pcpi_wr    = 1'b0;
+    assign pcpi_rd    = 32'd0;
+    assign pcpi_wait  = 1'b0;
+    assign pcpi_ready = 1'b0;
 
     // -------------------------------------------------------------
     // 4. Giải mã địa chỉ (Memory-mapped IO)

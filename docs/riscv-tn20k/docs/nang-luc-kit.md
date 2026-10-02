@@ -1,5 +1,14 @@
 # Đánh giá năng lực phần cứng Sipeed Tang Nano 20K cho Đề án
 
+
+> **Ghi chú 02/10/2026.** Bài 3 đã được đưa ra khỏi phạm vi đề án. Những phần dưới đây nói về
+> Bài 3 **chỉ còn giá trị tham khảo**, không còn là yêu cầu. Bản phân tích giữ nguyên như lúc
+> nộp — xem [`bai3/NGOAI-PHAM-VI.md`](../bai3/NGOAI-PHAM-VI.md) để biết đã đo được gì và vì sao
+> dừng.
+>
+> Số thật của phạm vi hai bài, đo ngày 02/10/2026: **LUT4 2 211/20 736 = 10,7 %**,
+> BSRAM 16/46, Fmax 106,01 MHz trên yêu cầu 27 MHz.
+
 Tài liệu này phân tích và đánh giá năng lực phần cứng của kit **Sipeed Tang Nano 20K** (chip **Gowin GW2AR-LV18QN88C8/I7**) nhằm trả lời câu hỏi: *Kit này có đủ sức chạy hết chương trình của đề án (Bài 1, Bài 2, Bài 3) hay không?*
 
 Mọi con số trong tài liệu đều có sở cứ xác thực từ ba nguồn:
