@@ -285,14 +285,24 @@ module pcpi_vmini (
                     endcase
                 end
 
-                // FSM tính tích vô hướng 4 làn song song: 4 chu kỳ
+                // FSM tính tích vô hướng 4 làn song song: 5 chu kỳ (acc hoàn tất trước khi báo ready)
                 STATE_DOT: begin
-                    acc <= acc + sum4;
                     case (step)
-                        3'd0: step <= 3'd1;
-                        3'd1: step <= 3'd2;
+                        3'd0: begin
+                            acc  <= acc + sum4;
+                            step <= 3'd1;
+                        end
+                        3'd1: begin
+                            acc  <= acc + sum4;
+                            step <= 3'd2;
+                        end
                         3'd2: begin
-                            step      <= 3'd3;
+                            acc  <= acc + sum4;
+                            step <= 3'd3;
+                        end
+                        3'd3: begin
+                            acc       <= acc + sum4;
+                            step      <= 3'd4;
                             reg_wait  <= 1'b0;
                             reg_ready <= 1'b1;
                         end
