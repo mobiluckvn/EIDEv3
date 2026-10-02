@@ -40,6 +40,26 @@ def _thu_muc_hdl(ctx: Any) -> Path:
     return d
 
 
+def _lenh_mo_rong_cua_firmware(ctx: Any) -> dict[str, int]:
+    """Lệnh mở rộng mà mã máy nạp vào lõi mềm CÓ THẬT dùng, đọc từ `build:firmware`.
+
+    Tác tử không phải tự nhớ con số này, và không phải tự nghĩ ra việc đối chiếu nó với
+    `dinh_nghia`. Đường dẫn tới dữ kiện phải tự nối — một dữ kiện có trong kho mà không
+    đường nào dẫn tới nó thì bằng không có.
+    """
+    try:
+        muc = ctx.store.get("build:firmware")
+    except Exception:
+        return {}
+    if not muc:
+        return {}
+    goc = getattr(muc, "canonical", None) or (muc.get("canonical") if isinstance(muc, dict) else None)
+    if not isinstance(goc, dict):
+        return {}
+    ra = goc.get("lenh_mo_rong")
+    return ra if isinstance(ra, dict) else {}
+
+
 def _ghi_kho(ctx: Any, explain: dict[str, Any], kq: Any, ten: str) -> None:
     """Ghi kết quả một chặng thành một mục trong kho, để tab và lịch sử thấy được."""
     ma = f"{MA_HDL}:{ten}"
@@ -111,7 +131,8 @@ def register(r: Registry) -> None:
 
         goc = _goc(ctx)
         kq = H.mo_phong(goc=goc, nguon=goc / nguon, dinh=dinh, bo_may=bo_may,
-                        ra=_thu_muc_hdl(ctx), dinh_nghia=dinh_nghia)
+                        ra=_thu_muc_hdl(ctx), dinh_nghia=dinh_nghia,
+                        lenh_mo_rong=_lenh_mo_rong_cua_firmware(ctx))
         _ghi_kho(ctx, explain, kq, "sim")
         if not kq.dat:
             return _loi_chang(kq, (

@@ -68,12 +68,15 @@ CHUOI_CONG_CU = {
     # `.elf` thành `.hex` rồi mới nhúng được vào BRAM.
     "rv32i": {"gcc": "riscv64-unknown-elf-gcc", "size": "riscv64-unknown-elf-size",
               "objcopy": "riscv64-unknown-elf-objcopy",
+              "objdump": "riscv64-unknown-elf-objdump",
               "march": "rv32i_zicsr", "mabi": "ilp32"},
     "rv32im": {"gcc": "riscv64-unknown-elf-gcc", "size": "riscv64-unknown-elf-size",
                "objcopy": "riscv64-unknown-elf-objcopy",
+               "objdump": "riscv64-unknown-elf-objdump",
                "march": "rv32im_zicsr", "mabi": "ilp32"},
     "rv32imac": {"gcc": "riscv64-unknown-elf-gcc", "size": "riscv64-unknown-elf-size",
                  "objcopy": "riscv64-unknown-elf-objcopy",
+                 "objdump": "riscv64-unknown-elf-objdump",
                  "march": "rv32imac_zicsr", "mabi": "ilp32"},
 }
 
@@ -142,6 +145,14 @@ class KetQuaBienDich:
     # nhau, nên tách thành trường riêng để không ai đưa nhầm tệp cho nhầm công cụ.
     tep_hex_readmemh: str = ""
     so_tu_readmemh: int = 0
+    # Mã máy CÓ THẬT dùng những lệnh mở rộng nào. Đếm từ bản tháo mã, không suy từ cờ
+    # `-march`: `-march=rv32im` chỉ CHO PHÉP sinh lệnh nhân, không bảo đảm có lệnh nào được
+    # sinh ra. Trường này tồn tại vì ngày 02/10/2026 một phép đo đã so hai cấu hình CPU —
+    # có bộ nhân và không có bộ nhân — bằng một mã máy biên dịch với `-march=rv32i`, tức
+    # không chứa một lệnh `mul` nào. Hai lượt đo ra số GIỐNG HỆT NHAU, và con số giống nhau
+    # ấy bị đọc thành "bộ nhân phần cứng không giúp gì", trong khi nó chỉ có nghĩa là bộ
+    # nhân chưa bao giờ được dùng. Xem `kiem_khop_phan_cung()`.
+    lenh_mo_rong: dict[str, int] = field(default_factory=dict)
     thieu_libc: bool = False      # máy không có newlib → mọi hàm chuẩn sẽ không liên kết được
     flash: int = 0
     sram: int = 0
@@ -159,6 +170,7 @@ class KetQuaBienDich:
                 "tep_ra": self.tep_ra, "tep_bin": self.tep_bin,
                 "tep_hex_readmemh": self.tep_hex_readmemh,
                 "so_tu_readmemh": self.so_tu_readmemh,
+                "lenh_mo_rong": dict(self.lenh_mo_rong),
                 "thieu_libc": self.thieu_libc,
                 "section": dict(self.section),
                 "flash": self.flash, "sram": self.sram,
@@ -257,11 +269,15 @@ def tim_chuoi_cong_cu(isa: str) -> dict[str, str]:
           "float": cau_hinh.get("float", ""),
           "march": cau_hinh.get("march", ""), "mabi": cau_hinh.get("mabi", "")}
     for ten in ("arduino-cli", cau_hinh.get("gcc", ""), cau_hinh.get("size", ""),
-                cau_hinh.get("objcopy", "")):
+                cau_hinh.get("objcopy", ""), cau_hinh.get("objdump", "")):
         if ten:
             duong = _tim_lenh(ten)
             if duong:
                 ra[ten] = duong
+    # Khoá theo VAI, không theo tên lệnh: bên gọi cần "trình tháo mã của kiến trúc này" mà
+    # không phải biết nó tên gì. Tên lệnh ở trên vẫn giữ, vì `_lenh_rv32` tra theo tên.
+    if cau_hinh.get("objdump") and cau_hinh["objdump"] in ra:
+        ra["objdump"] = ra[cau_hinh["objdump"]]
     return ra
 
 
@@ -488,10 +504,118 @@ def bien_dich(*, goc: Path, sketch: Path, isa: str = "avr8",
             # và nó chạy toàn lệnh 0. Đúng loại nửa-thành-công phải nói ra.
             kq.vi_sao_khong_dat = loi_hex
             return kq
+        kq.lenh_mo_rong = _dem_lenh_mo_rong(cc, elf=elf)
     elif elf is not None:
         kq.flash, kq.sram = _doc_kich_thuoc(cc.get("avr-size", ""), elf)
     kq.dat = True
     return kq
+
+
+# Lệnh của từng phần mở rộng RV32, nhóm theo phần. Chỉ các lệnh mà việc CÓ hay KHÔNG CÓ
+# chúng trong mã máy đổi hẳn nghĩa của một phép đo hiệu năng.
+_LENH_THEO_PHAN = {
+    "m": ("mul", "mulh", "mulhsu", "mulhu", "div", "divu", "rem", "remu"),
+    "a": ("lr.w", "sc.w", "amoswap.w", "amoadd.w", "amoand.w", "amoor.w", "amoxor.w"),
+    "c": ("c.add", "c.lw", "c.sw", "c.li", "c.mv", "c.jr"),
+}
+
+# Hàm libgcc thay cho lệnh không có. Có mặt chúng nghĩa là trình dịch phải làm phép toán
+# bằng một vòng lặp phần mềm.
+_HAM_THAY_LENH = ("__mulsi3", "__muldi3", "__divsi3", "__udivsi3", "__modsi3", "__umodsi3")
+
+
+def _dem_lenh_mo_rong(cc: dict[str, str], *, elf: Path) -> dict[str, int]:
+    """Đếm lệnh mở rộng CÓ THẬT trong mã máy, bằng cách tháo mã.
+
+    Vì sao phải tháo mã chứ không đọc cờ `-march`: `-march=rv32im` chỉ *cho phép* trình dịch
+    sinh lệnh nhân. Nó không bảo đảm có lệnh nào được sinh. Và ngược lại, `-march=rv32i`
+    *bảo đảm* không có lệnh nhân nào — nên một mã máy dịch bằng cờ ấy **không thể** phân biệt
+    một CPU có bộ nhân với một CPU không có.
+
+    Đếm riêng cả lời gọi `__mulsi3`/`__divsi3`: chúng là phép nhân, phép chia làm bằng vòng
+    lặp phần mềm, và biết chúng nằm ở đâu quan trọng hơn biết chúng có bao nhiêu — một lời
+    gọi trong vòng lặp nóng đáng giá hàng trăm lần một lời gọi trong `main`.
+    """
+    duong = cc.get("objdump") or cc.get("riscv64-unknown-elf-objdump")
+    if not duong or not Path(duong).exists() or not elf.exists():
+        return {}
+    try:
+        r = subprocess.run([duong, "-d", str(elf)], capture_output=True, text=True,
+                           timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if r.returncode != 0:
+        return {}
+
+    dem: dict[str, int] = {}
+    ham_hien_tai = ""
+    ham_co_goi: dict[str, set[str]] = {}
+    for dong in r.stdout.splitlines():
+        nhan = re.match(r"^[0-9a-f]+ <(.+)>:", dong)
+        if nhan:
+            ham_hien_tai = nhan.group(1)
+            continue
+        if not re.match(r"^\s+[0-9a-f]+:", dong):
+            continue
+        # Cột lệnh nằm sau mã máy, tách bằng tab.
+        phan = dong.split("\t")
+        ma_lenh = phan[2].strip().split()[0] if len(phan) > 2 and phan[2].strip() else ""
+        for phan_isa, ds in _LENH_THEO_PHAN.items():
+            if ma_lenh in ds:
+                dem[f"lenh_{phan_isa}"] = dem.get(f"lenh_{phan_isa}", 0) + 1
+        for ham in _HAM_THAY_LENH:
+            if ham in dong:
+                dem[f"goi_{ham.strip('_')}"] = dem.get(f"goi_{ham.strip('_')}", 0) + 1
+                # Lời gọi NẰM TRONG chính hàm ấy là nhãn nội bộ, không phải người dùng gọi.
+                if ham_hien_tai and not ham_hien_tai.startswith("__"):
+                    ham_co_goi.setdefault(ham, set()).add(ham_hien_tai)
+    for ham, ds in ham_co_goi.items():
+        dem[f"noi_goi_{ham.strip('_')}"] = len(ds)
+    return dem
+
+
+def kiem_khop_phan_cung(lenh_mo_rong: dict[str, int],
+                        cau_hinh: dict[str, str]) -> list[str]:
+    """Mã máy và cấu hình CPU có khớp nhau không. Trả danh sách câu cảnh báo.
+
+    Một phép đo so hai cấu hình CPU chỉ có nghĩa khi mã máy **chạm tới** chỗ khác nhau giữa
+    chúng. Hàm này nói ra khi điều đó không đúng, vì cái sai ấy không hiện ra thành lỗi: cả
+    hai lượt đo đều chạy xong, đều in ra số, và hai con số bằng nhau — trông đúng như một
+    kết luận ("phần cứng ấy không giúp gì") trong khi nó chỉ là một phép đo rỗng.
+
+    `cau_hinh` là các `define` truyền cho mô phỏng, ví dụ `{"CFG_MUL": "1"}`.
+    """
+    canh: list[str] = []
+    if not lenh_mo_rong:
+        return canh
+
+    def bat(ten: str) -> bool:
+        return str(cau_hinh.get(ten, "0")).strip() not in ("", "0")
+
+    co_mul = any(lenh_mo_rong.get(k, 0) for k in ("lenh_m",))
+    mul_phan_mem = lenh_mo_rong.get("goi_mulsi3", 0) + lenh_mo_rong.get("goi_muldi3", 0)
+    noi_goi = lenh_mo_rong.get("noi_goi_mulsi3", 0) + lenh_mo_rong.get("noi_goi_muldi3", 0)
+
+    ten_mul = [t for t in ("CFG_MUL", "CFG_FAST_MUL", "ENABLE_MUL", "ENABLE_FAST_MUL")
+               if t in cau_hinh]
+    if ten_mul and any(bat(t) for t in ten_mul) and not co_mul:
+        canh.append(
+            "Cấu hình bật bộ nhân phần cứng (" + ", ".join(f"{t}={cau_hinh[t]}" for t in ten_mul
+                                                           if bat(t))
+            + ") nhưng mã máy KHÔNG CHỨA một lệnh nhân nào — nó được biên dịch cho một ISA "
+              "không có phần `m`. Bộ nhân sẽ ngồi không suốt lượt đo. Nếu đang so cấu hình "
+              "này với cấu hình không có bộ nhân thì hai lượt sẽ ra số BẰNG NHAU, và con số "
+              "bằng nhau ấy không nói gì về bộ nhân cả. Hãy biên dịch lại với `isa=\"rv32im\"`."
+            + (f" (Mã máy đang làm phép nhân bằng {mul_phan_mem} lời gọi phần mềm"
+               + (f", từ {noi_goi} hàm." if noi_goi else ", đều là nhãn nội bộ của libgcc.")
+               + ")" if mul_phan_mem else ""))
+    if ten_mul and not any(bat(t) for t in ten_mul) and co_mul:
+        canh.append(
+            f"Mã máy chứa {lenh_mo_rong.get('lenh_m', 0)} lệnh của phần `m` (nhân/chia) "
+            "nhưng cấu hình CPU TẮT bộ nhân. CPU sẽ coi chúng là lệnh lạ và nhảy vào bẫy — "
+            "chương trình không chạy tới đích. Hãy biên dịch lại với `isa=\"rv32i\"`, hoặc "
+            "bật bộ nhân trong cấu hình.")
+    return canh
 
 
 def _sinh_hex_readmemh(kq: "KetQuaBienDich", cc: dict[str, str], *, elf: Path, build: Path,

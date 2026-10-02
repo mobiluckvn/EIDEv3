@@ -17,8 +17,8 @@ import shutil
 
 import pytest
 
-from eide.build.toolchain import (CHUOI_CONG_CU, bien_dich, phan_tich_loi,
-                                  tim_chuoi_cong_cu)
+from eide.build.toolchain import (CHUOI_CONG_CU, bien_dich, kiem_khop_phan_cung,
+                                  phan_tich_loi, tim_chuoi_cong_cu)
 
 CO_GCC = bool(shutil.which("riscv64-unknown-elf-gcc"))
 can_gcc = pytest.mark.skipif(not CO_GCC, reason="máy chưa có riscv64-unknown-elf-gcc")
@@ -341,3 +341,57 @@ def test_duong_dan_cai_khong_co_dau_cach():
     from eide.build.toolchain import _OSS_CAD, _THU_MUC_CONG_CU
     for d in (_OSS_CAD, _THU_MUC_CONG_CU):
         assert " " not in str(d), f"đường dẫn có dấu cách: {d}"
+
+
+# ===================================================== khớp ISA với cấu hình phần cứng
+#
+# Ngày 02/10/2026: một phép đo so hai cấu hình CPU — có bộ nhân và không có — bằng một mã máy
+# dịch với `-march=rv32i`, tức không chứa lệnh nhân nào. Hai lượt ra số GIỐNG HỆT NHAU, và
+# con số giống nhau ấy bị đọc thành "bộ nhân không giúp gì". Không công cụ nào nói gì cả:
+# cả hai lượt `ok=true`, cả hai in ra số. Đây là loại sai không hiện ra thành lỗi.
+
+def test_khop_phan_cung_bat_bo_nhan_ma_khong_co_lenh_nhan():
+    canh = kiem_khop_phan_cung(
+        {"goi_mulsi3": 5, "noi_goi_mulsi3": 1}, {"CFG_MUL": "1"})
+    assert len(canh) == 1
+    # Lời cảnh báo phải nói ra HỆ QUẢ, không chỉ nói là lệch nhau: hệ quả mới là chỗ người
+    # đọc hiểu vì sao hai con số bằng nhau không phải một kết luận.
+    assert "BẰNG NHAU" in canh[0]
+    assert "rv32im" in canh[0]
+
+
+def test_khop_phan_cung_co_lenh_nhan_ma_cpu_khong_co_bo_nhan():
+    canh = kiem_khop_phan_cung({"lenh_m": 4}, {"CFG_MUL": "0"})
+    assert len(canh) == 1
+    assert "lệnh lạ" in canh[0]
+    assert "rv32i" in canh[0]
+
+
+def test_khop_phan_cung_hai_cap_dung_thi_im():
+    assert kiem_khop_phan_cung({"lenh_m": 4}, {"CFG_MUL": "1"}) == []
+    assert kiem_khop_phan_cung({"goi_mulsi3": 5}, {"CFG_MUL": "0"}) == []
+
+
+def test_khop_phan_cung_nhan_ca_ten_ENABLE():
+    """Tên tham số mô-đun Verilog, không chỉ tên macro của testbench."""
+    canh = kiem_khop_phan_cung({"lenh_m": 4}, {"ENABLE_MUL": "0"})
+    assert len(canh) == 1
+
+
+def test_khop_phan_cung_khong_biet_thi_khong_doan():
+    """Không tháo mã được thì im, không được cảnh báo bừa."""
+    assert kiem_khop_phan_cung({}, {"CFG_MUL": "1"}) == []
+    # Và không có khoá nào về bộ nhân trong cấu hình thì cũng không có gì để đối chiếu.
+    assert kiem_khop_phan_cung({"lenh_m": 4}, {"CFG_PCPI": "1"}) == []
+
+
+def test_mo_phong_mang_canh_bao_isa_ra_ngoai(tmp_path):
+    """Cảnh báo phải tới được chỗ người đọc, không chỉ tồn tại trong hàm kiểm."""
+    from eide.build import hdl
+    (tmp_path / "tb.v").write_text(
+        "module tb; initial begin $display(\"PASS\"); $finish; end endmodule\n")
+    kq = hdl.mo_phong(goc=tmp_path, nguon=tmp_path, dinh="tb",
+                      dinh_nghia={"CFG_MUL": "1"},
+                      lenh_mo_rong={"goi_mulsi3": 5})
+    ma = [c.get("ma") for c in kq.canh_bao]
+    assert "ISA_KHONG_KHOP" in ma

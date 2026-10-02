@@ -6264,3 +6264,58 @@ vì lượt không còn phải chờ bước dài.
 
 Chưa làm vì nó cần thêm cơ chế trạng thái giữa các lượt. Ghi lại đây để không ai nhầm việc nới
 hạn mức là lời giải cuối.
+
+## [DEV-320] Mã máy và cấu hình phần cứng phải khớp nhau, và EIDE phải tự nói ra
+
+*02/10/2026. `src/eide/build/toolchain.py`, `src/eide/build/hdl.py`, `src/eide/tools/hdl.py`.*
+
+Để trả lời câu "189 chu kỳ mỗi cặp (i,j) đi đâu", tác tử chạy một phép đo so hai cấu hình
+CPU — có bộ nhân phần cứng và không có:
+
+```
+build.compile  isa="rv32i"     →  hdl.sim  CFG_MUL=1
+build.compile  isa="rv32i"     →  hdl.sim  CFG_MUL=0
+```
+
+Hai lượt ra **số giống hệt nhau**, và con số giống nhau ấy được đọc thành *"bộ nhân phần
+cứng không giúp gì"*.
+
+Nhưng `-march=rv32i` **bảo đảm** mã máy không chứa một lệnh nhân nào. Bộ nhân ngồi không cả
+hai lượt. Phép đo ấy không so hai cấu hình — nó chạy cùng một thứ hai lần.
+
+Cái sai này không hiện ra thành lỗi. Cả hai lượt `ok=true`, cả hai in ra số, hai con số bằng
+nhau trông đúng như một kết luận. Không công cụ nào có cớ để từ chối, vì xét riêng thì mỗi
+lời gọi đều hợp lệ. Chỉ **cặp** của chúng là vô nghĩa.
+
+Tôi tháo mã ra đếm:
+
+| | lệnh `mul` | lời gọi `__mulsi3` |
+|---|---|---|
+| `rv32i` | 0 | 10 (trong 2 hàm) |
+| `rv32im` | 4 | 0 |
+
+**Thêm vào EIDE ba thứ:**
+
+`KetQuaBienDich.lenh_mo_rong` — mã máy **có thật** dùng lệnh mở rộng nào, đếm từ bản tháo mã.
+Không suy từ cờ `-march`: cờ ấy chỉ *cho phép* sinh lệnh, không bảo đảm có lệnh nào được sinh.
+
+`toolchain.kiem_khop_phan_cung(lenh_mo_rong, cau_hinh)` — đối chiếu, trả câu cảnh báo nói ra
+**hệ quả** chứ không chỉ nói là lệch: *"hai lượt sẽ ra số BẰNG NHAU, và con số bằng nhau ấy
+không nói gì về bộ nhân cả"*. Bắt cả chiều ngược: mã máy có `mul` mà CPU tắt bộ nhân thì CPU
+bẫy lệnh lạ và chương trình không tới đích.
+
+`hdl.sim` tự đọc dữ kiện ấy từ `build:firmware` trong kho. Tác tử không phải nhớ, không phải
+tự nghĩ ra việc đối chiếu.
+
+**Và một lỗi tìm ra nhờ chính việc nối dây này.** `_chay()` kết thúc bằng:
+
+```python
+kq.loi, kq.canh_bao = doc_thong_diep(kq.nguyen_van, goc=goc)
+```
+
+Phép **gán** ấy xoá sạch mọi cảnh báo bên gọi đã đặt vào trước khi chạy. Cảnh báo được dựng
+ra rồi bị bỏ đi trong im lặng — đúng cái mẫu *cơ chế có sẵn, đường dẫn tới nó đứt*, lần này
+chính bộ kiểm bắt được. Nay cộng thêm, không gán.
+
+Bộ kiểm: 1538 → **1546**. Trong đó hai ca đi qua `registry.call`, vì bài học `_goc()` còn đó:
+lớp lõi xanh không nói gì về việc lớp công cụ có nối đúng không.

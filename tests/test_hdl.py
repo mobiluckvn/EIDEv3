@@ -617,3 +617,61 @@ def test_chua_dat_di_day_thi_noi_ro_vi_sao_trong():
     m = S.design(_KhoGia(), None)
     k = next(x for x in m["blocks"] if x["code"] == "A5.11")
     assert "hdl.pnr" in json.dumps(k, ensure_ascii=False)
+
+
+# ================================================ đường dẫn từ kho tới chỗ đối chiếu ISA
+#
+# Ngày 02/10/2026: một phép đo so hai cấu hình CPU (có bộ nhân / không có) bằng một mã máy
+# dịch với `-march=rv32i` — không chứa lệnh nhân nào. Hai lượt ra số BẰNG NHAU, và con số
+# bằng nhau ấy bị đọc thành "bộ nhân không giúp gì". Không công cụ nào nói gì: cả hai lượt
+# `ok=true`, cả hai in ra số.
+#
+# `toolchain.kiem_khop_phan_cung` nay nói ra chuyện đó. Nhưng một hàm kiểm đúng mà không ai
+# gọi thì bằng không có — nên ca này đi qua ĐÚNG đường tác tử đi, và canh cả hai chặng của
+# đường ấy: đọc được dữ kiện từ kho, VÀ mang cảnh báo ra tới kết quả trả về.
+
+def test_hdl_sim_doc_lenh_mo_rong_tu_kho_va_canh_bao(tmp_path):
+    from types import SimpleNamespace
+
+    from eide.tools import build_registry
+
+    goc = _du_an(tmp_path)
+    (goc / "rtl" / "tb.v").write_text(
+        "module tb; initial begin $display(\"PASS\"); $finish; end endmodule\n", "utf-8")
+
+    # Kho đã có kết quả biên dịch, và nó nói: mã máy làm phép nhân bằng phần mềm.
+    kho = {"build:firmware": SimpleNamespace(
+        canonical={"dat": True, "lenh_mo_rong": {"goi_mulsi3": 5, "noi_goi_mulsi3": 1}})}
+    ctx = SimpleNamespace(
+        config=SimpleNamespace(paths=SimpleNamespace(project_root=goc)),
+        run_id="test",
+        store=SimpleNamespace(get=kho.get, apply=lambda **_k: None))
+
+    sim = next(t for t in build_registry().all() if t.name == "hdl.sim")
+    kq = sim.fn(ctx, explain={"summary": "đo", "why": "ca kiểm"},
+                nguon="rtl", dinh="tb", dinh_nghia={"CFG_MUL": "1"})
+
+    d = kq if isinstance(kq, dict) else getattr(kq, "data", {}) or {}
+    canh = d.get("canh_bao") or []
+    assert any(c.get("ma") == "ISA_KHONG_KHOP" for c in canh), (
+        f"Không thấy cảnh báo ISA_KHONG_KHOP. canh_bao={canh}")
+
+
+def test_hdl_sim_khong_canh_bao_khi_kho_trong(tmp_path):
+    """Kho chưa có kết quả biên dịch thì im — không đoán, không cảnh báo bừa."""
+    from types import SimpleNamespace
+
+    from eide.tools import build_registry
+
+    goc = _du_an(tmp_path)
+    (goc / "rtl" / "tb.v").write_text(
+        "module tb; initial begin $display(\"PASS\"); $finish; end endmodule\n", "utf-8")
+    ctx = SimpleNamespace(
+        config=SimpleNamespace(paths=SimpleNamespace(project_root=goc)),
+        run_id="test",
+        store=SimpleNamespace(get=lambda _m: None, apply=lambda **_k: None))
+    sim = next(t for t in build_registry().all() if t.name == "hdl.sim")
+    kq = sim.fn(ctx, explain={"summary": "đo", "why": "ca kiểm"},
+                nguon="rtl", dinh="tb", dinh_nghia={"CFG_MUL": "1"})
+    d = kq if isinstance(kq, dict) else getattr(kq, "data", {}) or {}
+    assert not any(c.get("ma") == "ISA_KHONG_KHOP" for c in (d.get("canh_bao") or []))

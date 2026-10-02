@@ -250,7 +250,14 @@ def _chay(kq: KetQuaHdl, lenh: list[str], *, cwd: Path, han: int,
         kq.ma_thoat = None
         kq.vi_sao_khong_dat = f"Không chạy được `{kq.lenh[0]}` — không thấy tệp lệnh."
     kq.giay = time.monotonic() - t0
-    kq.loi, kq.canh_bao = doc_thong_diep(kq.nguyen_van, goc=goc)
+    # CỘNG THÊM, không gán. Bên gọi có thể đã đặt vào đây những cảnh báo mà công cụ không
+    # thể tự biết — ví dụ "mã máy không chứa lệnh nhân nào mà cấu hình lại bật bộ nhân".
+    # Bản đầu viết `kq.loi, kq.canh_bao = ...`, và phép gán ấy xoá sạch chúng. Cảnh báo
+    # được dựng ra rồi bị bỏ đi trong im lặng: đúng cái mẫu cơ chế có sẵn mà đường dẫn tới
+    # nó đứt, và lần này chính bộ kiểm bắt được.
+    loi_moi, canh_moi = doc_thong_diep(kq.nguyen_van, goc=goc)
+    kq.loi = list(kq.loi) + loi_moi
+    kq.canh_bao = list(kq.canh_bao) + canh_moi
 
 
 def _don_tep_ra(ra: Path) -> None:
@@ -367,7 +374,8 @@ def lint(*, goc: Path, nguon: Path, dinh: str = "") -> KetQuaHdl:
 
 
 def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
-             bo_may: str = "iverilog", dinh_nghia: dict[str, str] | None = None) -> KetQuaHdl:
+             bo_may: str = "iverilog", dinh_nghia: dict[str, str] | None = None,
+             lenh_mo_rong: dict[str, int] | None = None) -> KetQuaHdl:
     """Chạy testbench, và đọc `PASS`/`FAIL` mà **chính testbench in ra**.
 
     `bo_may`:
@@ -389,6 +397,14 @@ def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
     build = ra or (goc / ".eide" / "hdl")
     build.mkdir(parents=True, exist_ok=True)
     dn = dinh_nghia or {}
+
+    # Mã máy nạp vào lõi mềm có chạm tới chỗ mà `dinh_nghia` đang bật/tắt không. Cảnh báo
+    # này ra TRƯỚC khi chạy, vì cái sai nó bắt được không hiện ra thành lỗi: lượt đo chạy
+    # xong, in ra số, và số ấy bằng số của cấu hình kia. Xem `toolchain.kiem_khop_phan_cung`.
+    if lenh_mo_rong:
+        from .toolchain import kiem_khop_phan_cung
+        for cau in kiem_khop_phan_cung(lenh_mo_rong, dn):
+            kq.canh_bao.append({"ma": "ISA_KHONG_KHOP", "thong_diep": cau})
 
     if bo_may == "iverilog":
         iv = _tim_lenh("iverilog")
