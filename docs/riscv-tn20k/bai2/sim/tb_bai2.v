@@ -17,9 +17,22 @@ module tb_bai2;
         forever #18.5185 clk = ~clk;
     end
 
+`ifndef CFG_MUL
+`define CFG_MUL 0
+`endif
+`ifndef CFG_FAST_MUL
+`define CFG_FAST_MUL 0
+`endif
+`ifndef CFG_PCPI
+`define CFG_PCPI 0
+`endif
+
     // Khởi tạo SoC
     soc_top #(
-        .INIT_FILE(".eide/build/mach.hex")
+        .INIT_FILE(".eide/build/mach.hex"),
+        .ENABLE_MUL(`CFG_MUL),
+        .ENABLE_FAST_MUL(`CFG_FAST_MUL),
+        .ENABLE_PCPI(`CFG_PCPI)
     ) uut (
         .clk_27m(clk),
         .btn_s1(btn_s1),

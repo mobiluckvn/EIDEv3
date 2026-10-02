@@ -4,7 +4,10 @@
 `include "bai3/rtl/pcpi_mac.v"
 
 module soc_top #(
-    parameter INIT_FILE = ".eide/build/mach.hex"
+    parameter INIT_FILE       = ".eide/build/mach.hex",
+    parameter ENABLE_MUL      = 0,
+    parameter ENABLE_FAST_MUL = 0,
+    parameter ENABLE_PCPI     = 0
 ) (
     input  wire       clk_27m,      // Thạch anh 27 MHz (PIN 4)
     input  wire       btn_s1,       // Nút S1 (PIN 88, Active-Low)
@@ -57,10 +60,10 @@ module soc_top #(
     picorv32 #(
         .ENABLE_COUNTERS   (1),
         .ENABLE_COUNTERS64 (1),
-        .ENABLE_MUL        (0),
+        .ENABLE_MUL        (ENABLE_MUL),
         .ENABLE_DIV        (0),
-        .ENABLE_FAST_MUL   (0),
-        .ENABLE_PCPI       (1),
+        .ENABLE_FAST_MUL   (ENABLE_FAST_MUL),
+        .ENABLE_PCPI       (ENABLE_PCPI),
         .COMPRESSED_ISA    (0),
         .PROGADDR_RESET    (32'h0000_0000),
         .STACKADDR         (32'h0000_8000) // Đỉnh BRAM 32 KB
@@ -94,18 +97,27 @@ module soc_top #(
         .trace_data  ()
     );
 
-    pcpi_mac u_pcpi_mac (
-        .clk        (clk_27m),
-        .resetn     (sys_resetn),
-        .pcpi_valid (pcpi_valid),
-        .pcpi_insn  (pcpi_insn),
-        .pcpi_rs1   (pcpi_rs1),
-        .pcpi_rs2   (pcpi_rs2),
-        .pcpi_wr    (pcpi_wr),
-        .pcpi_rd    (pcpi_rd),
-        .pcpi_wait  (pcpi_wait),
-        .pcpi_ready (pcpi_ready)
-    );
+    generate
+        if (ENABLE_PCPI) begin : gen_pcpi
+            pcpi_mac u_pcpi_mac (
+                .clk        (clk_27m),
+                .resetn     (sys_resetn),
+                .pcpi_valid (pcpi_valid),
+                .pcpi_insn  (pcpi_insn),
+                .pcpi_rs1   (pcpi_rs1),
+                .pcpi_rs2   (pcpi_rs2),
+                .pcpi_wr    (pcpi_wr),
+                .pcpi_rd    (pcpi_rd),
+                .pcpi_wait  (pcpi_wait),
+                .pcpi_ready (pcpi_ready)
+            );
+        end else begin : gen_no_pcpi
+            assign pcpi_wr    = 1'b0;
+            assign pcpi_rd    = 32'd0;
+            assign pcpi_wait  = 1'b0;
+            assign pcpi_ready = 1'b0;
+        end
+    endgenerate
 
     // -------------------------------------------------------------
     // 4. Giải mã địa chỉ (Memory-mapped IO)

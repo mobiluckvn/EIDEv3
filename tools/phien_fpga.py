@@ -131,8 +131,18 @@ def mo_app(du_an: pathlib.Path) -> GiaoDien:
     subprocess.run(["defaults", "write", "vn.mobiluck.eide", "duAnPath",
                     "-string", str(du_an)], check=True)
     g = GiaoDien(du_an, xoa=False)
+    # Nới hạn một lượt. Việc FPGA có bước dài hơn hạn mặc định ngay từ bản chất — tổng hợp một
+    # lõi CPU mất vài phút, và một lượt quét ba cấu hình phần cứng cần hơn 40 lời gọi công cụ.
+    # Xem DEV-319.
+    #
+    # Hai biến này từng bị quên ở đây: `mo_app` chỉ truyền `EIDE_GHI_LLM`, nên mọi lượt chạy
+    # qua nó vẫn dùng hạn mặc định 300 s / 40 lời gọi — trong khi các lệnh chạy tay lại có nới.
+    # Tác tử hết lời gọi giữa chừng mà không ai hiểu vì sao, vì hạn "đã được nới" ở chỗ khác.
     subprocess.Popen([str(REPO / "ui/EIDEApp/EIDE.app/Contents/MacOS/EIDE")],
-                     env={**os.environ, "EIDE_GHI_LLM": "1"},
+                     env={**os.environ, "EIDE_GHI_LLM": "1",
+                          "EIDE_TRAN_GIAY_LUOT": os.environ.get("EIDE_TRAN_GIAY_LUOT", "1800"),
+                          "EIDE_TRAN_LOI_GOI_LUOT":
+                              os.environ.get("EIDE_TRAN_LOI_GOI_LUOT", "150")},
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     g.san_sang(90)
     return g

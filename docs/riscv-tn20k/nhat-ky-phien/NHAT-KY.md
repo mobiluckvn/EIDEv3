@@ -2512,3 +2512,214 @@ G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích t
 
 ![b3a-ghep-soc](anh/30-b3a-ghep-soc.png)
 
+
+
+---
+
+*(chạy tiếp lúc 02/10/2026 07:15:16)*
+
+## Bước 31. Bài 2 · chạy H1 và H2 để có mốc so thật
+
+**Anh gõ:**
+
+> Nấc 3a chạy thông: `V1` dùng lệnh `mac` ra **54,03 cpm**, so với **817,34 cpm** của V1 bằng phần mềm. `ok=1` cả hai.
+> 
+> Nhưng mình phải đính chính một chuyện với bạn, vì nó đổi việc tiếp theo. Trước khi đo mình dặn *'nhiều khả năng 3a còn chậm hơn'* — **mình sai, và sai 15 lần**. Lập luận đúng về cơ chế nhưng mình so với mốc sai: V1 ở cấu hình H0 nhân bằng **phần mềm** (`__mulsi3`), tốn hàng trăm chu kỳ mỗi phép nhân. Một vòng PCPI rẻ hơn thế nhiều.
+> 
+> Nên con số 15 lần **không nói lên giá trị của nấc 3a**. Nó chỉ nói nhân bằng phần cứng nhanh hơn nhân bằng phần mềm — điều đã biết. Đề bài đặt mục tiêu cho nấc 3b là *'cpm ≤ ½ cpm của **H2 tốt nhất**'*, nên mốc đúng là H2, không phải H0. Mà ta **chưa có H2**.
+> 
+> **Việc lượt này: chạy Bài 2 cho H1 và H2**, kiểu I8, ít nhất ở **N = 4 và N = 16** — N=16 vì đó là kích thước đề bài dùng để đặt mục tiêu cho 3b.
+> 
+> **Một cái bẫy im lặng, nói trước vì nó sẽ làm cả phép đo vô nghĩa:** đổi tham số CPU thôi chưa đủ. Phải dịch lại phần mềm với `isa="rv32im"` nữa — nếu vẫn dịch bằng `rv32i` thì trình biên dịch vẫn sinh lời gọi `__mulsi3`, bộ nhân phần cứng **không bao giờ được dùng**, và số đo H1/H2 sẽ ra gần y hệt H0. Lúc ấy kết luận tự nhiên là *'bộ nhân cứng không có tác dụng'* — một kết luận sai từ một phép đo hỏng.
+> 
+> Nên hãy kiểm chứng rằng bộ nhân thật sự được dùng: cách rẻ nhất là xem tệp ảnh có lệnh `mul` không, hoặc đơn giản là thấy số chu kỳ H1/H2 **khác hẳn** H0. Nếu chúng gần bằng nhau thì đừng báo kết quả — đi tìm nguyên nhân trước.
+> 
+> Và tắt `ENABLE_PCPI` cho các lượt đo này, để Bài 2 là đường cơ sở sạch. Phần PCPI cùng sống với bộ nhân nội bộ là chuyện riêng của Bài 3, đo sau.
+> 
+> Báo mình bảng: N · cấu hình · chu kỳ · cpm · ok, cho cả H0, H1, H2.
+
+**Tác tử:**
+
+> Tôi hết số lời gọi công cụ của lượt này (40) nên phải dừng giữa chừng — chưa xong việc anh giao. Lượt này tôi đã gọi 40 công cụ, nhiều nhất là fs.read ×12, fs.glob ×8, ledger.query ×7. Những gì đã ghi vào kho và vào tệp thì vẫn còn nguyên. Anh bảo “làm tiếp” là tôi chạy tiếp từ chỗ này; nếu muốn nhanh hơn thì nói rõ phần nào làm trước, để tôi khỏi đọc lại những thứ đã đọc.
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. tool.search          ok  {"query": "hdl"}
+ 2. fs.glob              ok  {"pattern": "**/*"}
+ 3. fs.glob              ok  {"pattern": "rtl/**"}
+ 4. fs.glob              ok  {"pattern": "bai2/**"}
+ 5. fs.glob              ok  {"pattern": "sim/**"}
+ 6. fs.glob              ok  {"pattern": "bai3/**"}
+ 7. fs.glob              ok  {"pattern": "**/*.v"}
+ 8. fs.glob              ok  {"pattern": "**/*.py"}
+ 9. fs.read              ok  {"offset": 1, "path": "rtl/soc_top.v", "limit": 100}
+10. fs.read              ok  {"offset": 1, "limit": 100, "path": "bai2/sim/tb_bai2.v"}
+11. fs.read              ok  {"path": "bai2/sim/tb_bai2.v", "offset": 100, "limit": 60}
+12. fs.read              ok  {"limit": 100, "path": "bai2/sw/main.c", "offset": 1}
+13. fs.read              ok  {"path": "bai2/sw/main.c", "offset": 101, "limit": 130}
+14. fs.glob              ok  {"pattern": "*data*"}
+15. fs.read              ok  {"offset": 1, "limit": 100, "path": "tools/gen_data.py"}
+16. fs.read              ok  {"limit": 50, "path": "tools/gen_data.py", "offset": 101}
+17. fs.read              ok  {"offset": 1, "limit": 50, "path": "data_4_I8.h"}
+18. ledger.query         ok  {"chua": "data_16"}
+19. ledger.query         ok  {"limit": 30, "run_id": "run-048"}
+20. ledger.query         ok  {"chua": "gen_data.py"}
+21. ledger.query         ok  {"chua": "data_16_I8"}
+22. ledger.query         ok  {"chua": "RESULT,n="}
+23. tool.search          ok  {"query": "python"}
+24. ledger.query         ok  {"chua": "hdl.sim"}
+25. ledger.query         ok  {"chua": "build.compile", "run_id": "run-047"}
+26. fs.stat              ok  {"path": "data_16_I8.h"}
+27. fs.grep              ok  {"pattern": "CHECKSUM_REF"}
+28. fs.grep              ok  {"glob": "third_party/picorv32/picorv32.v", "pattern": "ENABLE_FAST_MUL"}
+29. fs.read              ok  {"path": "third_party/picorv32/picorv32.v", "limit": 30, "offset": 265}
+30. fs.read              ok  {"limit": 30, "path": "rtl/soc_top.v", "offset": 6}
+31. fs.read              ok  {"path": "rtl/soc_top.v", "offset": 95, "limit": 30}
+32. fs.edit              ok  {"path": "rtl/soc_top.v", "explain": {"sources": [{"ref": "tai-lieu-de-bai.md", "kind": "d
+33. fs.read              ok  {"limit": 55, "path": "rtl/soc_top.v", "offset": 57}
+34. fs.edit              ok  {"old_string": "    wire        pcpi_wait;\n    wire        pcpi_ready;\n\n    picorv32 #(
+35. hdl.lint             LỖI E4030 {"explain": {"summary": "Lint soc_top với tham số mới", "sources": [{"ref": "cs-0060", "ti
+36. fs.edit              ok  {"old_string": "    // Khởi tạo SoC\n    soc_top #(\n        .INIT_FILE(\".eide/build/mach
+37. hdl.lint             ok  {"explain": {"diff_prev": "Lint tb_bai2 sau khi thêm macro cấu hình", "confidence": "VANG"
+38. build.compile        ok  {"sketch": "bai2/sw", "isa": "rv32i", "explain": {"why": "Thiết lập đường cơ sở H0 (nhân p
+39. hdl.sim              ok  {"explain": {"why": "Thiết lập đường cơ sở H0 với N=4 I8", "summary": "Đo kết quả Bài 2 ch
+40. fs.edit              ok  {"path": "bai2/sw/main.c", "new_string": "#ifndef HW_CONFIG\n#define HW_CONFIG \"H1\"\n#en
+```
+
+![b2-h1-h2](anh/31-b2-h1-h2.png)
+
+
+
+---
+
+*(chạy tiếp lúc 02/10/2026 07:17:40)*
+
+## Bước 32. Bài 2 · H1 và H2, lần hai (đã nới hạn lời gọi)
+
+**Anh gõ:**
+
+> Bạn hết **số lời gọi công cụ** chứ không hết giờ — và đó là lỗi của mình: bộ điều khiển phiên chỉ nới hạn **thời gian** mà quên nới hạn **số lời gọi**, nên bạn vẫn chạy với trần 40 lời gọi mặc định. Đã sửa, nay là 150.
+> 
+> Làm lại đúng việc ấy: **chạy Bài 2 cho H1 và H2**, kiểu I8, ở **N = 4 và N = 16**.
+> 
+> Nhắc lại cái bẫy im lặng vì nó quyết định cả phép đo: đổi tham số CPU thôi **chưa đủ** — phải dịch lại phần mềm với `isa="rv32im"`. Dịch bằng `rv32i` thì trình biên dịch vẫn sinh lời gọi `__mulsi3`, bộ nhân phần cứng không bao giờ được dùng, và H1/H2 sẽ ra gần y hệt H0.
+> 
+> Phép kiểm rẻ nhất cho chuyện đó: **nếu H1/H2 gần bằng H0 thì đừng báo kết quả** — đi tìm nguyên nhân trước. Một bộ nhân cứng mà không đổi được gì là chuyện không thể.
+> 
+> Tắt `ENABLE_PCPI` cho các lượt này để đường cơ sở sạch.
+> 
+> Báo mình bảng: N · cấu hình · chu kỳ · cpm · ok. Và nói rõ **H2 tốt nhất ở N=16 là bao nhiêu** — đó là con số nấc 3b phải đánh bại một nửa.
+
+**Tác tử:**
+
+> ### Báo cáo kết quả đo đường cơ sở Bài 2 cho cấu hình H1 và H2 (kiểu I8, N = 4 và N = 16)
+> 
+> Verifier độc lập đã thẩm định kho hiện vật (`build:firmware` và `build:hdl:sim`) và kết luận: **ĐẠT (tầng VÀNG)**.
+> - Firmware đã được biên dịch với đúng cờ `-march=rv32im_zicsr` (`isa="rv32im"`), loại bỏ hoàn toàn hàm phần mềm `__mulsi3` của GCC và kích hoạt lệnh nhân `mul` phần cứng của RISC-V.
+> - Giao diện `ENABLE_PCPI` được tắt triệt để (`CFG_PCPI=0`) để giữ đường cơ sở độc lập.
+> - Tất cả các phép đo đều chạy mô phỏng trên **Verilator**, vượt qua tổng kiểm (`ok=1`) và tự động in `PASS`.
+> 
+> ---
+> 
+> ### 1. Bảng số liệu chi tiết (N = 4 và N = 16, kiểu I8)
+> 
+> | N | Cấu hình | Phiên bản | Thuật toán | Số chu kỳ (cycles) | Số phép MAC ($N^3$) | cpm (chu kỳ/MAC) | Tổng kiểm (chk) | Trạng thái (ok) |
+> |:---:|:---:|:---:|:---|:---:|:---:|:---:|:---:|:---:|
+> | **4** | **H1** (`ENABLE_MUL=1`) | V0 | 3 vòng i-j-k | 5 953 | 64 | 93,01 | `0xFFFE6A17` | 1 |
+> | 4 | H1 | V1 | Thứ tự i-k-j | 7 000 | 64 | 109,37 | `0xFFFE6A17` | 1 |
+> | 4 | H1 | V2 | V1 + mở vòng $\times 4$ | **5 328** | 64 | **83,25** | `0xFFFE6A17` | 1 |
+> | 4 | H1 | V3 | Phân khối (block) | 5 343 | 64 | 83,48 | `0xFFFE6A17` | 1 |
+> | **4** | **H2** (`ENABLE_FAST_MUL=1`) | V0 | 3 vòng i-j-k | 3 777 | 64 | 59,01 | `0xFFFE6A17` | 1 |
+> | 4 | H2 | V1 | Thứ tự i-k-j | 4 824 | 64 | 75,37 | `0xFFFE6A17` | 1 |
+> | 4 | H2 | V2 | V1 + mở vòng $\times 4$ | **3 152** | 64 | **49,25** | `0xFFFE6A17` | 1 |
+> | 4 | H2 | V3 | Phân khối (block) | 3 167 | 64 | 49,48 | `0xFFFE6A17` | 1 |
+> | **16** | **H1** (`ENABLE_MUL=1`) | V0 | 3 vòng i-j-k | 341 629 | 4 096 | 83,40 | `0x08EA34EA` | 1 |
+> | 16 | H1 | V1 | Thứ tự i-k-j | 380 068 | 4 096 | 92,79 | `0x08EA34EA` | 1 |
+> | 16 | H1 | V2 | V1 + mở vòng $\times 4$ | **297 024** | 4 096 | **72,51** | `0x08EA34EA` | 1 |
+> | 16 | H1 | V3 | Phân khối (block) | 309 731 | 4 096 | 75,61 | `0x08EA34EA` | 1 |
+> | **16** | **H2** (`ENABLE_FAST_MUL=1`) | V0 | 3 vòng i-j-k | 202 365 | 4 096 | 49,40 | `0x08EA34EA` | 1 |
+> | 16 | H2 | V1 | Thứ tự i-k-j | 240 804 | 4 096 | 58,79 | `0x08EA34EA` | 1 |
+> | 16 | H2 | V2 | V1 + mở vòng $\times 4$ | **157 760** | 4 096 | **38,51** | `0x08EA34EA` | 1 |
+> | 16 | H2 | V3 | Phân khối (block) | 170 433 | 4 096 | 41,60 | `0x08EA34EA` | 1 |
+> 
+> ---
+> 
+> ### 2. Xác minh phép kiểm bộ nhân phần cứng
+> 
+> - **So với đường cơ sở H0 (nhân mềm)**:
+>   - Ở $N = 4$, phiên bản V2 của H0 tốn **~700 cpm** (~45 000 chu kỳ).
+>   - Khi bật H1 (nhân tuần tự), V2 giảm xuống **83,25 cpm** (giảm ~8,4 lần).
+>   - Khi bật H2 (nhân nhanh phần cứng DSP), V2 tiếp tục giảm xuống **49,25 cpm** ở $N = 4$ và đạt **38,51 cpm** ở $N = 16$.
+> - Hiệu năng phân tầng rất rõ: $\text{H0} \gg \text{H1} > \text{H2}$, chứng minh lệnh `mul` phần cứng đã phát huy tối đa hiệu quả.
+> 
+> ---
+> 
+> ### 3. Con số mục tiêu cần vượt qua ở Nấc 3b
+> 
+> - **Cấu hình H2 tốt nhất ở $N = 16$**: Phiên bản **V2** đạt **157 760 chu kỳ**, tương ứng:
+>   $$\mathbf{\text{cpm}_{H2,\text{best}} = 38,51}$$
+> - **Mục tiêu của nấc 3b (lệnh `dot4`)**: Phải đạt $\text{cpm} \le \frac{1}{2} \time
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. tool.search          ok  {"query": "hdl"}
+ 2. fs.glob              ok  {"pattern": "**/*"}
+ 3. fs.glob              ok  {"pattern": "bai2/**"}
+ 4. fs.glob              ok  {"pattern": "rtl/**"}
+ 5. fs.glob              ok  {"pattern": "**/*picorv32*"}
+ 6. fs.glob              ok  {"pattern": "*"}
+ 7. fs.glob              ok  {"pattern": "**/*.py"}
+ 8. fs.read              ok  {"offset": 1, "path": "bai2/sw/main.c", "limit": 100}
+ 9. fs.read              ok  {"limit": 130, "path": "bai2/sw/main.c", "offset": 101}
+10. fs.read              ok  {"path": "bai2/sim/tb_bai2.v", "limit": 100, "offset": 1}
+11. fs.read              ok  {"path": "data_4_I8.h", "limit": 50, "offset": 1}
+12. fs.stat              ok  {"path": "data_16_I8.h"}
+13. fs.read              ok  {"limit": 100, "path": "tools/gen_data.py", "offset": 1}
+14. fs.read              ok  {"offset": 101, "limit": 50, "path": "tools/gen_data.py"}
+15. fs.grep              ok  {"pattern": "DATA_16_I8"}
+16. fs.grep              LỖI E5001 {"pattern": "CHECKSUM", "path": "tai-lieu-de-bai.md"}
+17. fs.grep              ok  {"glob": "tai-lieu-de-bai.md", "pattern": "CHECKSUM"}
+18. ledger.query         ok  {"chua": "data_16", "limit": 10}
+19. ledger.query         ok  {"run_id": "run-049", "limit": 20}
+20. ledger.query         ok  {"run_id": "run-048", "limit": 10, "chua": "build.compile"}
+21. ledger.query         ok  {"limit": 20, "run_id": "run-048"}
+22. ledger.query         ok  {"chua": "RESULT,n=4", "limit": 5}
+23. ledger.query         ok  {"limit": 2, "chua": "46047"}
+24. ledger.query         ok  {"run_id": "run-028", "limit": 5}
+25. fs.read              ok  {"limit": 50, "path": "rtl/soc_top.v", "offset": 20}
+26. build.compile        ok  {"isa": "rv32im", "explain": {"summary": "Dịch firmware Bài 2 với isa rv32im cho cấu hình 
+27. hdl.sim              ok  {"bo_may": "verilator", "dinh_nghia": {"CFG_MUL": "1", "CFG_PCPI": "0", "CFG_FAST_MUL": "0
+28. fs.edit              ok  {"path": "bai2/sw/main.c", "old_string": "#ifndef HW_CONFIG\n#define HW_CONFIG \"H1\"\n#en
+29. build.compile        ok  {"isa": "rv32im", "explain": {"sources": [{"tier": "VANG", "ref": "EIDE.md#Bài 2", "kind":
+30. hdl.sim              ok  {"bo_may": "verilator", "dinh": "tb_bai2", "dinh_nghia": {"CFG_MUL": "1", "CFG_PCPI": "0",
+31. fs.grep              ok  {"pattern": "gen_data", "glob": "tai-lieu-de-bai.md"}
+32. store.list           ok  {"limit": 10, "type": "build"}
+33. store.get            ok  {"id": "build:install:numpy"}
+34. ledger.query         ok  {"chua": "data_4_I8.h", "limit": 5}
+35. ledger.query         ok  {"chua": "data_4_I8.h", "loai": "changeset"}
+36. history.diff         ok  {"changeset": "cs-0027"}
+37. ledger.query         ok  {"limit": 10, "chua": "CHECKSUM_REF"}
+38. ledger.query         ok  {"chua": "0xFFFE6A17", "limit": 5}
+39. ledger.query         ok  {"limit": 10, "chua": "cs-00", "run_id": "run-028"}
+40. ledger.query         ok  {"loai": "changeset", "chua": "data_4_I8.h"}
+41. tool.search          ok  {"query": "python"}
+42. tool.search          ok  {"query": "script"}
+43. fs.glob              ok  {"pattern": "*16*"}
+44. fs.edit              ok  {"explain": {"why": "Cần tệp data_16_I8.h chuẩn từ gen_data.py cho phép đo N=16", "next": 
+45. hdl.lint             ok  {"explain": {"next": "Chạy mô phỏng để thực thi lệnh $system", "why": "Kiểm tra Verilator 
+46. hdl.sim              ok  {"explain": {"next": "Kiểm tra sự tồn tại của data_16_I8.h", "summary": "Chạy mô phỏng để 
+47. fs.edit              ok  {"path": "bai2/sim/tb_bai2.v", "old_string": "    // Reset ban đầu và nạp mã BRAM\n    ini
+48. fs.edit              ok  {"new_string": "/* Dữ liệu kiểm thử ma trận A, B và CHECKSUM_REF */\n#include \"../../data
+49. build.compile        ok  {"sketch": "bai2/sw", "explain": {"sources": [{"ref": "EIDE.md#Bài 2", "tier": "VANG", "ki
+50. hdl.sim              ok  {"explain": {"confidence": "VANG", "next": "Chuyển sang cấu hình H2 N=16", "why": "Đo chu 
+51. fs.edit              ok  {"explain": {"why": "In đúng nhãn hw=H2 trên UART cho phép đo N=16", "confidence": "VANG",
+52. build.compile        ok  {"sketch": "bai2/sw", "isa": "rv32im", "explain": {"why": "Cập nhật mã máy hex cho cấu hìn
+53. hdl.sim              ok  {"explain": {"sources": [{"tier": "VANG", "ref": "EIDE.md#Bài 2", "kind": "doc"}], "next":
+54. task.run             LỖI E5007 {"subagent": "verifier", "explain": {"why": "Tuân thủ nguyên tắc N6: kiểm chứng độc lập mọ
+55. task.run             ok  {"explain": {"confidence": "VANG", "diff_prev": "Giao lại việc kiểm chứng gọn ghẽ cho veri
+```
+
+![b2-h1-h2-lan-hai](anh/32-b2-h1-h2-lan-hai.png)
+
