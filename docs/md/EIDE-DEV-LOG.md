@@ -6657,3 +6657,70 @@ AssertionError: khối A8.0 chưa được nối vào tab Mô phỏng — khối
 ```
 
 Bộ kiểm: 1552 → **1558**.
+
+## [DEV-327] A5.10 — cây mô-đun của chip, đọc từ Verilog thật
+
+*02/10/2026. `src/eide/hdl_cay.py` (mới), `src/eide/surfaces.py`.*
+
+Khối cuối còn thiếu của tab Thiết kế, và là khối anh Công nêu rõ nhất: nhìn vào phải biết
+**mô-đun nào dùng chung, mô-đun nào riêng của bài nào** — vì với FPGA, đổi một mô-đun chung là
+đổi cho mọi bài.
+
+Đối xứng với A5.6 (cây phần mềm từ `#include`). Ở đây cạnh đọc từ **lời gọi mô-đun** thật.
+
+Ba quyết định, và mỗi cái tránh một cách sai cụ thể:
+
+**Danh sách tệp lấy từ lệnh tổng hợp ĐÃ CHẠY, không glob thư mục.** Cây vẽ ra khi đó là cây của
+thiết kế **thật sự nằm trong chip**. Khác biệt ấy có thật: dự án RISC-V có `blinky.v` rời và ba
+mô-đun của Bài 3 đã ra khỏi phạm vi — glob thì chúng vào cây, và thiết kế trông như có thêm bốn
+khối không ai dùng.
+
+**Không có quan hệ thật thì không vẽ.** Luật của A5.6. Một cây toàn nút rời trông như một thiết
+kế không có cấu trúc, mà sự thật chỉ là bộ đọc không đọc được gì.
+
+**Cột "Trong thiết kế" tách hai loại.** Một mô-đun được khai trong tệp đã tổng hợp mà không ai
+gọi thì Yosys bỏ đi — nó không vào chip. Gộp vào một bảng thì con số tài nguyên ở A5.11 bên dưới
+trông như không khớp.
+
+### Ba lỗi, và cả ba chỉ lộ ra khi chạy trên dự án thật
+
+**Mẫu bắt lời gọi thiếu ranh giới từ.** Bản đầu viết `[ \t]*` giữa hai tên — tức cho phép
+**không có gì**. Nên:
+
+```
+if (…)       → mô-đun `i`     gọi thực thể `f`
+for (…)      → mô-đun `fo`    gọi thực thể `r`
+case (…)     → mô-đun `cas`   gọi thực thể `e`
+assert (…)   → mô-đun `asser` gọi thực thể `t`
+```
+
+Danh sách từ khoá **không đỡ được**, vì `i` và `fo` không phải từ khoá — chúng là *một nửa* của
+từ khoá. Cây PicoRV32 ra **65 quan hệ, 50 là rác**, và mỗi nút rác mang nhãn "KHÔNG thấy khai ở
+tệp nào" nên trông đúng như một tệp bị thiếu. Sau khi vá: 15 quan hệ, không nút nào chưa thấy
+khai.
+
+**Vẽ cây mất hết nhánh.** Tiền tố không được nối tiếp, nên 20 nút hiện ra cùng một mức — một
+danh sách phẳng trông như thiết kế không có tầng.
+
+**Neo `^` bỏ qua lời gọi sau dấu `;`.** Thấy theo một đường vòng đáng ghi: ca kiểm qua tab của
+tôi đỏ với `0 quan hệ gọi` trong khi khối đã nối đúng. Hai thứ ấy **trông giống nhau trên màn
+hình** — một khối chưa nối, và một khối nối rồi mà bộ đọc không đọc ra gì. Nay neo ở đầu dòng
+hoặc sau `;`, và không nới rộng hơn: neo giữa biểu thức thì mọi lời gọi hàm trong một phép gán
+đều thành "mô-đun".
+
+Không ca kiểm nào trên chuỗi tự soạn bắt được ba lỗi ấy, vì tôi sẽ không nghĩ ra việc thử
+`if (`. Nay chúng thành ca kiểm — `test_tu_khoa_KHONG_thanh_mo_dun` phá lại cả bốn và ra đúng
+`['i', 'fo', 'cas', 'asser']`.
+
+### Và một ca canh đường dẫn
+
+`test_A5_10_di_qua_BO_DUNG_TAB_that` đi qua `design()` thật. Bỏ dòng nối khối ra thì nó đỏ:
+
+```
+AssertionError: khối A5.10 chưa được nối vào tab Thiết kế — khối hiện có: ['A5.4', 'A5.11', 'A5.6', 'A5.2']
+```
+
+Lần thứ hai trong một ngày tôi phải thêm ca kiểu này. Lớp lõi xanh không nói gì về việc lớp
+trên có nối đúng không.
+
+Bộ kiểm: 1558 → **1573**.

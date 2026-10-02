@@ -116,7 +116,7 @@ Bốn điều cấu trúc này nói ra mà cấu trúc cũ không nói:
 
 Dữ liệu đã có trong kho. Thiếu bốn khối, và tôi xếp theo thứ tự đáng làm:
 
-### A5.10 — Chip trên FPGA: cây mô-đun
+### A5.10 — Chip trên FPGA: cây mô-đun — **ĐÃ LÀM 02/10/2026, xem DEV-327**
 
 Dựng từ quan hệ **gọi mô-đun** trong Verilog, đúng cách A5.6 đang dựng cây phần mềm từ
 `#include`. Mỗi nút ghi rõ **chung** hay **riêng của bài nào** — đó là thứ anh Công muốn thấy.

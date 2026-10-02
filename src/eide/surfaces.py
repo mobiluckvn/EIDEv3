@@ -504,6 +504,7 @@ def design(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
                    "không mua nhầm theo một hướng sau đó bị bỏ.",
             can_gi="Chốt phương án, rồi bảo tác tử ghi danh sách linh kiện."))
 
+    khoi.extend(_khoi_cay_mo_dun(store, goc))
     khoi.extend(_khoi_chip_fpga(store))
     khoi.extend(_khoi_kien_truc_phan_mem(store, goc))
     khoi.extend(_khoi_ban_do_mach(store))
@@ -573,6 +574,71 @@ def _khoi_mo_phong_hdl(store: Any) -> list[dict[str, Any]]:
         ra.append(block("A8.0:vi-sao", "Vì sao không đạt", "text",
                         summary=c["vi_sao_khong_dat"]))
     return ra
+
+
+def _khoi_cay_mo_dun(store: Any, goc: str = "") -> list[dict[str, Any]]:
+    """A5.10 — cây mô-đun của chip, dựng từ quan hệ GỌI MÔ-ĐUN thật trong Verilog.
+
+    Đối xứng với A5.6, chỗ dựng cây phần mềm từ `#include`. Anh Công nêu đúng chỗ cần: nhìn
+    vào phải biết **mô-đun nào dùng chung, mô-đun nào riêng của bài nào** — vì với FPGA thì
+    đổi một mô-đun chung là đổi cho mọi bài.
+
+    Và theo đúng luật của A5.6: **không có quan hệ thật thì không vẽ**. Một cây toàn nút rời
+    trông như một thiết kế không có cấu trúc, mà sự thật chỉ là bộ đọc không đọc được gì —
+    hai điều ấy khác nhau và không được hiện ra giống nhau.
+    """
+    if not goc:
+        return []
+    from .hdl_cay import cay_tu_kho
+
+    d = cay_tu_kho(store, goc)
+    if not d:
+        return []
+    if "vi_sao_rong" in d:
+        return [empty(
+            "A5.10", "Chip trên FPGA — cây mô-đun",
+            chua_co=d["vi_sao_rong"],
+            vi_sao="Cây này đọc từ lời gọi mô-đun trong chính tệp Verilog đã tổng hợp, không "
+                   "từ một sơ đồ vẽ tay. Không đọc được quan hệ nào thì không vẽ — một cây "
+                   "toàn nút rời nói sai về thiết kế.",
+            can_gi="Tổng hợp bằng `hdl.synth` để EIDE biết tệp nào thật sự nằm trong chip.")]
+
+    from .hdl_cay import nhom_cua
+
+    # Mô-đun nào THẬT SỰ nằm trong cây, và mô-đun nào chỉ được khai trong các tệp đã quét.
+    #
+    # Phân biệt này đáng một cột riêng. Một tệp `.v` nằm trong lệnh tổng hợp mà mô-đun của nó
+    # không ai gọi thì nó **không vào chip** — Yosys bỏ nó đi. Gộp hai loại vào một bảng thì
+    # người đọc tưởng thiết kế có thêm vài khối, và con số tài nguyên ở khối A5.11 bên dưới
+    # sẽ trông như không khớp.
+    from .hdl_cay import tap_trong_cay
+    trong_cay = tap_trong_cay(d["quan_he"], d["dinh"])
+
+    nhom_dem: dict[str, int] = {}
+    for t in d["quan_he"]:
+        if t in trong_cay:
+            n = nhom_cua(d["o_tep"].get(t, ""))
+            nhom_dem[n] = nhom_dem.get(n, 0) + 1
+
+    tom = (f"đỉnh `{d['dinh']}` · {len(trong_cay)} mô-đun trong thiết kế"
+           + (" (" + " · ".join(f"{v} {k}" for k, v in sorted(nhom_dem.items())) + ")"
+              if nhom_dem else "")
+           + f" · {d['so_canh']} quan hệ gọi, đọc từ {d['so_tep']} tệp")
+    return [
+        block("A5.10", "Chip trên FPGA — cây mô-đun", "code",
+              summary=tom, ngon_ngu="text", noi_dung="\n".join(d["cay"])),
+        block("A5.10:nhom", "Mô-đun theo nhóm", "table",
+              summary=("Nhãn nhóm suy từ ĐƯỜNG DẪN tệp (`third_party/` · `baiN/` · còn lại là "
+                       "chung) — một phép đoán, nhưng kiểm lại được bằng mắt ở cột cuối. Cột "
+                       "“Trong thiết kế” nói mô-đun có thật sự vào chip không: một mô-đun "
+                       "được khai mà không ai gọi thì Yosys bỏ đi."),
+              columns=["Mô-đun", "Nhóm", "Trong thiết kế", "Khai ở tệp"],
+              rows=[[t, nhom_cua(d["o_tep"].get(t, "")),
+                     "có" if t in trong_cay else "không",
+                     d["o_tep"].get(t, "—")]
+                    for t in sorted(d["quan_he"],
+                                    key=lambda x: (x not in trong_cay, x))]),
+    ]
 
 
 def _khoi_chip_fpga(store: Any) -> list[dict[str, Any]]:
