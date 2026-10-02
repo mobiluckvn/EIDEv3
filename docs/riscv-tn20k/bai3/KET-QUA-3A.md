@@ -52,3 +52,46 @@ và ghi lại đây để không ai đi viết thêm ca kiểm cho một thứ k
 
 Dấu chỉ quan trọng khi mở rộng lên quá 32 bit — tức ở nấc 3b, nơi bốn tích 8×8 được cộng vào
 một thanh ghi rộng hơn. Ca kiểm dấu phải đặt ở đó.
+
+---
+
+## Nấc 3a chạy thông từ C xuống phần cứng
+
+Hai dòng in ra từ **cùng một chương trình**, nên so được trực tiếp:
+
+```
+RESULT,n=4,dtype=I8,ver=V1_SW,hw=H0,  cycles=52310, macs=64, cpm=817.34, chk=0xFFFE6A17, ok=1
+RESULT,n=4,dtype=I8,ver=V1,   hw=P3a, cycles=3458,  macs=64, cpm=54.03,  chk=0xFFFE6A17, ok=1
+```
+
+| | chu kỳ | chu kỳ/MAC | |
+|---|---|---|---|
+| V1 bằng phần mềm, cấu hình H0 | 52 310 | 817,34 | |
+| **V1 dùng lệnh `mac`, P3a** | **3 458** | **54,03** | **nhanh hơn 15,1 lần** |
+
+`ok=1` cả hai — tổng kiểm khớp đáp án của `gen_data.py`, nên khối MAC **tính đúng**, không chỉ
+chạy nhanh.
+
+Luồng đã thông từ đầu tới cuối: một dòng C gọi macro `.insn r 0x0B, 1, 0, …` → CPU không hiểu
+lệnh → đẩy ra PCPI → `pcpi_mac` giải mã `funct3=001` → nhân và cộng dồn → trả `pcpi_ready`.
+Đó đúng là điều nấc 3a sinh ra để chứng minh.
+
+## Một dự đoán của tôi sai, và chỗ sai nằm ở việc chọn mốc so
+
+Trước khi đo, tôi dặn Agent: *"nhiều khả năng 3a còn chậm hơn V1 thường, vì mỗi lệnh `mac` vẫn
+tốn một vòng PCPI mà chỉ làm một phép nhân"*, và bảo cứ báo đúng số nếu chậm.
+
+**Sai, và sai 15 lần.** Lập luận ấy đúng về cơ chế nhưng tôi so với mốc sai: V1 ở cấu hình H0
+nhân bằng **phần mềm** (`__mulsi3` của libgcc), tốn hàng trăm chu kỳ cho mỗi phép nhân. Một
+vòng PCPI rẻ hơn thế rất nhiều.
+
+Mốc đúng để đánh giá 3a và 3b là **H2** — cấu hình có bộ nhân cứng — chứ không phải H0. Đề bài
+viết đúng chỗ ấy: nó đặt mục tiêu cho nấc 3b là *"cpm ≤ ½ cpm của **H2 tốt nhất**"*, không phải
+so với H0.
+
+Nên con số 15,1 lần **không phải thước đo giá trị của nấc 3a**. Nó chỉ nói rằng nhân bằng phần
+cứng nhanh hơn nhân bằng phần mềm — điều đã biết. Thước đo thật phải chờ Bài 2 chạy xong cấu
+hình H2.
+
+**Việc này đổi thứ tự ưu tiên:** phải chạy H2 của Bài 2 trước khi đánh giá được 3b.
+

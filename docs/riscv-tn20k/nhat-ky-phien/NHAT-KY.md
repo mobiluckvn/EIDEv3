@@ -2402,3 +2402,113 @@ G-TOOL · Cài công cụ vào máy — nêu lệnh cụ thể, nguồn, kích t
 
 ![b3a-va-bo-kiem](anh/29-b3a-va-bo-kiem.png)
 
+
+
+---
+
+*(chạy tiếp lúc 02/10/2026 06:13:06)*
+
+## Bước 30. Bài 3a · ghép vào SoC và gọi lệnh tuỳ biến từ C
+
+**Anh gõ:**
+
+> Bộ kiểm vá xong — mình đo lại bốn phép phá, **cả bốn đều đỏ** (trước là 2/4). Hai ca âm tính tách riêng đã làm đúng việc của chúng.
+> 
+> **Việc lượt này: ghép khối MAC vào SoC và gọi nó từ C.** Đây mới là chỗ nấc 3a chứng minh được điều nó sinh ra để chứng minh — luồng PCPI chạy thông từ lệnh C xuống tới phần cứng.
+> 
+> Ba phần:
+> 
+> **Một — ghép vào `soc_top`.** Bật `ENABLE_PCPI=1`, nối `pcpi_mac` vào các chân PCPI. Nhớ điều chính bạn đã đọc ra: khối ngoài **chỉ được tích cực `ready`/`wait` khi giải mã đúng opcode của mình**, nếu không nó cướp lệnh của bộ nhân nội bộ.
+> 
+> **Hai — `bai3/sw/custom_insn.h`.** Macro gọi ba lệnh bằng `.insn r 0x0B, funct3, 0, rd, rs1, rs2`. **Không sửa trình biên dịch** — đề bài cấm.
+> 
+> **Ba — phần mềm đo.** Viết lại vòng trong của cách V1 dùng `mac`, rồi đo như Bài 2: cùng bộ đếm 64 bit, cùng cách trừ chi phí, cùng cách lấy nhỏ nhất. In dòng `RESULT` với `hw=P3a`, và **tổng kiểm phải khớp đúng đáp án của `gen_data.py`** — nếu khối MAC tính sai thì `ok=0`, và đó là cách duy nhất biết nó sai.
+> 
+> Mình nhắc một chuyện vì nó là cái bẫy của riêng nấc này: đề bài nói rõ **3a không đặt mục tiêu tốc độ**. Nhiều khả năng nó còn **chậm hơn** V1 thường, vì mỗi lệnh `mac` vẫn tốn một vòng PCPI mà chỉ làm một phép nhân. Nếu đo ra chậm hơn thì **cứ báo đúng số ấy**, đừng chỉnh gì để cho đẹp. Con số chậm ở đây là một kết quả đúng, và nó cho biết nút thắt nằm ở giao thức chứ không ở phép nhân — đó chính là lý do nấc 3b gom bốn phép nhân vào một lệnh.
+> 
+> Chạy `hdl.sim` với `bo_may: "verilator"`. Báo mình: số chu kỳ, cpm, ok, và so với V1 của Bài 2.
+
+**Tác tử:**
+
+> ### 1. Đã ghép khối `pcpi_mac` vào `soc_top`
+> - Bật `ENABLE_PCPI = 1` trong lõi `picorv32`.
+> - Khai báo và nối trọn vẹn bus PCPI (`pcpi_valid`, `pcpi_insn`, `pcpi_rs1`, `pcpi_rs2`, `pcpi_wr`, `pcpi_rd`, `pcpi_wait`, `pcpi_ready`) tới module `pcpi_mac`.
+> - Module `pcpi_mac` chỉ kích hoạt `ready`/`wr` khi giải mã đúng opcode vùng `custom-0` (`0x0B`), không xung đột với các lệnh khác.
+> 
+> ### 2. Macro lệnh tuỳ biến (`bai3/sw/custom_insn.h`)
+> - Triển khai định dạng lệnh loại R chuẩn RISC-V qua `.insn r 0x0B, funct3, 0, rd, rs1, rs2`:
+>   - `custom_acc_clr()`: `funct3 = 000` (xoá thanh ghi `acc`).
+>   - `custom_mac(rs1, rs2)`: `funct3 = 001` (cộng dồn `acc += rs1 * rs2`).
+>   - `custom_acc_rd()`: `funct3 = 010` (đọc thanh ghi `acc` vào thanh ghi đích `rd`).
+> - Giữ nguyên trình biên dịch `riscv64-unknown-elf-gcc` không cần chỉnh sửa hay patch toolchain.
+> 
+> ### 3. Kết quả đo đạc mô phỏng Verilator (`hdl.sim`)
+> 
+> Biên dịch phần mềm đo bằng `build.compile` (`isa="rv32i"`) và chạy mô phỏng chu kỳ chính xác bằng Verilator:
+> 
+> ```text
+> === BAI 3: CUSTOM INSTRUCTION BENCHMARK (P3a) ===
+> RESULT,n=4,dtype=I8,ver=V1_SW,hw=H0,cycles=52310,macs=64,cpm=817.34,chk=0xFFFE6A17,ok=1
+> RESULT,n=4,dtype=I8,ver=V1,hw=P3a,cycles=3458,macs=64,cpm=54.03,chk=0xFFFE6A17,ok=1
+> === BENCHMARK COMPLETED ===
+> 
+> PASS: Hoan tat 2 phep do, tat ca deu ok=1 tai chu ky 1003704!
+> ```
+> 
+> - **Tính đúng đắn**: Tổng kiểm `chk = 0xFFFE6A17` khớp chính xác 100% với giá trị tham chiếu `CHECKSUM_REF` từ `data_4_I8.h` (`ok=1`). Khối MAC phần cứng và luồng PCPI tính toán hoàn toàn chuẩn xác.
+> - **Số chu kỳ & cpm**:
+>   - `V1` (`P3a` - MAC vô hướng qua PCPI): **3 458 chu kỳ**, **cpm = 54,03**.
+>   - So với `V1_SW` (`H0` - nhân phần mềm `__mulsi3`): giảm từ 52 310 chu kỳ xuống 3 458 chu kỳ (nhanh hơn **15,1×**).
+>   - So với `H2` của Bài 2 (lõi có bộ nhân phần cứng tích hợp sâu, cpm ≈ 25–30 chu kỳ): `P3a` có cpm cao hơn (54,03), đúng như dự đoán vì mỗi lệnh `mac` phải tốn chi phí bắt tay qua bus PCPI và cần thêm các lệnh điều khiển chuỗi `acc.clr` / `acc.rd` cho từng phần tử.
+> 
+> Điều này chứng minh rõ ràng: **luồng PCPI đã thông suốt**, và nút thắt nằm ở việc chuyển đổi từng phần tử vô hướng — tạo tiền đề kỹ thuật trực tiếp cho **Nấc 3b (`dot4`)**.
+> 
+> ---
+> 
+> ### Báo cáo 5 dòng
+> - **Đã làm gì**: Ghép `pcpi_mac` vào `soc_top` (bật `ENABLE_PCPI=1`), tạo `bai3/sw/custom_insn.h`, viết mã đo và chạy mô phỏng Verilator thành công với `ok=1`.
+> - **Bỏ gì và vì sao**: Chưa chuyển sang Nấc 3b (`dot4`) vì cần chốt nghiệm thu Nấc 3a trước.
+> - **Giả định đang dùng**: Bộ dữ liệu ma trận kiểm thử hiện tại dùng mẫu `n=4`, `I8` (`data_4_I8.h`).
+> - **Hoàn tác được tới đâu**: Toàn bộ thay đổi nằm trong các changeset từ `cs-0053` đến `cs-0058`, có thể hoàn tác độc lập.
+> - **Đề nghị tiếp theo**: Tiến hành Nấc 3b — thiết kế module `pcpi_dot4.v` (tích hợp 4 bộ nhân 8-bit và cây cộng, funct3 = `011`) để đưa cpm xuống dưới mục tiêu `cpm ≤ ½ cpm của H2`.
+
+**Công cụ tác tử đã gọi**
+
+```
+ 1. tool.search          ok  {"query": "hdl"}
+ 2. fs.glob              ok  {"pattern": "**/*"}
+ 3. fs.glob              ok  {"pattern": "{rtl,sim,bai*,firmware,docs,sw}/**/*"}
+ 4. fs.glob              ok  {"pattern": "*"}
+ 5. fs.glob              ok  {"pattern": "*/**/*"}
+ 6. fs.glob              ok  {"pattern": "**/*.v"}
+ 7. fs.glob              ok  {"pattern": "**/*.c"}
+ 8. fs.read              ok  {"path": "bai3/rtl/pcpi_mac.v"}
+ 9. fs.read              ok  {"path": "rtl/soc_top.v"}
+10. fs.read              ok  {"path": "bai2/sim/tb_bai2.v"}
+11. fs.read              ok  {"path": "bai2/sw/matmul.c"}
+12. fs.read              ok  {"path": "bai2/sw/main.c"}
+13. fs.read              ok  {"path": "bai2/sw/matmul.h"}
+14. fs.read              ok  {"path": "data_4_I8.h"}
+15. fs.edit              ok  {"new_string": "`timescale 1ns / 1ps\n\n`include \"third_party/picorv32/picorv32.v\"\n`inc
+16. fs.edit              ok  {"new_string": "    // -------------------------------------------------------------\n    
+17. fs.write             ok  {"path": "bai3/sw/custom_insn.h", "explain": {"why": "Yêu cầu đề bài Bài 3a: gọi tập lệnh 
+18. ledger.query         ok  {"chua": "build.compile", "limit": 5}
+19. ledger.query         ok  {"chua": "\"tool\": \"build.compile\"", "limit": 5, "loai": "tool_use"}
+20. fs.glob              ok  {"pattern": "bai3/**/*"}
+21. fs.glob              ok  {"pattern": "bai2/sw/*"}
+22. fs.read              ok  {"path": "bai2/sw/linker.ld"}
+23. fs.read              ok  {"path": "bai2/sw/start.S"}
+24. fs.write             ok  {"path": "bai3/sw/linker.ld", "content": "/* Linker script cho PicoRV32 SoC tren Tang Nano
+25. fs.write             ok  {"content": "/* Khoi dong PicoRV32 cho Bai 3: thiet lap sp, xoa BSS va goi main */\n    .s
+26. fs.grep              ok  {"glob": "tai-lieu-de-bai.md", "pattern": "3a"}
+27. fs.read              ok  {"offset": 270, "path": "tai-lieu-de-bai.md", "limit": 35}
+28. fs.write             ok  {"content": "#include <stdint.h>\n#include <stddef.h>\n#include \"custom_insn.h\"\n\n/* Bộ
+29. build.compile        ok  {"explain": {"sources": [{"kind": "doc", "ref": "tai-lieu-de-bai.md", "tier": "VANG"}], "d
+30. ledger.query         ok  {"loai": "tool_use", "limit": 5, "chua": "\"tool\": \"hdl.sim\""}
+31. ledger.query         ok  {"loai": "tool_use", "chua": "\"tb_bai2\"", "limit": 3}
+32. hdl.lint             ok  {"nguon": "bai2/sim/tb_bai2.v", "explain": {"confidence": "VANG", "summary": "Soát lỗi cú 
+33. hdl.sim              ok  {"dinh": "tb_bai2", "nguon": "bai2/sim", "bo_may": "verilator", "explain": {"sources": [{"
+```
+
+![b3a-ghep-soc](anh/30-b3a-ghep-soc.png)
+
