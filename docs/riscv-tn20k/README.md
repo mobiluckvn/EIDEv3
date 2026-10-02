@@ -10,6 +10,8 @@ ngoài phạm vi — xem [`bai3/NGOAI-PHAM-VI.md`](bai3/NGOAI-PHAM-VI.md).
 
 **Đang chờ kit về.** Thư mục này giữ dấu vết, không giữ bản kể lại.
 
+**Bài 2 đã đo xong 96/96 ô**, mọi ô `ok=1` — xem [`bai2/KET-QUA.md`](bai2/KET-QUA.md), `bai2/all.csv`, `bai2/cpm.png`.
+
 > Đang ở đâu, làm gì tiếp: [`TRANG-THAI-TAM-DUNG.md`](TRANG-THAI-TAM-DUNG.md)
 
 ---
@@ -87,8 +89,6 @@ ngưỡng 85 % đề bài đặt. Nâng BRAM lên 64 KB đã đo được: 32/46
 |---|---|
 | **Chạy trên bo thật** | kit **đã đặt mua, đang chờ về**. Đề bài mục E1 bắt lập bảng so giá ba nơi rồi trình người duyệt; tác tử **không được tự đặt hàng** |
 | **Đối chiếu số đo mô phỏng với số đo thật** | cần kit. Đề bài đòi chênh ≤ 1 % |
-| **Bài 2 đủ ma trận cấu hình** | mới 4 trên **96** phép đo (4 N × 2 kiểu × 4 cách × 3 cấu hình). Cần bộ điều khiển sinh lại dữ liệu, dịch lại, dựng lại mô phỏng cho từng tổ hợp |
-| **Bài 2 bảng CSV và biểu đồ** | `parse_log.py`, `plot.py` chưa viết |
 | **Gowin EDA** | đã tải bản Education cho macOS (655 MB), **chưa cài**. Đó là luồng đối chiếu, không phải luồng chính |
 | **Bảng 12 thông số** | có đủ 12 dòng 12 link, nhưng **5 dòng trỏ vào một trang tra cứu** chứ không phải tài liệu cụ thể. Chưa coi là xong |
 
