@@ -1,5 +1,12 @@
 # Đánh giá khả năng sử dụng kit OpenEP4CE6-C (Altera Cyclone IV E) cho Đề án
 
+
+> **Ghi chú 02/10/2026.** Bản đánh giá này viết khi đề án còn **ba** bài. Bài 3 đã ra khỏi
+> phạm vi, nên lý do *"thiếu một bộ nhân cứng cho nấc 3c"* không còn hiệu lực. Nhưng **kết
+> luận không đổi**: EP4CE6 vẫn không dùng được, vì lý do quyết định là **không có đường
+> đặt-đi-dây mở nào cho Altera** và Quartus không có bản macOS — hai điều ấy độc lập với phạm
+> vi bài toán. Bản phân tích giữ nguyên như lúc nộp.
+
 Tài liệu này đánh giá tính khả thi kỹ thuật của kit phát triển **OpenEP4CE6-C Package B** (nhà sản xuất Waveshare, phân phối bởi MLAB) đối với lộ trình 3 bài toán của đề án SoC PicoRV32, thực hiện trên máy phát triển **macOS Apple Silicon (ARM64)** của anh Công.
 
 URL tham chiếu kit: `https://mlab.com.vn/openep4ce6-c-package-b-altera-development-board`

@@ -1,5 +1,15 @@
 # BẢN THIẾT KẾ KIẾN TRÚC NẤC 3C: ĐƠN VỊ VECTOR MINI (TIỀN RVV)
 
+
+> **Ghi chú 02/10/2026 — tài liệu của phần việc đã ra khỏi phạm vi.** Bản thiết kế này từng
+> được duyệt ở điểm dừng bắt buộc, và nấc 3c đã làm xong phần mô phỏng: `cpm=3.84`, tổng kiểm
+> đúng, bộ kiểm bắt 7/7 phép phá. Nhưng nó **không vừa chip** — Phương án B cần cổng thứ hai
+> vào BRAM, và chính cổng ấy làm suy luận BSRAM đứt hoàn toàn (32 KB thành 262 144 flip-flop
+> trên chip có 15 552). Xem [`../bai3/NGOAI-PHAM-VI.md`](../bai3/NGOAI-PHAM-VI.md).
+>
+> Điểm (3) ở Mục 2 của bản thiết kế — *kiểm tra BRAM hai cổng* — là câu hỏi đặt đúng mà chưa
+> ai trả lời trước khi viết RTL. Nếu quay lại bài này, **đó phải là việc đầu tiên.**
+
 **Dự án**: SoC PicoRV32 trên FPGA Gowin GW2AR-18C (Tang Nano 20K)  
 **Tác giả**: Tác tử EIDE & Kỹ sư trưởng CongVT  
 **Trạng thái**: Chờ duyệt (Điểm dừng bắt buộc số 4)  

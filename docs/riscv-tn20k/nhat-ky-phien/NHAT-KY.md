@@ -1,5 +1,11 @@
 # Phiên làm việc: lõi RISC-V trên FPGA Sipeed Tang Nano 20K
 
+
+> **Ghi chú 02/10/2026.** Nhật ký này ghi lại phiên làm việc khi đề án còn **ba** bài. Bài 3
+> đã ra khỏi phạm vi; đặc tả nay gồm hai bài. Nhật ký **giữ nguyên** — nó là dấu vết của việc
+> đã xảy ra, không phải bản mô tả phạm vi hiện tại. Xem
+> [`../bai3/NGOAI-PHAM-VI.md`](../bai3/NGOAI-PHAM-VI.md).
+
 Ghi tự động. Mỗi mục là một bước có thật trong một phiên EIDE chạy trên máy, với ảnh chụp cửa sổ EIDE làm sở cứ.
 
 - Nguồn: `docs/fpga/yeu-cau-agent-riscv-tang-nano-20k.md`

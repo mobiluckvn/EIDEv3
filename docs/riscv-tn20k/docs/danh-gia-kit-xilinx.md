@@ -1,5 +1,12 @@
 # Đánh giá khả năng sử dụng kit Digilent Arty A7-100T và Basys 3 (Xilinx Artix-7) cho Đề án
 
+
+> **Ghi chú 02/10/2026.** Bản đánh giá này viết khi đề án còn **ba** bài. Bài 3 đã ra khỏi
+> phạm vi, nên nhu cầu tài nguyên thật **thấp hơn** mọi con số dưới đây — phạm vi hai bài đo
+> được **2 211 LUT4** (10,7 % trên Tang Nano 20K), không phải ~3 980. Kết luận về hai kit
+> Xilinx **không đổi**: vướng vẫn nằm ở hai chặng giữa của luồng công cụ trên macOS, không ở
+> dung lượng chip. Bản phân tích giữ nguyên như lúc nộp.
+
 Tài liệu này đánh giá tính khả thi kỹ thuật của hai kit phát triển FPGA dùng chip **Xilinx Artix-7**:
 1. **Digilent Arty A7-100T** (chip `XC7A100T-1CSG324C`)
 2. **Digilent Basys 3** (chip `XC7A35T-1CPG236C`)
