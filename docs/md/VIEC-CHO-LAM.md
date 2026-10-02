@@ -158,3 +158,24 @@ Hai chỗ nên sửa:
 - **Nộp báo cáo trước khi hết hạn.** Khi còn 2 lời gọi, buộc nó nộp những gì đã có kèm ghi rõ
   phần nào chưa kiểm được — một báo cáo thiếu có nói rõ chỗ thiếu thì dùng được, còn
   `chua_du_du_kien` thì không dùng được gì.
+
+## 7 · Cổng duyệt nổ giữa lượt làm mất phần còn lại của lời giao việc
+
+*02/10/2026.*
+
+Lượt 55 của phiên FPGA: thẻ cổng `G-QUAL` hiện ra, người dùng bấm Duyệt, và Agent báo lại:
+
+> *"nội dung chỉ thị chi tiết của anh ở lượt trước (sau đoạn 'Việc lượt này: mở đường để quét
+> được N và k…') đã bị ngắt quãng do cơ chế kích hoạt cổng an toàn"*
+
+Nên nó phải hỏi lại toàn bộ đề bài. Một lượt mất trắng, và nếu người dùng không đọc kỹ thì sẽ
+tưởng Agent lười hoặc hiểu sai.
+
+Đây **cùng một loại lỗi** với lỗi hộp thư ngày 01/10/2026 (`inbox.jsonl` không được dọn nên app
+phát lại lời giao việc cũ nhất, mất bốn lượt để tìm ra): **lời giao việc không tới được Agent
+nguyên vẹn, mà biểu hiện ra lại giống như Agent làm sai.**
+
+> Trước khi hỏi *"vì sao nó làm sai"*, hỏi *"nó có nhận được đề bài không"*.
+
+Cần: khi cổng nổ, **giữ nguyên lời giao việc** và phát lại đầy đủ sau khi cổng được duyệt —
+cổng là chuyện của luồng điều khiển, không được xén dữ liệu vào.
