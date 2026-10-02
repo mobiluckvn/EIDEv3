@@ -74,8 +74,23 @@ struct ConsoleView: View {
                                 .frame(width: max(hh.size.width - 20, 120),
                                        alignment: .leading)
                         }
+                        // Băng "Dọn hết" chỉ hiện khi có từ ba thẻ — một hai thẻ thì bấm dấu
+                        // nhân từng cái là xong, thêm một nút nữa chỉ là tiếng ồn.
+                        if state.notices.count >= 3 {
+                            HStack(spacing: 6) {
+                                Text("\(state.notices.count) cảnh báo")
+                                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                                Spacer()
+                                Button("Dọn hết") { state.xoaHetThongBao() }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(.tint)
+                            }
+                            .frame(width: max(hh.size.width - 20, 120))
+                            .padding(.top, 4)
+                        }
                         ForEach(state.notices) { n in
-                            ThongBaoView(notice: n)
+                            ThongBaoView(notice: n) { state.boThongBao(n.id) }
                                 .frame(width: max(hh.size.width - 20, 120),
                                        alignment: .leading)
                         }
@@ -213,16 +228,39 @@ struct DongTranscript: View {
 
 struct ThongBaoView: View {
     let notice: AppState.Notice
+    /// Bấm dấu nhân để bỏ thẻ. `nil` thì không có nút — dùng cho chỗ chỉ xem.
+    var bo: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: bieuTuong).font(.system(size: 11)).foregroundStyle(mau)
             VStack(alignment: .leading, spacing: 2) {
-                TextMd(notice.text).font(.system(size: 11)).textSelection(.enabled)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    TextMd(notice.text).font(.system(size: 11)).textSelection(.enabled)
+                    // Số lần thay cho nhiều thẻ giống nhau. Một cảnh báo nổ mười lần nói lên
+                    // điều khác với mười cảnh báo khác nhau — con số là thông tin, mười thẻ
+                    // giống nhau thì không.
+                    if notice.soLan > 1 {
+                        Text("×\(notice.soLan)")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(mau)
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(mau.opacity(0.15), in: Capsule())
+                    }
+                }
                 if let c = notice.code {
                     Text(c).font(.system(size: 9, design: .monospaced))
                         .foregroundStyle(.tertiary)
                 }
+            }
+            Spacer(minLength: 4)
+            if let bo {
+                Button(action: bo) {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
+                .help("Bỏ cảnh báo này")
             }
         }
         .padding(7)

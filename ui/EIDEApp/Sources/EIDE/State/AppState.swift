@@ -80,6 +80,57 @@ final class AppState: ObservableObject {
         let level: String
         let text: String
         let code: String?
+        /// Cảnh báo giống hệt nổ bao nhiêu lần. Hiện dạng `×3` thay vì ba thẻ.
+        var soLan: Int = 1
+        /// Lúc nổ lần đầu — dùng cho việc tự hết của mức `info`.
+        var luc: Date = Date()
+
+        /// Hai cảnh báo là MỘT khi cùng mức, cùng chữ, cùng mã.
+        func giongVoi(_ k: Notice) -> Bool {
+            level == k.level && text == k.text && code == k.code
+        }
+    }
+
+    /// Mức `info` tự hết sau bao lâu. Mức `warn` và `error` KHÔNG tự hết — người dùng phải
+    /// thấy chúng, và việc bỏ đi là quyết định của họ.
+    static let giayThongBaoInfo: TimeInterval = 25
+
+    /// Thêm một cảnh báo, GỘP cái trùng thay vì xếp thêm một thẻ.
+    ///
+    /// Vì sao phải có hàm này thay vì `notices.append` khắp nơi: trong mã có **10 chỗ thêm**
+    /// mà chỉ **1 chỗ xoá**, và chỗ xoá ấy là `doiDuAn()`. Nên suốt một phiên `notices` chỉ
+    /// tăng, và cách duy nhất để nó rỗng lại là đổi sang dự án khác — điều không ai làm giữa
+    /// lúc đang chạy việc. Chúng được vẽ sau transcript trong cùng cột, nên càng dồn thì
+    /// càng đẩy hội thoại lên.
+    ///
+    /// Lại không có khâu gộp trùng: cùng một cảnh báo nổ mười lần thì hiện mười thẻ. Mà một
+    /// cảnh báo nổ mười lần nói lên điều khác với mười cảnh báo khác nhau — số lần là thông
+    /// tin, mười thẻ giống nhau thì không.
+    func themThongBao(level: String, text: String, code: String? = nil) {
+        donThongBaoHetHan()
+        let moi = Notice(level: level, text: text, code: code)
+        if let i = notices.lastIndex(where: { $0.giongVoi(moi) }) {
+            notices[i].soLan += 1
+            return
+        }
+        notices.append(moi)
+    }
+
+    /// Bỏ một thẻ — người dùng bấm dấu nhân.
+    func boThongBao(_ id: UUID) {
+        notices.removeAll { $0.id == id }
+    }
+
+    /// Dọn hết. Nút "Dọn" ở khu cảnh báo.
+    func xoaHetThongBao() {
+        notices.removeAll()
+    }
+
+    /// Bỏ các thẻ `info` đã quá hạn. Gọi mỗi lần thêm thẻ mới, nên không cần bộ đếm giờ.
+    func donThongBaoHetHan() {
+        let bay = Date()
+        notices.removeAll { $0.level == "info"
+            && bay.timeIntervalSince($0.luc) > Self.giayThongBaoInfo }
     }
 
     // MARK: - Mở dự án
@@ -139,8 +190,8 @@ final class AppState: ObservableObject {
     /// nên bộ đo cần một cách xin vẽ lại sau khi kho đổi mà không phải tiêu một lượt mô hình.
     func veLai() async {
         do { _ = try await client.call("ui.sync") } catch {
-            notices.append(.init(level: "warn", text: "Không vẽ lại được: \(error)",
-                                 code: nil))
+            themThongBao(level: "warn", text: "Không vẽ lại được: \(error)",
+                                 code: nil)
         }
     }
 
@@ -189,17 +240,17 @@ final class AppState: ObservableObject {
         guard let goc = duAnDir, connection.ok else { return }
         let kq = ThemTaiLieu.dua(nguon, vaoDuAn: goc)
         for l in kq.loi {
-            notices.append(.init(level: "warn", text: "Không thêm được \(l)", code: nil))
+            themThongBao(level: "warn", text: "Không thêm được \(l)", code: nil)
         }
         guard !kq.duong.isEmpty else { return }
         if !kq.daChep.isEmpty {
             // Nói ra việc đã chép. Người kéo một tệp từ Desktop mà không biết nó vừa được
             // nhân bản vào dự án sẽ ngạc nhiên đúng lúc họ dọn thư mục.
-            notices.append(.init(
+            themThongBao(
                 level: "info",
                 text: "Đã chép vào \(ThemTaiLieu.THU_MUC)/: " + kq.daChep.joined(separator: ", ")
                     + " — tác tử chỉ đọc được tệp nằm trong thư mục dự án.",
-                code: nil))
+                code: nil)
         }
         gui(.upload(files: kq.duong))
     }
@@ -219,7 +270,7 @@ final class AppState: ObservableObject {
         Task {
             do { _ = try await client.send(act) }
             catch {
-                notices.append(.init(level: "error", text: error.localizedDescription, code: nil))
+                themThongBao(level: "error", text: error.localizedDescription, code: nil)
             }
             busy = false
         }
@@ -310,9 +361,9 @@ final class AppState: ObservableObject {
                 assumptions: (c.params["assumptions"]?.arrayValue ?? []).compactMap(\.stringValue))
 
         case "notice":
-            notices.append(.init(level: c.params["level"]?.stringValue ?? "info",
+            themThongBao(level: c.params["level"]?.stringValue ?? "info",
                                  text: c.params["text"]?.stringValue ?? "",
-                                 code: c.params["code"]?.stringValue))
+                                 code: c.params["code"]?.stringValue)
 
         case "ui.set":
             if c.params["key"]?.stringValue == "status_bar",
@@ -332,10 +383,10 @@ final class AppState: ObservableObject {
 
         default:
             // E3.2 §5 — không giấu thất bại: lệnh lạ phải hiện ra, không bỏ qua im lặng.
-            notices.append(.init(level: "warn",
+            themThongBao(level: "warn",
                                  text: "Giao diện chưa biết lệnh “\(c.method)” của lõi. "
                                      + "Bản giao diện này cũ hơn lõi.",
-                                 code: "E_UI_UNKNOWN_CMD"))
+                                 code: "E_UI_UNKNOWN_CMD")
         }
     }
 

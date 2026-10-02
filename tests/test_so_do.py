@@ -287,3 +287,79 @@ def test_so_do_KHONG_cum_giu_nguyen_bo_cuc():
     kt = [(90, 44)] * len(so.nut)
     khung, w, h = xep_cho(so, kt, [(0, 0)] * len(so.nut), [0, 1, 2])
     assert min(k[1] for k in khung if k) < 24, "không có cụm thì không được chừa lề nhãn"
+
+
+# ================================ hai bảng ký hiệu toán phải GIỐNG NHAU từng mục
+#
+# Cùng một cái giá với hai bộ đọc mermaid: lõi không gọi ngược lên app được, nên cùng một
+# bảng phải tồn tại hai bản — `_TEX_KY_HIEU` trong `xuat_ban.py` cho tài liệu xuất ra, và
+# `MathText.kyHieu` trong Swift cho màn hình chat.
+#
+# Trước 02/10/2026 chúng lệch ba kiểu, và cả ba đều âm thầm:
+#   - Swift thiếu 28 ký hiệu Python có → đẹp trong tệp Word, còn TeX thô trên màn hình.
+#   - Python thiếu 13 lệnh bố cục Swift có → `\left( a \right)` in ra giấy còn nguyên hai lệnh.
+#   - Hai mục SAI: Swift đổi `\sum`→`Σ` và `\prod`→`Π`, tức chữ Hy Lạp thay cho ký hiệu phép
+#     toán `∑` `∏`. Trông gần giống, khác nghĩa, khác bề rộng. Và `\Sigma` với `\sum` ra cùng
+#     một chữ, nên hai thứ khác nhau hiện ra như một.
+#
+# Không ca kiểm nào trước đó chạm tới chuyện này, vì mỗi bên xét riêng đều đúng.
+
+def _bang_swift() -> dict[str, str]:
+    """Đọc `MathText.kyHieu` từ tệp Swift. Đọc TỆP chứ không chạy Swift: ca kiểm phải đỏ
+    được trên máy không có Xcode, và nó đang canh *nội dung bảng*, không canh hành vi."""
+    sw = (GOC / "ui/EIDEApp/Sources/EIDE/Views/MathText.swift").read_text("utf-8")
+    m = re.search(r"private static let kyHieu: \[String: String\] = \[(.*?)\n    \]",
+                  sw, re.S)
+    assert m, "không tìm thấy bảng kyHieu trong MathText.swift"
+    ra: dict[str, str] = {}
+    for khoa, gt in re.findall(r'"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"', m.group(1)):
+        ra[khoa.replace('\\\\', '\\').replace('\\"', '"')] = \
+            gt.replace('\\\\', '\\').replace('\\"', '"')
+    return ra
+
+
+def test_hai_bang_ky_hieu_phai_giong_nhau():
+    from eide.xuat_ban import _TEX_KY_HIEU
+
+    sw = _bang_swift()
+    py = dict(_TEX_KY_HIEU)
+
+    thieu_sw = sorted(set(py) - set(sw))
+    thieu_py = sorted(set(sw) - set(py))
+    assert not thieu_sw, (
+        f"{len(thieu_sw)} ký hiệu CHỈ có ở Python — chúng sẽ hiện ra dạng TeX thô trên màn "
+        f"hình chat trong khi vẫn đúng trong tệp Word: {' '.join(thieu_sw)}")
+    assert not thieu_py, (
+        f"{len(thieu_py)} ký hiệu CHỈ có ở Swift — chúng sẽ còn nguyên lệnh TeX trong tài "
+        f"liệu xuất ra: {' '.join(thieu_py)}")
+
+    khac = {k: (py[k], sw[k]) for k in py if py[k] != sw[k]}
+    assert not khac, (
+        "cùng một lệnh mà hai bên đổi ra hai ký hiệu khác nhau — người đọc thấy hai thứ "
+        f"khác nhau trên màn hình và trên giấy: {khac}")
+
+
+def test_sum_khong_duoc_lan_voi_Sigma():
+    """`\\sum` và `\\Sigma` là hai thứ khác nhau, phải ra hai ký hiệu khác nhau.
+
+    Lỗi cũ của bảng Swift: cả hai ra `Σ`. Ca này canh riêng vì nó là loại lỗi *trông đúng* —
+    một chữ Hy Lạp ở chỗ đáng ra là ký hiệu phép toán thì không ai để ý, cho tới lúc cần
+    phân biệt.
+    """
+    from eide.xuat_ban import _TEX_KY_HIEU
+
+    for a, b in ((r"\sum", r"\Sigma"), (r"\prod", r"\Pi")):
+        assert _TEX_KY_HIEU[a] != _TEX_KY_HIEU[b], f"{a} và {b} ra cùng một ký hiệu"
+    assert _TEX_KY_HIEU[r"\sum"] == "∑"
+    assert _TEX_KY_HIEU[r"\prod"] == "∏"
+    sw = _bang_swift()
+    assert sw[r"\sum"] == "∑" and sw[r"\prod"] == "∏"
+
+
+def test_lenh_bo_cuc_bi_bo_di_ca_hai_ben():
+    """`\\left( a \\right)` không được để lại hai lệnh bố cục ở bên nào."""
+    from eide.xuat_ban import cong_thuc_nguoi_doc
+
+    ra = cong_thuc_nguoi_doc(r"$$\left( \alpha \le 0.05 \right)$$")
+    assert "\\left" not in ra and "\\right" not in ra, ra
+    assert "α" in ra and "≤" in ra, ra

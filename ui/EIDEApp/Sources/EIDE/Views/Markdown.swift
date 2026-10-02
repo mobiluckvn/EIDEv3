@@ -81,9 +81,17 @@ enum Markdown {
                 let noiDung = than.joined(separator: "\n")
                 // `mermaid` là sơ đồ, không phải mã để đọc. Vẽ nó ra hình; `SoDoView` tự lo
                 // phần kiểu nào chưa vẽ được và phần nút xem mã.
-                if ngonNgu.lowercased() == "mermaid" {
+                switch ngonNgu.lowercased() {
+                case "mermaid":
                     ra.append(.soDo(noiDung))
-                } else {
+                case "math", "latex", "tex":
+                    // Rào ` ```math ` là CÔNG THỨC, không phải mã để đọc. `xuat_ban.py` phía
+                    // Python đã đổi rào này sang ký hiệu toán từ DEV-317; để Console in nó
+                    // dạng khối mã thì cùng một câu tác tử viết ra sẽ đẹp trong tệp Word mà
+                    // vẫn là `\frac{a}{b}` trên màn hình.
+                    let (s, tron) = MathText.sangUnicode(noiDung)
+                    ra.append(.congThuc(tron ? s : noiDung, tron))
+                default:
                     ra.append(.ma(noiDung, ngonNgu.isEmpty ? nil : ngonNgu))
                 }
                 continue
@@ -135,7 +143,7 @@ enum Markdown {
                     hang.append(oCua(dong[i]))
                     i += 1
                 }
-                ra.append(.bang(cot, hang))
+                ra.append(.bang(cot, sanHang(hang, soCot: cot.count)))
                 continue
             }
 
@@ -169,12 +177,120 @@ enum Markdown {
         return t.allSatisfy { "|-: ".contains($0) } && t.contains("-")
     }
 
-    private static func oCua(_ s: String) -> [String] {
+    /// Tách một hàng bảng thành các ô, **bỏ qua dấu `|` không phải dấu ngăn cột**.
+    ///
+    /// Bản trước dùng `components(separatedBy: "|")`, nên một ô chứa `` `a|b` `` hoặc `\|` bị
+    /// cắt thành hai ô. Hàng ấy thừa ô, và hậu quả hiện ra ở chỗ khác hẳn: hàng **lệch khỏi
+    /// tiêu đề**, vì bộ vẽ đi theo số ô của hàng. Người đọc thấy một bảng vỡ cột mà không có
+    /// cách nào đoán ra nguyên nhân là một dấu gạch dọc trong một ô mã.
+    ///
+    /// Hai dấu được tôn trọng, và chỉ hai:
+    /// - `` ` `` mở/đóng vùng mã — dấu `|` bên trong là ký tự thật.
+    /// - `\|` — dấu đã thoát, thành dấu `|` thật khi hiện ra (nên bỏ dấu `\`).
+    static func oCua(_ s: String) -> [String] {
         var t = s.trimmingCharacters(in: .whitespaces)
         if t.hasPrefix("|") { t = String(t.dropFirst()) }
         if t.hasSuffix("|") { t = String(t.dropLast()) }
-        return t.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+
+        var ra: [String] = []
+        var o = ""
+        var trongMa = false
+        var i = t.startIndex
+        while i < t.endIndex {
+            let c = t[i]
+            let sau = t.index(after: i)
+            if c == "\\", sau < t.endIndex, t[sau] == "|" {
+                o.append("|")                      // dấu thoát → dấu thật, bỏ dấu `\`
+                i = t.index(after: sau)
+                continue
+            }
+            if c == "`" {
+                trongMa.toggle()
+                o.append(c)
+            } else if c == "|", !trongMa {
+                ra.append(o)
+                o = ""
+            } else {
+                o.append(c)
+            }
+            i = sau
+        }
+        ra.append(o)
+        return ra.map { $0.trimmingCharacters(in: .whitespaces) }
     }
+
+    /// San mọi hàng cho bằng số cột của tiêu đề.
+    ///
+    /// Bộ vẽ đi theo **số ô của hàng** (`ForEach(Array(h.enumerated()))`), không theo số cột
+    /// của tiêu đề. Nên hàng thiếu ô thì vẽ thiếu cột, hàng thừa ô thì vẽ tràn ra ngoài tiêu
+    /// đề — và không khâu nào san cho bằng. San ở đây, lúc TÁCH, chứ không ở lúc vẽ: như thế
+    /// `chuThuan()` và bộ vẽ cùng thấy một bảng, và ca kiểm hỏi được bằng số.
+    ///
+    /// Ô thiếu thành ô rỗng. Ô thừa bị bỏ — thà mất một ô không có tiêu đề hơn là đẩy cả hàng
+    /// lệch khỏi mọi cột.
+    static func sanHang(_ hang: [[String]], soCot: Int) -> [[String]] {
+        hang.map { h in
+            if h.count == soCot { return h }
+            if h.count < soCot { return h + Array(repeating: "", count: soCot - h.count) }
+            return Array(h.prefix(soCot))
+        }
+    }
+
+    /// Số ký tự **hiện ra trên màn**, sau khi dựng Markdown.
+    ///
+    /// Ô `**ĐẠT**` dài 7 ký tự trong mã mà chỉ hiện 3 chữ. Đếm mã nguồn thì cột nào nhiều chữ
+    /// đậm hoặc nhiều `` `mã` `` được cấp bề rộng cho cả dấu người đọc không thấy — cột rộng
+    /// vô cớ, và cột bên cạnh bị ép hẹp theo. Đích của liên kết còn tệ hơn: nó dài hàng chục
+    /// ký tự mà không hiện một chữ nào.
+    static func daiHienRa(_ s: String) -> Int {
+        if let co = khoDai[s] { return co }
+        let n = String(inline(s).characters).count
+        if khoDai.count > 4000 { khoDai.removeAll() }   // đừng để nó phình mãi
+        khoDai[s] = n
+        return n
+    }
+
+    /// Ô dài nhất của cột `j`, đo trên **mọi** hàng.
+    ///
+    /// Bản trước đo `hang.prefix(20)`. Bảng dài hơn 20 hàng mà hàng thứ 21 có ô dài hơn thì
+    /// cột không được nới, nên bảng trông vỡ hàng ở đúng chỗ không ai ngờ. Bảng tuân thủ của
+    /// dự án robot có **109 hàng**.
+    static func daiOToiDa(cot: [String], hang: [[String]], j: Int) -> Int {
+        var m = j < cot.count ? daiHienRa(cot[j]) : 0
+        for h in hang where j < h.count { m = max(m, daiHienRa(h[j])) }
+        return m
+    }
+
+    /// Bề rộng từng cột, tính MỘT LẦN cho cả bảng.
+    ///
+    /// Phải tính một lần: `daiHienRa` chạy bộ dựng Markdown, và gọi nó trong thân `View` cho
+    /// từng ô của một bảng 109 hàng × 6 cột là hàng chục nghìn lượt dựng mỗi lần vẽ lại.
+    ///
+    /// Trần cũ ghi cứng `cot.count >= 4 ? 170 : …` — 170 px khoảng 27 ký tự. Các bảng so sánh
+    /// trong báo cáo thường có 4–6 cột với ô dài hơn thế nhiều, nên chúng bị ép xuống cột rất
+    /// hẹp rồi ngắt dòng liên tục: không mất chữ, nhưng đọc rất khó. Nay trần cao hơn nhiều
+    /// (300 px) và có **hạn tổng**: nếu cộng lại vượt `tongToiDa` thì co đều theo tỷ lệ, nhưng
+    /// không cột nào xuống dưới `sanToiThieu`. Bảng vẫn cuộn ngang được, nên hạn tổng chỉ để
+    /// bảng sáu cột không thành một dải dài vô ích.
+    static func beRongCot(cot: [String], hang: [[String]],
+                          tongToiDa: CGFloat = 1100,
+                          sanToiThieu: CGFloat = 90) -> [CGFloat] {
+        guard !cot.isEmpty else { return [] }
+        var rong: [CGFloat] = cot.indices.map { j in
+            let dai = CGFloat(daiOToiDa(cot: cot, hang: hang, j: j))
+            return min(max(dai * 6.2 + 14, 70), 300)
+        }
+        let tong = rong.reduce(0, +)
+        guard tong > tongToiDa else { return rong }
+        // Co đều, rồi kéo lại những cột tụt dưới sàn.
+        let ty = tongToiDa / tong
+        rong = rong.map { max($0 * ty, sanToiThieu) }
+        return rong
+    }
+
+    // Nhớ độ dài đã dựng. Cùng một ô được hỏi lại nhiều lần — mỗi lần vẽ lại một bảng, và
+    // một lần nữa cho mỗi cột khi tính bề rộng. Chỉ chạm từ luồng giao diện.
+    nonisolated(unsafe) private static var khoDai: [String: Int] = [:]
 
     /// Số hiện ra cho từng mục của một danh sách đã làm phẳng.
     ///
@@ -402,6 +518,18 @@ private struct BangMd: View {
     let cot: [String]
     let hang: [[String]]
     let co: CGFloat
+    /// Bề rộng tính MỘT LẦN lúc dựng, không tính trong thân `View`.
+    ///
+    /// `Markdown.daiHienRa` chạy bộ dựng Markdown. Gọi nó trong thân `View` cho từng ô của
+    /// một bảng 109 hàng × 6 cột là hàng chục nghìn lượt dựng mỗi lần SwiftUI vẽ lại.
+    private let rong: [CGFloat]
+
+    init(cot: [String], hang: [[String]], co: CGFloat) {
+        self.cot = cot
+        self.hang = hang
+        self.co = co
+        self.rong = Markdown.beRongCot(cot: cot, hang: hang)
+    }
 
     var body: some View {
         // Hiện thanh cuộn.
@@ -428,7 +556,15 @@ private struct BangMd: View {
                 Divider()
                 ForEach(Array(hang.enumerated()), id: \.offset) { i, h in
                     HStack(alignment: .top, spacing: 0) {
-                        ForEach(Array(h.enumerated()), id: \.offset) { j, o in
+                        // Đi theo SỐ CỘT CỦA TIÊU ĐỀ, không theo số ô của hàng.
+                        //
+                        // `Markdown.sanHang` đã san cho bằng lúc tách, nên hai con số này
+                        // trùng nhau. Vẫn viết `cot.indices` chứ không `h.enumerated()`: nếu
+                        // sau này có đường nào dựng `.bang` mà không qua `sanHang`, bảng sẽ
+                        // thiếu ô rỗng chứ không lệch cột — một bảng thiếu ô còn đọc được,
+                        // một bảng lệch cột thì không.
+                        ForEach(cot.indices, id: \.self) { j in
+                            let o = j < h.count ? h[j] : ""
                             Text(Markdown.inline(o))
                                 .font(.system(size: co - 1))
                                 .textSelection(.enabled)
@@ -449,14 +585,7 @@ private struct BangMd: View {
             .strokeBorder(Color.secondary.opacity(0.2)))
     }
 
-    /// Bề rộng cột theo NỘI DUNG của cột đó, trong khoảng vừa panel hội thoại.
-    ///
-    /// Trần thấp hơn bảng trên tab (220 so với 420) vì panel hẹp hơn nhiều; phần dài hơn thì
-    /// xuống dòng, không cắt.
     private func rongCot(_ j: Int) -> CGFloat {
-        let tran: CGFloat = cot.count >= 4 ? 170 : cot.count == 3 ? 200 : 240
-        let dai = max(j < cot.count ? cot[j].count : 0,
-                      hang.prefix(20).map { j < $0.count ? $0[j].count : 0 }.max() ?? 0)
-        return min(max(CGFloat(dai) * 6.2 + 14, 70), tran)
+        j < rong.count ? rong[j] : 90
     }
 }

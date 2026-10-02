@@ -12,34 +12,51 @@ import Foundation
 /// hiện trong khối công thức riêng, không giả vờ đã sắp chữ xong.
 enum MathText {
 
-    /// Ký hiệu một-đổi-một. Danh sách chọn theo thứ hay gặp trong kỹ thuật nhúng.
+    /// Ký hiệu một-đổi-một — **sinh ra từ `_TEX_KY_HIEU` của `src/eide/xuat_ban.py`**.
+    ///
+    /// Hai bên phải GIỐNG NHAU từng mục. Trước ngày 02/10/2026 chúng lệch ba kiểu, và cả ba
+    /// đều âm thầm:
+    ///
+    /// - Swift thiếu **28** ký hiệu Python có (`\Sigma`, `\Theta`, `\chi`, `\emptyset`,
+    ///   `\implies`…). Cùng một câu tác tử viết ra thì đẹp trong tệp Word mà vẫn là lệnh TeX
+    ///   thô trên màn hình — đúng điều anh Công nêu ngày 01/10/2026.
+    /// - Python thiếu **13** lệnh bố cục Swift có (`\left`, `\right`, `\quad`…), nên
+    ///   `\left( a \right)` in ra tệp Word còn nguyên hai lệnh ấy.
+    /// - Hai mục **SAI**: Swift đổi `\sum` thành `Σ` và `\prod` thành `Π` — chữ Hy Lạp, không
+    ///   phải ký hiệu phép toán `∑` `∏`. Trông gần giống, khác nghĩa, và khác hẳn bề rộng.
+    ///   Tệ hơn: `\Sigma` và `\sum` ra cùng một chữ, nên hai thứ khác nhau hiện ra như một.
+    ///
+    /// Ca kiểm `test_hai_bang_ky_hieu_phai_giong_nhau` đọc thẳng tệp này rồi so với bảng
+    /// Python. Sửa một bên mà quên bên kia thì đỏ ở đó. Xem DEV-325.
     private static let kyHieu: [String: String] = [
-        // so sánh
-        "\\ge": "≥", "\\geq": "≥", "\\le": "≤", "\\leq": "≤", "\\ne": "≠", "\\neq": "≠",
-        "\\approx": "≈", "\\sim": "∼", "\\propto": "∝", "\\equiv": "≡",
-        "\\ll": "≪", "\\gg": "≫",
-        // phép toán
-        "\\times": "×", "\\cdot": "·", "\\div": "÷", "\\pm": "±", "\\mp": "∓",
-        "\\ast": "∗", "\\star": "⋆",
-        // mũi tên
-        "\\to": "→", "\\rightarrow": "→", "\\leftarrow": "←", "\\Rightarrow": "⇒",
-        "\\Leftarrow": "⇐", "\\leftrightarrow": "↔", "\\uparrow": "↑", "\\downarrow": "↓",
-        // chữ Hy Lạp hay dùng trong điện tử
-        "\\alpha": "α", "\\beta": "β", "\\gamma": "γ", "\\delta": "δ", "\\Delta": "Δ",
-        "\\epsilon": "ε", "\\varepsilon": "ε", "\\eta": "η", "\\theta": "θ",
-        "\\lambda": "λ", "\\mu": "µ", "\\pi": "π", "\\rho": "ρ", "\\sigma": "σ",
-        "\\tau": "τ", "\\phi": "φ", "\\omega": "ω", "\\Omega": "Ω",
-        // tập hợp & logic
-        "\\in": "∈", "\\notin": "∉", "\\subset": "⊂", "\\cup": "∪", "\\cap": "∩",
-        "\\forall": "∀", "\\exists": "∃", "\\neg": "¬", "\\land": "∧", "\\lor": "∨",
-        // khác
-        "\\infty": "∞", "\\partial": "∂", "\\nabla": "∇", "\\sum": "Σ", "\\prod": "Π",
-        "\\int": "∫", "\\sqrt": "√", "\\degree": "°", "\\circ": "°", "\\percent": "%",
-        "\\ohm": "Ω", "\\micro": "µ", "\\angle": "∠", "\\perp": "⊥", "\\parallel": "∥",
-        // khoảng trắng của TeX
-        "\\,": " ", "\\;": " ", "\\:": " ", "\\!": "", "\\quad": "  ", "\\qquad": "    ",
-        "\\ ": " ", "\\%": "%", "\\&": "&", "\\#": "#", "\\_": "_",
-        "\\left": "", "\\right": "", "\\displaystyle": "", "\\limits": "",
+        "\\ ": " ", "\\!": "", "\\,": " ", "\\:": " ",
+        "\\;": " ", "\\alpha": "α", "\\angle": "∠", "\\approx": "≈",
+        "\\ast": "∗", "\\beta": "β", "\\cap": "∩", "\\cdot": "·",
+        "\\cdots": "⋯", "\\chi": "χ", "\\circ": "°", "\\cup": "∪",
+        "\\degree": "°", "\\delta": "δ", "\\Delta": "Δ", "\\displaystyle": "",
+        "\\div": "÷", "\\dots": "…", "\\downarrow": "↓", "\\emptyset": "∅",
+        "\\epsilon": "ε", "\\equiv": "≡", "\\eta": "η", "\\exists": "∃",
+        "\\forall": "∀", "\\gamma": "γ", "\\Gamma": "Γ", "\\ge": "≥",
+        "\\geq": "≥", "\\gg": "≫", "\\iff": "⇔", "\\implies": "⇒",
+        "\\in": "∈", "\\infty": "∞", "\\int": "∫", "\\iota": "ι",
+        "\\kappa": "κ", "\\lambda": "λ", "\\Lambda": "Λ", "\\land": "∧",
+        "\\ldots": "…", "\\le": "≤", "\\left": "", "\\Leftarrow": "⇐",
+        "\\leftarrow": "←", "\\Leftrightarrow": "⇔", "\\leftrightarrow": "↔", "\\leq": "≤",
+        "\\limits": "", "\\ll": "≪", "\\lor": "∨", "\\mapsto": "↦",
+        "\\micro": "µ", "\\mp": "∓", "\\mu": "µ", "\\nabla": "∇",
+        "\\ne": "≠", "\\neg": "¬", "\\neq": "≠", "\\notin": "∉",
+        "\\nu": "ν", "\\ohm": "Ω", "\\omega": "ω", "\\Omega": "Ω",
+        "\\parallel": "∥", "\\partial": "∂", "\\percent": "%", "\\perp": "⊥",
+        "\\phi": "φ", "\\Phi": "Φ", "\\pi": "π", "\\Pi": "Π",
+        "\\pm": "±", "\\prime": "′", "\\prod": "∏", "\\propto": "∝",
+        "\\psi": "ψ", "\\Psi": "Ψ", "\\qquad": " ", "\\quad": " ",
+        "\\rho": "ρ", "\\right": "", "\\Rightarrow": "⇒", "\\rightarrow": "→",
+        "\\sigma": "σ", "\\Sigma": "Σ", "\\sim": "∼", "\\sqrt": "√",
+        "\\star": "⋆", "\\subset": "⊂", "\\subseteq": "⊆", "\\sum": "∑",
+        "\\tau": "τ", "\\theta": "θ", "\\Theta": "Θ", "\\times": "×",
+        "\\to": "→", "\\uparrow": "↑", "\\upsilon": "υ", "\\varepsilon": "ε",
+        "\\varnothing": "∅", "\\varphi": "φ", "\\xi": "ξ", "\\Xi": "Ξ",
+        "\\zeta": "ζ",
     ]
 
     private static let mu: [Character: Character] = [
@@ -58,6 +75,52 @@ enum MathText {
 
     /// Đổi một đoạn LaTeX sang Unicode. Trả về `nil` nếu còn sót lệnh không hiểu —
     /// gọi tới sẽ hiện nguyên bản trong khối công thức thay vì trình một kết quả sai.
+    /// Đổi cả bảng ký hiệu trong MỘT lượt duyệt, có chốt biên.
+    ///
+    /// Bản trước thay từng mục bằng `replacingOccurrences`, xếp dài trước ngắn. Xếp dài trước
+    /// đủ để `\\leftarrow` không bị `\\left` ăn mất đầu — nhưng **chỉ với những lệnh có trong
+    /// bảng**. Một lệnh ta chưa biết mà bắt đầu bằng tên một lệnh đã biết thì vẫn bị cắt:
+    ///
+    ///     \alphabet  →  αbet        \leftroot  →  root
+    ///
+    /// Hai hậu quả, và cái thứ hai tệ hơn. Thứ nhất, chữ hiện ra sai. Thứ hai, phép kiểm cuối
+    /// hàm — *"còn dấu gạch chéo nghĩa là còn lệnh chưa hiểu"* — **mất tác dụng**: gạch chéo
+    /// đã bị ăn cùng với phần đầu lệnh, nên hàm báo đã đổi trọn vẹn và khối công thức hiện ra
+    /// một kết quả sai thay vì hiện nguyên bản kèm dòng *"giao diện chưa đổi hết ký hiệu"*.
+    /// Đúng cái mà chú thích của hàm hứa là sẽ không xảy ra.
+    ///
+    /// Chốt biên phải chia **hai nhóm**, giống `_MOT_LUOT` phía Python:
+    /// - lệnh viết bằng **chữ** cần `(?![A-Za-z])` phía sau — `\\leftb` không phải `\\left`;
+    /// - lệnh dạng **dấu câu** (`\\,` `\\;` `\\:` `\\!` `\\ `) thì tên kết thúc ngay ở dấu ấy,
+    ///   nên một chữ đứng sau là cách dùng thường: `a\\,b`. Áp chốt cho nhóm này thì chúng
+    ///   không đổi được.
+    private static func doiKyHieu(_ s: String) -> String {
+        guard let re = motLuot else { return s }
+        let ns = s as NSString
+        var ra = ""
+        var vt = 0
+        re.enumerateMatches(in: s, range: NSRange(location: 0, length: ns.length)) { m, _, _ in
+            guard let m else { return }
+            ra += ns.substring(with: NSRange(location: vt, length: m.range.location - vt))
+            ra += kyHieu[ns.substring(with: m.range)] ?? ns.substring(with: m.range)
+            vt = m.range.location + m.range.length
+        }
+        ra += ns.substring(from: vt)
+        return ra
+    }
+
+    private static let motLuot: NSRegularExpression? = {
+        func nhanh(_ ds: [String]) -> String {
+            ds.sorted { $0.count > $1.count }
+              .map { NSRegularExpression.escapedPattern(for: $0) }
+              .joined(separator: "|")
+        }
+        let chu = kyHieu.keys.filter { $0.dropFirst().first?.isLetter == true }
+        let dau = kyHieu.keys.filter { $0.dropFirst().first?.isLetter != true }
+        return try? NSRegularExpression(
+            pattern: "(?:(?:\(nhanh(Array(chu))))(?![A-Za-z])|(?:\(nhanh(Array(dau)))))")
+    }()
+
     static func sangUnicode(_ tex: String) -> (text: String, tron: Bool) {
         var s = tex
 
@@ -70,9 +133,7 @@ enum MathText {
         // \sqrt{x} → √(x)
         s = thayNgoacNhon(s, lenh: "\\sqrt") { "√(\($0))" }
 
-        for (k, v) in kyHieu.sorted(by: { $0.key.count > $1.key.count }) {
-            s = s.replacingOccurrences(of: k, with: v)
-        }
+        s = doiKyHieu(s)
 
         s = thayChiSoMu(s, dau: "^", bang: mu)
         s = thayChiSoMu(s, dau: "_", bang: chiSo)

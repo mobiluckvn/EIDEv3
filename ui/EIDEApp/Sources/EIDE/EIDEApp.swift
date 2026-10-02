@@ -127,8 +127,8 @@ struct EIDEApp: App {
             try setup.taoDuAn(tai: u)
             Task { await moRoiGhiNho() }
         } catch {
-            state.notices.append(.init(level: "error",
-                                       text: error.localizedDescription, code: nil))
+            state.themThongBao(level: "error",
+                                       text: error.localizedDescription, code: nil)
         }
     }
 
@@ -147,11 +147,11 @@ struct EIDEApp: App {
         state.gui(.say("Xuất dự án này ra tệp `goi/\(u.lastPathComponent)` giúp mình "
                        + "(bỏ phần dựng lại được), rồi cho mình biết gói nằm ở đâu và "
                        + "nặng bao nhiêu."))
-        state.notices.append(.init(
+        state.themThongBao(
             level: "info",
             text: "Tác tử sẽ ghi gói vào trong dự án (hộp cát của nó). Xong thì chép ra "
                 + u.deletingLastPathComponent().path,
-            code: nil))
+            code: nil)
     }
 
     /// Nhập một gói `.zip` ra thư mục rỗng rồi mở luôn.
@@ -179,9 +179,9 @@ struct EIDEApp: App {
                 // đặt câu này trước thì chính nó bị cuốn đi cùng — người nhập một gói xong
                 // không thấy gì xác nhận là đã nhập được.
                 await moRoiGhiNho()
-                state.notices.append(.init(level: "info", text: vi, code: nil))
+                state.themThongBao(level: "info", text: vi, code: nil)
             case .hong(let vi):
-                state.notices.append(.init(level: "error", text: vi, code: nil))
+                state.themThongBao(level: "error", text: vi, code: nil)
             }
         }
     }

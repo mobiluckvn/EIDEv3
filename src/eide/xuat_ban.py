@@ -324,6 +324,25 @@ _TEX_KY_HIEU = {
     # linh tinh hay gặp trong tài liệu kỹ thuật
     r"\ldots": "…", r"\dots": "…", r"\cdots": "⋯", r"\angle": "∠",
     r"\degree": "°", r"\circ": "°", r"\prime": "′", r"\percent": "%",
+    r"\perp": "⊥", r"\parallel": "∥", r"\star": "⋆",
+    r"\uparrow": "↑", r"\downarrow": "↓", r"\ohm": "Ω", r"\micro": "µ",
+    # Lệnh BỐ CỤC — không có ký hiệu nào tương ứng, nên bỏ đi.
+    #
+    # Mười ba mục dưới đây vốn chỉ có ở bảng phía Swift. Thiếu chúng ở đây thì một công thức
+    # viết `\left( \frac{a}{b} \right)` in ra tệp Word thành `\left( a/b \right)` — ký hiệu
+    # đổi đúng mà hai lệnh bố cục còn nằm đó, và chúng là thứ đập vào mắt nhất.
+    #
+    # Hai bảng nay GIỐNG NHAU từng mục, và ca kiểm `test_hai_bang_ky_hieu_phai_giong_nhau`
+    # đọc thẳng tệp Swift để canh. Xem DEV-325.
+    r"\left": "", r"\right": "", r"\displaystyle": "", r"\limits": "",
+    # `\quad` và `\qquad` đáng ra là khoảng rộng khác nhau, nhưng ở đây cả hai thành
+    # MỘT dấu cách — và nói ra chứ không giấu. Hàm này kết thúc bằng
+    # `re.sub(r"\s+", " ")`, nên mọi khoảng nhiều hơn một dấu cách đều co lại; ánh xạ
+    # chúng thành hai hay bốn dấu cách chỉ tạo ra một lời hứa mà bước sau xoá đi. Ca
+    # kiểm phủ cả bảng (`test_MOI_lenh_trong_bang_doi_dung_mot_minh_no`) bắt đúng chỗ
+    # này ngày 02/10/2026, lúc tôi vừa thêm hai mục ấy vào bảng.
+    r"\quad": " ", r"\qquad": " ",
+    r"\,": " ", r"\;": " ", r"\:": " ", r"\!": "", r"\ ": " ",
 }
 
 # Một lượt duyệt cho cả bảng. Hai thuộc tính giữ cho `\le` không ăn mất `\leq`:
@@ -338,9 +357,28 @@ _TEX_KY_HIEU = {
 #
 # Thứ **đo được** thì nằm ở chỗ khác: ca kiểm phủ CẢ BẢNG. Chính nó bắt được `\leftrightarrow`
 # bị luật xoá `\left` ăn mất đầu — một lỗi không chốt nào ở đây chạm tới.
+#
+# HAI NHÓM, không một nhóm. Chốt `(?![A-Za-z])` chỉ đúng với lệnh viết bằng CHỮ.
+#
+# Với `\left`, chốt ấy là thứ phải có: `\leftb` không phải lệnh `\left` theo sau một chữ `b`,
+# nó là một lệnh khác. Nhưng với lệnh dạng DẤU CÂU — `\,` `\;` `\:` `\!` `\ ` — tên lệnh kết
+# thúc ngay ở dấu ấy, nên một chữ đứng sau là cách dùng hoàn toàn thường: `a\,b`. Gộp chúng
+# vào cùng một chốt thì `a\:b` và `a\ b` **không đổi được**, và công thức in ra còn nguyên
+# gạch chéo.
+#
+# Lệch này nằm im cho tới 02/10/2026, lúc mười ba lệnh bố cục được thêm vào bảng và ca kiểm
+# phủ cả bảng thử từng lệnh TRONG NGỮ CẢNH. Trước đó bảng không có lệnh dấu câu nào, nên một
+# chốt là đủ và không ai thấy thiếu.
+def _nhanh(ds: list[str]) -> str:
+    return "|".join(sorted((re.escape(k) for k in ds), key=len, reverse=True))
+
+
+_LENH_CHU = [k for k in _TEX_KY_HIEU if k[1:2].isalpha()]
+_LENH_DAU = [k for k in _TEX_KY_HIEU if not k[1:2].isalpha()]
+
 _MOT_LUOT = re.compile(
-    "(?:" + "|".join(sorted((re.escape(k) for k in _TEX_KY_HIEU), key=len, reverse=True))
-    + r")(?![A-Za-z])")
+    "(?:(?:" + _nhanh(_LENH_CHU) + r")(?![A-Za-z])"
+    + "|(?:" + _nhanh(_LENH_DAU) + "))")
 
 # Ký tự TeX thoát bằng gạch chéo — `\%` là dấu phần trăm, không phải một lệnh.
 # Đổi SAU cùng, nếu không thì `\%` bị bảng ký hiệu trên nhìn thành lệnh `\p…`.

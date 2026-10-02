@@ -6513,3 +6513,100 @@ kết luận sai: `_chay` gán đè `canh_bao` (DEV-320), tệp ra còn sót t�
 báo đạt (01/10), và nay là chỗ này. Mẫu chung: **im lặng trông giống hoạt động bình thường.**
 
 Bộ kiểm: 1548 → **1549**.
+
+## [DEV-325] Năm việc giao diện, và chỗ đứng để đo chúng
+
+*02/10/2026. `ui/EIDEApp/` (Package.swift · Markdown.swift · MathText.swift · AppState.swift ·
+ConsoleView.swift · UITestChannel.swift), `src/eide/xuat_ban.py`.*
+
+Anh Công nêu năm việc về giao diện ngày 01/10/2026. Cả năm đều kết thúc trong sổ việc bằng
+cùng một câu: *"không con số nào bắt được chuyện này, phải nhìn màn hình"*.
+
+Câu ấy đúng với bề rộng cột và màu sắc. Nhưng nó **sai với phần tách khối, tách ô, đổi ký
+hiệu** — những phần ấy là hàm thuần, vào chuỗi ra chuỗi. Lý do thật khiến không đo được là
+khác: `Package.swift` chỉ có **một `executableTarget`**, không một mục tiêu kiểm nào, nên
+**toàn bộ giao diện chưa từng có một ca kiểm tự động**.
+
+Nên việc đầu tiên không phải vá, mà là dựng chỗ đứng: thêm `testTarget` dùng
+`@testable import EIDE`. Sau đó mới vá được có kiểm.
+
+### Ba trong năm mục chẩn đoán SAI nguyên nhân
+
+Đây là phần đáng đọc hơn các bản vá.
+
+**Mục 1 — công thức LaTeX.** Sổ việc ghi *"phần công thức chưa hề được nối vào bộ dựng
+Markdown của Swift"*. **Sai**: `MathText.khoiCongThuc` và `MathText.tach` đã nối từ trước.
+
+Lỗi thật chỉ thấy khi so hai bảng ký hiệu:
+
+| | Python | Swift |
+|---|---|---|
+| số mục | 91 | 76 |
+| `\sum` | `∑` phép tổng | `Σ` chữ Sigma Hy Lạp |
+| `\prod` | `∏` phép nhân | `Π` chữ Pi Hy Lạp |
+
+Swift thiếu 28 mục Python có (`\Sigma`, `\Theta`, `\chi`, `\emptyset`, `\implies`…) — chúng
+hiện ra dạng TeX thô trên màn mà đúng trong tệp Word, đúng điều anh Công thấy. Python thiếu
+13 lệnh bố cục Swift có. Và hai mục **sai**: dùng chữ Hy Lạp thay ký hiệu phép toán, nên
+`\Sigma` và `\sum` ra **cùng một chữ** — hai thứ khác nhau hiện ra như một.
+
+Nay bảng Swift **sinh ra từ bảng Python**, cả hai 109 mục, và
+`test_hai_bang_ky_hieu_phai_giong_nhau` đọc thẳng tệp Swift để canh.
+
+**Mục 2 — `**` lọt ra màn.** Phần lớn **đã hoạt động**: 11 trên 17 ca kiểm mới xanh ngay với
+mã cũ, kể cả ca khó nhất (`*Đề tài: **Phát triển…** · Vũ Trí Công*`). Giá trị của 11 ca ấy
+không phải vá gì, mà là chúng **ràng lại** những thứ đang đúng.
+
+**Mục 5 — bảng dựng sai.** Mục duy nhất chẩn đoán **trúng hoàn toàn**, cả bốn lỗi.
+
+### Hai lỗi tìm ra trong lúc vá, không có trong sổ việc
+
+**`\alphabet` → `αbet`.** Swift thay từng mục bằng `replacingOccurrences`, xếp dài trước ngắn.
+Cách ấy đủ để `\leftarrow` không bị `\left` ăn đầu — nhưng **chỉ với lệnh có trong bảng**. Một
+lệnh chưa biết mà bắt đầu bằng tên lệnh đã biết thì vẫn bị cắt. Hậu quả thứ hai tệ hơn hậu quả
+thứ nhất: phép kiểm cuối hàm — *"còn gạch chéo nghĩa là còn lệnh chưa hiểu"* — **mất tác dụng**,
+vì gạch chéo đã bị ăn cùng phần đầu lệnh. Khối công thức báo đã đổi trọn vẹn và hiện một kết
+quả sai, thay vì hiện nguyên bản kèm dòng *"chưa đổi hết ký hiệu"*. Đúng cái mà chú thích của
+chính hàm ấy hứa là sẽ không xảy ra.
+
+**`a\:b` và `a\ b` không đổi được.** Chốt `(?![A-Za-z])` phía Python đúng với lệnh viết bằng
+chữ (`\leftb` không phải `\left`) nhưng **sai với lệnh dạng dấu câu** — tên lệnh kết thúc ngay
+ở dấu ấy, nên một chữ đứng sau là cách dùng thường. Nay cả hai bên chia **hai nhóm**.
+
+Lệch này nằm im cho tới lúc bảng có lệnh dấu câu. Nó được bắt bởi
+`test_MOI_lenh_trong_bang_doi_dung_mot_minh_no` — ca phủ cả bảng, viết từ trước cho một mục
+đích khác.
+
+### Năm bản vá
+
+**Bảng Markdown** — bốn lỗi: hàng không được san cho bằng tiêu đề (`ForEach` đi theo số ô của
+hàng); `oCua` cắt theo mọi dấu `|` kể cả trong `` ` `` và `\|`; bề rộng đếm **mã nguồn** nên ô
+`**ĐẠT**` được cấp chỗ cho 7 ký tự mà chỉ hiện 3; chỉ đo 20 hàng đầu trong khi bảng tuân thủ
+của dự án robot có 109 hàng. Thêm: trần ghi cứng 170 px (≈27 ký tự) cho bảng từ 4 cột, nay
+300 px kèm **hạn tổng** và sàn, và bề rộng tính **một lần** lúc dựng chứ không trong thân
+`View` — `daiHienRa` chạy bộ dựng Markdown, gọi nó cho từng ô của bảng 109×6 là hàng chục
+nghìn lượt mỗi lần vẽ lại.
+
+**Rào ` ```math `** nay thành công thức, không còn là khối mã.
+
+**Cảnh báo dồn đống** — 10 chỗ thêm, 1 chỗ xoá, và chỗ xoá ấy là `doiDuAn()`. Nay mọi chỗ đi
+qua `themThongBao()`: **gộp cái trùng kèm số lần** (`×10` thay cho mười thẻ — một cảnh báo nổ
+mười lần nói lên điều khác với mười cảnh báo khác nhau), nút tắt từng thẻ, nút "Dọn hết" khi
+có từ ba thẻ, và mức `info` tự hết sau 25 giây. Mức `warn`/`error` **không** tự hết.
+
+**Điểm mù của bộ quét** — `UITestChannel` chỉ xuất `notices.suffix(5)`, nên dù màn hình dồn
+một trăm thẻ nó vẫn chỉ thấy năm: **không thể** phát hiện chuyện dồn đống, mãi mãi. Nay xuất
+thêm `thong_bao_tong` và `thong_bao_tong_lan`, nên đặt được ngưỡng.
+
+**Bản chụp cắt ở 3 000 ký tự** — nâng lên 20 000, và khi còn phải cắt thì **ghi bản đủ ra tệp**
+rồi để lại đường dẫn cùng độ dài thật ngay trong chuỗi. Nhật ký là sở cứ, và một sở cứ cắt mất
+đoạn cuối thì chỗ bị cắt luôn là chỗ không ai biết là đã mất.
+
+### Đo
+
+31 ca kiểm Swift, và **13 trong số đó đỏ khi trả lại mã cũ** — tôi kiểm riêng từng nhóm bằng
+cách phá lại mã rồi chạy. Bộ kiểm Python 1551 → **1552**.
+
+Còn lại, không làm lượt này: **A5.10 cây mô-đun** cần một bộ đọc quan hệ gọi mô-đun Verilog, và
+**A8 chưa hiện kết quả `build:hdl:sim`** — kết quả bộ kiểm HDL với phép đo độ nhạy không hiện
+ở đâu trên giao diện.

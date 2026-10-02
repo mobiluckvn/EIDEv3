@@ -159,6 +159,32 @@ def test_MOI_lenh_trong_bang_doi_dung_mot_minh_no():
     from eide.xuat_ban import _TEX_KY_HIEU
     for lenh, ky in _TEX_KY_HIEU.items():
         ra = cong_thuc_nguoi_doc(lenh)
+        if not ky.strip():
+            # Lệnh BỐ CỤC (`\left`, `\quad`, `\,`…) đổi ra khoảng trắng hoặc rỗng. Một công
+            # thức chỉ gồm một lệnh như thế thì ra chuỗi rỗng, vì hàm kết thúc bằng
+            # `re.sub(r"\s+", " ")` rồi `.strip()`. Đó là **đúng**: trong một dòng chữ thuần,
+            # lệnh bố cục không có gì để hiện.
+            #
+            # Ca này từng so `ra == ky` cho mọi mục, nên nó đỏ ngay lúc tôi thêm mười ba lệnh
+            # bố cục vào bảng ngày 02/10/2026 — và nó đỏ ĐÚNG, vì bảng khi ấy hứa `\quad` ra
+            # hai dấu cách trong khi bước chuẩn hoá sau đó xoá đi. Lời hứa đã sửa; chỗ cần
+            # nói rõ là ca kiểm hỏi gì với nhóm mục này.
+            # Và phải thử TRONG NGỮ CẢNH, không thử đứng một mình: hàm mở đầu bằng
+            # `s.strip()`, nên `\ ` (gạch chéo + dấu cách) mất dấu cách trước khi bảng chạy
+            # và còn trơ lại một gạch chéo. Đó là chuyện của phép thử, không phải của bảng —
+            # trong một công thức thật thì lệnh ấy luôn nằm giữa hai thứ khác.
+            #
+            # Ngữ cảnh phải chọn theo DẠNG TÊN LỆNH. Lệnh viết bằng chữ cần một dấu không
+            # phải chữ ngăn phía sau, vì `\leftb` KHÔNG phải `\left` — và chốt
+            # `(?![A-Za-z])` từ chối đúng. Lệnh dạng dấu câu thì tên kết thúc ở dấu ấy, nên
+            # `a\,b` là cách dùng thường và phải đổi được.
+            sau = "(" if lenh[1:2].isalpha() else "b"
+            trong = cong_thuc_nguoi_doc(f"a{lenh}{sau}")
+            assert "\\" not in trong, (
+                f"{lenh!r} là lệnh bố cục mà còn để lại gạch chéo: a{lenh}{sau} → {trong!r}")
+            assert trong.replace(" ", "") == f"a{sau}", (
+                f"{lenh!r} phải biến mất: a{lenh}{sau} → {trong!r}")
+            continue
         assert ra == ky, f"{lenh} → {ra!r}, đợi {ky!r}"
 
 

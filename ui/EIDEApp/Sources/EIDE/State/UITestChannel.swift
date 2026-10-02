@@ -368,6 +368,35 @@ final class UITestChannel {
         return ra
     }
 
+    /// Trần của một trường chữ trong bản chụp. Nâng từ 3 000 lên 20 000.
+    ///
+    /// Lời tác tử dài hơn 3 000 ký tự là chuyện thường trong đề án này — một bản thiết kế
+    /// kiến trúc hay một danh mục an toàn thì dài hơn thế nhiều.
+    static let tranChu = 20_000
+
+    /// Cắt một trường chữ, và khi phải cắt thì **GHI PHẦN ĐỦ RA TỆP** rồi để lại đường dẫn.
+    ///
+    /// Bản trước dùng thẳng `String(cuoi.prefix(3000))`. Câu trả lời dài hơn bị cắt giữa
+    /// chừng, nên **nhật ký phiên chép thiếu** — hai lần trong phiên robot: danh mục an toàn
+    /// và phần thiết kế phép đo dấu đều mất phần đuôi.
+    ///
+    /// Nhật ký là sở cứ. Một sở cứ cắt mất đoạn cuối thì **chỗ bị cắt luôn là chỗ không ai
+    /// biết là đã mất** — không có dấu hiệu nào, câu cuối trông như một câu kết thúc bình
+    /// thường. Nay ba thứ cùng lúc: trần cao hơn, dấu cắt hiện ra trong chính chuỗi, và tệp
+    /// chứa bản đủ.
+    func catVaGhiRa(_ s: String, ten: String) -> String {
+        guard s.count > Self.tranChu else { return s }
+        var duong = "(không ghi được ra tệp)"
+        if let d = thuMuc {
+            let u = d.appendingPathComponent("\(ten)-\(soLenh).txt")
+            if (try? s.write(to: u, atomically: true, encoding: .utf8)) != nil {
+                duong = u.lastPathComponent
+            }
+        }
+        return String(s.prefix(Self.tranChu))
+            + "\n\n⟨CẮT Ở \(Self.tranChu) KÝ TỰ — bản đủ \(s.count) ký tự ở \(duong)⟩"
+    }
+
     private func anhChup(nhan: String) -> [String: Any] {
         guard let s = state else { return [:] }
 
@@ -478,15 +507,30 @@ final class UITestChannel {
             // Thiếu con số này, một lượt mà tác tử chỉ gọi công cụ rồi im lặng sẽ bị chép
             // lại bằng lời của lượt TRƯỚC — nhật ký thành sai mà trông vẫn hợp lý.
             "so_loi_tac_tu": loiTacTu.count,
-            "loi_tac_tu_cuoi": String(cuoi.prefix(3000)),
+            "loi_tac_tu_cuoi": catVaGhiRa(cuoi, ten: "loi-tac-tu"),
+            "loi_tac_tu_do_dai": String(cuoi.count),
             // Chữ SAU KHI DỰNG — để hỏi được "trên màn hình còn dấu sao không".
-            "loi_tac_tu_render": String(Markdown.chuThuan(cuoi).prefix(3000)),
+            "loi_tac_tu_render": catVaGhiRa(Markdown.chuThuan(cuoi), ten: "loi-tac-tu-render"),
             "khoi_markdown": khoiMd,
             "the_dang_cho": theHien,
             "tab_dang_mo": s.selectedSurface,
             "tab_tieu_de": bm?.title ?? "",
             "khoi_tren_tab": khoi,
-            "thong_bao": s.notices.suffix(5).map { ["muc": $0.level, "chu": $0.text] },
+            // Xuất CẢ TỔNG SỐ, không chỉ năm thẻ cuối.
+            //
+            // Bản trước chỉ xuất `suffix(5)`. Nên dù màn hình có dồn một trăm thẻ, bộ quét
+            // giao diện vẫn chỉ thấy năm — nó **không thể** phát hiện chuyện dồn đống, mãi
+            // mãi. Đúng loại lỗi dự án này gặp đi gặp lại: cơ chế đo có sẵn, nhưng bị bịt
+            // đúng chỗ cần thấy. Anh Công phải tự nhìn màn hình mới thấy, và phải nêu ra
+            // bằng lời.
+            //
+            // `tong` cho đặt được ngưỡng. `tong_lan` đếm cả số lần của các thẻ đã gộp, nên
+            // phân biệt được "năm cảnh báo khác nhau" với "một cảnh báo nổ năm mươi lần".
+            "thong_bao": s.notices.suffix(5).map {
+                ["muc": $0.level, "chu": $0.text, "so_lan": String($0.soLan)]
+            },
+            "thong_bao_tong": String(s.notices.count),
+            "thong_bao_tong_lan": String(s.notices.reduce(0) { $0 + $1.soLan }),
             "trang_thai": [
                 "du_an": s.status.du_an, "chip": s.status.chip,
                 "chang": s.status.chang, "stale": s.status.stale,
