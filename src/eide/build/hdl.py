@@ -65,6 +65,10 @@ class KetQuaHdl:
     loi: list[dict[str, Any]] = field(default_factory=list)
     canh_bao: list[dict[str, Any]] = field(default_factory=list)
     pass_fail: str = ""           # "PASS" | "FAIL" | "" — do testbench tự in
+    # Độ nhạy bộ kiểm: bắt mấy trên mấy phép phá mã. Rỗng nghĩa là CHƯA ĐO, và khối A8.0
+    # nói ra điều đó thay vì im lặng hiện một chữ PASS màu xanh — một bộ kiểm PASS mà chưa
+    # ai phá mã thì chưa biết nó canh được gì.
+    do_nhay: dict[str, int] = field(default_factory=dict)
     nguyen_van: str = ""
     vi_sao_khong_dat: str = ""
 
@@ -77,6 +81,7 @@ class KetQuaHdl:
                 "so_loi": len(self.loi), "so_canh_bao": len(self.canh_bao),
                 "loi": self.loi[:30], "canh_bao": self.canh_bao[:20],
                 "pass_fail": self.pass_fail,
+                "do_nhay": dict(self.do_nhay),
                 "vi_sao_khong_dat": self.vi_sao_khong_dat,
                 "nguyen_van": self.nguyen_van[-4000:]}
 

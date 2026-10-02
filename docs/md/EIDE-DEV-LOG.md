@@ -6610,3 +6610,50 @@ cách phá lại mã rồi chạy. Bộ kiểm Python 1551 → **1552**.
 Còn lại, không làm lượt này: **A5.10 cây mô-đun** cần một bộ đọc quan hệ gọi mô-đun Verilog, và
 **A8 chưa hiện kết quả `build:hdl:sim`** — kết quả bộ kiểm HDL với phép đo độ nhạy không hiện
 ở đâu trên giao diện.
+
+## [DEV-326] A8.0 — kết quả bộ kiểm HDL, và đường dẫn cho con số độ nhạy
+
+*02/10/2026. `src/eide/surfaces.py`, `src/eide/tools/hdl.py`, `src/eide/build/hdl.py`.*
+
+Tab Mô phỏng dựng cho `sim.run` của vi điều khiển: nó đọc hiện vật loại `sim_result`. `hdl.sim`
+ghi vào `build:hdl:sim`, một khoá khác hẳn. Nên **kết quả mọi bộ kiểm HDL không hiện ở đâu trên
+giao diện** — kể cả lượt vừa chạy 1 000 bộ giá trị ngẫu nhiên và bắt 7/7 phép phá mã. Lại đúng
+cái mẫu: cơ chế có sẵn, đường dẫn tới nó đứt. Đây là lần thứ ba trong bốn ngày (A5.11/A5.13 là
+hai lần trước).
+
+Khối A8.0 đặt **dòng độ nhạy ngay dưới dòng kết luận**, không đặt ở cuối. Và khi thiếu con số
+ấy thì nó **nói ra là thiếu**, kèm cách đo:
+
+> Độ nhạy bộ kiểm — CHƯA ĐO. Một bộ kiểm in PASS mà chưa ai phá mã thì chưa biết nó canh được
+> gì — hãy sửa một chỗ trong thiết kế, chạy lại, và xem bộ kiểm có trượt không.
+
+Nấc 3a của Bài 3 từng PASS với hai lỗ, và chỉ phép đo độ nhạy mới thấy. Một chữ PASS màu xanh
+không kèm con số ấy là nửa sự thật.
+
+### Con số độ nhạy trước đây không đi đâu cả
+
+`test.sensitivity` đo được chuyện này cho firmware C, nhưng nó **không ghi hiện vật nào** — con
+số chỉ trả về cho mô hình rồi mất theo lượt. Nên khối vừa dựng sẽ hiện "CHƯA ĐO" vĩnh viễn, kể
+cả sau khi tác tử vừa phá mã bảy lần.
+
+Nay `hdl.sim` nhận tham số `do_nhay={"bat": 7, "tong": 7}`, ghi vào hiện vật, và A8.0 đọc ra.
+Mô tả tham số nói thẳng điều kiện: *"Chỉ điền khi đã thật sự làm — con số này nói bộ kiểm canh
+được gì, và một con số bịa ra thì tệ hơn không có."*
+
+> Một phép đo không vào kho thì lượt sau không ai biết nó từng xảy ra.
+
+### Và một bài học về chính bộ kiểm của tôi
+
+Năm ca `test_A8_*` đầu tiên gọi `_khoi_mo_phong_hdl` trực tiếp. Tôi thử **bỏ hẳn dòng
+`khoi += _khoi_mo_phong_hdl(store)` ra khỏi `simulation()`** — cả năm ca vẫn xanh.
+
+Đúng cái bài học của `_goc()`: lớp lõi xanh không nói gì về việc lớp trên có nối đúng không, và
+cả năm công cụ `hdl.*` từng đổ với `E5999` vì chính chuyện đó. Thêm
+`test_A8_di_qua_BO_DUNG_TAB_that_khong_chi_goi_ham` — nó đi qua `simulation()` và đỏ đúng khi
+đường dẫn đứt:
+
+```
+AssertionError: khối A8.0 chưa được nối vào tab Mô phỏng — khối hiện có: []
+```
+
+Bộ kiểm: 1552 → **1558**.

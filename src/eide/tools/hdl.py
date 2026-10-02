@@ -120,19 +120,38 @@ def register(r: Registry) -> None:
                             "description": "iverilog (mặc định) | verilator (đo chu kỳ)"},
                  "dinh_nghia": {"type": "object",
                                 "description": "macro truyền vào, ví dụ {\"SIM\": \"1\"}"},
+                 "do_nhay": {"type": "object",
+                             "description": "ĐÃ phá mã và chạy lại thì điền: "
+                                            "{\"bat\": 7, \"tong\": 7}. Chỉ điền khi đã "
+                                            "thật sự làm — con số này nói bộ kiểm canh được "
+                                            "gì, và một con số bịa ra thì tệ hơn không có.",
+                             "properties": {"bat": {"type": "integer"},
+                                            "tong": {"type": "integer"}}},
                  "explain": EXPLAIN_SCHEMA},
              "required": ["nguon", "explain"]},
             risk="R1", core=False, needs_explain=True, writes_artefact=True,
             keywords=["mô phỏng", "testbench", "verilog", "simulation", "pass fail",
                       "số chu kỳ", "verilator", "iverilog"])
     def hdl_sim(ctx: Any, explain: dict[str, Any], nguon: str, dinh: str = "",
-                bo_may: str = "iverilog", dinh_nghia: dict[str, str] | None = None):
+                bo_may: str = "iverilog", dinh_nghia: dict[str, str] | None = None,
+                do_nhay: dict[str, int] | None = None):
         from ..build import hdl as H
 
         goc = _goc(ctx)
         kq = H.mo_phong(goc=goc, nguon=goc / nguon, dinh=dinh, bo_may=bo_may,
                         ra=_thu_muc_hdl(ctx), dinh_nghia=dinh_nghia,
                         lenh_mo_rong=_lenh_mo_rong_cua_firmware(ctx))
+        # Độ nhạy đi THEO hiện vật, không chỉ trả về cho mô hình.
+        #
+        # `test.sensitivity` đã đo được chuyện này cho firmware C, nhưng nó không ghi hiện
+        # vật nào — con số chỉ nằm trong hội thoại rồi mất. Nên khối A8.0 trên tab Mô phỏng
+        # không có cách nào biết, và nó hiện "CHƯA ĐO" vĩnh viễn kể cả sau khi tác tử vừa
+        # phá mã bảy lần.
+        #
+        # Một phép đo không vào kho thì lượt sau không ai biết nó từng xảy ra.
+        if do_nhay and do_nhay.get("tong"):
+            kq.do_nhay = {"bat": int(do_nhay.get("bat") or 0),
+                          "tong": int(do_nhay["tong"])}
         _ghi_kho(ctx, explain, kq, "sim")
         if not kq.dat:
             return _loi_chang(kq, (

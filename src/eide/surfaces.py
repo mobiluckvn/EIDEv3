@@ -516,6 +516,65 @@ def design(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
 _TRAN_LUT = 0.85
 
 
+def _khoi_mo_phong_hdl(store: Any) -> list[dict[str, Any]]:
+    """A8.0 — kết quả bộ kiểm HDL, và **phép đo độ nhạy nếu có**.
+
+    Tab Mô phỏng được dựng cho `sim.run` của vi điều khiển: nó đọc hiện vật loại `sim_result`.
+    `hdl.sim` ghi vào `build:hdl:sim`, một khoá khác hẳn — nên **kết quả mọi bộ kiểm HDL không
+    hiện ở đâu trên giao diện**, kể cả khi vừa chạy 1 000 bộ giá trị ngẫu nhiên và bắt 7/7
+    phép phá mã. Lại đúng cái mẫu: cơ chế có sẵn, đường dẫn tới nó đứt.
+
+    Khối này cố ý đặt **dòng độ nhạy ngay dưới dòng PASS**, không đặt ở cuối. Một bộ kiểm PASS
+    mà chưa ai phá mã thì chưa biết nó đo gì — nấc 3a của Bài 3 từng PASS với hai lỗ, và chỉ
+    phép đo độ nhạy mới thấy. Nên nếu thiếu con số ấy, khối phải NÓI RA là thiếu chứ không im
+    lặng hiện một chữ PASS màu xanh.
+    """
+    a = store.get("build:hdl:sim")
+    if not a:
+        return []
+    c = a["canonical"] or {}
+    dat = bool(c.get("dat"))
+    pf = c.get("pass_fail") or ""
+    nhay = c.get("do_nhay") or {}          # {"bat": n, "tong": m} nếu đã đo
+
+    hang = [
+        ["Kết luận", ("ĐẠT" if dat else "KHÔNG ĐẠT")
+         + (f" — testbench in “{pf}”" if pf else " — testbench KHÔNG in PASS/FAIL")],
+        ["Bộ máy", c.get("cong_cu") or "—"],
+        ["Thời gian", f"{c.get('giay', 0):.1f} s"],
+    ]
+    if c.get("ma_thoat") is not None:
+        hang.append(["Mã thoát", str(c["ma_thoat"])])
+
+    # Dòng quan trọng nhất của khối. Đặt ngay sau kết luận.
+    if nhay.get("tong"):
+        bat, tong = nhay.get("bat", 0), nhay["tong"]
+        hang.insert(1, [
+            "Độ nhạy bộ kiểm",
+            f"bắt {bat}/{tong} phép phá mã"
+            + ("" if bat == tong
+               else f" — còn {tong - bat} phép LỌT, nên có chỗ bộ kiểm không canh")])
+    else:
+        hang.insert(1, [
+            "Độ nhạy bộ kiểm",
+            "CHƯA ĐO. Một bộ kiểm in PASS mà chưa ai phá mã thì chưa biết nó canh được gì "
+            "— hãy sửa một chỗ trong thiết kế, chạy lại, và xem bộ kiểm có trượt không."])
+
+    tom = ("ĐẠT" if dat else "KHÔNG ĐẠT")
+    if nhay.get("tong"):
+        tom += f" · độ nhạy {nhay.get('bat', 0)}/{nhay['tong']}"
+    else:
+        tom += " · độ nhạy CHƯA ĐO"
+
+    ra = [block("A8.0", "Bộ kiểm HDL — testbench Verilog", "table",
+                summary=tom, columns=["", ""], rows=hang)]
+
+    if c.get("vi_sao_khong_dat"):
+        ra.append(block("A8.0:vi-sao", "Vì sao không đạt", "text",
+                        summary=c["vi_sao_khong_dat"]))
+    return ra
+
+
 def _khoi_chip_fpga(store: Any) -> list[dict[str, Any]]:
     """A5.11 + A5.12 — thiết kế CHIP trên FPGA, và bản đồ địa chỉ.
 
@@ -1218,8 +1277,10 @@ def simulation(store: Any, inv: Any) -> dict[str, Any]:
                 rows=[[x.get("gi", ""), x.get("vi_sao", ""), x.get("cach_bu", "")]
                       for x in c["khong_mo_phong_duoc"]]))
 
+    khoi += _khoi_mo_phong_hdl(store)
+
     ds = store.list("sim_result", limit=10)
-    if not ds:
+    if not ds and not store.get("build:hdl:sim"):
         khoi.append(empty(
             "A8.1", "Kết quả mô phỏng",
             chua_co="Chưa chạy mô phỏng lần nào.",

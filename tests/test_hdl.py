@@ -723,3 +723,116 @@ def test_het_han_diet_ca_chau_khong_chi_con(tmp_path):
     raise AssertionError(
         f"tiến trình cháu {pid} còn sống sau khi lượt chạy đã bị dừng — đúng cái lỗi "
         "để lại yosys-abc mồ côi cày 49 phút ngày 02/10/2026")
+
+
+# ========================================= A8.0: kết quả bộ kiểm HDL phải HIỆN RA
+#
+# Tab Mô phỏng dựng cho `sim.run` của vi điều khiển — nó đọc hiện vật loại `sim_result`.
+# `hdl.sim` ghi vào `build:hdl:sim`, một khoá khác hẳn. Nên **kết quả mọi bộ kiểm HDL không
+# hiện ở đâu trên giao diện**, kể cả khi vừa chạy 1 000 bộ giá trị ngẫu nhiên và bắt 7/7 phép
+# phá mã. Lại đúng cái mẫu: cơ chế có sẵn, đường dẫn tới nó đứt.
+
+def _kho_mot_muc(ma: str, canonical: dict):
+    class _Kho:
+        def get(self, m):
+            return {"id": ma, "canonical": canonical} if m == ma else None
+        def list(self, *_a, **_k):
+            return []
+    return _Kho()
+
+
+def test_A8_hien_ket_qua_bo_kiem_hdl():
+    from eide.surfaces import _khoi_mo_phong_hdl
+
+    k = _khoi_mo_phong_hdl(_kho_mot_muc("build:hdl:sim", {
+        "dat": True, "pass_fail": "PASS", "cong_cu": "iverilog", "giay": 0.21,
+        "ma_thoat": 0, "do_nhay": {"bat": 7, "tong": 7}}))
+    assert k, "có kết quả trong kho mà khối không hiện gì"
+    chu = str(k)
+    assert "ĐẠT" in chu
+    assert "7/7" in chu, "con số độ nhạy phải hiện ra — nó là thứ nói bộ kiểm canh được gì"
+
+
+def test_A8_noi_RA_khi_do_nhay_CHUA_DO():
+    """Một bộ kiểm PASS mà chưa ai phá mã thì chưa biết nó canh được gì.
+
+    Nấc 3a của Bài 3 từng PASS với hai lỗ, và chỉ phép đo độ nhạy mới thấy. Nên khi thiếu con
+    số ấy, khối phải NÓI RA là thiếu — không được im lặng hiện một chữ PASS màu xanh.
+    """
+    from eide.surfaces import _khoi_mo_phong_hdl
+
+    k = _khoi_mo_phong_hdl(_kho_mot_muc("build:hdl:sim", {
+        "dat": True, "pass_fail": "PASS", "cong_cu": "iverilog", "giay": 0.2}))
+    chu = str(k)
+    assert "CHƯA ĐO" in chu, f"im lặng về độ nhạy là nửa sự thật. Khối: {chu[:400]}"
+    assert "phá mã" in chu, "phải nói luôn cách đo, không chỉ nói là thiếu"
+
+
+def test_A8_noi_ro_khi_bo_kiem_khong_in_gi():
+    from eide.surfaces import _khoi_mo_phong_hdl
+
+    k = _khoi_mo_phong_hdl(_kho_mot_muc("build:hdl:sim", {
+        "dat": False, "pass_fail": "", "cong_cu": "iverilog", "giay": 0.2,
+        "vi_sao_khong_dat": "Testbench không in gì."}))
+    chu = str(k)
+    assert "KHÔNG ĐẠT" in chu
+    assert "KHÔNG in PASS/FAIL" in chu, "một testbench im lặng khác một testbench in FAIL"
+
+
+def test_A8_khong_co_gi_thi_khong_them_khoi_rong():
+    from eide.surfaces import _khoi_mo_phong_hdl
+
+    class _Rong:
+        def get(self, _m): return None
+        def list(self, *_a, **_k): return []
+    assert _khoi_mo_phong_hdl(_Rong()) == []
+
+
+def test_do_nhay_di_theo_hien_vat_khong_chi_tra_cho_mo_hinh(tmp_path):
+    """`test.sensitivity` đo được độ nhạy nhưng KHÔNG ghi hiện vật nào — con số chỉ nằm trong
+    hội thoại rồi mất. Nên khối A8.0 không có cách nào biết. Ca này canh đường dẫn mới."""
+    from types import SimpleNamespace
+
+    from eide.tools import build_registry
+
+    goc = _du_an(tmp_path)
+    (goc / "rtl" / "tb.v").write_text(
+        "module tb; initial begin $display(\"PASS\"); $finish; end endmodule\n", "utf-8")
+    ghi: dict = {}
+    ctx = SimpleNamespace(
+        config=SimpleNamespace(paths=SimpleNamespace(project_root=goc)),
+        run_id="test",
+        store=SimpleNamespace(get=lambda _m: None,
+                              apply=lambda **k: ghi.update(k)))
+    sim = next(t for t in build_registry().all() if t.name == "hdl.sim")
+    sim.fn(ctx, explain={"summary": "đo", "why": "ca kiểm"},
+           nguon="rtl", dinh="tb", do_nhay={"bat": 6, "tong": 7})
+
+    assert ghi.get("canonical", {}).get("do_nhay") == {"bat": 6, "tong": 7}, (
+        f"độ nhạy không vào kho — lượt sau không ai biết nó từng được đo. Đã ghi: "
+        f"{ghi.get('canonical', {}).get('do_nhay')}")
+
+
+def test_A8_di_qua_BO_DUNG_TAB_that_khong_chi_goi_ham():
+    """Ca này đỏ khi khối chưa được NỐI vào tab — ca trên thì không.
+
+    Năm ca `test_A8_*` phía trên gọi `_khoi_mo_phong_hdl` trực tiếp, nên chúng vẫn xanh khi tôi
+    thử bỏ dòng `khoi += _khoi_mo_phong_hdl(store)` ra khỏi `simulation()`. Đúng cái bài học
+    của `_goc()`: lớp lõi xanh không nói gì về việc lớp trên có nối đúng không, và cả năm công
+    cụ `hdl.*` từng đổ vì chính chuyện đó.
+    """
+    from eide.surfaces import simulation
+
+    kho = _kho_mot_muc("build:hdl:sim", {
+        "dat": True, "pass_fail": "PASS", "cong_cu": "iverilog", "giay": 0.21,
+        "do_nhay": {"bat": 7, "tong": 7}})
+
+    class _Inv:
+        def __getattr__(self, _n):
+            return lambda *a, **k: None
+
+    bm = simulation(kho, _Inv())
+    ma = [b.get("code") or b.get("id") for b in (bm.get("blocks") or [])]
+    assert any(str(m).startswith("A8.0") for m in ma), (
+        f"khối A8.0 chưa được nối vào tab Mô phỏng — khối hiện có: {ma}")
+    assert "7/7" in str(bm), "con số độ nhạy phải tới được tab, không chỉ tới hàm dựng khối"
