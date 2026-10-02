@@ -155,6 +155,40 @@ enum MathText {
     }
 
     /// Tách `$...$` và `\(...\)` khỏi phần chữ. Dùng cho một dòng văn xuôi.
+    /// Ruột giữa hai dấu `$` là CÔNG THỨC hay là TIỀN?
+    ///
+    /// Đây là chỗ khó nhất của việc đọc công thức giữa dòng: **dấu đô-la cũng là tiền**. Một
+    /// câu "giá $5 và $10 nữa" mà đọc thành công thức thì ăn mất cả đoạn chữ ở giữa.
+    ///
+    /// Bốn điều kiện dưới đây **sao đúng từ `_dong_cong_thuc` của `src/eide/xuat_ban.py`**, và
+    /// phải giữ giống. Bản Swift trước đây dùng một luật khác hẳn — *"có lệnh `\\`, hoặc có chữ
+    /// cái, hoặc có `^`/`_`"* — và nó sai theo CẢ HAI chiều:
+    ///
+    /// - `$[-128, 127]$` **không có** thứ nào trong ba thứ ấy, nên nó rơi xuống chữ thường
+    ///   **mang theo cả hai dấu đô-la**. Anh Công nhìn thấy đúng câu ấy trên màn hình ngày
+    ///   02/10/2026: *"Với kiểu I8: giá trị trong $[-128, 127]$"*. Trong tệp Word thì đúng, vì
+    ///   phía Python dùng luật khác — lại thêm một chỗ hai bên lệch nhau.
+    /// - `giá $5 và $10 nữa` có ruột `"5 và "`, **có chữ cái**, nên luật cũ nhận là công thức
+    ///   và ăn mất đoạn chữ. Luật của Python loại nó đúng, bằng điều kiện khoảng trắng ở cuối.
+    ///
+    /// Và một điều về bộ kiểm của tôi: ca `test_cong_thuc_trong_dong_doi_thanh_ky_hieu` thử
+    /// `$\\alpha \\le 0.05$` — một công thức **có lệnh TeX**. Nó xanh với cả luật cũ. Phải có
+    /// một ca không chứa lệnh nào mới thấy, và tôi không nghĩ ra ca ấy.
+    static func laCongThucChuKhongPhaiTien(_ ruot: String) -> Bool {
+        // không rỗng, không bắt đầu/kết thúc bằng khoảng trắng — "giá $5 và $10" có ruột
+        // `"5 và "` kết thúc bằng khoảng trắng, nên bị loại đúng như mong muốn
+        guard !ruot.isEmpty,
+              ruot == ruot.trimmingCharacters(in: .whitespacesAndNewlines),
+              !ruot.contains("$"),
+              ruot.count <= 300 else { return false }
+        // Ruột chỉ có chữ số, dấu chấm phẩy và khoảng trắng thì đó là TIỀN: `$5$`, `$1.000$`.
+        // Một công thức thật luôn có thêm thứ gì đó — biến, phép toán, hoặc một lệnh TeX.
+        let chiSo = CharacterSet(charactersIn: "0123456789.,")
+            .union(.whitespacesAndNewlines)
+        if ruot.unicodeScalars.allSatisfy({ chiSo.contains($0) }) { return false }
+        return true
+    }
+
     static func tach(_ s: String) -> [Manh] {
         var ra: [Manh] = []
         var dem = ""
@@ -179,17 +213,13 @@ enum MathText {
             // $...$  (một đô la; hai đô la do bộ tách khối xử lý trước)
             if c == "$" {
                 let sau = s.index(after: i)
-                if let end = s[sau...].firstIndex(of: "$"), end > sau {
-                    let tex = String(s[sau..<end])
-                    // "$5" hay "giá $100" không phải công thức — công thức có lệnh
-                    // hoặc ký hiệu toán, chứ không phải thuần chữ số.
-                    if tex.contains("\\") || tex.rangeOfCharacter(from: .letters) != nil
-                        || tex.contains("^") || tex.contains("_") {
-                        xa()
-                        ra.append(.init(text: sangUnicode(tex).text, laCongThuc: true))
-                        i = s.index(after: end)
-                        continue
-                    }
+                if let end = s[sau...].firstIndex(of: "$"), end > sau,
+                   laCongThucChuKhongPhaiTien(String(s[sau..<end])) {
+                    xa()
+                    ra.append(.init(text: sangUnicode(String(s[sau..<end])).text,
+                                    laCongThuc: true))
+                    i = s.index(after: end)
+                    continue
                 }
             }
             dem.append(c)

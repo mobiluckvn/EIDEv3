@@ -1,0 +1,38 @@
+{
+  "ghi_chu": [
+    "Tập mẫu DÙNG CHUNG cho hai bộ đọc công thức giữa dòng:",
+    "  Python  src/eide/xuat_ban.py :: _dong_cong_thuc",
+    "  Swift   ui/EIDEApp/.../MathText.swift :: laCongThucChuKhongPhaiTien",
+    "",
+    "Lõi không gọi ngược lên app được, nên cùng một luật phải tồn tại hai bản. Tệp này là chỗ",
+    "cái giá ấy được trả: cả hai bộ kiểm đọc chính tệp này, nên sửa một bên mà quên bên kia thì",
+    "bên quên sẽ đỏ.",
+    "",
+    "Ngày 02/10/2026 hai bên lệch nhau và anh Công nhìn thấy trên màn hình:",
+    "  'Với kiểu I8: giá trị trong $[-128, 127]$' — hai dấu đô-la còn nguyên trên chat,",
+    "  mà trong tệp Word thì đúng. Luật Swift đòi công thức phải có lệnh TeX, chữ cái, ^ hoặc _;",
+    "  '[-128, 127]' không có thứ nào. Và luật ấy còn sai chiều ngược: 'giá $5 và $10 nữa' có",
+    "  ruột '5 và ' chứa chữ cái, nên nó bị đọc thành công thức và ĂN MẤT đoạn chữ ở giữa."
+  ],
+  "la_cong_thuc": [
+    {"ruot": "[-128, 127]", "vi_sao": "dấu ngoặc và dấu trừ — không có lệnh TeX nào"},
+    {"ruot": "N = 16", "vi_sao": "có dấu bằng"},
+    {"ruot": "a + b", "vi_sao": "có phép cộng"},
+    {"ruot": "x", "vi_sao": "một biến"},
+    {"ruot": "(n-1)", "vi_sao": "biểu thức trong ngoặc"},
+    {"ruot": "\\alpha \\le 0.05", "vi_sao": "có lệnh TeX"},
+    {"ruot": "N \\times N", "vi_sao": "có lệnh TeX"},
+    {"ruot": "v_i", "vi_sao": "có chỉ số dưới"}
+  ],
+  "khong_phai_cong_thuc": [
+    {"ruot": "", "vi_sao": "ruột rỗng"},
+    {"ruot": "5 và ", "vi_sao": "kết thúc bằng khoảng trắng — 'giá $5 và $10 nữa'"},
+    {"ruot": " x", "vi_sao": "bắt đầu bằng khoảng trắng"},
+    {"ruot": "100 so với ", "vi_sao": "kết thúc bằng khoảng trắng — 'chi phí $100 so với $200'"},
+    {"ruot": "a$b", "vi_sao": "còn dấu đô-la bên trong"},
+    {"ruot": "5", "vi_sao": "thuần chữ số là tiền"},
+    {"ruot": "1.000", "vi_sao": "thuần chữ số và dấu phân cách là tiền"},
+    {"ruot": "1.000,50", "vi_sao": "thuần chữ số và dấu phân cách là tiền"},
+    {"ruot": "4, 450 ", "vi_sao": "chữ số, dấu phân cách, và kết thúc bằng khoảng trắng"}
+  ]
+}

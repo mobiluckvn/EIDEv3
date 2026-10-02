@@ -85,10 +85,11 @@ def generate_matrix_data(n: int, dtype: str, seed: int = 2026, rng_type: str = "
     return mat_a, mat_b, mat_c, chk
 
 
-def emit_header(n: int, dtype: str, seed: int, mat_a, mat_b, chk: int) -> str:
+def emit_header(n: int, dtype: str, seed: int, mat_a, mat_b, chk: int, guard: str = None) -> str:
     elem_type = "int8_t" if dtype == "I8" else "int32_t"
     out_type = "int32_t"
-    guard = f"DATA_{n}_{dtype}_H"
+    if guard is None:
+        guard = f"DATA_{n}_{dtype}_H"
 
     lines = []
     lines.append(f"/* Tu dong sinh boi tools/gen_data.py */")
@@ -99,6 +100,7 @@ def emit_header(n: int, dtype: str, seed: int, mat_a, mat_b, chk: int) -> str:
     lines.append("#include <stdint.h>")
     lines.append("")
     lines.append(f"#define MATRIX_N {n}")
+    lines.append(f"#define DTYPE_STR \"{dtype}\"")
     lines.append(f"#define CHECKSUM_REF 0x{chk:08X}UL")
     lines.append("")
     lines.append(f"typedef {elem_type} elem_t;")
@@ -133,9 +135,10 @@ def main():
     args = parser.parse_args()
 
     mat_a, mat_b, mat_c, chk = generate_matrix_data(args.n, args.dtype, args.seed, args.rng)
-    header_content = emit_header(args.n, args.dtype, args.seed, mat_a, mat_b, chk)
-
     out_path = args.out or f"data_{args.n}_{args.dtype}.h"
+    stem = Path(out_path).stem.upper().replace("-", "_").replace(".", "_")
+    guard = f"DATA_{stem}_H" if not stem.startswith("DATA_") else f"{stem}_H"
+    header_content = emit_header(args.n, args.dtype, args.seed, mat_a, mat_b, chk, guard=guard)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(header_content)

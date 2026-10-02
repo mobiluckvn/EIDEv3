@@ -484,14 +484,32 @@ def _dong_cong_thuc(s: str, i: int) -> tuple[int, str] | None:
     if j == -1:
         return None
     ruot = s[i + dai:j]
-    if not ruot or ruot != ruot.strip() or "$" in ruot or len(ruot) > 300:
+    if not la_cong_thuc_chu_khong_phai_tien(ruot):
         return None
+    return j + dai, ruot
+
+
+def la_cong_thuc_chu_khong_phai_tien(ruot: str) -> bool:
+    """Ruột giữa hai dấu `$` là CÔNG THỨC hay là TIỀN?
+
+    Tách ra thành vị từ riêng để **bộ kiểm hai bên gọi được cùng một hình dạng**: phía Swift có
+    `MathText.laCongThucChuKhongPhaiTien` làm đúng việc này, và cả hai bộ kiểm đọc chung tập
+    mẫu `tests/du-lieu-chung/cong-thuc-giua-dong.json`.
+
+    Ngày 02/10/2026 hai bên lệch nhau và anh Công nhìn thấy trên màn hình: `$[-128, 127]$` còn
+    nguyên hai dấu đô-la trên chat, mà trong tệp Word thì đúng. Luật Swift khi ấy đòi công thức
+    phải có lệnh TeX, chữ cái, `^` hoặc `_` — `[-128, 127]` không có thứ nào. Và luật ấy còn
+    sai chiều ngược: `giá $5 và $10 nữa` có ruột `"5 và "` **chứa chữ cái**, nên nó bị đọc
+    thành công thức và ăn mất đoạn chữ ở giữa.
+
+    Bốn điều kiện, mỗi cái loại một kiểu nhầm có thật — xem docstring của `_dong_cong_thuc`.
+    """
+    if not ruot or ruot != ruot.strip() or "$" in ruot or len(ruot) > 300:
+        return False
     # Ruột chỉ có chữ số, dấu chấm phẩy và khoảng trắng thì đó là TIỀN, không phải công thức:
     # `$5$`, `$1.000$`, `$4,450$`. Một công thức thật luôn có thêm thứ gì đó — biến, phép
     # toán, hoặc một lệnh TeX.
-    if re.fullmatch(r"[\d.,\s]+", ruot):
-        return None
-    return j + dai, ruot
+    return not re.fullmatch(r"[\d.,\s]+", ruot)
 
 
 def _quet(s: str, kieu: frozenset[str], ra: list[tuple[str, frozenset[str]]]) -> None:

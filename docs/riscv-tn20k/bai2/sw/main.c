@@ -21,7 +21,7 @@ void *memset(void *s, int c, size_t n) {
 }
 
 /* Dữ liệu kiểm thử ma trận A, B và CHECKSUM_REF */
-#include "../../data_16_I8.h"
+#include "../../data_matrix.h"
 
 #define UART_TX_REG     (*(volatile uint32_t *)0x10000000)
 #define UART_STATUS_REG (*(volatile uint32_t *)0x10000004)
@@ -32,7 +32,7 @@ void *memset(void *s, int c, size_t n) {
 #endif
 
 #ifndef DTYPE_STR
-#define DTYPE_STR "I8"
+#define DTYPE_STR "?"
 #endif
 
 /* Bộ đệm ma trận kết quả C */

@@ -23,8 +23,12 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+
 from eide.xuat_ban import (chu_tran, cong_thuc_nguoi_doc, doc_markdown, render, tach_chu,
                            tex_con_sot)
+
+GOC = Path(__file__).resolve().parents[1]
 
 NGUON = """# Thử công thức
 
@@ -288,3 +292,43 @@ def test_mau_nhieu_HANG_phai_dong_ngoac():
     # và không đóng ngoặc khi chỉ có một hạng
     assert cong_thuc_nguoi_doc(r"\frac{1}{1000}") == "1/1000"
     assert cong_thuc_nguoi_doc(r"\frac{f_{VCO}}{PLLP}") == "f_VCO/PLLP"
+
+
+# ============================ hai bộ đọc công thức giữa dòng phải CÙNG MỘT LUẬT
+#
+# Cùng cái giá với hai bộ đọc mermaid và hai bảng ký hiệu: lõi không gọi ngược lên app được,
+# nên cùng một luật phải tồn tại hai bản — `_dong_cong_thuc` phía Python cho tài liệu xuất ra,
+# `laCongThucChuKhongPhaiTien` phía Swift cho màn hình chat.
+#
+# 02/10/2026 hai bên lệch, và anh Công nhìn thấy: `$[-128, 127]$` còn nguyên hai dấu đô-la trên
+# chat mà đúng trong tệp Word. Tập mẫu dùng chung là chỗ ràng lại.
+
+def test_cong_thuc_giua_dong_theo_tap_mau_dung_chung():
+    import json
+
+    from eide.xuat_ban import la_cong_thuc_chu_khong_phai_tien as la_ct
+
+    mau = json.loads(
+        (GOC / "tests/du-lieu-chung/cong-thuc-giua-dong.json").read_text("utf-8"))
+
+    # Gọi thẳng VỊ TỪ trên ruột, không bọc lại thành `$…$`. Bọc thì không diễn đạt được ca
+    # "còn dấu đô-la bên trong": `$a$b$` làm bộ đọc dừng ở dấu `$` thứ hai và ruột thành `"a"`,
+    # một công thức hợp lệ. Vị từ là chỗ hai bên có cùng hình dạng, nên cũng là chỗ ràng được.
+    for x in mau["la_cong_thuc"]:
+        assert la_ct(x["ruot"]), \
+            f"Python KHÔNG nhận {x['ruot']!r} là công thức — {x['vi_sao']}"
+    for x in mau["khong_phai_cong_thuc"]:
+        assert not la_ct(x["ruot"]), \
+            f"Python nhận {x['ruot']!r} là công thức, mà nó không phải — {x['vi_sao']}"
+
+
+def test_tap_mau_dung_chung_co_doc_duoc_tu_phia_Swift():
+    """Bộ kiểm Swift phải đọc ĐƯỢC tệp ấy — nếu không thì ràng buộc chỉ có một bên.
+
+    Ca này không chạy Swift; nó canh rằng bộ kiểm Swift có tham chiếu tới đúng tệp này. Đổi
+    tên tệp mà quên sửa bên Swift thì bên ấy sẽ bỏ qua tập mẫu trong im lặng và vẫn xanh.
+    """
+    sw = (GOC / "ui/EIDEApp/Tests/EIDETests/MarkdownTests.swift").read_text("utf-8")
+    assert "cong-thuc-giua-dong.json" in sw, (
+        "bộ kiểm Swift không đọc tập mẫu dùng chung — ràng buộc chỉ có một bên, và một bên "
+        "thì không ràng được gì")

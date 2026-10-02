@@ -6724,3 +6724,64 @@ Lần thứ hai trong một ngày tôi phải thêm ca kiểu này. Lớp lõi x
 trên có nối đúng không.
 
 Bộ kiểm: 1558 → **1573**.
+
+## [DEV-328] `$[-128, 127]$` — luật công thức giữa dòng lệch nhau, và chỗ bộ kiểm tôi bỏ lọt
+
+*02/10/2026. `ui/EIDEApp/.../MathText.swift`, `src/eide/xuat_ban.py`,
+`tests/du-lieu-chung/cong-thuc-giua-dong.json`.*
+
+Anh Công thấy câu này trên màn hình **sau khi tôi đã báo xong việc công thức** (DEV-325):
+
+```
+Với kiểu I8: giá trị trong $[-128, 127]$, acc_t là int32_t.
+```
+
+Hai dấu đô-la còn nguyên. Mà trong tệp Word thì đúng — nên lại là một chỗ hai bên lệch nhau,
+đúng loại DEV-325 vừa dọn cho bảng ký hiệu.
+
+### Luật của Swift sai theo CẢ HAI chiều
+
+```swift
+if tex.contains("\\") || tex.rangeOfCharacter(from: .letters) != nil
+    || tex.contains("^") || tex.contains("_")
+```
+
+- `[-128, 127]` **không có** thứ nào trong bốn thứ ấy, nên nó rơi xuống chữ thường mang theo
+  cả hai dấu đô-la.
+- `giá $5 và $10 nữa` có ruột `"5 và "`, **có chữ cái**, nên luật này nhận là công thức và
+  **ăn mất đoạn chữ ở giữa** — ra `giá 5 và10 nữa`. Tôi thấy nó trong lời báo của ca kiểm khi
+  phá lại mã cũ.
+
+Phía Python đã đúng từ trước, và luật của nó được nghĩ kỹ hơn: bốn điều kiện, mỗi cái loại một
+kiểu nhầm có thật — có dấu đóng, ruột không bắt đầu/kết thúc bằng khoảng trắng (chính điều kiện
+này loại `"5 và "`), không có dấu `$` bên trong, không quá 300 ký tự, và ruột không thuần chữ
+số. Swift nay dùng đúng luật ấy.
+
+### Chỗ bộ kiểm của tôi bỏ lọt, và vì sao
+
+Ca `test_cong_thuc_trong_dong_doi_thanh_ky_hieu` tôi viết trong DEV-325 thử
+`$\alpha \le 0.05$` — **một công thức có lệnh TeX**. Nó xanh với cả luật cũ. Phải có một ca
+**không chứa lệnh nào** mới thấy, và tôi không nghĩ ra ca ấy.
+
+Phía Python thì có đủ: `test_tien_KHONG_bi_doc_thanh_cong_thuc` phủ sáu câu tiền, và
+`test_cong_thuc_that_VAN_doi_duoc` phủ chiều ngược. Nên đây không phải chuyện thiếu ý tưởng về
+cách kiểm — là chuyện **tôi không mang bộ kiểm đã có sang bên kia**.
+
+### Ràng hai bên bằng một tập mẫu dùng chung
+
+`tests/du-lieu-chung/cong-thuc-giua-dong.json` — 8 ca là công thức, 9 ca là tiền, mỗi ca kèm
+lý do. **Cả hai bộ kiểm đọc chính tệp ấy**: pytest qua
+`la_cong_thuc_chu_khong_phai_tien()` mới tách ra ở `xuat_ban.py`, và XCTest qua
+`MathText.laCongThucChuKhongPhaiTien`. Hai vị từ cùng hình dạng nên so được trực tiếp.
+
+Và tôi kiểm rằng ràng buộc có thật: **đổi tên tệp đi thì phía Swift đỏ**. Một ca đọc tệp mà
+không đỏ khi mất tệp thì nó chỉ giả vờ đọc.
+
+Thêm `test_tap_mau_dung_chung_co_doc_duoc_tu_phia_Swift` phía Python — nó canh rằng bộ kiểm
+Swift còn tham chiếu tới đúng tệp ấy. Đổi tên mà quên một bên thì bên ấy bỏ qua tập mẫu trong
+im lặng và vẫn xanh.
+
+> Hai bộ kiểm cùng xanh chưa nói hai bên làm cùng một việc, nếu chúng kiểm hai tập mẫu khác
+> nhau.
+
+Bộ kiểm: Python 1573 → **1575**, Swift 31 → **36**.

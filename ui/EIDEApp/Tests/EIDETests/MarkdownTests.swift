@@ -255,3 +255,86 @@ final class MathTextTests: XCTestCase {
         }
     }
 }
+
+/// Công thức giữa dòng so với dấu TIỀN — và chỗ bộ kiểm của tôi bỏ lọt.
+///
+/// Anh Công thấy câu này trên màn hình ngày 02/10/2026, sau khi tôi đã báo xong việc công thức:
+///
+///     Với kiểu I8: giá trị trong $[-128, 127]$, acc_t là int32_t.
+///
+/// Hai dấu đô-la còn nguyên. Luật cũ của Swift đòi công thức phải có lệnh `\`, hoặc chữ cái,
+/// hoặc `^`/`_` — `[-128, 127]` **không có thứ nào**.
+///
+/// Và ca kiểm tôi viết lượt trước thử `$\alpha \le 0.05$`, một công thức **có lệnh TeX**, nên
+/// nó xanh với cả luật cũ. Phải có một ca không chứa lệnh nào mới thấy.
+final class CongThucGiuaDongTests: XCTestCase {
+
+    private func thay(_ s: String) -> String { Markdown.chuThuan(s) }
+
+    func test_cau_anh_Cong_thay_tren_man_hinh() {
+        let ra = thay("Với kiểu I8: giá trị trong $[-128, 127]$, acc_t là int32_t.")
+        XCTAssertFalse(ra.contains("$"), "còn dấu đô-la trên màn: “\(ra)”")
+        XCTAssertTrue(ra.contains("[-128, 127]"), "mất nội dung công thức: “\(ra)”")
+        XCTAssertTrue(ra.contains("int32_t"), "mất chữ sau công thức: “\(ra)”")
+    }
+
+    func test_cong_thuc_KHONG_co_lenh_TeX_van_duoc_nhan() {
+        for s in ["$[-128, 127]$", "$N = 16$", "$a + b$", "$x$", "$(n-1)$"] {
+            XCTAssertFalse(thay(s).contains("$"), "“\(s)” không được nhận: “\(thay(s))”")
+        }
+    }
+
+    func test_dau_TIEN_khong_bi_doc_thanh_cong_thuc() {
+        // Ruột `"5 và "` kết thúc bằng khoảng trắng → là tiền. Luật cũ nhận nó là công thức
+        // (vì có chữ cái) và ăn mất đoạn chữ ở giữa.
+        for s in ["giá $5 và $10 nữa", "chi phí $100 so với $200"] {
+            XCTAssertTrue(thay(s).contains("$"), "đoạn tiền bị đọc thành công thức: “\(thay(s))”")
+        }
+        // `$5$` và `$1.000$` là tiền: ruột chỉ có chữ số và dấu phân cách.
+        XCTAssertTrue(thay("đúng $5$ đồng").contains("$"))
+        XCTAssertTrue(thay("đúng $1.000$ đồng").contains("$"))
+    }
+
+    /// Tập mẫu DÙNG CHUNG với phía Python.
+    ///
+    /// `tests/du-lieu-chung/cong-thuc-giua-dong.json` — cùng tệp mà
+    /// `test_cong_thuc_giua_dong_theo_tap_mau_dung_chung` của pytest đọc. Lõi không gọi ngược
+    /// lên app được nên cùng một luật phải tồn tại hai bản; tệp ấy là chỗ cái giá đó được trả.
+    /// Sửa một bên mà quên bên kia thì bên quên sẽ đỏ.
+    func test_tap_mau_dung_chung_voi_phia_Python() throws {
+        // Đi lên từ đường dẫn tệp nguồn: Tests/EIDETests → EIDEApp → ui → gốc kho.
+        let goc = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let u = goc.appendingPathComponent("tests/du-lieu-chung/cong-thuc-giua-dong.json")
+        let d = try Data(contentsOf: u)
+        guard let j = try JSONSerialization.jsonObject(with: d) as? [String: Any] else {
+            return XCTFail("không đọc được tập mẫu ở \(u.path)")
+        }
+
+        for x in (j["la_cong_thuc"] as? [[String: String]]) ?? [] {
+            XCTAssertTrue(MathText.laCongThucChuKhongPhaiTien(x["ruot"] ?? ""),
+                "Swift KHÔNG nhận “\(x["ruot"] ?? "")” là công thức — \(x["vi_sao"] ?? "")")
+        }
+        for x in (j["khong_phai_cong_thuc"] as? [[String: String]]) ?? [] {
+            XCTAssertFalse(MathText.laCongThucChuKhongPhaiTien(x["ruot"] ?? ""),
+                "Swift nhận “\(x["ruot"] ?? "")” là công thức, mà nó không phải — "
+                + "\(x["vi_sao"] ?? "")")
+        }
+    }
+
+    func test_luat_GIONG_HET_phia_Python() {
+        // Bốn điều kiện sao đúng từ `_dong_cong_thuc` của `xuat_ban.py`. Sửa một bên mà quên
+        // bên kia thì cùng một câu hiện ra hai kiểu trên màn hình và trên giấy.
+        XCTAssertFalse(MathText.laCongThucChuKhongPhaiTien(""), "ruột rỗng")
+        XCTAssertFalse(MathText.laCongThucChuKhongPhaiTien("5 và "), "kết thúc bằng khoảng trắng")
+        XCTAssertFalse(MathText.laCongThucChuKhongPhaiTien(" x"), "bắt đầu bằng khoảng trắng")
+        XCTAssertFalse(MathText.laCongThucChuKhongPhaiTien("a$b"), "còn dấu đô-la bên trong")
+        XCTAssertFalse(MathText.laCongThucChuKhongPhaiTien("1.000,50"), "thuần chữ số là tiền")
+        XCTAssertFalse(MathText.laCongThucChuKhongPhaiTien(String(repeating: "x", count: 301)),
+                       "quá 300 ký tự gần như chắc chắn là hai dấu tiền ở hai câu")
+        XCTAssertTrue(MathText.laCongThucChuKhongPhaiTien("[-128, 127]"))
+        XCTAssertTrue(MathText.laCongThucChuKhongPhaiTien("\\alpha \\le 0.05"))
+    }
+}
