@@ -69,9 +69,25 @@ def mo_app(du_an: pathlib.Path) -> GiaoDien:
     subprocess.run(["defaults", "write", "vn.mobiluck.eide", "duAnPath",
                     "-string", str(du_an)], check=True)
     g = GiaoDien(du_an)
+
+    # Nới hạn lượt cho phần viết mã.
+    #
+    # Đo được ở lượt đầu của bước "viết firmware": tác tử dùng 31 trong 40 lời gọi cho
+    # `fact.from_doc` — tức chỉ để đưa chính những con số của tài liệu vào kho Fact, vì lớp
+    # cấp quyền không cho ghi hằng số chưa truy vết được nguồn. Hết ngân sách trước khi ghi
+    # nổi một tệp. Viết mười mô-đun là việc **dài hơn một lượt ngay từ bản chất công việc**,
+    # không phải vì tác tử chậm — đúng tình huống mà §B1 đã nới cho việc FPGA.
+    #
+    # Mặc định của kho KHÔNG đổi; chỉ phiên này đặt biến.
+    env = {**os.environ, "EIDE_GHI_LLM": "1"}
+    if os.environ.get("PHIEN_NOI_HAN"):
+        env["EIDE_TRAN_LOI_GOI_LUOT"] = os.environ.get("EIDE_TRAN_LOI_GOI_LUOT", "200")
+        env["EIDE_TRAN_GIAY_LUOT"] = os.environ.get("EIDE_TRAN_GIAY_LUOT", "1800")
+        print(f"{VANG}Nới hạn lượt: {env['EIDE_TRAN_LOI_GOI_LUOT']} lời gọi · "
+              f"{env['EIDE_TRAN_GIAY_LUOT']} giây{HET}")
+
     subprocess.Popen([str(REPO / "ui/EIDEApp/EIDE.app/Contents/MacOS/EIDE")],
-                     env={**os.environ, "EIDE_GHI_LLM": "1"},
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                     env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     g.san_sang(90)
     return g
 
@@ -141,6 +157,18 @@ BUOC: list[tuple[str, str, int, int, bool]] = [
      "tiếng nào thì biết robot đang ở trạng thái nào. Đối chiếu lại với bảng trạng thái và "
      "bảng còi trong tài liệu, lệch chỗ nào thì nói ra chỗ đó.", 900, 2, False),
 
+    # Bước này sinh ra TỪ một cổng chặn, và cổng ấy chặn đúng người sai: ở bước 7 câu chốt
+    # của mình là "Mình chốt phương án bạn đề xuất." — có chữ mang nghĩa lựa chọn nhưng
+    # không nhắc tên phương án nào, nên `store.option_choose` trả E5009 và quyết định thiết
+    # kế KHÔNG được ghi vào kho. Nếu cứ thế đi sang viết mã thì mã sẽ không gắn với phương
+    # án nào cả. Nên chốt lại bằng câu có gọi đúng tên.
+    ("Chốt lại phương án bằng đúng tên",
+     "Mình xem lại thì câu chốt vừa rồi của mình nói không rõ, nên hệ thống không ghi được "
+     "là mình đã chọn cái nào. Mình nói lại cho rõ: mình chọn phương án Kiến trúc 3 tầng "
+     "thời gian độc lập. Bạn ghi quyết định này vào kho giúp mình, kèm lý do mình chọn là nó "
+     "khớp với ràng buộc thời gian thực mà tài liệu đã bắt buộc. Ghi xong thì cho mình xem "
+     "lại là kho đã nhận quyết định chưa, đừng chỉ nói là đã ghi.", 900, 2, False),
+
     # ------------------------------------------------------- 3 · LẬP TRÌNH
     ("Chia việc trước khi viết",
      "Thiết kế ổn rồi. Trước khi gõ mã, bạn lập cho mình kế hoạch chia việc: sẽ có những tệp "
@@ -166,6 +194,53 @@ BUOC: list[tuple[str, str, int, int, bool]] = [
      "những lệnh gì trong hàm ngắt đó, rồi báo cho mình: có lệnh gọi hàm nào không, có lệnh "
      "chia nào không, có hàm số thực nào không, và tổng cộng bao nhiêu lệnh.", 1200, 3, False),
 
+    # Hai bước dưới đây sinh ra từ ĐO ĐƯỢC, không từ kế hoạch:
+    #
+    #  - Bước "viết firmware" hết ngân sách 40 lời gọi khi mới nạp xong 30 Fact, chưa ghi nổi
+    #    tệp nào. Lớp cấp quyền chặn `fs.write` vì hằng số chưa truy vết được nguồn — chặn
+    #    đúng. Nên cần một lượt "làm tiếp", chạy lại được nhiều lần.
+    #
+    #  - Bước "tự chứng minh hàm ngắt" trả về một bảng bằng chứng với kết luận "HOÀN TOÀN
+    #    KHÔNG có lệnh call", kèm số lệnh ước lượng theo từng khối — trong khi chưa có tệp
+    #    nào được dịch và cả lượt chỉ gọi `doc.read` 5 lần. Đó là đọc đặc tả rồi kể lại,
+    #    không phải đo. Phải rút lại, và phải nói rõ vì sao nó sai.
+    ("Viết tiếp cho xong mã",
+     "Lượt trước bạn hết ngân sách lời gọi khi vừa nạp xong các Fact, chưa ghi được tệp nào. "
+     "Mình đã nới ngân sách lượt cho bạn. Giờ viết tiếp cho xong, đừng đọc lại những thứ đã "
+     "đọc. Làm xong tới đâu thì cuối lượt liệt kê cho mình tên từng tệp đã ghi và số dòng, "
+     "còn tệp nào chưa viết thì ghi rõ là chưa viết.", 2400, 3, False),
+
+    ("Rút lại câu trả lời về hàm ngắt",
+     "Mình phải nói với bạn một chuyện. Lượt trước mình hỏi bạn mở tệp đã dịch ra xem máy "
+     "thật sự chạy lệnh gì trong hàm ngắt. Bạn trả lời là hoàn toàn không có lệnh gọi hàm "
+     "nào, kèm bảng số lệnh từng khối. Nhưng lúc đó chưa có tệp nào được dịch cả, và cả lượt "
+     "bạn chỉ gọi công cụ đọc tài liệu. Nên câu trả lời đó là đọc đặc tả rồi kể lại, không "
+     "phải đo trên tệp đã dịch. Mình không coi đó là bằng chứng.\n\n"
+     "Mình cần hai việc. Một: bạn xác nhận lại là câu trả lời đó không có giá trị làm bằng "
+     "chứng, và nói cho mình biết vì sao lúc ấy bạn lại trả lời như đã đo. Hai: từ giờ, khi "
+     "mình hỏi một con số mà bạn chưa đo được, bạn nói thẳng là chưa đo được — mình thà "
+     "không có số còn hơn có một con số trông như đã đo.", 1200, 3, False),
+
+    # Bước này sinh ra từ việc đọc MÃ TRÊN ĐĨA, không từ việc đọc lời tác tử. Tác tử báo đã
+    # viết xong 8 tệp và `build.compile` ĐẠT — cả hai đều đúng. Nhưng đối chiếu `config.h`
+    # với Bảng 1.3 thì bốn chỗ lệch, và bản dịch vẫn xanh. Một bản dịch xanh không nói gì về
+    # việc mã có nối đúng chân hay không.
+    ("Đối chiếu bản đồ chân trong mã với Bảng 1.3",
+     "Mình vừa mở tệp firmware/config.h ra đọc và đối chiếu với Bảng 1.3 của tài liệu. Có "
+     "bốn chỗ lệch, mình kê ra đây:\n\n"
+     "1. Chiều bánh trái: tài liệu ghi chân D6, mã bạn viết D2.\n"
+     "2. Xung bước bánh trái: tài liệu ghi chân D7, mã bạn viết D3.\n"
+     "3. Còi ở chân D10 và nút bấm ở chân D12: mình grep cả tám tệp, không có một dòng nào "
+     "nhắc tới hai chân này. Nghĩa là yêu cầu YC-01 báo hiệu bằng còi và YC-03 nhận lệnh từ "
+     "nút bấm hiện chưa có trong mã.\n"
+     "4. Chân D13: tài liệu nói rõ đây là chân đo thời gian chạy của hàm ngắt, và dặn đừng "
+     "dùng cho việc khác vì đó là chỗ cắm máy hiện sóng khi nghiệm thu. Mã bạn viết đặt nó "
+     "thành đèn báo trạng thái, mà tài liệu thì không có yêu cầu nào về đèn.\n\n"
+     "Mình muốn ba việc. Một: nói cho mình biết con số D2 và D3 bạn lấy ở đâu ra, vì mình cần "
+     "biết tài liệu của mình có chỗ nào gây hiểu sai không. Hai: sửa lại cho khớp Bảng 1.3 và "
+     "làm cả phần còi với nút. Ba: sau khi sửa, tự đối chiếu lại từng dòng chân với Bảng 1.3 "
+     "rồi báo mình số dòng khớp trên tổng số dòng.", 2400, 3, False),
+
     # ------------------------------------------------------- 4 · MÔ PHỎNG
     ("Nêu tiêu chí TRƯỚC khi chạy",
      "Sắp mô phỏng rồi. Nhưng bạn nêu tiêu chí nghiệm thu trước đã, đừng chạy vội. Tiêu chí "
@@ -185,6 +260,107 @@ BUOC: list[tuple[str, str, int, int, bool]] = [
      "Bạn làm lần lượt bốn phép đó lên chính mã sản phẩm, chạy lại bộ kiểm sau mỗi lần, và "
      "báo cho mình bộ kiểm có báo lỗi hay không. Làm xong thì khôi phục mã lại nguyên như "
      "trước, và cho mình xem bảng bốn lần phá bốn lần báo lỗi.", 1800, 4, False),
+
+    # Bước này là TRẢ LỜI cho `ask_user` của tác tử ở bước 18. Nó không tự dựng bảng kết quả
+    # đột biến — nó dừng lại và hỏi bốn phép phá nằm ở đâu, kèm một bộ bốn phép nó tự đề
+    # xuất. Bộ nó đề xuất khác bộ của tài liệu, nên phải trả lời bằng đúng bốn dòng Bảng 4.2.
+    ("Bốn phép phá đúng theo Bảng 4.2",
+     "Bốn phép phá nằm ở Chương 4, mục 4.2, Bảng 4.2 của tài liệu. Mình chép nguyên bốn dòng "
+     "ra đây để bạn khỏi phải đi tìm:\n\n"
+     "1. Số bù gia tốc: đổi từ 92 thành 535. Bài kiểm phải báo góc tính ra lệch khoảng 3,1 độ "
+     "so với bản mẫu.\n"
+     "2. Chiều tiến bánh trái: đổi từ mức thấp sang mức cao. Bài kiểm phải báo bit chân D6 "
+     "khác bản mẫu.\n"
+     "3. Chiều tiến bánh phải: đổi từ mức cao sang mức thấp. Bài kiểm phải báo bit chân D4 "
+     "khác bản mẫu.\n"
+     "4. Dấu khi áp số bù: đổi phép cộng thành phép trừ. Bài kiểm phải báo góc tính ra lệch "
+     "gấp đôi.\n\n"
+     "Bốn phép bạn tự đề xuất thì cũng hợp lý, nhưng mình cần đúng bốn phép của tài liệu, vì "
+     "danh mục nghiệm thu đang tính theo bốn phép ấy. Làm lần lượt từng phép lên chính mã sản "
+     "phẩm, chạy lại bài kiểm sau mỗi lần, ghi lại bài kiểm báo gì. Xong thì khôi phục mã về "
+     "nguyên trạng và cho mình xem bảng bốn lần phá bốn lần báo lỗi. Nếu có lần nào bài kiểm "
+     "vẫn báo đạt thì nói thẳng ra — đó là thông tin mình cần nhất.", 2400, 4, False),
+
+    ("A3 và A4 không đạt: lỗi sản phẩm hay lỗi phép đo",
+     "Mô phỏng của bạn báo 3 đạt 2 không đạt, và mình cảm ơn vì bạn không đưa cho mình một "
+     "bảng toàn xanh. Giờ mình cần tách rõ hai thứ. Với A3 là góc vọt lố 11,139 độ vượt "
+     "ngưỡng 10 độ, và A4 là chưa bắt được sự kiện ngã trong cửa sổ 0,2 giây: từng cái một, "
+     "bạn nói cho mình biết đó là lỗi của mã sản phẩm, hay là hạn chế của chương trình mô "
+     "phỏng mình viết ra để đo.\n\n"
+     "Và một điều mình muốn nói trước: nếu bạn thấy cần nới ngưỡng hay nới cửa sổ đo thì cứ "
+     "đề xuất, nhưng đừng tự sửa. Đổi tiêu chí sau khi đã thấy kết quả là việc mình phải "
+     "duyệt, không thì cái bảng nghiệm thu sẽ chỉ đo lại chính nó.", 1800, 4, False),
+
+    # Hai bước dưới đây là chỗ nặng nhất của cả phiên, và cả hai sinh ra từ việc đọc mã chứ
+    # không từ việc đọc lời tác tử.
+    #
+    # Bước 21: mã dùng sai cả BA trục so với Bảng 3.2 — đúng cái bảng mà chính tác tử đòi
+    # thêm ở bước 3, và đã đọc lại đúng ở bước 4. Cùng một dạng với lỗi D2/D3: có bảng đúng
+    # trong tay, đọc lại đúng, rồi viết mã theo thói quen.
+    #
+    # Bước 22: bốn phép phá đều sống sót, và tác tử đã tự chẩn đúng hai cơ chế. Phải vá bộ
+    # đo trước khi ra bo, không thì mọi phép đo sau đây đều vô nghĩa.
+    ("Mã dùng sai cả ba trục của cảm biến",
+     "Mình mở firmware/mpu6050.cpp và firmware/control.cpp ra đọc, rồi đối chiếu với Bảng 3.2 "
+     "của tài liệu. Cả ba trục đều lệch:\n\n"
+     "- Trục trước sau: tài liệu ghi byte 4 và 5, tức accel_z. Mã bạn dùng accel_y, tức byte "
+     "2 và 3.\n"
+     "- Trục nghiêng: tài liệu ghi byte 10 và 11, tức gyro_y. Mã bạn dùng gyro_x, tức byte 8 "
+     "và 9.\n"
+     "- Trục xoay: tài liệu ghi byte 8 và 9, tức gyro_x. Mã bạn dùng gyro_z, tức byte 12 và "
+     "13.\n\n"
+     "Phần tách 14 byte trong mpu6050.cpp thì đúng, có bỏ hai byte nhiệt độ. Lệch nằm ở chỗ "
+     "gán vai trò.\n\n"
+     "Điều mình muốn bạn nghĩ cùng mình: Bảng 3.2 là bảng do chính bạn đòi mình thêm vào ở "
+     "lượt thứ ba, vì lúc đó bạn nói tài liệu chưa nói trục nào là trục nào. Mình thêm vào, "
+     "rồi lượt sau bạn đọc lại nó đúng từng dòng cho mình nghe. Vậy mà lúc viết mã thì lại "
+     "dùng bộ trục khác. Đây là lần thứ hai trong phiên, lần trước là chân D2 với D3. Bạn nói "
+     "cho mình biết chỗ nào trong cách bạn làm việc dẫn tới chuyện đó, vì mình cần biết để "
+     "lần sau đặt câu hỏi khác đi.\n\n"
+     "Rồi sửa lại cho khớp Bảng 3.2, và sau khi sửa thì đối chiếu lại từng trục rồi báo mình.",
+     2400, 4, False),
+
+    ("Vá bộ đo cho nó bắt được bốn phép phá",
+     "Bốn phép phá đều sống sót, và bạn đã tự chẩn đúng hai cơ chế: bộ sinh dữ liệu mô phỏng "
+     "dùng chính macro số bù nên khi phá macro thì hai bên tự triệt tiêu, và bộ mô phỏng liên "
+     "kết với mock_motor.c nên không bao giờ chạm tới motor.cpp là nơi ghi bit chân. Mình đã "
+     "kiểm lại cả hai chỗ trong mã và bạn chẩn đúng.\n\n"
+     "Giờ vá bộ đo. Ba việc:\n\n"
+     "1. Bộ sinh dữ liệu mô phỏng không được dùng lại macro số bù. Hãy dùng một dãy số đo "
+     "mẫu cố định, để khi mã sản phẩm sai thì kết quả lệch đi chứ không triệt tiêu.\n"
+     "2. Bài kiểm phải dịch thẳng firmware/motor.cpp và kiểm được bit chân DIR, chứ không "
+     "dùng mock thay cho nó. Phần nào thật sự là phần cứng thì mới được mock.\n"
+     "3. Thêm một phép so với dãy góc mẫu, để phá dấu hay phá số bù thì thấy lệch.\n\n"
+     "Vá xong thì chạy lại đúng bốn phép phá của Bảng 4.2. Lần này bài kiểm phải báo lỗi cả "
+     "bốn lần. Nếu còn phép nào sống sót thì nói thẳng là còn, đừng vá cho vừa đủ qua.", 2400, 4, False),
+
+    # Bước này là chỗ sâu nhất của cả phiên. Bộ đo sau khi vá thì BẮT ĐƯỢC cả bốn phép phá —
+    # nhưng nó bắt theo một mức kỳ vọng SAI. Mã sản phẩm đặt D6 lên mức CAO khi tiến, tài
+    # liệu Bảng 3.3 ghi mức THẤP, và bài kiểm mới đi khẳng định mức CAO là đúng.
+    #
+    # Một bài kiểm nhạy mà chỉnh sai mốc thì tệ hơn một bài kiểm không nhạy: nó chủ động bảo
+    # vệ cái lỗi. Sửa mã cho khớp tài liệu thì bài kiểm sẽ báo đỏ lên mã đúng.
+    ("Bài kiểm nhạy nhưng chỉnh sai mốc",
+     "Bộ đo của bạn giờ bắt được cả bốn phép phá, và mình ghi nhận việc đó. Nhưng mình đọc kỹ "
+     "lời bạn viết thì thấy một chỗ phải dừng lại.\n\n"
+     "Bạn viết bài kiểm khẳng định: chân D6 phải ở mức CAO khi tốc độ bánh trái lớn hơn hoặc "
+     "bằng 0. Mình mở Bảng 3.3 của tài liệu ra đọc, nó ghi ngược lại: chiều tiến bánh trái là "
+     "mức THẤP ở chân D6. Mình mở firmware/motor.cpp dòng 58 và 59 thì thấy mã của bạn đặt D6 "
+     "lên mức CAO khi tiến. Nghĩa là mã sai so với tài liệu, và bài kiểm thì đi khẳng định "
+     "cái sai đó là đúng.\n\n"
+     "Chỗ này mình muốn nói cho rõ, vì nó quan trọng hơn bản thân lỗi: một bài kiểm nhạy mà "
+     "chỉnh sai mốc thì tệ hơn một bài kiểm không nhạy. Bài kiểm không nhạy thì chỉ là không "
+     "đo được gì. Bài kiểm nhạy mà sai mốc thì nó chủ động bảo vệ cái lỗi — ai sửa mã cho "
+     "khớp tài liệu sẽ thấy bài kiểm báo đỏ, rồi tưởng mình vừa làm hỏng.\n\n"
+     "Mình đoán nguyên nhân là bạn viết bài kiểm bằng cách đọc mã rồi ghi lại mã đang làm gì. "
+     "Làm thế thì bài kiểm chỉ xác nhận lại chính mã, không bao giờ bắt được lỗi của mã.\n\n"
+     "Ba việc mình cần:\n\n"
+     "1. Sửa chiều bánh trái trong mã cho khớp Bảng 3.3. Và đặt hai hằng số chiều tiến ra "
+     "config.h kèm trích chỗ lấy, đừng viết cứng mức logic trong motor.cpp — hiện config.h "
+     "không có hằng số chiều tiến nào, nên không ai soát được nó đúng hay sai.\n"
+     "2. Sửa bài kiểm để mức kỳ vọng lấy từ Bảng 3.3, không lấy từ hành vi hiện thời của mã.\n"
+     "3. Chạy lại bốn phép phá. Và chạy thêm một phép nữa: sửa chiều bánh trái về đúng mức "
+     "CAO như cũ, bài kiểm phải báo đỏ. Nếu nó báo xanh thì mốc vẫn còn sai.", 2400, 4, False),
 
     # --------------------------------------------------- 5 · PHẦN CỨNG THẬT
     ("Dò bo và nạp lần đầu",
