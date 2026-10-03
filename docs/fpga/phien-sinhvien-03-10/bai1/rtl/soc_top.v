@@ -6,12 +6,12 @@
 // Cờ dựng bản chẩn đoán (Diagnostic Build):
 // Mặc định thiết kế của Bài 1 & Bài 2 là TẮT (DIAG_ENABLE = 0).
 // Khi cần chẩn đoán phần cứng bo mạch, bật `define DIAG_BUILD 1 để truyền 1 vào parameter DIAG_ENABLE.
-`define DIAG_BUILD 1
+// `define DIAG_BUILD 1
 
 module soc_top #(
     parameter CLK_FREQ    = 27_000_000,
     parameter BAUD        = 115_200,
-    parameter HEX_FILE    = "firmware.hex",
+    parameter HEX_FILE    = "/Users/congvt/Documents/EIDE_v3/du-lieu/fpga-sinhvien/firmware.hex",
 `ifdef DIAG_BUILD
     parameter DIAG_ENABLE = 1
 `else

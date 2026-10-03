@@ -275,6 +275,26 @@ BUOC: list[tuple[str, str, int, int, bool]] = [
      "Bộ phát của bạn làm được việc này: thêm một trường báo **mức thô của chân 88**, và thêm "
      "giá trị bộ đếm khởi động. Rồi dựng lại, ghi flash, và tự đọc cổng báo mình.", 2400, 3, False),
 
+    ("Sửa cho xong Bài 1",
+     "Nguyên nhân gốc đã chốt, bạn tìm ra bằng chính bộ phát của bạn: `S:0` — chân 88 đọc mức "
+     "0 khi không ai bấm; `C:40` — bộ đếm khởi động chạy đủ, không lỗi. Nên `rst_n` bị giữ chỉ "
+     "vì chân 88.\n\n"
+     "Giờ mình muốn bạn **tập trung sửa cho xong Bài 1**. Việc của bạn, theo thứ tự:\n\n"
+     "**1 · Sửa để CPU chạy được.** Bạn tự chọn cách. Hai đường mình nghĩ tới, nhưng bạn thấy "
+     "đường thứ ba tốt hơn thì cứ làm:\n"
+     "- làm cho nút dùng được thật — lọc, đồng bộ, hoặc xem lại cực tính\n"
+     "- bỏ nút khỏi mạch reset, chỉ giữ bộ đếm khởi động\n\n"
+     "Nếu bạn chọn bỏ nút thì **phải ghi thành một quyết định có lý do và có trích chỗ lấy**, "
+     "vì tài liệu mình viết đòi *reset gồm power-on-reset và nút S1*. Lệch đặc tả thì mình "
+     "chịu được, nhưng kho ghi một đằng mã làm một nẻo thì không.\n\n"
+     "**2 · Tắt mạch chẩn đoán** cho bản giao. Bản đo phải là đúng thiết kế đã mô phỏng.\n\n"
+     "**3 · Dựng, ghi vào flash, rồi TỰ ĐỌC cổng nối tiếp.** Mình cần thấy chuỗi `Hello from "
+     "PicoRV32 on Tang Nano 20K, cycle=<số>` **lặp lại**, và `cycle` phải **tăng khoảng "
+     "27 000 000 mỗi dòng**. Nhớ ghi flash chứ đừng nạp SRAM — trên bo này flash đã ghi thì "
+     "SRAM không thắng.\n\n"
+     "**4 · Báo mình danh mục nghiệm thu Bài 1**, bốn dòng, mỗi dòng ghi đạt hay chưa kèm số "
+     "đo và chỗ lấy số. Dòng nào cần mắt mình thì ghi rõ là cần mình.", 3600, 3, False),
+
     # ------------------------------------------------- 4 · BÀI 2, TRÊN MÁY
     ("Bài 2: kê trước mọi ô sẽ đo",
      "Sang Bài 2. Trước khi làm gì, bạn kê cho mình danh sách đầy đủ các ô sẽ đo: mỗi ô là "

@@ -37,8 +37,8 @@ module reset_gen #(
         end
     end
 
-    // Tín hiệu resetn chỉ được giải phóng (lên 1) khi POR hoàn tất và nút S1 không bị nhấn (mức 1)
-    assign rst_n = por_done & btn_s1_sync2;
+    // Theo ADR-01: Bỏ nút S1 khỏi điều kiện giải phóng rst_n, chỉ giữ bộ đếm POR
+    assign rst_n = por_done;
     assign por_cnt_out = por_cnt;
     assign por_done_out = por_done;
 

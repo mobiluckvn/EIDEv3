@@ -22,11 +22,7 @@ module bram_mem #(
 
     wire [12:0] word_addr = mem_addr[14:2];
 
-    integer i;
     initial begin
-        for (i = 0; i < WORDS; i = i + 1) begin
-            mem[i] = 32'd0;
-        end
         if (HEX_FILE != "") begin
             $readmemh(HEX_FILE, mem);
         end
