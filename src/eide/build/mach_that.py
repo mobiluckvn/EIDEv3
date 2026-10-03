@@ -570,8 +570,62 @@ def _byte_tu_ihex(p: Path) -> bytes:
     return bytes(vung.get(i, 0xFF) for i in range(het + 1))
 
 
-def do_bo() -> dict[str, Any]:
-    """Máy này đang cắm những gì. Không thấy gì thì trả danh sách kiểm tra, không đoán."""
+def doc_idcode_jtag() -> tuple[str, str, str]:
+    """Đọc IDCODE của FPGA qua chuỗi JTAG. Trả `(idcode, mô tả, vì sao không đọc được)`.
+
+    DEV-332. Vì sao cần một đường riêng, không dùng lại `doc_id_chip`:
+
+    `doc_id_chip` đọc qua SWD bằng `st-info` — đúng cho ARM, vô nghĩa cho FPGA. Với một kit
+    FPGA cắm vào máy, nó trả `"Found 0 stlink programmers"`, và `target.flash` biến câu ấy
+    thành `E4013 "chưa đối chiếu được ID chip"`. **Người làm bị gửi đi tìm một mạch nạp
+    ST-Link vốn chưa bao giờ liên quan.** Đo được 03/10/2026 trên kit Tang Nano 20K.
+
+    Và không được so IDCODE bằng `so_chip`. Thử tay: hộ chiếu ghi `GW2AR-LV18QN88C8/I7`,
+    JTAG khai `GW2A(R)-18(C)` → `so_chip` trả **`lech`**, tức cổng `E4012` sẽ báo *"bo đang
+    cắm là chip khác"* cho **đúng con bo đúng**. Một cảnh báo sai dạy người dùng bỏ qua cảnh
+    báo — chính chú thích của `so_chip` đã dặn thế.
+
+    Nên định danh FPGA lấy theo **IDCODE**: một con số, so bằng phép bằng, không so mờ.
+    """
+    exe = _tim_lenh("openFPGALoader")
+    if not exe:
+        return "", "", ("Máy này chưa có `openFPGALoader` nên không đọc được IDCODE của FPGA.")
+    try:
+        r = subprocess.run([exe, "--detect"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        return "", "", f"Gọi `openFPGALoader --detect` không được: {e}"
+
+    nv = ((r.stdout or "") + "\n" + (r.stderr or ""))
+    m = re.search(r"idcode\s+(0x[0-9a-fA-F]+)", nv)
+    if not m:
+        return "", "", ("`openFPGALoader --detect` chạy xong nhưng không in dòng `idcode` nào "
+                        "— chuỗi JTAG trống. Kit chưa cắm, hoặc cáp chỉ cấp điện không có dữ "
+                        "liệu, hoặc một tiến trình khác đang giữ cổng JTAG.")
+    idcode = m.group(1).lower()
+
+    phan = []
+    for khoa in ("manufacturer", "family", "model"):
+        mm = re.search(rf"{khoa}\s+(.+)", nv)
+        if mm:
+            phan.append(mm.group(1).strip())
+    return idcode, " · ".join(phan), ""
+
+
+def do_bo(do_jtag: bool = False) -> dict[str, Any]:
+    """Máy này đang cắm những gì. Không thấy gì thì trả danh sách kiểm tra, không đoán.
+
+    `do_jtag` MẶC ĐỊNH TẮT, và đó là chủ ý — không phải cho nhanh.
+
+    Hai lý do. Một: đường FPGA **không bao giờ được chọn tự động** (xem nhánh `openfpgaloader`
+    của `target.flash`) — nạp một `.fs` vào bo vi điều khiển là chuyện phải do người gõ ra.
+    Bật dò JTAG mặc định thì một kit FPGA cắm cùng lúc sẽ hiện ra như một đường nạp ứng viên.
+
+    Hai: bật mặc định làm hàm này **gọi thêm một tiến trình ngoài** trên mọi lần dò bo, và
+    làm nó phụ thuộc phần cứng đang cắm. Đo được 03/10/2026: thêm nhánh JTAG không điều kiện
+    làm **6 ca kiểm cũ đỏ** — chúng vá ba seam `THU_MUC_O_DIA`, `doc_id_chip`,
+    `_cong_noi_tiep`, và một lời gọi ngoài thứ tư thì lọt qua cả ba. Một hàm mà kết quả đổi
+    theo thứ đang cắm trên bàn thì không kiểm được bằng ca kiểm.
+    """
     ds: list[BoTimDuoc] = []
     try:
         o_dia = sorted(THU_MUC_O_DIA.iterdir())
@@ -591,6 +645,19 @@ def do_bo() -> dict[str, Any]:
             chi_tiet={k: str(v) for k, v in bo_nho.items()},
             biet_bang_cach="st-info --probe đọc qua SWD"))
 
+    # DEV-332. Đường FPGA: đọc IDCODE qua JTAG. Chỉ thử khi SWD không thấy chip, để khỏi gọi
+    # thêm một tiến trình ngoài trên mọi lần dò bo ARM.
+    idcode, mo_ta_jtag, vi_sao_jtag = ("", "", "")
+    if do_jtag and not chip:
+        idcode, mo_ta_jtag, vi_sao_jtag = doc_idcode_jtag()
+        if idcode:
+            ds.append(BoTimDuoc(
+                loai="jtag", duong_dan="(JTAG qua openFPGALoader)",
+                ten=mo_ta_jtag or f"FPGA idcode {idcode}",
+                chip_doc_duoc="", nap_duoc_bang="openfpgaloader",
+                chi_tiet={"idcode": idcode, "mo_ta": mo_ta_jtag},
+                biet_bang_cach="openFPGALoader --detect đọc IDCODE qua chuỗi JTAG"))
+
     bo_nap = [b for b in ds if b.nap_duoc_bang]
     la_bo = [b for b in ds if b.co_the_la_bo]
     return {
@@ -603,6 +670,11 @@ def do_bo() -> dict[str, Any]:
         # thức chính quy (xem Fact `flash.size = 7` đọc nhầm từ dòng khai địa chỉ thanh ghi).
         "bo_nho_doc_tu_chip": bo_nho,
         "vi_sao_chua_doc_duoc_chip": vi_sao_chip,
+        # DEV-332. Định danh FPGA: một con số đọc từ silicon, so bằng phép bằng. `mo_ta_jtag`
+        # chỉ để người đọc, KHÔNG dùng để so — xem docstring `doc_idcode_jtag`.
+        "idcode_doc_duoc": idcode,
+        "mo_ta_jtag": mo_ta_jtag,
+        "vi_sao_chua_doc_duoc_idcode": vi_sao_jtag,
         # Danh sách kiểm tra hiện ra khi không có thứ nào CÓ THỂ là bo — không phải khi
         # không có thiết bị nào, vì một cái tai nghe Bluetooth vẫn tính là "có thiết bị".
         "danh_sach_kiem_tra": list(DANH_SACH_KIEM_TRA) if not la_bo else [],

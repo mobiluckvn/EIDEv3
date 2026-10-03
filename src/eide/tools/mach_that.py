@@ -94,7 +94,7 @@ def dang_ky(r: Registry) -> None:
                       baud_bootloader: int = 57600):
         from ..build import mach_that as MT
 
-        d = MT.do_bo()
+        d = MT.do_bo(do_jtag=True)
         # Đọc chữ ký AVR chỉ khi được bảo. Đây là phép đo THẬT trên silicon, nhưng nó reset
         # bo — không được tự ý làm trong một công cụ R1 mà người dùng tưởng là chỉ nhìn.
         if doc_chu_ky_avr:
@@ -213,7 +213,7 @@ def dang_ky(r: Registry) -> None:
                 hint_for_agent="Biên dịch trước (build.compile) — nó sinh mach.bin cho ARM.",
                 alternatives=["build.compile"], blame="agent"))
 
-        d = MT.do_bo()
+        d = MT.do_bo(do_jtag=(cach == "openfpgaloader"))
         # Bo AVR: ĐỌC CHỮ KÝ ngay tại đây, trước khi đối chiếu.
         #
         # `do_bo()` cố ý không tự đọc — việc ấy reset bo, và `target.detect` là công cụ R1 mà
@@ -275,8 +275,43 @@ def dang_ky(r: Registry) -> None:
                                 "thấy KHÔNG khớp. Không nạp; hỏi người dùng."),
                 details={"chip_du_an": chip_du_an, "chip_theo_nhan_o": thay_doan},
                 alternatives=["passport.pin", "target.detect"], blame="user"))
-        da_doi_chieu = bool(chip_du_an and thay_that
-                            and so_chip(chip_du_an, thay_that) == "khop")
+        # DEV-332. Đường FPGA có phép định danh RIÊNG, và phải xử lý trước nhánh SWD.
+        #
+        # Hai lý do, cả hai đo được 03/10/2026 trên kit Tang Nano 20K:
+        #
+        # 1. Nhánh SWD trả `"Found 0 stlink programmers"` cho một kit FPGA, và `E4013` biến
+        #    câu ấy thành "chưa đối chiếu được ID chip". Người làm bị gửi đi tìm một mạch nạp
+        #    ST-Link vốn chưa bao giờ liên quan. Lời khuyên không khớp lý do thì tệ hơn im
+        #    lặng.
+        #
+        # 2. KHÔNG được so IDCODE bằng `so_chip`. Thử tay: hộ chiếu `GW2AR-LV18QN88C8/I7` so
+        #    với JTAG khai `GW2A(R)-18(C)` ra **`lech`** — tức `E4012` báo "bo đang cắm là
+        #    chip khác" cho ĐÚNG con bo đúng. Một báo động giả dạy người dùng bỏ qua báo
+        #    động.
+        #
+        # Nên định danh FPGA lấy theo IDCODE: đọc từ silicon, so bằng phép bằng.
+        if cach == "openfpgaloader":
+            idcode = str(d.get("idcode_doc_duoc") or "")
+            if not idcode:
+                return ToolResult(False, error=EideError(
+                    "E4013",
+                    "Chưa đọc được IDCODE của FPGA qua JTAG: "
+                    + str(d.get("vi_sao_chua_doc_duoc_idcode")
+                          or "openFPGALoader không in dòng idcode nào.")
+                    + " MDD-40 đòi nạp phải đối chiếu được con chip đang cắm.",
+                    hint_for_agent=(
+                        "Đây là đường FPGA, KHÔNG phải SWD — đừng đi tìm mạch nạp ST-Link. "
+                        "Ba chỗ cần xem: kit đã cắm chưa; cáp có đường dữ liệu hay chỉ cấp "
+                        "điện; và có tiến trình nào đang GIỮ cổng JTAG không (mở cổng JTAG "
+                        "để đọc log thì chặn luôn việc nạp)."),
+                    details={"idcode": "", "cach": cach},
+                    alternatives=["target.detect"], blame="user"))
+            da_doi_chieu = True
+            kq_idcode = idcode
+        else:
+            kq_idcode = ""
+            da_doi_chieu = bool(chip_du_an and thay_that
+                                and so_chip(chip_du_an, thay_that) == "khop")
         if not da_doi_chieu and not dong_y_khong_doi_chieu_chip:
             return ToolResult(False, error=EideError(
                 "E4013",
@@ -392,7 +427,19 @@ def dang_ky(r: Registry) -> None:
                 hint_for_agent="Gọi target.detect để xem đường nạp nào đang có.",
                 alternatives=["target.detect"], blame="agent"))
 
-        kq.chip_da_doi_chieu = thay_that or ""
+        # DEV-332. Đường FPGA ghi IDCODE đọc từ silicon vào đúng trường "đã đối chiếu", kèm
+        # một câu nói RÕ phần chưa đối chiếu — để không ai đọc "đã đối chiếu" thành "đã đối
+        # chiếu mọi thứ".
+        if cach == "openfpgaloader" and kq_idcode:
+            kq.chip_da_doi_chieu = f"IDCODE {kq_idcode}"
+            if d.get("mo_ta_jtag"):
+                kq.canh_bao.append(
+                    f"Định danh đọc từ silicon qua JTAG: IDCODE {kq_idcode} "
+                    f"({d['mo_ta_jtag']}). Đây là định danh CỦA CHIP, không phải phép đối "
+                    "chiếu với thiết bị mà bitstream được đóng gói cho — nạp một `.fs` dựng "
+                    "cho chip khác vào đây thì phép kiểm này KHÔNG bắt được.")
+        else:
+            kq.chip_da_doi_chieu = thay_that or ""
         ctx.store.apply(
             artefact_id=MA_NAP, type="target",
             op="update" if ctx.store.get(MA_NAP) else "create",

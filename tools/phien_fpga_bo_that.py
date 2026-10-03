@@ -263,6 +263,22 @@ BUOC: list[tuple[str, str, int, int, bool]] = [
      "rồi dừng nên gọi sau là mất.\n\n"
      "Lượt nào không bắt được thì ghi là không bắt được.", 3600, 3, False),
 
+    ("Đo thẳng chân 88, không qua CPU",
+     "Anh Công vừa cho mình một dữ kiện: **S1 là nút bên tay phải, S2 là nút bên tay trái.** "
+     "Nên chân 88 trong tệp ràng buộc đúng là nhắm vào S1.\n\n"
+     "Vậy `ADR-05` có thể kết luận sớm. Nó bỏ nút khỏi mạch reset dựa trên *triệu chứng* chân "
+     "kẹp 0, mà ta chưa bao giờ đo **thẳng** cái chân ấy — mọi lần đo đều đi qua CPU, qua "
+     "reset, qua BRAM.\n\n"
+     "Mình muốn một bitstream nhỏ nhất có thể, **không có CPU, không có BRAM, không có UART**, "
+     "chỉ làm hai việc:\n"
+     "- một đèn phản chiếu thẳng mức của chân 88\n"
+     "- một đèn khác nháy theo đồng hồ, để biết bitstream đang chạy\n\n"
+     "Dựng xong thì nạp, rồi bảo mình nhìn. Mình sẽ báo hai thứ: đèn phản chiếu sáng hay tắt "
+     "lúc không bấm, và nó có đổi khi mình bấm giữ nút bên phải.\n\n"
+     "Phép này rẻ hơn hẳn — mạch nhỏ nên tổng hợp nhanh — và nó trả lời đúng câu còn lại: chân "
+     "88 có nối tới S1 không, và nó đọc ra gì. Nếu chân đọc đúng thì mình sẽ sửa `ADR-05`.",
+     2400, 3, False),
+
     ("Dựng board.csv từ bản ghi",
      "Trong kho có công cụ đọc bản ghi UART ra CSV, viết sẵn cho đúng việc này. Dùng nó dựng "
      "results/board.csv từ các bản ghi vừa bắt.", 1800, 3, False),

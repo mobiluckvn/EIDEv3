@@ -457,6 +457,118 @@ def test_bat_log_cong_khong_co_thi_noi_ra():
     assert ra["so_byte"] == 0
 
 
+_DETECT_THAT = """Jtag frequency : requested 6.00MHz    -> real 6.00MHz
+index 0:
+\tidcode 0x81b
+\tmanufacturer Gowin
+\tfamily GW2A
+\tmodel  GW2A(R)-18(C)
+\tirlength 8
+"""
+
+
+def test_doc_idcode_jtag_lay_duoc_con_so_tu_silicon(monkeypatch):
+    """DEV-332 — định danh FPGA phải đọc từ chuỗi JTAG, không đi qua SWD.
+
+    `doc_id_chip` đọc bằng `st-info` qua SWD: đúng cho ARM, vô nghĩa cho FPGA. Với một kit
+    FPGA cắm vào máy nó trả *"Found 0 stlink programmers"*, và `target.flash` biến câu ấy
+    thành `E4013 "chưa đối chiếu được ID chip"` — gửi người làm đi tìm một mạch nạp ST-Link
+    vốn chưa bao giờ liên quan. Đo được 03/10/2026 trên Tang Nano 20K.
+    """
+    import subprocess as sp
+
+    from eide.build import mach_that
+
+    monkeypatch.setattr(mach_that, "_tim_lenh", lambda ten: "/gia/openFPGALoader")
+    monkeypatch.setattr(mach_that.subprocess, "run",
+                        lambda l, **k: sp.CompletedProcess(l, 0, _DETECT_THAT, ""))
+
+    idcode, mo_ta, vi_sao = mach_that.doc_idcode_jtag()
+
+    assert idcode == "0x81b", f"không lấy đúng IDCODE: {idcode!r}"
+    assert not vi_sao, "đọc được thì không được kèm lý do thất bại"
+    for phan in ("Gowin", "GW2A"):
+        assert phan in mo_ta, f"thiếu {phan} trong mô tả: {mo_ta!r}"
+
+
+def test_khong_doc_duoc_idcode_thi_noi_ly_do_cua_FPGA(monkeypatch):
+    """Không đọc được thì lý do phải nói về JTAG, KHÔNG nói về ST-Link.
+
+    Đây là nửa đắt nhất của DEV-332. Một lời khuyên không khớp lý do thì tệ hơn im lặng: nó
+    gửi tác tử đi làm một việc vốn không liên quan. Ca này canh đúng chỗ ấy.
+    """
+    import subprocess as sp
+
+    from eide.build import mach_that
+
+    monkeypatch.setattr(mach_that, "_tim_lenh", lambda ten: "/gia/openFPGALoader")
+    monkeypatch.setattr(mach_that.subprocess, "run",
+                        lambda l, **k: sp.CompletedProcess(l, 0, "Jtag frequency : 6MHz\n", ""))
+
+    idcode, _, vi_sao = mach_that.doc_idcode_jtag()
+
+    assert idcode == ""
+    assert vi_sao, "không đọc được thì phải nói ra vì sao"
+    assert "stlink" not in vi_sao.lower() and "st-link" not in vi_sao.lower(), (
+        f"lý do của đường FPGA không được nhắc ST-Link: {vi_sao!r}")
+    assert "JTAG" in vi_sao, f"lý do phải nói về JTAG: {vi_sao!r}"
+
+
+def test_khong_so_idcode_bang_so_chip():
+    """IDCODE không được so bằng `so_chip` — phép so mờ cho BÁO ĐỘNG GIẢ.
+
+    Thử tay 03/10/2026: hộ chiếu dự án ghi `GW2AR-LV18QN88C8/I7`, JTAG khai `GW2A(R)-18(C)`.
+    `so_chip` trả **`lech`**, tức cổng `E4012` sẽ báo *"bo đang cắm là chip khác"* cho ĐÚNG
+    con bo đúng. Chính chú thích của `so_chip` đã dặn: một cảnh báo sai dạy người dùng bỏ qua
+    cảnh báo.
+
+    Ca này không đòi sửa `so_chip` — nó chốt rằng phép so ấy KHÔNG dùng được cho FPGA, để ai
+    định nối IDCODE vào đó sẽ thấy ca đỏ.
+    """
+    from eide.tools.mach_that import so_chip
+
+    assert so_chip("GW2AR-LV18QN88C8/I7", "GW2A(R)-18(C)") == "lech", (
+        "nếu phép so này đã khớp được thì xem lại DEV-332: có thể dùng so_chip cho FPGA")
+
+
+def test_do_bo_bao_duong_jtag_khi_doc_duoc_idcode(monkeypatch):
+    """`do_bo(do_jtag=True)` phải trình đường FPGA ra như một đường nạp, không im lặng.
+
+    Và `do_bo()` **không truyền cờ** thì KHÔNG được dò JTAG. Hai nửa của ca này canh hai
+    điều ngược nhau, và nửa sau mới là nửa đắt: thêm nhánh JTAG không điều kiện làm 6 ca kiểm
+    cũ đỏ, vì chúng vá ba seam `THU_MUC_O_DIA` · `doc_id_chip` · `_cong_noi_tiep` và một lời
+    gọi ngoài thứ tư thì lọt qua cả ba. Một hàm mà kết quả đổi theo thứ đang cắm trên bàn thì
+    không kiểm được bằng ca kiểm.
+    """
+    from eide.build import mach_that
+
+    da_goi: list[int] = []
+
+    def jtag_gia():
+        da_goi.append(1)
+        return ("0x81b", "Gowin · GW2A · GW2A(R)-18(C)", "")
+
+    monkeypatch.setattr(mach_that, "doc_id_chip", lambda: ("", "không có ST-Link", {}))
+    monkeypatch.setattr(mach_that, "doc_idcode_jtag", jtag_gia)
+    monkeypatch.setattr(mach_that, "_cong_noi_tiep", lambda: [])
+
+    # Nửa 1 — bật cờ thì dò, và trình ra như một đường nạp.
+    d = mach_that.do_bo(do_jtag=True)
+    assert d["idcode_doc_duoc"] == "0x81b"
+    assert d["nap_duoc"] is True, "đọc được IDCODE thì phải coi là nạp được"
+    jtag = [t for t in d["thiet_bi"] if t.get("nap_duoc_bang") == "openfpgaloader"]
+    assert jtag, "thiếu thiết bị đường JTAG trong danh sách"
+    assert jtag[0]["chi_tiet"]["idcode"] == "0x81b"
+    assert da_goi == [1]
+
+    # Nửa 2 — KHÔNG bật cờ thì tuyệt đối không gọi tới JTAG.
+    da_goi.clear()
+    d2 = mach_that.do_bo()
+    assert da_goi == [], "do_bo() mặc định không được dò JTAG"
+    assert d2["idcode_doc_duoc"] == ""
+    assert not [t for t in d2["thiet_bi"] if t.get("nap_duoc_bang") == "openfpgaloader"]
+
+
 def test_khong_module_nao_goi_ten_chua_dinh_nghia():
     """Bắt CẢ LỚP lỗi của DEV-330 một lượt, thay vì từng cái một.
 
