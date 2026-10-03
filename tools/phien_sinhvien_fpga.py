@@ -42,7 +42,8 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "tools"))
 
-from phien_robot import NhatKy, cong_cu_da_goi, hoi, so_dong_so_cai   # noqa: E402
+from phien_robot import (NhatKy, cong_cu_da_goi, doi_chieu_app_voi_nguon, hoi,
+                         so_dong_so_cai)   # noqa: E402
 from thu_giao_dien import GiaoDien                                     # noqa: E402
 
 XANH, DO, VANG, XAM, HET = "\033[92m", "\033[91m", "\033[93m", "\033[90m", "\033[0m"
@@ -54,6 +55,7 @@ QUAN_SAT = RA / "quan-sat-nguoi.jsonl"
 
 
 def mo_app(du_an: pathlib.Path) -> GiaoDien:
+    doi_chieu_app_voi_nguon()
     subprocess.run(["pkill", "-f", "EIDE.app/Contents/MacOS/EIDE"], check=False)
     het = time.time() + 20
     while time.time() < het:
@@ -296,6 +298,25 @@ BUOC: list[tuple[str, str, int, int, bool]] = [
      "đo và chỗ lấy số. Dòng nào cần mắt mình thì ghi rõ là cần mình.", 3600, 3, False),
 
     # ------------------------------------------------- 4 · BÀI 2, TRÊN MÁY
+    ("Bài 1 đóng, và một chỗ còn sót trong mã",
+     "Bài 1 **đạt cả bốn dòng nghiệm thu**. Mình tự đọc cổng chứ không nhận qua lời bạn:\n\n"
+     "```\nHello from PicoRV32 on Tang Nano 20K, cycle=1485001241\n"
+     "Δcycle: 27 000 001 · 27 000 031 · 27 000 024\n```\n\n"
+     "Và sau khi mình rút điện cắm lại, `cycle` đọc được là 1 404 001 194 — lớn hơn hẳn lần "
+     "trước (837 000 733), nên bo chạy liên tục chứ không khởi động lại rồi đếm từ đầu. Đèn "
+     "LED0 vẫn nháy. Dòng 4 đạt.\n\n"
+     "`ADR-01` của bạn mình cũng duyệt: ghi rõ lý do, ghi cả mặt dở *không reset tay được bằng "
+     "S1*, và tự khai tầng VÀNG chứ không khai NGƯỜI. Đúng cách.\n\n"
+     "Nhưng còn một chỗ sót, nhỏ mà mình muốn bạn dọn trước khi sang Bài 2. Trong "
+     "`reset_gen.v`, hai thanh ghi `btn_s1_sync1` và `btn_s1_sync2` **vẫn được tính mỗi chu "
+     "kỳ nhưng không ai đọc** — mình grep cả thư mục `rtl/`, không có chỗ dùng nào.\n\n"
+     "Trình tổng hợp sẽ bỏ đi nên không tốn tài nguyên. Nhưng mã nguồn đang nói *ta đồng bộ "
+     "nút qua hai tầng flip-flop* trong khi **không gì dùng kết quả ấy** — người đọc sau sẽ "
+     "tưởng nút còn trong mạch reset. Đây cùng họ với mọi lỗi mình gặp hôm nay: **mã mô tả một "
+     "việc, thực tế làm việc khác**.\n\n"
+     "Bạn dọn cho gọn, theo cách bạn thấy đúng: bỏ hẳn, hoặc giữ lại và nối ra chỗ nào có "
+     "dùng. Nói cho mình biết bạn chọn cách nào và vì sao.", 1800, 4, False),
+
     ("Bài 2: kê trước mọi ô sẽ đo",
      "Sang Bài 2. Trước khi làm gì, bạn kê cho mình danh sách đầy đủ các ô sẽ đo: mỗi ô là "
      "kích thước nào, kiểu dữ liệu nào, cấu hình CPU nào, dịch bằng tập lệnh nào. Và nói cho "

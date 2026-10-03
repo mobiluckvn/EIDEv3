@@ -46,6 +46,54 @@ DU_AN = REPO / "du-lieu/robot-canbang"
 RA = REPO / "du-lieu/ket-qua/robot"
 TAI_LIEU = REPO / "docs/robot/MOBILUCK_Robot2Banh_BanGiaoPhanCung_v1.1.docx"
 
+APP = REPO / "ui/EIDEApp/EIDE.app/Contents/MacOS/EIDE"
+NGUON_SWIFT = REPO / "ui/EIDEApp/Sources"
+
+
+def doi_chieu_app_voi_nguon() -> None:
+    """Chặn phiên nếu `EIDE.app` cũ hơn mã Swift. Gọi TRƯỚC khi mở app.
+
+    Vì sao cần: `swift build` dựng `.build/debug/EIDE`, nhưng phiên này chạy
+    `EIDE.app/Contents/MacOS/EIDE` — một **bản sao** mà chỉ `dong-goi.sh` cập nhật. Không
+    ai nối hai thứ đó lại, nên sửa mã Swift, chạy `swift test` thấy xanh, rồi đo bằng app
+    là đo bằng bản cũ.
+
+    Chuyện đã xảy ra thật: phiên FPGA ngày 03/10 đo bằng gói dựng 30/09, trong khi mã
+    nguồn đã qua bốn commit (DEV-325, DEV-328, DEV-329, d45c64d). Hậu quả không phải một
+    lỗi kêu lên — mà là **15 trong 30 câu trả lời của tác tử bị cắt còn 3000 ký tự, im
+    lặng**: bản cũ cắt không dán dấu, nên câu cuối trông như một câu kết thúc bình thường.
+    Tôi đã đọc nhật ký ấy rồi kết luận sai rằng tác tử không trả lời một câu hỏi, trong
+    khi nó trả lời đủ ở phần đã mất. Bản mới để trần 20 000, dán dấu cắt vào chính chuỗi,
+    và ghi bản đủ ra tệp — cả ba thứ đó đã xanh trong `ThongBaoTests` từ 02/10 mà không
+    tới được chỗ đo.
+
+    Nên phép kiểm ở đây không hỏi "mã có đúng không" — nó hỏi **"thứ tôi sắp đo có phải
+    là mã tôi vừa sửa không"**.
+    """
+    # `relative_to` chỉ để in cho gọn, nên không được là chỗ hỏng: nó NỔ bằng ValueError
+    # với đường dẫn ngoài repo, và một chốt tự nổ thì người ta tắt chốt chứ không sửa gói.
+    def goi(p: pathlib.Path) -> str:
+        try:
+            return str(p.relative_to(REPO))
+        except ValueError:
+            return str(p)
+
+    if not APP.exists():
+        raise SystemExit(f"{DO}Chưa có {goi(APP)} — chạy "
+                         f"ui/EIDEApp/dong-goi.sh trước.{HET}")
+    moc_app = APP.stat().st_mtime
+    tre = [p for p in NGUON_SWIFT.rglob("*.swift") if p.stat().st_mtime > moc_app]
+    if tre:
+        ds = "\n".join(f"    {goi(p)}  "
+                       f"({time.strftime('%d/%m %H:%M', time.localtime(p.stat().st_mtime))})"
+                       for p in sorted(tre)[:8])
+        raise SystemExit(
+            f"{DO}GÓI APP CŨ HƠN MÃ NGUỒN — phiên dừng, vì đo bằng bản này là đo bằng "
+            f"mã đã bị thay.{HET}\n"
+            f"  EIDE.app dựng lúc {time.strftime('%d/%m %H:%M', time.localtime(moc_app))}, "
+            f"còn {len(tre)} tệp Swift mới hơn:\n{ds}\n"
+            f"  Chạy:  ui/EIDEApp/dong-goi.sh")
+
 
 # ===================================================================== nhật ký
 class NhatKy:
@@ -214,6 +262,7 @@ def so_dong_so_cai(du_an: pathlib.Path) -> int:
 
 
 def mo_app(du_an: pathlib.Path) -> GiaoDien:
+    doi_chieu_app_voi_nguon()
     subprocess.run(["pkill", "-f", "EIDE.app/Contents/MacOS/EIDE"], check=False)
     time.sleep(1.2)
     subprocess.run(["defaults", "write", "vn.mobiluck.eide", "duAnPath",
@@ -224,6 +273,29 @@ def mo_app(du_an: pathlib.Path) -> GiaoDien:
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     g.san_sang(90)
     return g
+
+
+def _loi_day_tu_ban_ghi(du_an: pathlib.Path, dau: str) -> str:
+    """Tìm trong bản ghi phiên của app lời tác tử BẮT ĐẦU bằng `dau`, trả nguyên văn.
+
+    Khớp theo đoạn đầu chứ không theo thứ tự: một lượt có thể sinh nhiều lời, và lời cuối
+    trong tệp chưa chắc là lời giao diện vừa đưa ra.
+    """
+    mam = dau.split("⟨CẮT")[0][:300]
+    if len(mam) < 40:
+        return ""
+    ds = sorted((du_an / ".eide/sessions").glob("ses-*/transcript.jsonl"),
+                key=lambda p: p.stat().st_mtime, reverse=True)
+    for tep in ds[:3]:
+        for dong in reversed(tep.read_text("utf-8").splitlines()):
+            try:
+                o = json.loads(dong)
+            except Exception:
+                continue
+            t = o.get("text") or ""
+            if o.get("role") == "model" and t.startswith(mam) and len(t) > len(dau):
+                return t
+    return ""
 
 
 def hoi(g: GiaoDien, nk: NhatKy, du_an: pathlib.Path, cau: str, *,
@@ -274,6 +346,26 @@ def hoi(g: GiaoDien, nk: NhatKy, du_an: pathlib.Path, cau: str, *,
     loi = (a.get("loi_tac_tu_cuoi", "")
            if a.get("so_loi_tac_tu", 0) > truoc_loi
            else "(lượt này tác tử không nói gì — chỉ gọi công cụ)")
+    # Chuỗi nhận được có ĐỦ không? App khai riêng độ dài thật ở `loi_tac_tu_do_dai`, nên
+    # so hai con số là đủ để biết. Thiếu mà không ai so thì nhật ký mất đoạn cuối một cách
+    # hoàn toàn êm — xem `doi_chieu_app_voi_nguon` ở đầu tệp.
+    #
+    # Lấy lại bản đủ từ `transcript.jsonl` của app chứ không chỉ kêu lên: sở cứ phải đủ
+    # ngay lúc ghi. Chép lại được vì bản ghi phiên giữ nguyên văn — chính nhờ nó mà 15 câu
+    # bị cắt hôm 03/10 vá lại được, chứ nếu chỉ có nhật ký thì mất là mất.
+    dai_that = int(a.get("loi_tac_tu_do_dai") or 0)
+    if dai_that > len(loi) > 0:
+        day = _loi_day_tu_ban_ghi(du_an, loi)
+        if day:
+            nk.ghi("Chuỗi giao diện bị cắt — đã lấy lại bản đủ từ bản ghi phiên",
+                   f"app đưa ra {len(loi)} ký tự, lời thật dài {dai_that} ký tự; "
+                   f"bản lấy lại dài {len(day)} ký tự")
+            loi = day
+        else:
+            nk.ghi("CHUỖI BỊ CẮT VÀ KHÔNG LẤY LẠI ĐƯỢC",
+                   f"app đưa ra {len(loi)} ký tự nhưng lời thật dài {dai_that} ký tự. "
+                   "Phần dưới đây THIẾU ĐUÔI — đừng kết luận tác tử không nói điều gì chỉ "
+                   "vì không thấy nó ở đây.")
     # Đợi kết quả được ghi xuống sổ cái trước khi chép vào nhật ký.
     #
     # Một lời gọi bị cổng chặn sẽ CHẠY Ở LƯỢT SAU (`run-113` mở cổng, `run-121` chạy), và nếu

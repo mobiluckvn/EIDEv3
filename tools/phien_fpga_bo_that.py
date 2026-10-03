@@ -36,7 +36,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "tools"))
 
-from phien_robot import NhatKy, cong_cu_da_goi, hoi, so_dong_so_cai   # noqa: E402
+from phien_robot import doi_chieu_app_voi_nguon, NhatKy, cong_cu_da_goi, hoi, so_dong_so_cai   # noqa: E402
 from thu_giao_dien import GiaoDien                                     # noqa: E402
 
 XANH, DO, VANG, XAM, HET = "\033[92m", "\033[91m", "\033[93m", "\033[90m", "\033[0m"
@@ -49,6 +49,7 @@ QUAN_SAT = RA / "quan-sat-nguoi.jsonl"
 
 
 def mo_app(du_an: pathlib.Path) -> GiaoDien:
+    doi_chieu_app_voi_nguon()
     subprocess.run(["pkill", "-f", "EIDE.app/Contents/MacOS/EIDE"], check=False)
     het = time.time() + 20
     while time.time() < het:

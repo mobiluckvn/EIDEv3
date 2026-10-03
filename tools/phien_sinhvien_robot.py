@@ -38,7 +38,8 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "tools"))
 
-from phien_robot import NhatKy, cong_cu_da_goi, hoi, so_dong_so_cai   # noqa: E402
+from phien_robot import (NhatKy, cong_cu_da_goi, doi_chieu_app_voi_nguon, hoi,
+                         so_dong_so_cai)   # noqa: E402
 from thu_giao_dien import GiaoDien                                     # noqa: E402
 
 XANH, DO, VANG, XAM, HET = "\033[92m", "\033[91m", "\033[93m", "\033[90m", "\033[0m"
@@ -58,6 +59,7 @@ def mo_app(du_an: pathlib.Path) -> GiaoDien:
     Gọi thẳng tệp nhị phân chứ không `open -a`: LaunchServices không mang biến môi trường của
     vỏ lệnh sang, mà biến đó phải tới được lõi — lõi là tiến trình con của app.
     """
+    doi_chieu_app_voi_nguon()
     subprocess.run(["pkill", "-f", "EIDE.app/Contents/MacOS/EIDE"], check=False)
     het = time.time() + 20
     while time.time() < het:
