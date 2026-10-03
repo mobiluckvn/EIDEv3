@@ -27,6 +27,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# DEV-330. `nap_qua_openfpgaloader` gọi `_tim_lenh` mà mô-đun này KHÔNG import nó, nên nhánh
+# FPGA của `target.flash` đổ `NameError` ngay lệnh đầu. Đo được 03/10/2026, lần đầu có kit
+# Tang Nano 20K cắm vào máy: `E5999: Công cụ target.flash hỏng: NameError: name '_tim_lenh' is
+# not defined`.
+#
+# Nhánh ấy **chưa bao giờ chạy nổi một lần**, và bộ kiểm không bắt được vì ca duy nhất cho nó
+# (`tests/test_hdl.py`) chỉ kiểm chuỗi `"openfpgaloader"` có nằm trong danh sách tuỳ chọn của
+# công cụ — tức kiểm *món có trong thực đơn*, không kiểm *bếp có nấu được*. Cùng một mẫu với
+# những ca đã gặp trước đây: cơ chế có sẵn, đường dẫn tới nó đứt.
+#
+# `_tim_lenh` phải lấy từ `toolchain` chứ không dùng `shutil.which` trực tiếp: nó còn tìm
+# trong `~/.eide/cong-cu/oss-cad-suite/bin`, và `openFPGALoader` trên máy này nằm đúng ở đó —
+# không có trong PATH của vỏ lệnh.
+from .toolchain import _tim_lenh
+
 # Nơi macOS gắn ổ đĩa ngoài. Bo ST-LINK/DAPLink hiện ra ở đây như một ổ USB.
 THU_MUC_O_DIA = Path("/Volumes")
 # Nơi có tệp thiết bị của cổng nối tiếp. Là hằng số (không viết thẳng trong hàm) để bộ kiểm
@@ -375,7 +390,11 @@ def nap_qua_openfpgaloader(anh: Path, *, bo_kit: str = "tangnano20k", giu_sau_ta
 
     kq.tep = str(anh)
     kq.so_byte = anh.stat().st_size
-    kq.hash = _bam_tep(anh)
+    # DEV-330. Bản đầu gọi `_bam_tep` — một cái tên **chưa bao giờ tồn tại** trong kho. Ba
+    # nhánh nạp kia (`sao_tep`, `st-flash`, `avrdude`) đều dùng `_hash_tep` ở ngay dưới tệp
+    # này. Lỗi gõ tên, không phải thiếu hàm, và nó nằm SAU chỗ kiểm tệp nên chỉ nổ khi có tệp
+    # `.fs` thật — tức chỉ khi có kit cắm vào.
+    kq.hash = _hash_tep(anh)
     lenh = [exe, "-b", bo_kit] + (["-f"] if giu_sau_tat else []) + [str(anh)]
     t0 = time.monotonic()
     try:
@@ -619,6 +638,93 @@ def _hash_tep(p: Path) -> str:
     import hashlib
 
     return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def bat_log_quanh_viec(cong: str, *, baud: int, giay: float,
+                       viec: Any, tran_byte: int = 64 * 1024) -> dict[str, Any]:
+    """Mở cổng nối tiếp TRƯỚC, làm `viec`, rồi đọc tiếp `giay` giây. Trả bản ghi và kết quả.
+
+    DEV-331. Vì sao cần, và vì sao `target.log` sau `target.flash` không thay được:
+
+    Đo được 03/10/2026 trên Tang Nano 20K. Chương trình Bài 2 tính xong rồi in bốn dòng rồi
+    vào `while(1)` — tổng cộng **khoảng 35 ms** kể từ lúc bo thoát reset. Nạp xong mới mở cổng
+    thì đã muộn: byte đã phát trong lúc không ai mở cổng, và chip cầu trên kit không giữ đệm.
+    Kết quả là `target.log` báo *0 byte, cổng im lặng* — một phép đo đúng về cổng và vô dụng
+    về firmware.
+
+    Mấu chốt kỹ thuật: byte mất **vì không ai mở cổng**, không phải vì đọc chậm. Khi đã có
+    một tiến trình giữ `fd` của cổng, hàng đợi vào của tầng tty trong nhân **giữ byte lại**
+    cho tới khi có người đọc. Nên chỉ cần mở trước, làm việc, rồi đọc — không cần luồng riêng.
+
+    Dùng cho mọi chương trình **in một lần rồi dừng**. Chương trình in lặp vô hạn (như Bài 1)
+    thì `target.log` thường vẫn bắt được, nhưng đường này cũng không hại gì.
+    """
+    import os as _os
+
+    ra: dict[str, Any] = {"cong": cong, "baud": baud, "giay": giay, "so_byte": 0,
+                          "chu": "", "im_lang": True, "canh_bao": [], "kq_viec": None}
+    p = Path(cong)
+    if not p.exists():
+        ra["loi"] = f"Không có cổng {cong}. Bo đã bị rút, hoặc tên cổng khác."
+        return ra
+
+    try:
+        subprocess.run(["stty", "-f", cong, str(baud), "raw", "-echo"],
+                       capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        ra["canh_bao"].append(f"không đặt được baud bằng stty: {e}")
+
+    try:
+        fd = _os.open(cong, _os.O_RDONLY | _os.O_NONBLOCK)
+    except OSError as e:
+        ra["loi"] = f"Không mở được {cong}: {e}"
+        return ra
+
+    dem = bytearray()
+
+    def _vet():
+        """Vét những byte đã vào hàng đợi mà chưa ai đọc.
+
+        `dem.extend(b)` chứ KHÔNG `dem += b`: phép gán cộng làm Python coi `dem` là biến cục
+        bộ của hàm này, và `len(dem)` ở dòng trên đổ `UnboundLocalError`. Ca kiểm
+        `test_bat_log_mo_cong_truoc_khi_lam_viec` bắt được đúng lỗi này.
+        """
+        while len(dem) < tran_byte:
+            try:
+                b = _os.read(fd, 4096)
+            except (BlockingIOError, OSError):
+                return
+            if not b:
+                return
+            dem.extend(b)
+
+    try:
+        # Mở rồi mới làm việc. Đây là toàn bộ điểm khác với gọi `target.log` sau `target.flash`.
+        _vet()                      # bỏ rác còn sót từ trước, để bản ghi chỉ chứa lượt này
+        dem.clear()
+        try:
+            ra["kq_viec"] = viec()
+        except Exception as e:      # việc hỏng thì VẪN trả bản ghi đã bắt được
+            ra["canh_bao"].append(f"việc chạy giữa lúc bắt bản ghi bị lỗi: {e}")
+
+        het = time.time() + giay
+        while time.time() < het and len(dem) < tran_byte:
+            truoc = len(dem)
+            _vet()
+            if len(dem) == truoc:
+                time.sleep(0.05)
+    finally:
+        _os.close(fd)
+
+    ra["so_byte"] = len(dem)
+    ra["chu"] = dem.decode("utf-8", errors="replace")
+    ra["im_lang"] = len(dem) == 0
+    if ra["im_lang"]:
+        ra["canh_bao"].append(
+            f"Cổng {cong} không gửi byte nào, kể cả khi đã mở cổng TRƯỚC khi làm việc. Lần "
+            "này im lặng không còn giải thích được bằng khe hở thời gian — nên nó là một dấu "
+            "hiệu thật về firmware, chân UART, hoặc tốc độ baud.")
+    return ra
 
 
 def nap_qua_o_dia(bin_path: Path, o_dia: Path, *, cho_giay: float = 0.0) -> KetQuaNap:

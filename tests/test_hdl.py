@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 from pathlib import Path
 
 import pytest
@@ -310,6 +311,202 @@ def test_target_flash_co_duong_fpga():
     sp = next(t for t in r.all() if t.name == "target.flash")
     enum = sp.declaration()["parameters"]["properties"]["cach"]["enum"]
     assert "openfpgaloader" in enum
+
+
+def test_duong_fpga_goi_duoc_khong_chi_co_trong_thuc_don(tmp_path):
+    """DEV-330 — ca trên kiểm `"openfpgaloader"` CÓ trong danh sách tuỳ chọn; ca này kiểm nhánh
+    ấy GỌI ĐƯỢC.
+
+    Hai câu đó khác nhau, và khoảng cách giữa chúng từng là một `NameError` sống suốt nhiều
+    phiên: `nap_qua_openfpgaloader` gọi `_tim_lenh` mà mô-đun không import nó, nên nhánh FPGA
+    đổ ngay lệnh đầu — `E5999: NameError: name '_tim_lenh' is not defined`. Chỉ lộ ra ngày
+    03/10/2026, lần đầu có kit thật cắm vào máy.
+
+    Ca này không cần kit và không cần `openFPGALoader`: nó chỉ cần hàm **chạy tới được** chỗ
+    kiểm tệp. Đó cũng chính là chỗ `NameError` từng chặn, vì `_tim_lenh` được gọi TRƯỚC khi
+    kiểm tệp.
+    """
+    from eide.build.mach_that import nap_qua_openfpgaloader
+
+    kq = nap_qua_openfpgaloader(tmp_path / "chua-dung-bao-gio.fs")
+
+    # Không ném ngoại lệ là điều kiện đầu; phần còn lại canh rằng nó đi tới đúng chỗ.
+    assert kq.cach == "openfpgaloader"
+    assert kq.dat is False
+    assert kq.vi_sao_khong_dat, "phải nói ra vì sao không nạp được"
+
+    # Chốt chặt: lý do phải là về TỆP, không phải về thiếu công cụ hay lỗi nội bộ. Nếu import
+    # bị bỏ lại thì hàm đổ trước khi tới được dòng này.
+    vi_sao = kq.vi_sao_khong_dat.lower()
+    assert "tep" in vi_sao or "tệp" in vi_sao, (
+        f"lý do phải nói về tệp, đang là: {kq.vi_sao_khong_dat!r}")
+
+    # Và không được báo đã đối chiếu: openFPGALoader không đọc ngược so từng byte.
+    assert not getattr(kq, "da_verify", False)
+
+
+def test_duong_fpga_di_het_voi_tep_that(tmp_path, monkeypatch):
+    """DEV-330 — ca trên dừng ở chỗ kiểm tệp, nên nó KHÔNG đủ.
+
+    Vá `_tim_lenh` xong thì lỗi thứ hai hiện ra ngay: `_bam_tep` — một cái tên chưa bao giờ
+    tồn tại, trong khi ba nhánh nạp kia đều dùng `_hash_tep`. Nó nằm SAU chỗ kiểm tệp, nên ca
+    trên đi không tới.
+
+    Bài học của ca này: trên một đường dẫn **chưa bao giờ chạy**, vá một lỗi thì lỗi sau hiện
+    ra. Phép kiểm phải đi HẾT đường, không dừng ở lỗi đầu tiên mình vừa sửa.
+
+    Không nạp bo thật: thay `subprocess.run` bằng một bản giả. Việc cần đo là hàm đi hết được
+    đường tới lúc gọi lệnh, không phải openFPGALoader có nạp nổi hay không.
+    """
+    import subprocess as sp_that
+
+    from eide.build import mach_that
+
+    fs = tmp_path / "soc_top.fs"
+    fs.write_bytes(b"\x00\x01\x02\x03" * 64)   # tệp THẬT, không rỗng
+
+    monkeypatch.setattr(mach_that, "_tim_lenh", lambda ten: "/gia/openFPGALoader")
+
+    da_goi: list[list[str]] = []
+
+    def run_gia(lenh, **kw):
+        da_goi.append(list(lenh))
+        return sp_that.CompletedProcess(lenh, 0, stdout="Done\n", stderr="")
+
+    monkeypatch.setattr(mach_that.subprocess, "run", run_gia)
+
+    kq = mach_that.nap_qua_openfpgaloader(fs, bo_kit="tangnano20k")
+
+    # Đi tới được chỗ gọi lệnh — đây là điều `_bam_tep` từng chặn.
+    assert da_goi, "chưa gọi tới lệnh nạp"
+    assert da_goi[0][1:3] == ["-b", "tangnano20k"]
+    assert "-f" not in da_goi[0], "mặc định phải nạp SRAM, không ghi flash"
+
+    # Băm đã tính được: 64 ký tự hex của sha256.
+    assert len(kq.hash) == 64 and all(c in "0123456789abcdef" for c in kq.hash)
+    assert kq.so_byte == fs.stat().st_size
+
+    # openFPGALoader KHÔNG đọc ngược so từng byte, nên không được khai là đã đối chiếu.
+    assert kq.da_verify is False
+
+
+def test_bat_log_mo_cong_truoc_khi_lam_viec():
+    """DEV-331 — bắt bản ghi phải MỞ CỔNG TRƯỚC, không phải đọc sau.
+
+    Đo được 03/10/2026 trên Tang Nano 20K: firmware Bài 2 tính xong, in bốn dòng, rồi vào
+    `while(1)` — tất cả trong **khoảng 35 ms**. Gọi `target.log` sau `target.flash` thì byte
+    đã phát trong lúc không ai mở cổng, và chip cầu không giữ đệm. `target.log` báo *0 byte,
+    cổng im lặng*: đúng về cổng, vô dụng về firmware.
+
+    Ca này không cần kit: dùng một cặp giả lập đầu cuối. Phép phân biệt nằm ở chỗ **rác cũ**:
+    hàm phải vét sạch những gì có trước khi làm việc, rồi mới giữ phần phát ra TRONG lúc làm
+    việc. Nếu đổi thứ tự thành làm-việc-rồi-mới-mở thì rác cũ sẽ lẫn vào bản ghi, và ca này đỏ.
+    """
+    import os
+    import pty
+
+    from eide.build import mach_that
+
+    chu, con = pty.openpty()
+    duong_dan = os.ttyname(con)
+    try:
+        # Rác có TRƯỚC khi gọi — ví dụ byte còn sót của lượt chạy cũ.
+        os.write(chu, b"RAC-CU-TU-LUOT-TRUOC\r\n")
+        time.sleep(0.1)
+
+        da_goi: list[int] = []
+
+        def viec():
+            da_goi.append(1)
+            # Firmware "in một lần rồi dừng": phát ngay trong lúc nạp.
+            os.write(chu, b"RESULT,n=4,dtype=I8,ver=V0,ok=1\r\n")
+            time.sleep(0.1)
+            return "xong"
+
+        ra = mach_that.bat_log_quanh_viec(duong_dan, baud=115200, giay=1.0, viec=viec)
+    finally:
+        os.close(chu)
+        os.close(con)
+
+    assert da_goi == [1], "việc phải được gọi đúng một lần"
+    assert ra["kq_viec"] == "xong", "kết quả của việc phải trả về kèm bản ghi"
+
+    # Bắt được phần phát TRONG lúc làm việc — đây là điều `target.log` sau khi nạp không làm nổi.
+    assert "RESULT,n=4" in ra["chu"], f"mất phần phát trong lúc làm việc: {ra['chu']!r}"
+    assert ra["im_lang"] is False
+    assert ra["so_byte"] > 0
+
+    # Và KHÔNG lẫn rác cũ: cổng phải được mở rồi vét sạch TRƯỚC khi việc chạy.
+    assert "RAC-CU" not in ra["chu"], (
+        "bản ghi lẫn rác của lượt trước — cổng mở sau khi làm việc, hoặc thiếu bước vét")
+
+
+def test_bat_log_cong_khong_co_thi_noi_ra():
+    """Cổng không tồn tại thì phải NÓI, đừng trả bản ghi rỗng trông như bo im lặng.
+
+    Hai chuyện khác nhau hẳn: *bo không gửi gì* là một phép đo về firmware; *không có cổng*
+    là một phép đo chưa chạy. Gộp hai cái vào một kết quả rỗng là biến chỗ chưa đo thành chỗ
+    đã đo.
+    """
+    from eide.build import mach_that
+
+    ra = mach_that.bat_log_quanh_viec("/dev/cu.khong-he-co-cong-nay", baud=115200,
+                                      giay=1.0, viec=lambda: "khong-duoc-goi")
+    assert ra.get("loi"), "phải nói ra là không có cổng"
+    assert ra["kq_viec"] is None, "không có cổng thì KHÔNG được chạy việc"
+    assert ra["so_byte"] == 0
+
+
+def test_khong_module_nao_goi_ten_chua_dinh_nghia():
+    """Bắt CẢ LỚP lỗi của DEV-330 một lượt, thay vì từng cái một.
+
+    Hai lỗi `_tim_lenh` và `_bam_tep` cùng một hình dạng: một cái tên được gọi mà không ở đâu
+    định nghĩa, nằm trên đường dẫn chưa bao giờ chạy, nên không ca kiểm nào và không lần chạy
+    nào đụng tới. Trình dịch Python không bắt — nó chỉ nổ lúc dòng ấy thật sự chạy.
+
+    Ca này quét cây cú pháp của mọi mô-đun: tên nào được ĐỌC mà không nằm trong tên sẵn có,
+    tên nhập vào, tên gán, tham số hay bắt ngoại lệ thì báo. Nó không thay được một bộ kiểm
+    chạy thật, nhưng nó rẻ và bắt được đúng loại lỗi chỉ lộ ra khi có phần cứng cắm vào.
+    """
+    import ast
+    import builtins
+    import pathlib
+
+    goc = pathlib.Path(__file__).resolve().parents[1] / "src" / "eide"
+    # Tên dunder cấp mô-đun: Python cấp sẵn, bộ quét cú pháp không thấy chỗ gán.
+    san_co = set(dir(builtins)) | {"__file__", "__name__", "__doc__", "__package__",
+                                   "__spec__", "__loader__", "__builtins__", "__path__"}
+
+    loi: dict[str, list[str]] = {}
+    for p in sorted(goc.rglob("*.py")):
+        try:
+            cay = ast.parse(p.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        dn = set(san_co)
+        for n in ast.walk(cay):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                dn.add(n.name)
+            elif isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                dn.add(n.id)
+            elif isinstance(n, (ast.Import, ast.ImportFrom)):
+                for a in n.names:
+                    dn.add((a.asname or a.name).split(".")[0])
+            elif isinstance(n, ast.arg):
+                dn.add(n.arg)
+            elif isinstance(n, ast.ExceptHandler) and n.name:
+                dn.add(n.name)
+            elif isinstance(n, ast.Global):
+                dn.update(n.names)
+
+        thieu = sorted({n.id for n in ast.walk(cay)
+                        if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+                        and n.id not in dn})
+        if thieu:
+            loi[str(p.relative_to(goc))] = thieu
+
+    assert not loi, "tên được gọi mà không ở đâu định nghĩa:\n" + "\n".join(
+        f"  {k}: {', '.join(v)}" for k, v in loi.items())
 
 
 # =============================================================== câu then chốt của mô-đun

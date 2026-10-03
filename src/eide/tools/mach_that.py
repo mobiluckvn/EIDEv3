@@ -172,6 +172,16 @@ def dang_ky(r: Registry) -> None:
                                                  "kit (giữ sau khi tắt nguồn). Mặc định false "
                                                  "= nạp vào SRAM, chạy ngay nhưng MẤT khi tắt "
                                                  "nguồn")},
+                 "bat_log_giay": {
+                     "type": "number",
+                     "description": ("mở cổng nối tiếp TRƯỚC khi nạp rồi đọc thêm bấy nhiêu "
+                                     "giây sau khi nạp. Dùng cho firmware in MỘT LẦN rồi "
+                                     "dừng — gọi target.log sau khi nạp thì đã muộn, byte "
+                                     "phát ra lúc không ai mở cổng là mất. 0 = tắt")},
+                 "cong_log": {
+                     "type": "string",
+                     "description": ("cổng để bắt bản ghi khi dùng bat_log_giay; bỏ trống = "
+                                     "cổng nối tiếp duy nhất của bo đang cắm")},
                  "dong_y_khong_doi_chieu_chip": {
                      "type": "boolean",
                      "description": ("true = người dùng đã biết rằng KHÔNG đối chiếu được ID "
@@ -184,7 +194,8 @@ def dang_ky(r: Registry) -> None:
     def target_flash(ctx: Any, explain: dict[str, Any], tep: str = "", cach: str = "tu_chon",
                      dong_y_khong_doi_chieu_chip: bool = False, cong: str = "",
                      baud_bootloader: int = 57600, ma_chip_avrdude: str = "",
-                     bo_kit_fpga: str = "tangnano20k", giu_sau_tat: bool = False):
+                     bo_kit_fpga: str = "tangnano20k", giu_sau_tat: bool = False,
+                     bat_log_giay: float = 0.0, cong_log: str = ""):
         from ..build import mach_that as MT
 
         goc = ctx.config.paths.project_root
@@ -311,7 +322,48 @@ def dang_ky(r: Registry) -> None:
         if cach == "openfpgaloader":
             # Đường FPGA KHÔNG bao giờ được chọn tự động. Nạp một tệp `.fs` vào một bo vi điều
             # khiển, hoặc ngược lại, là chuyện phải do người gõ ra chứ không do máy đoán.
-            kq = MT.nap_qua_openfpgaloader(p, bo_kit=bo_kit_fpga, giu_sau_tat=giu_sau_tat)
+            #
+            # DEV-331. `bat_log_giay > 0`: mở cổng nối tiếp TRƯỚC khi nạp rồi đọc tiếp sau.
+            # Với firmware in một lần rồi dừng, gọi `target.log` sau khi nạp là đã muộn —
+            # đo được 35 ms cho Bài 2 trên Tang Nano 20K. Xem `bat_log_quanh_viec`.
+            if bat_log_giay and bat_log_giay > 0:
+                if bat_log_giay > 120:
+                    return ToolResult(False, error=EideError(
+                        "E5001", f"`bat_log_giay` tối đa 120, nhận {bat_log_giay}.",
+                        hint_for_agent="Bắt bản ghi lâu hơn 2 phút thì treo cả lượt làm việc.",
+                        blame="agent"))
+                c_log = cong_log
+                if not c_log:
+                    ung = [t["duong_dan"] for t in d["thiet_bi"]
+                           if t["loai"] == "cong_noi_tiep" and t["co_the_la_bo"]]
+                    if len(ung) != 1:
+                        return ToolResult(False, error=EideError(
+                            "E4011",
+                            (f"Có {len(ung)} cổng nối tiếp có thể là bo — không đoán dùng "
+                             "cổng nào để bắt bản ghi."
+                             if ung else "Không có cổng nối tiếp nào của bo đang cắm."),
+                            hint_for_agent=("Đặt `cong_log` cho rõ. Kit FPGA thường hiện HAI "
+                                            "cổng: một kênh nạp, một kênh UART — đoán sai "
+                                            "kênh thì bản ghi im lặng mà firmware vẫn đúng."),
+                            details={"cong": ung},
+                            alternatives=["target.detect"], blame="agent"))
+                    c_log = ung[0]
+                blog = MT.bat_log_quanh_viec(
+                    c_log, baud=115200, giay=bat_log_giay,
+                    viec=lambda: MT.nap_qua_openfpgaloader(
+                        p, bo_kit=bo_kit_fpga, giu_sau_tat=giu_sau_tat))
+                kq = blog.get("kq_viec")
+                if kq is None:
+                    return ToolResult(False, error=EideError(
+                        "E4011", str(blog.get("loi") or "Không nạp được và không bắt được "
+                                     "bản ghi."),
+                        details={"bat_log": blog}, blame="system"))
+                kq.canh_bao.extend(blog.get("canh_bao") or [])
+                # Bản ghi đi kèm kết quả nạp, để không ai phải ghép hai lời gọi lại với nhau.
+                kq.nguyen_van = ((kq.nguyen_van or "") + "\n--- bản ghi cổng nối tiếp ("
+                                 + f"{blog['so_byte']} byte) ---\n" + blog["chu"]).strip()
+            else:
+                kq = MT.nap_qua_openfpgaloader(p, bo_kit=bo_kit_fpga, giu_sau_tat=giu_sau_tat)
         elif cach == "st-flash" or (cach == "tu_chon" and co_st):
             kq = MT.nap_qua_st_flash(p)
         elif cach == "avrdude" or (cach == "tu_chon" and cong_avr):
