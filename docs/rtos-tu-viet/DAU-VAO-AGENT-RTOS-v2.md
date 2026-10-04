@@ -148,6 +148,86 @@ Việc thứ 6 cần:
 - đọc được điểm chạm trên màn hình;
 - nút bấm vật lý **và** chạm màn hình đều đổi được trang hiển thị.
 
+### 5.1 · Giao diện: ba màn hình, bấm nút thì sang trang
+
+Thêm 04/10/2026. Nhân chạy được rồi nên mình nói rõ phần nhìn thấy.
+
+Mình cần **đúng giao diện của bản cũ**, vì nó là thứ mình đem đi báo cáo. Ba màn hình, chuyển
+qua lại bằng **chạm nút trên màn hình** hoặc **nút bấm PA0**.
+
+#### Màn hình 1 — Giới thiệu (nền trắng)
+
+| vị trí | nội dung | màu |
+|---|---|---|
+| giữa, y = 30 | `HOC VIEN CONG NGHE BUU CHINH VIEN THONG` | đỏ |
+| giữa, y = 55 | `KHOA KY THUAT DIEN TU 1` | đỏ |
+| x = 300, y = 130 | `DE AN TOT NGHIEP` | xanh đậm |
+| x = 300, y = 160 | `HE THONG TAC TU EIDE v3` | xanh đậm |
+| x = 300, y = 210 | `DT: PHAT TRIEN PHAN MEM NHUNG` | đen |
+| x = 300, y = 240 | `CO UNG DUNG TRI TUE NHAN TAO(AI)` | đen |
+| x = 300, y = 280 | `Hoc vien  : Vu Tri Cong` | đen |
+| x = 300, y = 310 | `GVHD      : TS. Nguyen Trung Hieu` | đen |
+| bên trái | **logo PTIT** | ảnh |
+
+Hai nút ở hàng dưới, cùng `y = 400`, cùng `240 × 50`:
+
+| nút | x | màu nền | nhãn | bấm vào thì |
+|---|---|---|---|---|
+| 1 | 140 | xanh dương | `Chi tiet` | sang màn hình 2 |
+| 2 | 420 | xanh lá | `Hello` | sang màn hình 3 |
+
+#### Màn hình 2 — Chi tiết (nền xanh đậm)
+
+Tiêu đề giữa, y = 25, màu vàng: `=== TINH NANG HE THONG EIDE v3 ===`
+
+Ba mục, tiêu đề mục màu trắng, các dòng con màu lam nhạt:
+
+```
+1. He dieu hanh thoi gian thuc TU VIET da tac vu:      (y = 75)
+   - Task 1: LED1 nhay chu ky 1000 ms                  (y = 100)
+   - Task 2: LED2 nhay chu ky 400 ms                   (y = 125)
+   - Task 3: Quet nut bam PA0, chong rung 30 ms        (y = 150)
+
+2. Phan cung STM32F469NIH6 Cortex-M4F:                 (y = 185)
+   - Man hinh DSI 800x480 IC OTM8009A                  (y = 210)
+   - Bo nho mo rong SDRAM FMC (FrameBuffer)            (y = 235)
+   - Cam ung dien dung FocalTech FT6206 qua I2C        (y = 260)
+
+3. Nhan tu viet, khong dung FreeRTOS:                  (y = 295)
+   - Lap lich tien dinh 32 muc, chuyen ngu canh PendSV (y = 320)
+   - Hang doi tinh co thoi han, 0 ky hieu FreeRTOS     (y = 345)
+```
+
+**Mục 1 và mục 3 mình đã sửa chữ so với bản cũ**, vì bản cũ viết *FreeRTOS v10* và *Blink 4
+LEDs* — nay nhân là của bạn và các tác vụ khác đi. Nếu bạn thấy nên ghi khác thì **đề xuất**,
+đừng tự đổi.
+
+Một nút `Tro ve` ở `x = 280, y = 400`, `240 × 50` → về màn hình 1.
+
+#### Màn hình 3 — Hello (nền tối)
+
+| vị trí | nội dung |
+|---|---|
+| giữa, y = 150 | `Xin chao` |
+| giữa, y = 210 | `Chao mung ban den voi He thong EIDE v3!` |
+| giữa, y = 260 | `Bo mach STM32F469I-DISCO san sang phuc vu` |
+
+Một nút `Tro ve` cùng toạ độ như màn hình 2 → về màn hình 1.
+
+#### Hai điều về cách làm
+
+- **Logo PTIT lấy lại được.** Nó là ảnh, không phải logic, nên cùng loại với thư viện của ST:
+  bạn lấy `logo_ptit.h` của bản cũ dùng luôn. Nhớ kê nó vào cột *lấy từ ngoài*, đừng đếm vào
+  số dòng bạn tự viết.
+- **Chạm màn hình và nút PA0 phải cho cùng kết quả.** Nút PA0 thì mình nghĩ nên là *sang trang
+  kế tiếp theo vòng*, còn chạm thì theo đúng nút được chạm. Bạn thấy hợp lý thì làm thế; thấy
+  khác thì nói.
+
+Mình không nêu phông chữ và màu chính xác theo tên hằng số — bạn tự chọn trong thư viện, miễn
+đọc được và tương phản.
+
+---
+
 ---
 
 ## 6 · Đạt nghĩa là gì — danh mục nghiệm thu

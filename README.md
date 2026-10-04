@@ -437,61 +437,135 @@ Một công cụ không bao giờ được dùng thì bằng không có nó.
 
 ### 7.1 · Viết một hệ điều hành thời gian thực, thay hẳn FreeRTOS
 
-Đề bài: bỏ FreeRTOS, viết hệ điều hành mới cho bo STM32F469I-DISCO, chạy tới khi màn hình LCD
-và cảm ứng lên đúng như bản cũ. Cùng một bo, cùng tệp driver, và cùng cái màn hình phải sáng.
+Đề bài: bỏ FreeRTOS, viết lấy nhân thời gian thực cho bo STM32F469I-DISCO, chạy tới khi màn
+hình LCD và cảm ứng lên đúng như bản cũ. Cùng một bo, cùng tệp driver của hãng, và cùng cái
+màn hình phải sáng.
+
+Ngày 04/10/2026 việc này được **làm lại từ dự án trống**, với đầu vào viết lại cho tường minh
+([`docs/rtos-tu-viet/DAU-VAO-AGENT-RTOS-v2.md`](docs/rtos-tu-viet/DAU-VAO-AGENT-RTOS-v2.md)).
+Số dưới đây là của lần làm lại ấy, đo trên kit thật.
 
 | | |
 |---|---|
-| Lõi hệ điều hành viết mới | **689 dòng** |
-| Ứng dụng viết mới | 340 dòng, 6 việc chạy song song |
-| Mã dùng lại **không sửa một dòng** | 757 dòng driver |
-| Cách dựng | chuyển việc bằng `PendSV`, chọn việc bằng bitmap, chỗ nhớ cho việc cấp **tĩnh** |
-| Chọn cấu trúc thế nào | Agent tự nêu **ba cách**, so bằng số, người chốt qua cửa `G-DESIGN` |
+| Nhân và ứng dụng Agent **tự viết** | **1 211 dòng** — lập lịch, chuyển ngữ cảnh `PendSV` bằng hợp ngữ, hàng đợi tĩnh, 6 tác vụ, giao diện 3 trang |
+| Mã **lấy của hãng**, không sửa | 110 676 dòng — HAL, CMSIS, BSP, driver OTM8009A/NT35510/FT6206, bộ phông, ảnh logo |
+| Ký hiệu FreeRTOS còn trong ảnh | **0** |
+| Nhịp hệ thống **đo thật** | **~1 003 Hz** (đọc `uwTick` cách nhau 10 giây) |
+| Xung nhịp | `SWS = PLL`, HSE + PLL đã khoá, 180 MHz |
+| Mức nước ngăn xếp **đo trên chip** | LED 19/128 · Button 25/128 · Monitor 29/128 · **Display 64/512** word |
+| Lỗi phần cứng | `CFSR = 0`, `HFSR = 0` |
+| Giao diện | 3 trang, **6 lần đổi trang / 7 lần chạm** — đọc từ ô nhớ trên chip |
 
-So với bản FreeRTOS trên cùng bo:
+Về kích thước ảnh thì **điều kiện mình tự đặt lại không đạt theo cách đọc chặt**, và nói ra
+thì đúng hơn là làm tròn cho đẹp:
 
-| | Bản tự viết | FreeRTOS | |
-|---|---|---|---|
-| Flash | 260 204 B | 263 740 B | **−3 536 B** |
-| RAM tĩnh | **13 596 B** | 36 424 B | **−22 828 B** (−63 %) |
-| Ký hiệu lõi FreeRTOS còn trong tệp ảnh | **0** | 14 | thay thật, không phải bọc lại |
-| LCD 800×480 · cảm ứng · 6 việc | đạt | đạt | mắt người xác nhận |
+| | byte |
+|---|---|
+| bản FreeRTOS cũ (`mach.bin` đo được) | 260 204 |
+| bản tự viết | **265 152** — lớn hơn **1,9 %** |
+| trong đó ảnh logo, có ở cả hai bản | 230 400 |
+| phần mã không kể logo | cũ 29 804 · mới 34 752 |
 
-Ít hơn 22 828 B RAM **không phải vì viết hay hơn**: FreeRTOS cấp chỗ nhớ cho mọi việc từ một
-vùng chung có cài đặt dư, còn lõi này cấp tĩnh đúng bằng con số đã tính. Đó là một **đánh
-đổi** — bớt phần đổi được lúc đang chạy, để lấy chỗ nhớ.
+Tài liệu đầu vào mình viết *"không lớn hơn bản cũ (khoảng 263 KB)"*. Đọc theo con số làm tròn
+263 KB thì đạt; đọc theo bản nhị phân đo được thì không. Chỗ mơ hồ là lỗi câu chữ của mình, và
+nó là ví dụ nhỏ cho một điều lớn hơn ở mục dưới: **tiêu chí viết lỏng thì không đo được gì.**
 
-Bốn tệp lõi, **mỗi tệp đúng một lần ghi** — viết xong dịch được ngay, không sửa lại. Tệp ứng
-dụng thì sửa 6 lần, và cả 6 lần đều là sửa lỗi phần cứng, không phải lỗi lõi. Ba lỗi phần cứng
-ấy mới là phần khó thật, và không lỗi nào tìm ra bằng cách đọc mã:
+#### Bảy lỗi cùng một họ: cơ chế có sẵn, đường dẫn tới nó đứt
 
-1. **Màn đen, đèn vẫn nháy.** Agent đọc ngược thanh ghi từ chip và thấy `DSI_WISR` có
-   `PLLLS=0`. Hàm chờ của thư viện HAL đã bị nối vào hàm chờ của hệ điều hành mới, nên bộ khởi
-   động màn hình **nhường quyền giữa chừng** và vòng khoá pha không bao giờ khoá được. Lỗi nằm
-   ở chỗ hai thứ gặp nhau, không nằm trong tệp nào.
-2. **Cảm ứng không ăn.** Vòng chờ đếm lệnh rỗng viết cho 168 MHz, chạy ở 180 MHz thì vượt
-   600 kHz.
-3. **Dịch mã "thành công" mà tệp ảnh chỉ 1 416 byte** — không có ký hiệu LCD nào trong đó.
+Đây là phát hiện chính của cả hai việc làm lại, lớn hơn bất cứ con số hiệu năng nào. Trong hai
+ngày, **bảy lần** gặp đúng một hình dạng — một thứ **viết đúng** mà **không ai gọi tới** — và
+**không lần nào có lỗi báo ra**:
 
-Lỗi thứ ba là lỗi **của EIDE**, không phải của Agent, và chỉ làm việc thật mới lộ ra. Nay công
-cụ dịch mã nói thẳng tệp nguồn nào **không vào tệp ảnh**, ngay đầu câu trả lời.
+| lần | cơ chế viết đúng | đường dẫn tới nó |
+|---|---|---|
+| 1 | nhánh nạp FPGA trong thực đơn công cụ | chưa chạy lần nào, nổ `NameError` |
+| 2 | `PULL_MODE=UP` trong tệp ràng buộc chân | chân vẫn thả nổi |
+| 3 | bảng tổng kiểm chuẩn sinh ra | `main.c` không `#include` |
+| 4 | `bat_log_giay` bắt bản ghi quanh lúc nạp | chưa lượt nào dùng |
+| 5 | `rtos_tick()` | ô vector SysTick trỏ `Default_Handler` |
+| 6 | `PendSV_Handler` nối đúng ô vector, ưu tiên đúng | không ai đặt `PENDSVSET` |
+| 7 | `RTOS_IDLE_PRIORITY` | không ai tạo tác vụ rỗi |
 
-Giá phải trả:
+Ba lỗi 5–6–7 nối thành một chuỗi mà **mỗi khâu chỉ lộ ra sau khi vá khâu trước**, và cả ba cho
+cùng một triệu chứng — bo tối thui:
+
+1. không nhịp → không tác vụ nào thức;
+2. có nhịp nhưng không ai xin chuyển ngữ cảnh → không tác vụ nào chạy;
+3. có chuyển ngữ cảnh nhưng không có tác vụ rỗi → `ready_map` về 0 → `PendSV` đọc địa chỉ `0`
+   → `IBUSERR` → HardFault.
+
+Và một lỗi thứ tám cùng họ nhưng ngược chiều: `current_ui_page` mang giá trị `0` trong khi mọi
+nhánh xử lý chạm so với `1`, `2`, `3` — **đường dẫn có, mà giá trị đi trên nó không ai nhận**.
+Màn hình vẫn đẹp, không cảnh báo dịch, không fault, và nút bấm chết hoàn toàn.
+
+> Trước khi hỏi *"mã này có đúng không"*, hỏi *"có đường nào thật sự gọi tới nó không"*.
+
+#### Hai điểm mù Agent tự khai trước, rồi nổ đúng chỗ ấy
+
+Ở bước 7, sau khi bộ kiểm của nó xanh 4/4, Agent **tự phá mã mình bốn lần** rồi báo **2 trong 4
+ca bộ kiểm không bắt được** — kèm dự đoán hậu quả:
+
+> *Lần 1 — thứ tự `xPSR` và `PC` trên ngăn xếp: VẪN XANH. Lỗi này nạp lên bo thật sẽ nổ
+> HardFault ngay chu kỳ đầu tiên.*
+> *Lần 2 — `EXC_RETURN`: VẪN XANH. Bộ kiểm host không có khối NVIC để thẩm tra mã thoát ngắt.*
+
+Người kiểm lại claim ấy bằng tay: đổi `0xFFFFFFFD` thành `0x00000000` rồi dịch lại — **cả 4 ca
+vẫn xanh**. Claim đúng. Và khi chuyển ngữ cảnh bắt đầu chạy thật, bo nổ đúng `IBUSERR` ở đúng
+chỗ ấy.
+
+> Một điểm mù **được khai báo trước** thì khi nó nổ, ta biết ngay chỗ để tìm. Nếu Agent im ở
+> bước 7, chỗ đó là một con bo tối thui với hàng chục nguyên nhân khả dĩ.
+
+#### Ba lỗi của người, giữ trong nhật ký làm sở cứ
+
+Chúng đo được điều mà lỗi của Agent không đo: **chất lượng của đề bài**.
+
+- **Tiêu chí số 3 tự khuyến khích làm sai.** Mình viết *"mọi tệp mã nguồn đều vào được ảnh"* —
+  mà một tệp rỗng thì không vào được ảnh, nên cách dễ nhất để đạt là **viết thêm mã cho tệp
+  rỗng**. Agent làm đúng theo cái tiêu chí sai ấy: 36 dòng không ai gọi, và **ghi cả động cơ
+  vào chú thích** (*"để đảm bảo mọi tệp đều được biên dịch vào ảnh — Điều kiện số 3"*). Nhờ nó
+  ghi ra, 36 dòng ấy không lọt vào con số *Agent tự viết*.
+- **Thiếu tiêu chí về xung nhịp.** Mình đưa hằng số PLL vào tài liệu rồi **tưởng thế là xong**.
+  Bản nạp đầu chạy HSI 16 MHz, mọi mốc thời gian chậm đúng 11,25 lần — không fault, không treo,
+  thanh ghi nào cũng hợp lý. **Một hệ chậm 11 lần nhìn giống một hệ không chạy.** Bài học viết
+  vào tài liệu: *giá trị cấu hình không phải phép đo* — SysTick nạp 179 999 là đúng, nhưng nó
+  chỉ nói *nhịp sẽ là 1 000 Hz NẾU xung nhịp là 180 MHz*.
+- **Xoá mất ba tệp driver của Agent** vì nhìn **hình dạng cái tên** (tệp kèm mã băm) mà không
+  mở ra đọc — chúng là bản V1 thật, ba tệp cùng gốc tên chỉ là dòng trỏ. Lần thứ hai trong
+  ngày mắc đúng lỗi *hành động theo thứ mình tưởng thay vì thứ đo được*.
+
+#### Chỗ đáng kể nhất về cách làm: đo được trước, sửa sau
+
+Khi hai nút bấm không ăn, có ba nguyên nhân khả dĩ cần ba bản vá khác nhau — cảm ứng chết, toạ
+độ lệch hệ trục, hay tầng trên không đổi trang. Thay vì đoán, yêu cầu Agent **thêm bốn ô nhớ
+đọc được qua cổng gỡ lỗi**. Một lượt đọc là xong:
+
+| ô nhớ | giá trị | loại trừ được |
+|---|---|---|
+| `debug_ts_init_status` | 0 | không phải cảm ứng chết |
+| `debug_ts_touch_count` | 11 | **không phải I2C sai tần số** |
+| `debug_ui_page_change_count` | 0 | chỗ đứt ở tầng trên |
+
+Chuyện I2C ở 180 MHz — thứ **đã từng sập ở phiên cũ của chính việc này** — bị loại bằng **một
+con số**, không bằng suy luận. Không có bốn ô nhớ ấy thì việc sửa sẽ bắt đầu ở đúng chỗ không
+hỏng.
+
+#### Phiên này để lại gì
 
 | | |
 |---|---|
-| Thời gian | **81,2 phút** · 46 lượt (21 lần người gõ · 9 lần quyết ở cửa · 15 lần xem · 1 lần chọn) |
-| Tiền mô hình | **khoảng 34 000 đồng** · 351 lời gọi |
-| Nếu thuê người làm | **31,7 ngày công ±2,3** · 4–5 tuần · **khoảng 111 triệu đồng** (ước lượng PERT, kiểm chéo bằng COCOMO) |
+| bước có thật qua giao diện | **25**, mỗi bước một ảnh cửa sổ EIDE |
+| lời gọi mô hình | 837 |
+| changeset | 103 |
+| sở cứ đầy đủ | [`docs/rtos-tu-viet/phien-sinhvien-04-10/`](docs/rtos-tu-viet/phien-sinhvien-04-10/) |
 
-Ba điều bảng này **không** chứng minh, nói trước để không bị đọc quá: lõi mới chưa thử dài
-ngày và chưa đo độ trễ bằng máy, nên **chưa phải cùng một sản phẩm** với FreeRTOS đã mười năm
-tuổi; người vẫn nằm trên đường quyết định — cả ba lỗi phần cứng đều bắt đầu từ việc người nhìn
-vào bo; và tiền mô hình không phải toàn bộ chi phí.
+Phiên cũ của việc này giữ lại trong [`docs/rtos-tu-viet/`](docs/rtos-tu-viet/) để so hai lần
+làm — gồm mã nguồn bản cũ, 3 915 dòng sổ ghi việc và
+[báo cáo 12 trang](docs/rtos-tu-viet/bao-cao/BAO-CAO-RTOS.docx) do chính EIDE dựng.
 
-Xem đầy đủ: [`docs/rtos-tu-viet/`](docs/rtos-tu-viet/) — mã nguồn đúng bản đang chạy trên bo,
-3 915 dòng sổ ghi việc, **351 lời gọi mô hình kèm nguyên văn gửi đi và nhận về**, và
-[báo cáo 12 trang](docs/rtos-tu-viet/bao-cao/BAO-CAO-RTOS.docx) do chính EIDE dựng ra.
+**Đánh giá so với người làm cho cả hai việc làm lại** — chỗ Agent mạnh, chỗ Agent yếu, và ba
+tiêu chí người viết lỏng đã sinh ra hậu quả gì:
+[`docs/md/DANH-GIA-NGUOI-VS-AGENT-2-VIEC.md`](docs/md/DANH-GIA-NGUOI-VS-AGENT-2-VIEC.md).
 
 ### 7.2 · Robot hai bánh tự đứng — và báo cáo nói cả phần Agent sai
 
