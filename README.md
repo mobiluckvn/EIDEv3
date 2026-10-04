@@ -689,9 +689,36 @@ và `DEV-337` (nạp `.hex` cũ hơn `.elf`, mà **đối chiếu sau nạp vẫ
 vừa ghi chứ không so với bản vừa dựng). Chốt `DEV-336` **nổ thật 3 lần** trong phiên, không chỉ
 xanh trong bộ kiểm.
 
-**Chưa xong, và nói rõ còn thiếu gì:** robot **chưa đứng** trong phiên này vì chưa có pin và
-chưa có nguồn động cơ. Điều kiện 250 Hz còn chờ máy hiện sóng kẹp chân **A1** — đo được ngay
-trên nguồn USB, **không cần pin**.
+Cắm pin 2S/3S cùng nguồn động lực cho hai A4988 thì **robot đứng được** — quan sát trực tiếp.
+
+**Và nói rõ phần còn thiếu, vì nó là một bài học về phép đo.** Lượt thu số liệu lúc robot đứng
+**thất bại do chính phép đo**: mở cổng nối tiếp kéo chân DTR làm reset bo, reset làm chạy lại
+pha hiệu chuẩn — mà pha ấy chỉ lấy **độ lệch con quay hồi chuyển** và ngầm định robot **nằm yên
+tuyệt đối** trong 1,5 giây. Lúc ấy người đang **giữ robot trên tay** để nó không ngã, nên chuyển
+động tay bị chốt thành độ lệch con quay. Hệ quả: góc **bò đều 3,1°/giây** rồi vượt ngưỡng ngã
+30°. Số liệu ấy không nói gì về robot — nó nói về cách thu. Nên câu "robot đứng được" hiện là
+**quan sát tầng NGƯỜI**, chưa có phân bố góc kèm theo.
+
+Còn thiếu: phân bố góc lúc đứng (thu lại với robot **đặt yên trên sàn** suốt pha hiệu chuẩn),
+điều kiện 250 Hz chờ máy hiện sóng kẹp chân **A1**, và ngưỡng `LOWBATT` chờ đo điện áp pin thật.
+
+Chi tiết thời gian, token, tiền và bảng ngày công người làm:
+[**so sánh với người làm tay**](docs/robot-sinhvien/phien-sinhvien-04-10/SO-SANH-VOI-NGUOI.md).
+
+| | Đội người (ước lượng PERT) | Phiên Agent (đo được) |
+|---|---|---|
+| Thời gian | **32,1 ngày công ±2,6** · ~4 tuần lịch | **4,53 giờ** |
+| Tiền | **≈ 112 triệu đồng** | **≈ 34 nghìn đồng** |
+| Robot đứng | có | **có** |
+
+Chênh **≈ 57 lần về giờ** và **≈ 3 300 lần về tiền**. So với chính phiên 01/10 cùng con robot:
+**rẻ hơn 10 lần** (34 nghìn so với 340 nghìn) và **nhanh hơn 1,6 lần** (4,53 giờ so với 7,4 giờ).
+
+**Nhưng con số rút ngắn ấy không đo năng lực mô hình tăng lên.** Phụ lục mục E đã **trao sẵn**
+cho Agent bộ số đã chạy thật — `KP 12,0 · KI 0,4 · KD 10,0` và `ACCEL_OFFSET_Z 92`. Chính số
+`92` là chỗ phiên 01/10 ghi sai thành `535`, lệch 3,1° điểm cân bằng, và là lỗi nặng nhất của
+phiên ấy. Phiên này đúng ngay **vì được cho**, không vì tự tìm ra. Nên nó đo **giá trị của việc
+tài liệu hoá được phần khó**, không đo mô hình.
 
 ### 7.3 · Lõi RISC-V trên FPGA — đã chạy trên bo thật, 96 trên 96 ô
 
@@ -853,15 +880,21 @@ Phiên cũ của việc này — làm trước khi có bo, mọi con số là s�
 
 ### 7.4 · Đặt ba việc đã xong cạnh nhau: thời gian và tiền
 
-| | Hệ điều hành tự viết | Robot hai bánh tự đứng | Lõi RISC-V trên FPGA |
-|---|---|---|---|
-| Phần mềm giao ra | 689 dòng lõi + 340 dòng ứng dụng | 1 820 dòng, 10 mô-đun | 2 020 dòng Verilog + C + hợp ngữ |
-| **Phiên Agent — thời gian** | **81,2 phút** | **7,4 giờ** | **khoảng 14 giờ, hai ngày** |
-| **Phiên Agent — lời gọi mô hình** | 351 | 1 415 | **1 307** |
-| **Nếu người làm tay — ngày công** | **31,7 ±2,3** | **31,0 ±2,6** | chưa dựng ước lượng |
-| **Nếu người làm tay — tiền** | **≈ 111 triệu đồng** | **≈ 105 triệu đồng** | — |
-| Chênh về tiền | **khoảng 3 300 lần** | **khoảng 300 lần** | — |
-| Chạy thật trên bo | LCD 800×480 + cảm ứng + 6 việc | robot đứng được | **96/96 ô đo trên silicon** |
+| | Hệ điều hành tự viết | Robot hai bánh tự đứng | Robot — **làm lại 04/10** | Lõi RISC-V trên FPGA |
+|---|---|---|---|---|
+| Phần mềm giao ra | 689 dòng lõi + 340 dòng ứng dụng | 1 820 dòng, 10 mô-đun | **1 124 dòng**, 10 mô-đun | 2 020 dòng Verilog + C + hợp ngữ |
+| **Phiên Agent — thời gian** | **81,2 phút** | **7,4 giờ** | **4,53 giờ** | **khoảng 14 giờ, hai ngày** |
+| **Phiên Agent — lời gọi mô hình** | 351 | 1 415 | **670** | **1 307** |
+| **Phiên Agent — tiền mô hình** | — | 340 nghìn đồng | **34 nghìn đồng** | — |
+| **Nếu người làm tay — ngày công** | **31,7 ±2,3** | **31,0 ±2,6** | **32,1 ±2,6** | chưa dựng ước lượng |
+| **Nếu người làm tay — tiền** | **≈ 111 triệu đồng** | **≈ 105 triệu đồng** | **≈ 112 triệu đồng** | — |
+| Chênh về tiền | **khoảng 3 300 lần** | **khoảng 300 lần** | **khoảng 3 300 lần** | — |
+| Chạy thật trên bo | LCD 800×480 + cảm ứng + 6 việc | robot đứng được | **robot đứng được** | **96/96 ô đo trên silicon** |
+
+Cột thứ ba là **cùng đề bài với cột thứ hai**, làm lại từ dự án trống bằng Agent đã vá bảy lỗi.
+Nó rẻ hơn **10 lần** và nhanh hơn **1,6 lần** cho cùng kết quả — nhưng chênh ấy phần lớn đến từ
+việc **phụ lục đã trao sẵn bộ tham số đã chạy thật**, không từ mô hình khá lên. Đọc mục 7.2 cho
+phần nói rõ chỗ này.
 
 Cột FPGA chưa có ước lượng ngày công vì nó là việc **đầu tiên nằm ngoài hẳn vùng EIDE từng
 làm** — trước nó EIDE không có một dòng nào về HDL — nên phần lớn thời gian hai ngày ấy là

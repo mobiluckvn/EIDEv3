@@ -8,8 +8,8 @@ mã của bản người làm. Mọi việc cắm dây, cấp nguồn và quan s
 Bo thật: **Arduino Nano / ATmega328P**, thạch anh 16 MHz, cảm biến **MPU6050** qua I2C, hai
 driver bước **A4988**. Cổng `/dev/cu.usbserial-21410`, 115200 baud.
 
-**Trạng thái: chạy trên nguồn USB. Chưa có pin và chưa có nguồn động cơ**, nên phần robot
-đứng thẳng chưa nghiệm thu được.
+**Trạng thái: xong. Robot đứng được trên pin** — quan sát của người, 04/10/2026. Phần đo định
+lượng lúc đứng xem mục 2.1.
 
 ---
 
@@ -50,11 +50,44 @@ Bản ghi thô: [`ban-ghi-tho/nt-a-50khz.txt`](ban-ghi-tho/nt-a-50khz.txt).
 
 ---
 
-## 2 · Phần chưa nghiệm thu, và lý do
+## 2 · Robot đứng được — và phép đo lúc đứng còn thiếu
 
-Hai lý do khác nhau — không gộp, vì gộp lại làm người đọc tưởng cùng một nguyên nhân.
+### 2.1 · Chuyện xảy ra, nói thẳng
 
-### 2.1 · Chờ máy hiện sóng — **đo được ngay trên nguồn USB, không cần pin**
+Cắm pin 2S/3S cùng nguồn động lực cho hai A4988 thì **robot đứng được**, người quan sát trực
+tiếp. `NT-MOTOR` và `NT-BALANCE` **đạt theo quan sát của người** — tầng NGƯỜI, không có số đo
+kèm theo.
+
+Lần thu số liệu lúc đứng **thất bại, và thất bại vì chính phép đo**:
+
+Mở cổng nối tiếp kéo chân DTR → **reset bo** → chạy lại `STATE_CALIBRATE`. Mà pha ấy chỉ hiệu
+chuẩn **độ lệch con quay hồi chuyển** và ngầm định robot **nằm yên tuyệt đối** trong 1,5 giây:
+
+```c
+void mpu6050_calibrate(void) {              /* mpu6050.c:47 */
+    for (uint16_t i = 0; i < 500; i++) {    /* 500 × 3 ms = 1,5 s */
+        sum_gx += gx;  sum_gy += gy;
+    }
+    g_gx_offset = sum_gx / 500;             /* CHỈ con quay, không phải điểm cân bằng */
+}
+```
+
+Lúc ấy người **đang giữ robot trên tay** để nó không ngã khi reset — nên chuyển động tay bị chốt
+thành độ lệch con quay. Số đo thu được:
+
+| đoạn `RUN` | 2,70 s · 2,20 s · **7,30 s** · 4,50 s |
+|---|---|
+| góc, đoạn dài nhất | trung bình **+7,565°**, lệch chuẩn 8,2° |
+| biên | −3,13° → **+19,69°**, biên độ 22,8° |
+| dạng | **bò đều ≈ 3,1°/giây** rồi vượt `ANGLE_LIMIT_FALLEN = 30.0f` |
+
+Góc bò đều một chiều là dấu của **độ lệch con quay còn sót**, không phải dao động quanh điểm cân
+bằng. Nên bộ số này **không dùng được**, và nó không nói gì về robot — nó nói về cách thu.
+
+**Cách thu đúng**: lúc reset, đặt robot **nằm yên trên mặt phẳng, không giữ trên tay**, qua 1,5
+giây hiệu chuẩn rồi mới dựng lên. Phép đo này còn nợ.
+
+### 2.2 · Chờ máy hiện sóng — **đo được trên nguồn USB, không cần pin**
 
 | # | điều kiện | cần gì |
 |---|---|---|
@@ -73,13 +106,14 @@ nó **không thay được máy hiện sóng**, vì hai lẽ:
 Ghi lại vì chính người làm đã suy ra "đủ rồi" và **tác tử bác lại bằng lý do 1** — lý do người
 chưa nghĩ tới.
 
-### 2.2 · Chờ pin và nguồn động cơ
+### 2.3 · Đã có pin — đạt theo quan sát, chưa có số đo
 
-| # | điều kiện | cần gì |
-|---|---|---|
-| **NT-MOTOR** | động cơ bước đảo chiều, phát xung đúng tốc độ | pin 2S/3S cấp nguồn động lực qua A4988. Chế độ USB **khoá** phát xung để chống sụt áp cổng USB |
-| **NT-BALANCE** | robot đứng thẳng, giữ quanh 0° | pin, khung xe, bánh xe, mặt sàn phẳng |
-| **ba dấu** | `STATE_SELF_TEST` tách ba dấu, hiệu chuẩn, ngưỡng `LOWBATT` | như trên |
+| # | điều kiện | trạng thái | thiếu gì |
+|---|---|---|---|
+| **NT-MOTOR** | động cơ bước đảo chiều, phát xung đúng tốc độ | **ĐẠT** — quan sát của người | — |
+| **NT-BALANCE** | robot đứng thẳng, giữ quanh 0° | **ĐẠT** — quan sát của người | phân bố góc lúc đứng, xem mục 2.1 |
+| **ba dấu** | `STATE_SELF_TEST` tách ba dấu | **chưa chạy** | một lượt vào `STATE_SELF_TEST` có nguồn động cơ |
+| `LOWBATT` | ngưỡng báo pin yếu | **chưa chuẩn** | đo điện áp pin thật tại A0 ở hai mức để chỉnh ngưỡng |
 
 ---
 
