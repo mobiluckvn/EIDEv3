@@ -653,6 +653,46 @@ Xem cách tính đầy đủ — token, đơn giá ba mức, bảng 13 việc, C
 [**báo cáo so sánh với người làm tay**](docs/robot-tu-can-bang/BAO-CAO-SO-SANH.md) ·
 [`docs/robot-tu-can-bang/`](docs/robot-tu-can-bang/).
 
+#### Làm lại ngày 04/10 với Agent đã vá — và lần này Agent bác kết luận sai của người
+
+Phiên 03/10 dừng chủ động ở bước 23/32 sau khi đo ra **bảy chỗ Agent sai**, rồi bảy chỗ ấy
+thành bảy bản vá. Ngày 04/10 làm lại từ **dự án trống**, cùng loại tài liệu đầu vào, để so hai
+phiên bằng số. Sở cứ: [`docs/robot-sinhvien/phien-sinhvien-04-10/`](docs/robot-sinhvien/phien-sinhvien-04-10/).
+
+| | 03/10 | 04/10 |
+|---|---|---|
+| Lời gọi công cụ | 394 | **541** |
+| Lời gọi bị chặn | 26 (**6,6 %**) | 18 (**3,3 %**) |
+| Lỗi **Agent** do người bắt | **6 trong 7** | **1** |
+| Lỗi **người** do Agent bắt | 0 | **3** |
+
+Đo được trên ATmega328P thật (nguồn USB): ngắt phát xung **50,0005 kHz — lệch +0,0009 %** so
+với ngưỡng ±1 %, đo bằng tỉ số Timer2/Timer0 neo vào đồng hồ tường; **0/369** dòng thiếu nên
+không nghẽn ngắt; **0 lệnh chia hay số thực** trong hàm ngắt theo `objdump`; **372/372** khoảng
+bản tin đúng 100 ms; **0 lần trễ trên 9 225 nhịp**. Phần chủ **22/22** điều kiện đạt, **4/4**
+phép phá mã bị bắt.
+
+Chỗ đáng kể nhất không phải mấy con số trên, mà là **chiều đổi**. Người kết luận điều kiện
+250 Hz đã đo xong. Agent **bác lại**, bằng một lý do người chưa nghĩ tới:
+
+> `millis()` phân giải **1 ms**. Chu kỳ 4 ms nhìn qua thang 1 ms có sai số lượng tử tức thời tới
+> **±25 %**. Nó chứng minh *trung bình*, không chứng minh các nhịp **cách đều nhau**.
+
+Và nó chỉ ra vòng lặp dùng bộ tích lũy triệt tiêu trôi dạt, nên 25 nhịp ra đúng 100 ms **do xây
+dựng** — kể cả khi các nhịp lệch nhau. Nó cũng tìm ra lỗ **đọc rách** biến 32 bit trên CPU 8 bit
+trong phép đo mà người đề xuất. Ở phiên 03/10, **không một trong tám chỗ sai nào do Agent tự
+tìm ra**.
+
+Hai lỗi EIDE phiên này phát hiện, đã vá kèm bộ kiểm: `DEV-336` (`sim.run` đem số đo của chương
+trình này so với tiêu chí của chương trình khác, rồi trả `dat: False` — sở cứ nói ngược báo cáo)
+và `DEV-337` (nạp `.hex` cũ hơn `.elf`, mà **đối chiếu sau nạp vẫn ĐẠT** vì nó so chip với tệp
+vừa ghi chứ không so với bản vừa dựng). Chốt `DEV-336` **nổ thật 3 lần** trong phiên, không chỉ
+xanh trong bộ kiểm.
+
+**Chưa xong, và nói rõ còn thiếu gì:** robot **chưa đứng** trong phiên này vì chưa có pin và
+chưa có nguồn động cơ. Điều kiện 250 Hz còn chờ máy hiện sóng kẹp chân **A1** — đo được ngay
+trên nguồn USB, **không cần pin**.
+
 ### 7.3 · Lõi RISC-V trên FPGA — đã chạy trên bo thật, 96 trên 96 ô
 
 Việc này nằm đây vì đó là chỗ đo được nhiều nhất: nó cố ý nằm **ngoài hẳn** vùng EIDE từng làm.
