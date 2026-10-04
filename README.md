@@ -31,7 +31,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 4. [Từng nhóm việc, chi tiết](#4--từng-nhóm-việc-chi-tiết)
 5. [Cách thử: bốn mức](#5--cách-thử-bốn-mức)
 6. [Kết quả thử đến nay](#6--kết-quả-thử-đến-nay)
-7. [Hai việc thật đã làm xong](#7--hai-việc-thật-đã-làm-xong)
+7. [Ba việc thật đã làm xong](#7--ba-việc-thật)
 8. [Những chỗ chưa làm được](#8--những-chỗ-chưa-làm-được)
 9. [Cài và chạy](#9--cài-và-chạy)
 10. [Mã nguồn bày thế nào](#10--mã-nguồn-bày-thế-nào)
@@ -413,7 +413,7 @@ thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc ph
 | Cách làm mã: đọc trước, đánh mốc, chọn cấu trúc | **8/8** | [`thu_quy_trinh_code.py`](tools/thu_quy_trinh_code.py) |
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
-| Luồng công cụ FPGA bốn chặng | **chạy thông** — Verilog → bitstream `.fs` | [`docs/riscv-tn20k/`](docs/riscv-tn20k/) |
+| Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`du-lieu/fpga-sinhvien/bai2/ket-qua/`](du-lieu/fpga-sinhvien/bai2/ket-qua/) |
 | Công cụ đã được dùng thật | **115/127** | rà toàn bộ sổ ghi việc |
 
 Mỗi ca kiểm có một tệp log riêng, trong đó có **bảng từng lời gọi công cụ kèm tham số đầy đủ
@@ -579,137 +579,178 @@ Xem cách tính đầy đủ — token, đơn giá ba mức, bảng 13 việc, C
 [**báo cáo so sánh với người làm tay**](docs/robot-tu-can-bang/BAO-CAO-SO-SANH.md) ·
 [`docs/robot-tu-can-bang/`](docs/robot-tu-can-bang/).
 
-### 7.3 · Lõi RISC-V trên FPGA — việc đang làm, và là việc khó nhất
+### 7.3 · Lõi RISC-V trên FPGA — đã chạy trên bo thật, 96 trên 96 ô
 
-Hai việc trên đã xong. Việc này **chưa**, và nó nằm đây vì đó là chỗ đo được nhiều nhất: nó cố
-ý nằm **ngoài hẳn** vùng EIDE từng làm. Trước việc này EIDE không có một dòng nào về HDL —
-không tổng hợp Verilog được, không mô phỏng Verilog được, không đóng gói bitstream được, không
-nạp FPGA được, và không biên dịch cho RISC-V được.
+Việc này nằm đây vì đó là chỗ đo được nhiều nhất: nó cố ý nằm **ngoài hẳn** vùng EIDE từng làm.
+Trước việc này EIDE không có một dòng nào về HDL — không tổng hợp Verilog được, không mô phỏng
+Verilog được, không đóng gói bitstream được, không nạp FPGA được, và không biên dịch cho RISC-V
+được.
 
-Đề bài: dựng một CPU RISC-V trên kit Sipeed Tang Nano 20K, chạy chương trình C trên CPU đó, đo
-chi phí nhân ma trận làm đường cơ sở, rồi thêm phần cứng chuyên dụng để giảm chi phí ấy.
+Đề bài: dựng một CPU RISC-V trên kit Sipeed Tang Nano 20K, chạy chương trình C trên CPU đó, rồi
+đo chi phí nhân ma trận ở ba cấu hình phần cứng khác nhau.
 
-**Đã mô phỏng được:**
+Ngày 03–04/10/2026 việc này được **làm lại từ bước 1 trong một dự án trống**, với đầu vào viết
+lại cho tường minh ([`docs/fpga/DAU-VAO-AGENT-FPGA-v2.md`](docs/fpga/DAU-VAO-AGENT-FPGA-v2.md)),
+và lần này **chạy trên bo thật**. Số dưới đây là số đo từ silicon, không phải số mô phỏng.
+
+#### Bài 1 — CPU sống trên chip
+
+| điều kiện nghiệm thu | số đo trên bo |
+|---|---|
+| CPU chạy, in được qua cổng nối tiếp | `Hello from PicoRV32 on Tang Nano 20K, cycle=1485001241` |
+| xung nhịp đúng 27 MHz | Δcycle giữa các dòng: **27 000 001 · 27 000 031 · 27 000 024** |
+| đèn nháy theo CPU | LED0 nháy, người quan sát xác nhận |
+| chạy liên tục sau khi rút điện cắm lại | `cycle` đọc được 1 404 001 194 > 837 000 733 lần trước |
+
+Nguyên nhân gốc mất gần một ngày để tìm: **chân 88 đọc mức 0 khi không ai bấm**, nên tín hiệu
+reset bị giữ mãi và CPU không bao giờ chạy. Agent tự khoanh được bằng bộ phát chẩn đoán do nó
+viết — in `S:0` (chân 88 mức 0) và `C:40` (bộ đếm khởi động chạy đủ) — rồi ghi `ADR-01`: bỏ nút
+khỏi mạch reset, nêu rõ cả mặt dở *không reset tay được*, và tự khai tầng VÀNG chứ không khai
+NGƯỜI.
+
+#### Bài 2 — 96 ô đo, trên bo và trong mô phỏng
+
+4 kích thước ma trận × 2 kiểu dữ liệu × 4 cách cài đặt × 3 cấu hình CPU = **96 ô**.
+
+Bốn phép kiểm dưới đây **do người tự làm**, đọc bản ghi gốc và mã máy, không nhận qua lời Agent:
+
+| phép kiểm | kết quả |
+|---|---|
+| ô bắt được từ cổng nối tiếp của bo | **96 / 96** |
+| ô có `ok=1` | **96 / 96** |
+| ô có tổng kiểm lệch bảng tính tay ở tầng NGƯỜI | **0** |
+| ô lệch số chu kỳ giữa bo thật và mô phỏng Verilator | **0** |
+
+Bảng tính tay ấy là bốn con số người tự tính độc lập với mã của Agent, chốt vào tài liệu đầu vào
+ở tầng NGƯỜI trước khi đo: `0xfeaabd40` · `0x2110c56a` · `0xc7ce1f03` · `0x36395f4b`. Agent lệch
+với chúng thì Agent sai, không phải bảng sai.
+
+Lệch 0 % giữa bo và mô phỏng không phải trùng hợp, và Agent giải thích được vì sao: lõi này tuần
+tự, không đường ống sâu, không dự đoán rẽ nhánh, bộ nhớ chỉ có BRAM nội trễ cố định, và Verilator
+mô phỏng chính mã RTL ấy từng sườn xung nhịp.
+
+**Đưa phép nhân xuống phần cứng được gì** — số đo trên bo:
+
+| | ít nhất | nhiều nhất |
+|---|---|---|
+| bộ nhân tuần tự so với nhân bằng phần mềm | 1,57× | 6,8× |
+| bộ nhân nhanh dùng DSP so với nhân bằng phần mềm | 2,45× | **12,5×** |
+
+Chu kỳ mỗi phép nhân-cộng ở ma trận 32×32, cách viết cơ bản: **502 → 74 → 40**.
+
+Và chỗ đáng kể hơn con số lớn nhất là **chỗ con số nhỏ nhất**. Cả hai ô tăng ít nhất đều là
+*số 8 bit, cách viết hoán vị vòng lặp* — chỗ mà cấu hình không có bộ nhân **đã nhanh sẵn** (131
+thay vì 502). Agent giải thích bằng định luật Amdahl: khi tỷ trọng thời gian dành cho phép nhân
+đã nhỏ, thêm bộ nhân phần cứng nhanh đến đâu cũng chỉ cải thiện được chút ít. Đó là câu trả lời
+cho *lúc nào thêm phần cứng không giúp gì*, và nó chỉ hiện ra khi đo đủ 96 ô.
+
+Biến độc lập của cả thí nghiệm kiểm được **trong mã máy**, không phải trong lời ai nói: cấu hình
+không có bộ nhân còn **24** lời gọi `__mulsi3` / `__udivdi3`, hai cấu hình kia còn **0**.
+
+**Agent tự viết 2 020 dòng** — Verilog, C, hợp ngữ, linker script, Python, ràng buộc chân.
+
+#### Sáu lỗi của Agent, và ba lỗi của người
+
+Lỗi nào của Agent cũng bị bắt bằng cách **mở mã hoặc mở sổ cái ra đối chiếu**, không bằng đọc
+báo cáo của nó:
+
+| lỗi | phép đo bắt được |
+|---|---|
+| cờ `ok` của cách viết cơ bản tự so với chính nó → 24 trong 96 ô **không thể báo sai** | đọc ba dòng mã quanh `baseline_chk` |
+| tổng kiểm chuẩn được sinh ra nhưng `main.c` không `#include` → mốc chuẩn không tới chip | `grep` cả thư mục, không có chỗ dùng nào |
+| cách viết V3 đổi từ chia khối sang chuyển vị mà không báo, và vòng chuyển vị nằm **trong** khoảng bấm giờ | so kế hoạch đã duyệt với mã thật |
+| chú thích nói vùng đệm 12 KB, mã khai bốn mảng = 16 KB | đếm khai báo |
+| Makefile thiếu `-lgcc` nên `make` đổ ở link cả ba cấu hình | tự chạy `make` |
+| mô phỏng nạp một tệp `-Os`, bitstream nạp một tệp `-O2` — **hai chương trình khác nhau** | lần theo tham số `HEX_FILE` |
+
+Chỗ cuối là chỗ nguy hiểm nhất: tiêu chí nghiệm thu là *bo lệch mô phỏng ≤ 1 %*, mà hai bên đang
+chạy hai bản mã chênh gần 3 KB. Lệch thì sẽ đi tìm nguyên nhân ở phần cứng; khớp thì còn tệ hơn.
+
+Và ba lỗi của người, ghi vào nhật ký làm sở cứ vì chúng đo được điều mà lỗi của Agent không đo:
+
+- **Tiêu chí nghiệm thu tự nó vô hiệu.** Tài liệu đầu vào do người viết đòi *mọi ô `ok=1`* — mà
+  một bo tính sai toàn bộ vẫn đạt được, vì cờ ấy chỉ so bốn cách viết với nhau. Đã vá bằng mục
+  5.3b: chốt luật sinh dữ liệu và bốn tổng kiểm ở tầng NGƯỜI.
+- **Đặt tên tệp theo cấu hình mình *tưởng* đang đo**, không theo nhãn đo được — đè mất 22 ô dữ
+  liệu của Agent. Nay tên tệp lấy từ nhãn `hw=` trong chính bản ghi.
+- **Vòng đọc cổng thoát khi đếm được 32 chuỗi `RESULT`**, nên nó cắt giữa dòng thứ 32. Đếm một
+  chuỗi xuất hiện không giống đọc xong một dòng. Nay đòi có cả dấu kết thúc.
+
+Hai lỗi Agent **tự tìm và tự báo đúng loại**, không phải người chỉ ra: lệnh chia bẫy CPU ở hai
+cấu hình có bộ nhân vì phần cứng để `ENABLE_DIV=0` (`ADR-03`: chia bằng dịch bit), và hàm
+`memset` tự viết bị trình biên dịch đổi thành lời gọi chính nó gây tràn ngăn xếp (`ADR-02`: thêm
+`-fno-tree-loop-distribute-patterns`). Cả hai đều có lý do và chỗ trích.
+
+Một chỗ nữa đáng ghi vì nó nói về **loại sai sót còn lại sau khi mọi thứ đã đạt**: tài liệu
+tổng kết Agent tự xuất ra có ba con số thô mà kiểm lại khớp **đúng từng chữ số**, nhưng một con
+số **suy ra** thì hụt — nó ghi bộ nhân DSP nhanh hơn bộ nhân tuần tự *1,54×–1,85×*, tính lại từ
+hai bản ghi thì đỉnh là **2,03×** ở ô `N=32, I8, V2`. Số thô thì nó chép đúng; số phải tính qua
+96 ô thì nó lấy thiếu. Đã sửa và ghi rõ chỗ sửa trong chính tài liệu ấy
+([`du-lieu/fpga-sinhvien/KET-QUA.md`](du-lieu/fpga-sinhvien/KET-QUA.md)).
+
+#### Dòng tài liệu để trống, và câu trả lời đo được
+
+Tài liệu đầu vào cố ý để trống một dòng: *"mình chưa rõ cổng nào làm gì — bạn tự xác định rồi
+ghi lại"*. Câu trả lời tìm ra bằng cách để nó tự lộ: mở cổng thứ nhất làm cổng nối tiếp rồi gọi
+lệnh nạp, lệnh nạp báo *unable to claim usb device*. Hai kênh của cùng một chip FTDI — cổng thứ
+nhất là **JTAG**, cổng thứ hai là **UART**. Giữ cổng nạp mở thì không nạp được.
+
+#### Ba thói quen đo rút ra từ việc này
+
+Mỗi thói quen dưới đây đổi bằng một lần đo sai, và cả ba đều cùng một họ: **thứ nhìn thấy không
+phải thứ đang chạy.**
+
+> **Mốc đọc phải sau mốc nạp.** Một lượt báo *"bắt 32 dòng từ bo, lệch 0 %"* hoá ra đọc cổng
+> **92 giây trước khi bitstream tồn tại** — tức đọc bo đang chạy bài trước, rồi so bản ghi mô
+> phỏng với chính nó. Mốc thời gian trong sổ cái nói ra điều đó, lời tường thuật thì không.
+
+> **Một lần đọc rác không phải bằng chứng.** Lần bắt đầu tiên nhận 173 byte mà **có cả dấu kết
+> thúc** — đó là đuôi của lượt trước còn trong bộ đệm. Phải xả cổng tới khi im rồi mới cho bo
+> chạy lại.
+
+> **Một phép kiểm xanh trên mã nguồn không nói gì về bản nhị phân đang đo.** Giao diện dùng để
+> ghi nhật ký là gói dựng từ ba ngày trước; nó cắt lời Agent ở 3 000 ký tự không để lại dấu, nên
+> 16 trong 30 câu mất đuôi và người đọc nhật ký — là tôi — kết luận sai rằng Agent không trả lời
+> một câu hỏi. Nay có chốt chặn phiên nếu gói cũ hơn mã nguồn (`DEV-333`).
+
+#### Phiên làm việc này để lại gì
 
 | | |
 |---|---|
-| SoC in "Hello" qua UART | testbench giải mã từng bit, nhận đúng `Hello from PicoRV32 on Tang Nano 20K, cycle=126` |
-| Fmax | **106,01 MHz**, cần 27 |
-| Tài nguyên | LUT **2 211/20 736** (10,7 %) · BSRAM 16/46 |
-| Nhân ma trận | **96 trên 96 ô** của ma trận cấu hình, mọi ô tổng kiểm đúng |
-| Nhanh nhất | **37,09 chu kỳ** mỗi phép nhân-cộng, so với 602,83 ở cấu hình không có bộ nhân |
+| bước có thật qua giao diện | **54**, mỗi bước một ảnh cửa sổ EIDE |
+| lời gọi mô hình | 1 307 |
+| changeset | 161 |
+| dòng sổ cái | 16 789 |
+| bản ghi thô từ bo | [`du-lieu/fpga-sinhvien/bai2/ket-qua/`](du-lieu/fpga-sinhvien/bai2/ket-qua/) — ba tệp, mỗi tệp 32 dòng |
+| bảng 96 ô | `bang-doi-chieu-96-o.md` — 96 dòng, đã đối chiếu máy với bản ghi gốc, 0 lệch |
 
-#### Bài toán thứ hai: đo đủ 96 ô, và một kết quả ngược trực giác
+Bốn lỗi của EIDE vá trong hai ngày này đều thuộc **một họ: cơ chế có sẵn, đường tới nó đứt** —
+nhánh nạp FPGA chưa chạy lần nào nên nổ `NameError` (`DEV-330`), không có cách bắt bản ghi quanh
+lúc nạp (`DEV-331`), không đọc được mã nhận dạng chip FPGA (`DEV-332`), và gói giao diện cũ hơn
+mã nguồn (`DEV-333`). Chi tiết:
+[`docs/fpga/DEV-333-GOI-APP-CU-HON-MA-NGUON.md`](docs/fpga/DEV-333-GOI-APP-CU-HON-MA-NGUON.md).
 
-Đề bài đòi một ma trận cấu hình đầy đủ: **4 kích thước ma trận × 2 kiểu dữ liệu × 4 cách viết ×
-3 cấu hình CPU = 96 ô**. Mỗi ô là một con số chu kỳ máy, và mỗi ô phải có tổng kiểm trùng đáp án
-do Python tính độc lập — nên con số nào cũng nói về **một phép tính đúng**, không chỉ về tốc độ.
+Phiên cũ của việc này — làm trước khi có bo, mọi con số là số mô phỏng — giữ lại trong
+[`docs/riscv-tn20k/`](docs/riscv-tn20k/) để so hai lần làm.
 
-| | chu kỳ mỗi phép nhân-cộng | so với cấu hình không bộ nhân |
-|---|---|---|
-| không có bộ nhân, nhân bằng phần mềm | 602,83 | 1× |
-| bộ nhân tuần tự dựng bằng LUT | 71,09 | 8,48× |
-| bộ nhân một chu kỳ dùng khối DSP | **37,09** | **16,25×** |
+### 7.4 · Đặt ba việc đã xong cạnh nhau: thời gian và tiền
 
-Và đây là chỗ đáng kể nhất, một con số đi ngược điều ai cũng đoán:
-
-| | LUT | flip-flop | khối DSP |
+| | Hệ điều hành tự viết | Robot hai bánh tự đứng | Lõi RISC-V trên FPGA |
 |---|---|---|---|
-| không có bộ nhân | 2 352 | 627 | 0 |
-| bộ nhân bằng LUT | 2 562 (+210) | 907 (+280) | 0 |
-| bộ nhân bằng DSP | **2 232 (−120)** | 785 (+158) | 1 |
+| Phần mềm giao ra | 689 dòng lõi + 340 dòng ứng dụng | 1 820 dòng, 10 mô-đun | 2 020 dòng Verilog + C + hợp ngữ |
+| **Phiên Agent — thời gian** | **81,2 phút** | **7,4 giờ** | **khoảng 14 giờ, hai ngày** |
+| **Phiên Agent — lời gọi mô hình** | 351 | 1 415 | **1 307** |
+| **Nếu người làm tay — ngày công** | **31,7 ±2,3** | **31,0 ±2,6** | chưa dựng ước lượng |
+| **Nếu người làm tay — tiền** | **≈ 111 triệu đồng** | **≈ 105 triệu đồng** | — |
+| Chênh về tiền | **khoảng 3 300 lần** | **khoảng 300 lần** | — |
+| Chạy thật trên bo | LCD 800×480 + cảm ứng + 6 việc | robot đứng được | **96/96 ô đo trên silicon** |
 
-Cấu hình nhanh nhất **dùng ít tài nguyên logic hơn** cấu hình chậm nhất. Nó có thêm một khối
-nhân mà lại nhỏ đi 120 ô LUT. Con số ấy ngược trực giác nên tôi chạy lại hai lần, và bảng chi
-tiết chỉ ra chỗ khác: khi có bộ nhân phần cứng, đường dữ liệu cần **ít tầng dồn kênh hơn** —
-ít hơn 99 ô LUT1 và hàng chục ô dồn kênh — đổi lại bộ tổng hợp gói logic vào LUT rộng hơn. Đó
-là kết quả trên thiết kế này, không phải một quy luật chung, và tài liệu nói rõ như vậy.
+Cột FPGA chưa có ước lượng ngày công vì nó là việc **đầu tiên nằm ngoài hẳn vùng EIDE từng
+làm** — trước nó EIDE không có một dòng nào về HDL — nên phần lớn thời gian hai ngày ấy là
+**vá chính EIDE** (bốn lỗi, `DEV-330` đến `DEV-333`), không phải làm bài. Đem con số ấy so với
+một người đã có sẵn công cụ thì so sai.
 
-Hai kết quả nữa từ 96 ô ấy:
-
-**Dùng số 32 bit gần như không tốn thêm gì.** Tỷ lệ so với số 8 bit là 1,002–1,035 ở hai cấu
-hình có bộ nhân. Lý do nằm trong kiến trúc: trên lõi này phép nhân là 32×32 dù dữ liệu 8 bit hay
-32 bit, nên kiểu dữ liệu chỉ đổi lưu lượng bộ nhớ.
-
-**Cách viết tốt nhất thắng 21 trên 24 tổ hợp — và ba tổ hợp còn lại có lời giải thích.** Agent
-tự tìm ra cả ba, kể cả một ngoại lệ chênh đúng 0,3 %, rồi giải thích bằng cơ chế: cách viết
-thắng ở đó giữ tổng trong thanh ghi và chỉ ghi ra bộ nhớ một lần, còn cách kia phải nạp rồi ghi
-lại ô kết quả mỗi vòng lặp. Đó là phần tôi chưa nghĩ tới khi tự đọc bảng số.
-
-**Chưa làm được:** chạy trên bo thật — kit đã đặt mua, đang chờ về, và đề bài cấm Agent tự đặt
-hàng. Mọi con số trên đây là số **mô phỏng**; đề bài đòi số mô phỏng và số đo trên bo chênh
-không quá 1 %, và đó là phép đo duy nhất còn thiếu.
-
-**Agent tự viết 1 407 dòng** — Verilog, C, hợp ngữ, linker script, Python, ràng buộc chân.
-
-Một kết quả ngược trực giác mà chỉ đo mới thấy: đề bài mô tả cách viết V1 là *"đọc B theo hàng,
-liên tục hơn"*, ngụ ý nhanh hơn. Đo ra thì **V1 chậm hơn V0 14 %** — vì lợi thế ấy là lợi thế
-bộ nhớ đệm, mà SoC này không có bộ nhớ đệm.
-
-Và một chuyện đáng ghi hơn cả phần kỹ thuật: **phần lớn thời gian mất trong việc này là lỗi của
-người, không phải của Agent.** Bốn lượt liền Agent chạy lại bài cũ; ba giả thuyết hợp lý đều
-sai; nguyên nhân thật là hộp thư nối giữa bộ điều khiển phiên và giao diện không được dọn, nên
-app phát lại lời giao việc **cũ nhất**. Agent chưa bao giờ nhận được câu được gõ.
-
-> Trước khi hỏi *"vì sao nó làm sai"*, hỏi *"nó có nhận được đề bài không"*.
-
-#### Bài toán thứ ba: làm xong, đo được, rồi bỏ khỏi phạm vi
-
-Đặc tả ban đầu có bài thứ ba — thêm phần cứng chuyên dụng vào CPU để giảm chi phí nhân ma
-trận, qua ba nấc. Ngày 02/10/2026 anh Công đưa bài này ra khỏi phạm vi. Phần việc đã làm được
-giữ lại trong [`docs/riscv-tn20k/bai3/`](docs/riscv-tn20k/bai3/), đánh dấu ngoài phạm vi, vì
-nó là số đo thật và nó trả lời một câu mà hai bài còn lại không trả lời.
-
-| Cấu hình | chu kỳ mỗi phép nhân-cộng | so với phần mềm thuần |
-|---|---|---|
-| phần mềm thuần, không bộ nhân | 601,19 | 1× |
-| bộ nhân nhanh dùng DSP | 38,51 | 15,6× |
-| lệnh tuỳ biến `dot4` | 12,93 | 46× |
-| đơn vị vector mini | **3,84** | **157×** |
-
-Mọi con số đều kèm tổng kiểm trùng đáp án do Python tính độc lập, nên chúng nói về phép tính
-đúng chứ không chỉ về tốc độ.
-
-Nhưng nấc cuối **đúng về chức năng mà không vừa chip**, và lý do chỉ lộ ra khi tổng hợp riêng
-khối bộ nhớ. Đơn vị vector cần một cổng thứ hai vào bộ nhớ; thêm cổng ấy làm **suy luận khối
-nhớ cứng đứt hoàn toàn**, và cả 32 KB bị dựng thành 262 144 thanh ghi trên một chip có 15 552
-— vượt 17 lần. Trước đó công cụ chỉ biểu hiện là *chạy chậm*: 5 giây thành hơn 30 phút. Mô
-phỏng vẫn chạy đúng từ đầu đến cuối; chỉ silicon là không nhận.
-
-> Một thiết kế mô phỏng đúng chưa nói gì về việc nó có nạp được không. Hai câu hỏi ấy khác
-> nhau, và chúng được trả lời bởi hai công cụ khác nhau.
-
-Hai bài học về cách làm cũng ghi lại ở đây, vì chúng áp dụng cho mọi việc sau:
-
-**Giao một việc mỗi lượt.** Ba lượt liền Agent đọc tài liệu rồi kết lượt mà không ghi gì. Không
-phải hết ngân sách — hạn 220 lời gọi, nó dùng 13–17. Đề dài có bảng và sáu mục thì nó đọc rồi
-dừng; đề một câu một việc thì nó làm ngay. Tám lượt ngắn liên tiếp sau đó đều ra sản phẩm.
-
-**Một phép phá mã không giết được mã có hai nghĩa.** Đo độ nhạy bộ kiểm lần đầu ra 2/7. Nhưng
-ba trong năm phép "lọt" là lỗi của chính phép phá do tôi viết — một phép không tạo ra treo thật,
-một phép chuỗi tìm không khớp, một phép nhắm vào chốt luôn đúng. Sửa lại thì ra 7/7. Phải phân
-biệt *bộ kiểm yếu* với *phép phá rỗng* trước khi kết luận, nếu không ta đi vá một bộ kiểm không
-hỏng.
-
-Xem đầy đủ: [`docs/riscv-tn20k/`](docs/riscv-tn20k/) — trong đó
-[`NANG-CAP-AGENT.md`](docs/riscv-tn20k/tai-lieu/NANG-CAP-AGENT.md) ghi từng chỗ EIDE không làm
-được và chuyện gì xảy ra sau đó. Đó là kết quả nghiên cứu chính của việc này.
-
-### 7.4 · Đặt hai việc đã xong cạnh nhau: thời gian và tiền
-
-| | Hệ điều hành tự viết | Robot hai bánh tự đứng |
-|---|---|---|
-| Phần mềm giao ra | 689 dòng lõi + 340 dòng ứng dụng | 1 820 dòng, 10 mô-đun |
-| **Phiên Agent — thời gian** | **81,2 phút** | **7,4 giờ** |
-| **Phiên Agent — tiền mô hình** | **≈ 34 nghìn đồng** · 351 lời gọi | **≈ 340 nghìn đồng** · 1 415 lời gọi |
-| **Nếu người làm tay — ngày công** | **31,7 ±2,3** | **31,0 ±2,6** |
-| **Nếu người làm tay — thời gian lịch** | 4–5 tuần | khoảng 4 tuần |
-| **Nếu người làm tay — tiền** | **≈ 111 triệu đồng** | **≈ 105 triệu đồng** |
-| Chênh về tiền | **khoảng 3 300 lần** | **khoảng 300 lần** |
-| Chênh về giờ công | **khoảng 190 lần** | **khoảng 30 lần** |
-| Chạy thật trên bo | LCD 800×480 + cảm ứng + 6 việc | robot đứng được |
-
-Hai cột không chênh giống nhau, và chỗ khác nhau đó nói lên điều chính:
+Hai cột đầu không chênh giống nhau, và chỗ khác nhau đó nói lên điều chính:
 
 Bài hệ điều hành chênh **gấp hơn mười lần** so với bài robot. Lý do là bài hệ điều hành gần như
 toàn bộ nằm trong phần **đọc tài liệu, tra thanh ghi, viết mã** — đúng phần Agent nhanh. Bài
@@ -777,9 +818,17 @@ Nói ra để người đọc không phải tự tìm:
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
 - **Sáu ca kiểm cần người trực tiếp làm**, chưa tự động hoá được.
 - **Robot còn 23 trong 109 điều kiện chưa làm**, phần lớn là các điểm đo để cắm máy hiện sóng.
-- **Việc FPGA chưa chạy trên bo thật.** Kit đã đặt mua, đang chờ về, nên mọi con số hiện có
-  đều là số mô phỏng — kể cả 96 ô của Bài 2. Đề bài đòi số mô phỏng và số đo trên bo chênh
-  không quá 1 %, và đó là phép đo duy nhất còn thiếu.
+- **Đường dựng bitstream chỉ chạy được qua EIDE, không chạy được bằng `make`.** `soc_top.v`
+  ghi đường dẫn `include` tính từ gốc dự án, nên `make bitstream-h1` đứng trong `bai2/` thì đổ.
+  Nghĩa là tài liệu đang mô tả một đường dựng mà người khác gõ lại sẽ không ra — 96 ô đo được
+  là thật, nhưng chưa dựng lại được bằng lệnh tay.
+- **Agent không có công cụ chạy `make`.** Nó sửa được Makefile và mã C, nhưng phải nhờ người gõ
+  `make` rồi báo lại. Trong việc FPGA chỗ này chặn hai lần, và cả hai lần Agent **hỏi** chứ
+  không giả định là đã chạy — đúng việc, nhưng vẫn là một chặng phải có người.
+- **Cách bắt bản ghi quanh lúc nạp mất mười ô đầu ở cấu hình nhanh.** `bat_log_giay` mở cổng
+  trước khi nạp, mà kênh JTAG của chip FTDI chiếm cổng nối tiếp trong lúc ghi flash, nên chương
+  trình chạy nhanh đã in xong mấy ô đầu trước khi đọc được. Cách chạy được là nạp xong rồi xả
+  cổng cho im, sau đó cho bo chạy lại — chưa gói thành công cụ.
 - **`tool.install` mở một thẻ duyệt mới mỗi lần gọi lại**, nên một việc cài có thể để lại hàng
   chục thẻ treo — thẻ được duyệt sang lượt sau, mà Agent thử lại trong cùng lượt.
 - **Agent không có công cụ chạy một tệp Python.** Nó viết được `gen_data.py`, `plot.py`,
