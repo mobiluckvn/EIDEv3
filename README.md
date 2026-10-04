@@ -413,7 +413,7 @@ thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc ph
 | Cách làm mã: đọc trước, đánh mốc, chọn cấu trúc | **8/8** | [`thu_quy_trinh_code.py`](tools/thu_quy_trinh_code.py) |
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
-| Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`du-lieu/fpga-sinhvien/bai2/ket-qua/`](du-lieu/fpga-sinhvien/bai2/ket-qua/) |
+| Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/`](docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/) |
 | Công cụ đã được dùng thật | **115/127** | rà toàn bộ sổ ghi việc |
 
 Mỗi ca kiểm có một tệp log riêng, trong đó có **bảng từng lời gọi công cụ kèm tham số đầy đủ
@@ -686,7 +686,7 @@ tổng kết Agent tự xuất ra có ba con số thô mà kiểm lại khớp *
 số **suy ra** thì hụt — nó ghi bộ nhân DSP nhanh hơn bộ nhân tuần tự *1,54×–1,85×*, tính lại từ
 hai bản ghi thì đỉnh là **2,03×** ở ô `N=32, I8, V2`. Số thô thì nó chép đúng; số phải tính qua
 96 ô thì nó lấy thiếu. Đã sửa và ghi rõ chỗ sửa trong chính tài liệu ấy
-([`du-lieu/fpga-sinhvien/KET-QUA.md`](du-lieu/fpga-sinhvien/KET-QUA.md)).
+([`docs/fpga/phien-sinhvien-04-10/KET-QUA.md`](docs/fpga/phien-sinhvien-04-10/KET-QUA.md)).
 
 #### Dòng tài liệu để trống, và câu trả lời đo được
 
@@ -721,7 +721,7 @@ phải thứ đang chạy.**
 | lời gọi mô hình | 1 307 |
 | changeset | 161 |
 | dòng sổ cái | 16 789 |
-| bản ghi thô từ bo | [`du-lieu/fpga-sinhvien/bai2/ket-qua/`](du-lieu/fpga-sinhvien/bai2/ket-qua/) — ba tệp, mỗi tệp 32 dòng |
+| bản ghi thô từ bo | [`docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/`](docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/) — ba tệp, mỗi tệp 32 dòng |
 | bảng 96 ô | `bang-doi-chieu-96-o.md` — 96 dòng, đã đối chiếu máy với bản ghi gốc, 0 lệch |
 
 Bốn lỗi của EIDE vá trong hai ngày này đều thuộc **một họ: cơ chế có sẵn, đường tới nó đứt** —
@@ -729,6 +729,10 @@ nhánh nạp FPGA chưa chạy lần nào nên nổ `NameError` (`DEV-330`), kh�
 lúc nạp (`DEV-331`), không đọc được mã nhận dạng chip FPGA (`DEV-332`), và gói giao diện cũ hơn
 mã nguồn (`DEV-333`). Chi tiết:
 [`docs/fpga/DEV-333-GOI-APP-CU-HON-MA-NGUON.md`](docs/fpga/DEV-333-GOI-APP-CU-HON-MA-NGUON.md).
+
+Toàn bộ sở cứ của phiên này — mã Agent viết, ba bản ghi thô từ bo, bảng 96 ô, nhật ký 54
+bước kèm 54 ảnh cửa sổ EIDE, và sổ cái lời gọi công cụ kèm mốc thời gian — nằm trong
+[`docs/fpga/phien-sinhvien-04-10/`](docs/fpga/phien-sinhvien-04-10/).
 
 Phiên cũ của việc này — làm trước khi có bo, mọi con số là số mô phỏng — giữ lại trong
 [`docs/riscv-tn20k/`](docs/riscv-tn20k/) để so hai lần làm.
