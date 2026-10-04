@@ -656,6 +656,38 @@ def dang_ky(r: Registry) -> None:
                               giay_toi_da=max(tc.timeout_s, 1.0))
         do = dict((kq.ket_qua or {}).get("do") or {})
         xet = TCM.xet_ket_qua(tc, do)
+
+        # DEV-336. Không một mã assert nào của tiêu chí xuất hiện trong số đo → đây KHÔNG
+        # phải sản phẩm sai, mà là **sai tiêu chí hoặc sai nguồn mô phỏng**. Hai chuyện ấy
+        # dẫn tới hai việc ngược nhau: một cái bảo đi sửa mã, cái kia bảo gọi lại cho đúng.
+        #
+        # Vì sao cần chặn thay vì để `dat: False`: `ma_tieu_chi` mặc định là "sim-01" và
+        # `nguon` mặc định lấy MỌI tệp `sim/*.c`. Nên chỉ cần thêm một tệp mô phỏng thứ hai
+        # là lượt chạy sau đem số đo của nó so với tiêu chí của tệp trước, rồi ghi đè lên
+        # cùng một mã hiện vật. Đo được trên phiên robot 04/10/2026: hiện vật
+        # `sim_result:can-bang` bản 8 ghi `ma_tieu_chi = sim-01` (đòi A1–A10) với số đo
+        # `{C1, C2}` của bộ `sim-ntc`, và `dat = False`.
+        #
+        # Hậu quả không phải một lỗi kêu lên — mà là **sở cứ nói ngược báo cáo**: tác tử báo
+        # 10/10 đạt (đúng, nó đã chạy thật), còn hiện vật lưu lại nói không đạt. Người đọc
+        # sở cứ sau này thấy `dat: False` và không có cách nào biết đó là "sai tiêu chí".
+        if tc.asserts and not (set(do) & {a.ma for a in tc.asserts}):
+            return ToolResult(False, error=EideError(
+                "E4023",
+                f"Số đo không chứa MỘT mã assert nào của tiêu chí {tc.ma}. "
+                f"Tiêu chí đòi {sorted(a.ma for a in tc.asserts)[:8]}, "
+                f"chương trình in ra {sorted(do)[:8]}.",
+                hint_for_agent=(
+                    "Đây KHÔNG phải sản phẩm sai — là sai cặp tiêu chí/nguồn. Hai chỗ hay "
+                    "lệch: `ma_tieu_chi` mặc định là \"sim-01\" nên lượt chạy cho một bộ "
+                    "tiêu chí khác phải nêu rõ; và `nguon` bỏ trống thì lấy MỌI tệp "
+                    "`sim/*.c`, nên có hai chương trình mô phỏng là phải nêu đúng tệp. "
+                    "Nêu cả hai rồi gọi lại — đừng sửa mã sản phẩm vì con số này."),
+                details={"ma_tieu_chi": tc.ma,
+                         "assert_doi": sorted(a.ma for a in tc.asserts),
+                         "so_do_nhan_duoc": sorted(do),
+                         "tep_nguon": [str(x.relative_to(goc)) for x in ds]},
+                alternatives=["sim.criteria", "sim.run"], blame="agent"))
         canon = {**kq.to_dict(), "ma_tieu_chi": tc.ma, "xet": xet, "so_do": do,
                  "khong_mo_phong_duoc": tc.khong_mo_phong_duoc,
                  "dat": bool(kq.chay_duoc and xet["dat"])}
