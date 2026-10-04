@@ -339,6 +339,35 @@ def test_hai_bang_ky_hieu_phai_giong_nhau():
         f"khác nhau trên màn hình và trên giấy: {khac}")
 
 
+def test_hai_ben_phai_cung_bo_dau_thoat():
+    """Không chỉ so hai BẢNG — so cả **công đoạn**. Chỗ hỏng ngày 04/10/2026 là một công đoạn.
+
+    Python có `_TEX_THOAT` đổi `\\{` thành `{` sau cùng. Swift không có, nên dòng
+
+        \\text{Tổng số ô} = … N \\in \\{4, 8, 16, 32\\} … = 96\\text{ ô}
+
+    in đúng trong tệp Word mà hiện nguyên lệnh TeX trên màn hình chat. `\\{` không phải một
+    mục thiếu trong bảng ký hiệu — nó là một LỚP ký tự mà một bên biết bỏ dấu thoát, bên kia
+    không. `test_hai_bang_ky_hieu_phai_giong_nhau` xanh suốt vì nó chỉ đếm mục trong bảng.
+
+    Nên ca này hỏi một câu khác: **tập dấu thoát hai bên có trùng nhau không.**
+    """
+    import re
+    from eide.xuat_ban import _TEX_THOAT
+
+    py = set(re.search(r"\[([^\]]+)\]", _TEX_THOAT.pattern).group(1))
+    nguon = (GOC / "ui/EIDEApp/Sources/EIDE/Views/MathText.swift").read_text("utf-8")
+    m = re.search(r"dauThoat:\s*\[Character\]\s*=\s*\[([^\]]*)\]", nguon)
+    assert m, ("Swift không còn bảng `dauThoat` — nếu công đoạn bỏ dấu thoát bị xoá thì công "
+               "thức có `\\{` sẽ lại hiện TeX thô trên màn hình")
+    sw = set(re.findall(r'"(.)"', m.group(1)))
+
+    assert py == sw, (
+        f"tập dấu thoát hai bên lệch nhau — chỉ Python: {sorted(py - sw)}; "
+        f"chỉ Swift: {sorted(sw - py)}. Lệch chiều nào cũng cho ra một dòng công thức đẹp ở "
+        f"một nơi và thô ở nơi kia.")
+
+
 def test_sum_khong_duoc_lan_voi_Sigma():
     """`\\sum` và `\\Sigma` là hai thứ khác nhau, phải ra hai ký hiệu khác nhau.
 

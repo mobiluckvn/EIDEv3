@@ -121,8 +121,30 @@ enum MathText {
             pattern: "(?:(?:\(nhanh(Array(chu))))(?![A-Za-z])|(?:\(nhanh(Array(dau)))))")
     }()
 
+    /// Dấu THOÁT: `\{` là một dấu ngoặc để ĐỌC, không phải ngoặc gom nhóm.
+    ///
+    /// Sao đúng `_TEX_THOAT` của `src/eide/xuat_ban.py`: `re.compile(r"\\([%&#_${}])")`.
+    /// Phía Python có công đoạn này từ đầu, phía Swift **không có** — nên cùng một công thức
+    /// đẹp trong tệp Word mà là TeX thô trên màn hình. Anh Công gặp đúng chuyện ấy ngày
+    /// 04/10/2026 với dòng `N \in \{4, 8, 16, 32\}`: `\{` không có trong bảng ký hiệu, nên
+    /// nó sống qua `doiKyHieu`, rồi bước bỏ ngoặc gom nhóm ăn mất dấu `{` và **để lại dấu
+    /// gạch chéo ngược trơ ra** — `tron` thành `false` và cả dòng hiện nguyên lệnh TeX.
+    ///
+    /// `test_hai_bang_ky_hieu_phai_giong_nhau` so hai BẢNG KÝ HIỆU và xanh suốt, vì chỗ
+    /// thiếu không phải một mục trong bảng mà là **cả một công đoạn**. Một phép so hai bảng
+    /// không thấy được việc một bên có thêm một bước.
+    static let dauThoat: [Character] = ["%", "&", "#", "_", "$", "{", "}"]
+
     static func sangUnicode(_ tex: String) -> (text: String, tron: Bool) {
         var s = tex
+
+        // Giữ `\{` `\}` khỏi bước bỏ ngoặc gom nhóm ở dưới, bằng hai mã vùng riêng.
+        //
+        // Python không cần bước này vì nó KHÔNG bỏ ngoặc tràn lan — mỗi lệnh `\text{…}`,
+        // `\frac{…}{…}` tự ăn cặp ngoặc của mình trong chính biểu thức chính quy. Swift thì
+        // quét sạch mọi `{` `}` còn lại, nên phải che trước rồi mở lại sau.
+        s = s.replacingOccurrences(of: "\\{", with: "\u{E000}")
+             .replacingOccurrences(of: "\\}", with: "\u{E001}")
 
         // \text{...} và \mathrm{...}: chỉ là chữ thường.
         for lenh in ["\\text", "\\mathrm", "\\mathit", "\\mathbf", "\\operatorname"] {
@@ -140,6 +162,14 @@ enum MathText {
 
         s = s.replacingOccurrences(of: "{", with: "")
              .replacingOccurrences(of: "}", with: "")
+
+        // Mở lại ngoặc để đọc, rồi bỏ dấu thoát của các dấu còn lại — SAU CÙNG, như Python.
+        s = s.replacingOccurrences(of: "\u{E000}", with: "{")
+             .replacingOccurrences(of: "\u{E001}", with: "}")
+        for d in dauThoat where d != "{" && d != "}" {
+            s = s.replacingOccurrences(of: "\\\(d)", with: String(d))
+        }
+
         s = s.replacingOccurrences(of: "  ", with: " ")
              .trimmingCharacters(in: .whitespaces)
 

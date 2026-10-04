@@ -215,6 +215,48 @@ final class MarkdownTests: XCTestCase {
 /// kết quả sai thay vì hiện nguyên bản kèm dòng cảnh báo.
 final class MathTextTests: XCTestCase {
 
+    /// Dòng THẬT anh Công đưa ngày 04/10/2026, không phải ca rút gọn.
+    ///
+    /// Nó hiện ra nguyên lệnh TeX trên màn hình trong khi tệp Word in đúng — vì phía Python
+    /// có công đoạn bỏ dấu thoát (`_TEX_THOAT`) mà phía Swift không có. `\{` sống qua bảng
+    /// ký hiệu, rồi bước bỏ ngoặc gom nhóm ăn mất dấu `{` và để dấu gạch chéo ngược trơ ra.
+    ///
+    /// Ca này giữ **cả dòng**, vì chỗ vỡ không nằm ở một ký hiệu mà ở chỗ ba thứ gặp nhau:
+    /// `\text{}` có dấu tiếng Việt, `\in`, và `\{…\}`.
+    func test_dong_cong_thuc_96_o_doi_tron_ven() {
+        let tex = "\\text{Tổng số ô} = 3\\text{ cấu hình phần cứng } (\\text{H0, H1, H2}) "
+                + "\\times 4\\text{ kích thước } N \\in \\{4, 8, 16, 32\\} "
+                + "\\times 2\\text{ kiểu } \\{\\text{I32, I8}\\} "
+                + "\\times 4\\text{ thuật toán } \\{\\text{V0, V1, V2, V3}\\} = 96\\text{ ô}"
+        let (ra, tron) = MathText.sangUnicode(tex)
+        XCTAssertTrue(tron, "còn sót lệnh chưa hiểu: “\(ra)”")
+        XCTAssertFalse(ra.contains("\\"), "còn gạch chéo ngược trên màn: “\(ra)”")
+        // Ngoặc nhọn phải CÒN LẠI: `{4, 8, 16, 32}` là tập hợp người đọc cần thấy.
+        XCTAssertTrue(ra.contains("{4, 8, 16, 32}"), "mất ngoặc của tập hợp: “\(ra)”")
+        XCTAssertTrue(ra.contains("{I32, I8}"), "mất ngoặc của tập kiểu: “\(ra)”")
+        XCTAssertTrue(ra.contains("∈"), "không đổi được \\in: “\(ra)”")
+        XCTAssertTrue(ra.contains("×"), "không đổi được \\times: “\(ra)”")
+        XCTAssertTrue(ra.contains("Tổng số ô"), "mất chữ tiếng Việt: “\(ra)”")
+        XCTAssertTrue(ra.hasSuffix("= 96 ô"), "mất đuôi câu: “\(ra)”")
+    }
+
+    /// Nửa đối: ngoặc GOM NHÓM (không có dấu thoát) vẫn phải bị bỏ như trước.
+    /// Không có ca này thì bản vá trên có thể giữ lại cả ngoặc của `x^{12}` mà không ai biết.
+    func test_ngoac_gom_nhom_khong_co_dau_thoat_thi_van_bi_bo() {
+        XCTAssertEqual(MathText.sangUnicode("x^{12}").text, "x¹²")
+        XCTAssertEqual(MathText.sangUnicode("\\frac{a}{b}").text, "a/b")
+    }
+
+    /// Các dấu thoát khác trong cùng bảng với Python: `\%` `\&` `\#` `\_` `\$`.
+    func test_bo_dau_thoat_cua_cac_dau_con_lai() {
+        for (tex, chu) in [("50\\%", "50%"), ("a\\_b", "a_b"), ("x \\& y", "x & y"),
+                           ("\\#3", "#3"), ("5\\$", "5$")] {
+            let (ra, tron) = MathText.sangUnicode(tex)
+            XCTAssertEqual(ra, chu, "“\(tex)” ra “\(ra)”")
+            XCTAssertTrue(tron, "“\(tex)” còn bị coi là chưa đổi xong")
+        }
+    }
+
     func test_doi_duoc_ky_hieu_thuong_gap() {
         for (tex, chu) in [("\\alpha \\le 0.05", "α ≤ 0.05"),
                            ("\\sum x", "∑ x"),

@@ -331,12 +331,214 @@ BUOC: list[tuple[str, str, int, int, bool]] = [
      "Mục 4 của tài liệu mình nêu bốn điều về cách đo. Bạn xem có đúng không, thiếu gì thì bổ "
      "sung, rồi nói cho mình cách bạn sẽ đo.", 1800, 4, False),
 
+    # Chèn 03/10 tối. Hai việc trong một bước, và việc thứ nhất là của MÌNH.
+    #
+    # Tôi đã đọc nhật ký rồi kết luận tác tử không trả lời câu về số bitstream. Sai: nhật ký
+    # mất đuôi vì gói app cũ (DEV-333), còn nó trả lời đủ. Và đáp án của nó — 3 bitstream —
+    # ĐÚNG, còn con số 24 tôi chờ sẵn thì sai: `$readmemh` buộc CHƯƠNG TRÌNH cố định lúc tổng
+    # hợp, không buộc một chương trình chỉ đo một ô.
+    #
+    # Nói ra chỗ mình sai, trong chính nhật ký làm sở cứ, là phần của phép đo. Một nhật ký chỉ
+    # ghi những lần người đúng thì không đo được gì về cách người và tác tử làm việc với nhau.
+    ("Bài 2: mình nhận sai về số bitstream, và chốt kế hoạch",
+     "Trước khi bạn viết mã, mình phải nói hai điều.\n\n"
+     "**Điều thứ nhất, mình nhận sai.** Mấy lượt vừa rồi mình đọc nhật ký và tưởng bạn không "
+     "trả lời câu hỏi *cần dựng bao nhiêu bitstream*. Thực ra bạn trả lời đủ, có cả mục riêng "
+     "và lý do. Nhật ký của mình bị cắt mất đuôi vì một lỗi bên mình — bản ứng dụng mình dùng "
+     "để ghi là bản cũ, nó cắt lời bạn ở 3000 ký tự mà không để lại dấu gì. 16 trong 30 câu "
+     "của bạn bị mất đuôi như vậy, tổng hơn 23 000 ký tự. Mình đã vá lại nhật ký từ bản ghi "
+     "phiên và chặn lỗi ấy lại.\n\n"
+     "**Điều thứ hai, đáp án của bạn đúng và mình đã chờ sẵn một con số sai.** Mình nghĩ phải "
+     "dựng 24 bitstream, vì mình cho rằng mỗi nhóm ô cần một chương trình riêng. Bạn nói 3, "
+     "và lý do của bạn chặn đúng chỗ mình hiểu sai: `$readmemh` buộc **chương trình** phải cố "
+     "định lúc tổng hợp, chứ không buộc **một chương trình chỉ được đo một ô**. Cả 8 thủ tục "
+     "(4 cách × 2 kiểu) nằm trong ~3 KB mã, ba ma trận dùng chung một vùng đệm 12 KB, nên một "
+     "firmware tự chạy hết 32 ô của một cấu hình là được. Chỉ 3 cấu hình CPU là khác mạch "
+     "thật. Mình chốt kế hoạch 3 bitstream của bạn.\n\n"
+     "Nhưng mình muốn hỏi thêm hai chỗ trong chính kế hoạch ấy, vì chúng là chỗ nó có thể vỡ:\n\n"
+     "**1 · Con số 3 KB mã lệnh là bạn ƯỚC hay bạn ĐO?** Nếu ước thì sau khi dịch xong bạn "
+     "phải đọc kích thước `.text` thật ra cho mình xem, và nói nó so với 32 KB BRAM thế nào. "
+     "Ước sai thì bitstream dựng được nhưng chương trình tràn vùng nhớ, mà cái đó không hiện "
+     "ra lúc tổng hợp.\n\n"
+     "**2 · Một firmware chạy liền 32 ô thì một lần treo mất cả 32 ô.** Mình không đòi bạn "
+     "đổi kế hoạch, nhưng mình cần biết: nếu nó dừng ở ô thứ 17 thì mình nhìn vào đâu để "
+     "biết nó đã qua 16 ô? In kết quả từng ô ngay khi đo xong, hay dồn cuối cùng mới in?\n\n"
+     "Trả lời hai chỗ đó rồi bắt tay viết mã.", 2400, 4, False),
+
     ("Bài 2: viết mã",
      "Chốt rồi thì viết đi bạn. Xong thì liệt kê từng tệp kèm số dòng.", 3600, 4, False),
 
     ("Bài 2: mô hình chuẩn và tổng kiểm",
      "Mình cần biết kết quả nhân ma trận trên bo là đúng, không chỉ là chạy xong. Bạn làm mô "
      "hình chuẩn bằng Python rồi đối chiếu tổng kiểm.", 2400, 4, False),
+
+    # Chèn 03/10 tối, sau khi MỞ MÃ RA ĐỌC chứ không đọc báo cáo của tác tử. Bốn chỗ, và
+    # chỗ nặng nhất là lỗi trong TÀI LIỆU CỦA MÌNH: tiêu chí "96/96 ô ok=1" tự nó không đo
+    # được gì, vì ok của V0 so chính nó.
+    ("Bài 2: bốn chỗ mình đọc mã mới thấy",
+     "Mình mở mã ra đọc, không đọc báo cáo của bạn. Bốn chỗ.\n\n"
+     "**1 · Cờ `ok` của V0 không bao giờ nói được 0 — và đây là lỗi trong tiêu chí của "
+     "mình.** Trong `main.c`:\n\n"
+     "```c\n"
+     "chk = calc_checksum(n);\n"
+     "if (ver == 0) { baseline_chk = chk; }\n"
+     "int is_ok = (chk == baseline_chk) ? 1 : 0;\n"
+     "```\n\n"
+     "Ở lượt `ver == 0`, `baseline_chk` vừa được gán bằng chính `chk`, nên `is_ok` luôn là 1. "
+     "24 trong 96 ô có một cờ **không có khả năng cấu trúc để báo sai**. Và vì V1–V3 chỉ so "
+     "với V0, nếu V0 tính sai thì cả bốn ô cùng sai giống nhau và cùng báo `ok=1`.\n\n"
+     "Nghĩa là tiêu chí mình viết trong tài liệu — *mọi ô `ok=1`* — một bo tính sai toàn bộ "
+     "vẫn đạt được. Lỗi này là của mình, mình nhận. Nhưng mình cần bạn chữa.\n\n"
+     "**2 · Tổng kiểm chuẩn được sinh ra rồi không ai dùng.** `Makefile` để "
+     "`sw/golden_checksums.h` làm điều kiện trước của cả `sw-h0`, `sw-h1`, `sw-h2`, và "
+     "`golden_model.py --gen-header` sinh nó ra thật. Nhưng `main.c` chỉ `#include <stdint.h>` "
+     "— **không chỗ nào nạp tệp ấy vào**. Mình grep cả `bai2/sw/`, không có `GOLDEN` nào.\n\n"
+     "Nên mốc chuẩn độc lập của bạn có trên đĩa mà không tới được chip. Trên bo, phép kiểm "
+     "duy nhất đang chạy là *bốn cách có cho ra cùng một số không*, chứ không phải *số ấy có "
+     "đúng không*. Mình gặp đúng kiểu lỗi này hai lần hôm nay rồi: cơ chế có sẵn, đường dẫn "
+     "tới nó đứt.\n\n"
+     "**3 · V3 trong mã không phải V3 trong kế hoạch.** Kế hoạch bạn trình và mình duyệt nói "
+     "V3 là *tiling / chia khối 4×4, nạp 16 giá trị tích luỹ vào thanh ghi*. Mã thì làm "
+     "**chuyển vị `B` rồi nhân** (`mat_b_trans[j*n+i] = mat_b[i*n+j]`). Hai thứ khác nhau, và "
+     "mình không được báo là đã đổi.\n\n"
+     "Mình không đòi bạn phải quay về tiling — đổi có thể là đổi đúng. Nhưng phải nói ra, và "
+     "phải trả lời thêm: vòng chuyển vị nằm **trong** hàm nên nó nằm trong khoảng được bấm "
+     "giờ. Vậy V3 đang đo *chuyển vị cộng nhân*, còn V0–V2 đo *nhân*. Bạn cố ý vậy, hay sót?\n\n"
+     "**4 · Chú thích nói 12 KB, mã khai 16 KB.** Dòng chú thích ghi *Vung dem tai su dung cho "
+     "ba ma tran (tong 12 KB)*, ngay dưới là **bốn** mảng `int32_t[1024]` = 16 KB. Mảng thứ tư "
+     "`mat_b_trans` là thứ bạn thêm cho V3. Con số trong chú thích là con số bạn dùng để nói "
+     "với mình rằng bộ nhớ còn dư.\n\n"
+     "Việc của bạn, theo thứ tự:\n\n"
+     "**a ·** Chữa chỗ 1 và 2 cùng lúc, vì chúng là một việc: nạp tổng kiểm chuẩn của Python "
+     "vào firmware và cho **mọi ô, kể cả V0**, so với mốc ấy. Mốc truy về mô hình độc lập, "
+     "không truy về đầu ra của chính mã.\n\n"
+     "**b ·** Trả lời chỗ 3 và sửa chú thích ở chỗ 4.\n\n"
+     "**c ·** Rồi **tự phá mã của mình để xem phép kiểm có kêu không**. Mình muốn thấy ba lần "
+     "phá, mỗi lần một dòng, chạy mô phỏng rồi khôi phục: đổi một hằng số trong V0; làm lệch "
+     "một chỉ số trong V2; đổi một phần tử trong bộ sinh dữ liệu. Phép kiểm nào không kêu ở "
+     "lần phá nào thì nói rõ ra — đó là chỗ nó không bảo vệ được.\n\n"
+     "**d ·** Và cho mình xem kích thước `.text` **đo thật** bằng `size`, như bạn đã hứa ở "
+     "lượt trước. Bạn tự khai ~3 KB là tầng ĐỒNG; giờ nâng nó lên tầng có số đo.", 3600, 4,
+     False),
+
+    # Chèn 03/10 tối. Bảng ba ca phá mã của tác tử là bảng DỰ ĐOÁN được trình bày như bảng
+    # kết quả, và lý do nó nêu để không chạy thật thì sai: `hdl.sim` đã chạy 80 lượt và
+    # `hdl.bitstream` 28 lượt trong chính phiên này.
+    #
+    # Đây là họ lỗi tôi đã ghi vào trí nhớ dưới tên "ok nói về lời gọi, không nói về kết
+    # quả", nhưng lần này ngược chiều: một lời khai rằng công cụ KHÔNG gọi được, trong khi
+    # nó đã gọi 80 lần ba giờ trước.
+    ("Bài 2: ba ca phá mã phải CHẠY, không phải suy",
+     "Mốc chuẩn của bạn mình đã tự kiểm, và nó đúng. Mình tính lại bốn tổng kiểm bằng tay, "
+     "độc lập với mã của bạn: `0xfeaabd40`, `0x2110c56a`, `0xc7ce1f03`, `0x36395f4b` — khớp "
+     "cả bốn với `golden_model.py`. Việc bạn để `(void)dtype` cũng đúng, vì mọi giá trị của A "
+     "và B nằm trong khoảng `int8_t` nên hai kiểu cho cùng một ma trận C. Bốn chỗ hôm qua bạn "
+     "chữa xong cả bốn, mình đã mở mã ra xem chứ không nhận qua lời.\n\n"
+     "Nhưng còn ba việc.\n\n"
+     "**1 · Bảng ba ca phá mã của bạn là bảng dự đoán, trình bày như bảng kết quả.** Bạn viết "
+     "*V0 lập tức kêu `ok=0`*, *CẢ 4 Ô ĐỀU KÊU `ok=0`* — đó là lời của một phép đo đã chạy. "
+     "Rồi cuối bảng mới có một dòng trong ngoặc nói bạn chưa chạy được và mình nên tự chạy "
+     "trên máy.\n\n"
+     "Mình đọc bảng trước, đọc ngoặc sau. Một người đọc nhanh sẽ mang bảng ấy vào báo cáo như "
+     "số đo. Lần sau gặp việc này, xin bạn **đặt chữ DỰ ĐOÁN vào đầu bảng**, đừng để trong "
+     "ngoặc ở cuối.\n\n"
+     "**2 · Và lý do bạn nêu thì không đúng.** Bạn nói *EIDE không có công cụ thực thi chuỗi "
+     "lệnh biên dịch RISC-V trực tiếp từ sandbox tác tử*. Mình đếm trong sổ cái của chính "
+     "phiên này:\n\n"
+     "| công cụ | số lượt bạn đã gọi |\n|---|---|\n| `hdl.sim` | **80** |\n"
+     "| `hdl.bitstream` | **28** |\n| `build.compile` | 1 |\n| `test.sensitivity` | **0** |\n\n"
+     "Bài 1 chạy được là vì bạn đã dịch firmware C rồi mô phỏng nó 80 lượt. Bạn không cần gọi "
+     "`gcc` thẳng; bạn cần `hdl.sim`, và nó làm việc ấy hộ bạn. Thêm nữa, `hdl.sim` có sẵn "
+     "tham số `do_nhay` để điền *đã phá bao nhiêu, bắt được bao nhiêu*, và phần mô tả của nó "
+     "nói thẳng: **một con số bịa ra thì tệ hơn không có**. Suốt phiên chưa lượt nào bạn điền "
+     "nó.\n\n"
+     "Nên mình đề nghị bạn **chạy thật ba ca ấy**: sửa một dòng, gọi `hdl.sim`, đọc kết quả, "
+     "khôi phục, rồi điền `do_nhay`. Ca nào phép kiểm không kêu thì đó là phát hiện quan "
+     "trọng nhất của cả bước này — nói rõ ra, đừng chữa cho nó đẹp.\n\n"
+     "**3 · Mốc chuẩn của bạn đứng trên một chỗ không có.** `golden_checksums.h` ghi *Quy "
+     "luat du lieu theo tai-lieu/DAU-VAO-AGENT-FPGA-v2.md*. Mình grep cả tài liệu: **không có "
+     "dòng nào nêu luật ấy**. Bạn tự chọn luật — hoàn toàn hợp lý vì mình để trống — nhưng rồi "
+     "ghi là theo tài liệu của mình. Chính báo cáo 5 dòng của bạn đã xếp nó vào *giả định "
+     "đang dùng*, tức bạn biết nó là giả định, mà tệp thì nói như một chỗ trích.\n\n"
+     "Việc này lỗi ở mình trước: tài liệu giao việc phải nêu dữ liệu vào. Mình vừa thêm **mục "
+     "5.3b** vào tài liệu, chốt luật sinh dữ liệu và bốn tổng kiểm ở tầng NGƯỜI. Bạn đọc lại "
+     "tài liệu, đối chiếu, rồi sửa dòng chú thích trong `golden_checksums.h` cho nó trích "
+     "đúng chỗ có thật.\n\n"
+     "**4 · Về V3, mình quyết.** Đưa vòng chuyển vị **ra ngoài khoảng bấm giờ**, để V3 đo đúng "
+     "thứ V0–V2 đo. Chi phí chuyển vị thì đo riêng và in thành một trường khác trên cùng dòng "
+     "`RESULT`, đặt tên gì tuỳ bạn. Lý do mình chọn thế: bảng 96 ô để so bốn cách cài đặt với "
+     "nhau, mà một cột đo thêm một việc khác thì cột ấy không so được với ba cột kia. Nhưng "
+     "chi phí chuyển vị là số có ích nên đừng bỏ mất.\n\n"
+     "**5 · Và kích thước `.text`** — bạn bảo mình chạy `make sw-h0` trên máy. Bạn chạy được: "
+     "chính `hdl.sim` sẽ dịch firmware, và Makefile của bạn đã có `$(SIZE)` sau mỗi lần dịch. "
+     "Cho mình ba con số `text`, `data`, `bss` đo thật.", 3600, 4, False),
+
+    # Chèn 04/10. Tôi đã NGHI SAI con số .text — hiện vật `build:firmware` là thật. Nhưng
+    # đúng phép đo ấy lại lộ ra chỗ hỏng: EIDE dịch bằng `-lgcc`, Makefile thì không, nên
+    # `make sw-h0` đổ ở link. Bitstream lại đi qua Makefile.
+    ("Bài 2: Makefile không dịch được, mà bitstream đi qua Makefile",
+     "Con số `.text` của bạn mình đã nghi sai. Mình tự dịch rồi thấy đổ ở link nên tưởng bạn "
+     "bịa số; mở hiện vật `build:firmware` ra thì nó là số đo thật — `.text` 6 100, "
+     "`.rodata` 452, `.bss` 16 384, `.stack` 9 832, cộng đúng 32 768. Mình nhận sai chỗ "
+     "nghi ấy.\n\n"
+     "Nhưng chính phép đo đó lộ ra một chỗ hỏng thật, và nó chặn đường ra bo:\n\n"
+     "| đường dịch | cờ | kết quả |\n|---|---|---|\n"
+     "| EIDE `build.compile` | `-Os -ffreestanding -nostartfiles -nostdlib --gc-sections "
+     "**-lgcc**` | **đạt**, 0 lỗi |\n"
+     "| `make sw-h0` trong Makefile của bạn | `-O2 -nostdlib` (**không có `-lgcc`**) | "
+     "**đổ ở link** |\n\n"
+     "Mình chạy `make sw-h0` ngay bây giờ, nó báo thiếu `__muldi3`, `__mulsi3`, `__modsi3`, "
+     "`__udivdi3`, `memset`. Cả ba cấu hình đều đổ, kể cả H1 và H2 có nhân phần cứng — vì "
+     "phép chia 64 bit `min_cycles / macs` vẫn gọi `__udivdi3`, và `-nostdlib` thì không có "
+     "`libgcc` để lấy.\n\n"
+     "Chỗ này quan trọng vì **bitstream đi qua Makefile**: `sw-h0` sinh `firmware.hex`, "
+     "`$readmemh` nạp tệp ấy lúc tổng hợp. Đường dịch của EIDE ghi ra `.eide/build/mach.hex` "
+     "— một tệp khác. Nên hiện giờ:\n\n"
+     "- số `.text` thì có thật\n"
+     "- mà **đường dựng mà tài liệu và Makefile mô tả thì không chạy**\n"
+     "- và nếu `firmware.hex` trong thư mục còn sót lại từ Bài 1 thì bitstream Bài 2 sẽ dựng "
+     "ra bo chạy **chương trình Bài 1**, không lỗi nào kêu lên\n\n"
+     "Chỗ cuối là thứ đã cắn mình một lần hôm qua rồi, nên mình nói trước.\n\n"
+     "Việc của bạn:\n\n"
+     "**1 ·** Sửa Makefile để `make sw-h0`, `sw-h1`, `sw-h2` **dịch được thật**. Thêm `-lgcc` "
+     "là đủ cho bốn hàm nhân chia; `memset` thì bạn chọn: tự viết một hàm trong firmware, hay "
+     "bỏ chỗ khiến gcc gọi nó. Bạn chạy `make` cho mình xem nó qua, kèm ba con số `size`.\n\n"
+     "**2 ·** Nói cho mình biết `firmware.hex` hiện có trong `bai2/` là của chương trình nào, "
+     "dựng lúc nào. Nếu không chắc thì xoá rồi dựng lại — đừng để một tệp mình không truy được "
+     "nguồn gốc đi vào bitstream.\n\n"
+     "**3 ·** Rồi trả lời câu bạn hỏi mình ở lượt trước: **có**, vá điểm mù của `tb_soc.v` đi. "
+     "Một bài kiểm không biết báo `ok=0` thì 96 ô xanh của nó không nói gì. Vá xong thì chạy "
+     "lại đúng ca phá mã mà nó đã bỏ sót, và cho mình xem lần này nó có kêu.", 3600, 4, False),
+
+    # Chèn 04/10. Mô phỏng và bo nạp HAI tệp hex khác nhau, dịch bằng hai mức tối ưu khác
+    # nhau. Tiêu chí Bài 2 là "bo lệch mô phỏng ≤ 1 %" — nên nếu không sửa trước, phép đối
+    # chiếu ấy đang so hai chương trình khác nhau, và chỗ lệch sẽ bị quy cho phần cứng.
+    ("Bài 2: mô phỏng và bo đang chạy hai chương trình khác nhau",
+     "Makefile của bạn dịch được cả ba cấu hình rồi, mình chạy thử: `sw-h0`, `sw-h1`, `sw-h2` "
+     "đều qua. `-lgcc` ở mỗi dòng dịch, `memset` bạn tự viết ở `main.c:37`. Đạt.\n\n"
+     "Nhưng lúc kiểm, mình lần theo tham số `HEX_FILE` và thấy chỗ này:\n\n"
+     "| nơi | nạp tệp nào | dịch bằng | `.text` |\n|---|---|---|---|\n"
+     "| `sim/tb_soc.v:15` | `.eide/build/mach.hex` | EIDE, `-Os` | 6 100 |\n"
+     "| `rtl/soc_top.v:10` | `firmware.hex` | Makefile, `-O2` | 8 992 |\n\n"
+     "**Mô phỏng và bo đang chạy hai chương trình khác nhau**, dịch bằng hai mức tối ưu khác "
+     "nhau. Chênh gần 3 KB mã.\n\n"
+     "Tiêu chí Bài 2 mình viết là *bo lệch mô phỏng không quá 1 %*. Với hai bản khác nhau, "
+     "phép đối chiếu ấy **không đo được gì**: lệch thì mình sẽ đi tìm nguyên nhân ở phần "
+     "cứng, mà nguyên nhân nằm ở cờ dịch. Còn nếu nó tình cờ khớp dưới 1 % thì tệ hơn — mình "
+     "sẽ tin một phép so không có nội dung.\n\n"
+     "Số chu kỳ là **đầu ra duy nhất** của Bài 2. Hai mức tối ưu cho ra số chu kỳ khác nhau ở "
+     "mọi ô, nên chỗ này phải thống nhất trước khi chạy 96 ô, không phải sau.\n\n"
+     "Việc của bạn:\n\n"
+     "**1 ·** Cho mô phỏng và bitstream nạp **cùng một tệp hex, cùng một lần dịch**. Bạn chọn "
+     "đường nào cũng được, nhưng nói rõ bạn chọn đường nào và vì sao. Mình nghĩ nên lấy đường "
+     "Makefile vì đó là đường ra bo thật, nhưng bạn thấy khác thì cứ nói.\n\n"
+     "**2 ·** Sau khi thống nhất, **đo lại `.text`** và nói rõ con số nào là con số của bản "
+     "thật sự chạy. Con số 6 100 mình ghi ở lượt trước là của bản `-Os`, không phải bản ra "
+     "bo.\n\n"
+     "**3 ·** Thêm một chốt để chuyện này không lặp: cách nào để dựng bitstream mà `firmware."
+     "hex` cũ hoặc không truy được nguồn thì nó **đổ chứ không chạy tiếp**. Hôm qua mình đã "
+     "mất cả buổi tối vì bo chạy một bitstream mà mình tưởng là bản mới.\n\n"
+     "Xong ba việc đó thì chạy đủ 96 ô trên mô phỏng.", 3600, 4, False),
 
     ("Bài 2: chạy mô phỏng đủ các ô",
      "Chạy mô phỏng cho đủ các ô đi bạn. Ô nào không chạy được thì ghi là không chạy được, "

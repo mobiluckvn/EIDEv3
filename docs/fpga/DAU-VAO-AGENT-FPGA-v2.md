@@ -239,6 +239,36 @@ Hai chỗ mình nghe nói hay sập, bạn tự tránh:
 - **Bộ sinh dữ liệu dùng lại chính hằng số** mà mã sản phẩm dùng, nên phá hằng số thì hai bên
   tự khử nhau
 
+### 5.3b · Luật sinh dữ liệu vào — số này là của mình
+
+Thêm 03/10 tối. Bản đầu của tài liệu này **không nêu** luật sinh dữ liệu, nên bạn phải tự
+chọn — và bạn đã chọn hợp lý. Nhưng rồi `golden_checksums.h` ghi là luật ấy *theo tài liệu
+đầu vào*, mà tài liệu không có dòng nào về nó. Mốc chuẩn mất chỗ đứng: nó truy về lựa chọn
+của chính bạn ở một lượt trước, chứ không về một dữ kiện của mình.
+
+Nên mình chốt vào đây, thành số của mình:
+
+    A[i][k] = ((i + k) mod 7) + 1          giá trị trong [1, 7]
+    B[k][j] = ((k * 3 + j) mod 11) - 5     giá trị trong [-5, 5]
+    C[i][j] = tổng theo k của A[i][k] * B[k][j]
+    chk     = với từng phần tử của C theo thứ tự hàng:  chk = (chk * 31 + C) mod 2^32
+
+Dùng đúng luật này cho cả `I32` và `I8`: mọi giá trị của A và B đều nằm trong khoảng của
+`int8_t`, nên hai kiểu cho **cùng một ma trận C và cùng một `chk`**. Một bảng tổng kiểm theo
+`N` là đủ cho cả hai kiểu — nếu bạn thấy hai kiểu ra số khác nhau thì có chỗ sai, đừng sinh
+hai bảng để che nó.
+
+Mình đã tự tính bốn số này một lần nữa bằng tay, độc lập với mã của bạn:
+
+| N | `chk` |
+|---|---|
+| 4 | `0xfeaabd40` |
+| 8 | `0x2110c56a` |
+| 16 | `0xc7ce1f03` |
+| 32 | `0x36395f4b` |
+
+Bốn số trên là tầng NGƯỜI. Mã của bạn lệch với chúng thì mã sai, không phải bảng sai.
+
 ### 5.4 · Không đổi tiêu chí sau khi đã thấy kết quả
 
 Nêu tiêu chí nghiệm thu **trước** khi chạy. Nếu sau khi có số đo bạn thấy tiêu chí cần sửa thì
