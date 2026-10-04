@@ -446,6 +446,38 @@ def nap_qua_avrdude(anh: Path, cong: str, *, ma_chip: str = "m328p", baud: int =
             return kq
         tep_nap = tep_nap_moi
         kq.canh_bao.append(f"Đã đổi {anh.name} thành {tep_nap.name} để nạp.")
+    else:
+        # DEV-337. Nạp `.hex` thì KIỂM nó có cũ hơn `.elf` bên cạnh không.
+        #
+        # `build.compile` sinh ra `.elf`. Phép đổi elf→hex ở trên chỉ chạy khi người gọi đưa
+        # đúng `.elf`; đưa `.hex` thì nạp nguyên tệp hex đang nằm trên đĩa, **già bao nhiêu
+        # cũng nạp**.
+        #
+        # Đo được trên phiên robot 04/10/2026: `mach.elf` dựng 19:30:08, `mach.hex` còn từ
+        # 19:08:58 — già 22 phút. `target.flash` nạp bản cũ và **đối chiếu THÀNH CÔNG**, vì
+        # nó so chip với chính tệp nó vừa ghi. Đối chiếu khẳng định *thứ tôi ghi đúng là thứ
+        # đang nằm đó*, KHÔNG khẳng định *thứ tôi dựng đúng là thứ đang nằm đó*.
+        #
+        # Hậu quả: ba lượt liền người đo cổng nối tiếp, không thấy dòng `#STAGE` mà mã nguồn
+        # có, rồi đi soát hàm, soát khai báo, soát ký hiệu trong ảnh — tất cả đều đúng. Chỉ
+        # đọc ngược flash từ chip rồi so nội dung mới thấy chip đang chạy bản khác: 6 937 byte
+        # lệch, chuỗi `#STAGE` có trong ảnh mà không có trên chip.
+        #
+        # Đây là anh em sinh đôi của lỗi bitstream FPGA hôm 03/10, chỉ nằm ở đường AVR. Và
+        # phép so mốc dựng/mốc nạp KHÔNG bắt được: nạp (12:30:30) vẫn sau dựng (12:30:08).
+        # Mốc đúng thứ tự mà nội dung vẫn sai, vì giữa hai mốc ấy có một tệp thứ ba không
+        # được cập nhật.
+        elf_ben = anh.with_suffix(".elf")
+        if elf_ben.is_file() and elf_ben.stat().st_mtime > anh.stat().st_mtime + 1:
+            kq.vi_sao_khong_dat = (
+                f"`{anh.name}` CŨ HƠN `{elf_ben.name}` — nạp tệp này là nạp bản dựng trước. "
+                f"{anh.name} ghi lúc "
+                f"{time.strftime('%H:%M:%S', time.localtime(anh.stat().st_mtime))}, "
+                f"{elf_ben.name} lúc "
+                f"{time.strftime('%H:%M:%S', time.localtime(elf_ben.stat().st_mtime))}.")
+            kq.canh_bao.append(
+                f"Nạp `{elf_ben.name}` thay vì `{anh.name}`, hoặc sinh lại tệp hex trước.")
+            return kq
 
     kq.tep = tep_nap.name
     kq.so_byte = tep_nap.stat().st_size

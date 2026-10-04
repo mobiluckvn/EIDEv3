@@ -111,3 +111,22 @@ tệp rỗng có ký hiệu, rồi ghi cả động cơ vào chú thích. Tiêu 
 
 **Tệp nào không có việc gì để làm thì xoá đi.** Thà nhận một dự án ít tệp hơn mà tệp nào cũng
 có lý do tồn tại.
+
+---
+
+## D · Chân A2 dành cho đo chặng trong vòng 4 ms
+
+Thêm 04/10/2026, khi cần đo thời gian từng chặng trong vòng tính góc.
+
+Bảng 1.3 của tài liệu chính dành **D13** cho hàm ngắt 50 kHz và **A1** cho vòng 4 ms. Cả hai
+đã có việc. Nên mình cấp thêm **một** chân:
+
+| chân trên bo | chân của chip | hướng | dùng để làm gì |
+|---|---|---|---|
+| **A2** | **PC2** | ra | đo chặng bên trong vòng 4 ms, dùng cho máy hiện sóng |
+
+Mình ghi chân này vào đây **trước khi** mã dùng tới nó, vì ở lượt trước có ba chân bị đổi im
+lặng khỏi bảng 1.3 — và hậu quả là một bản firmware dịch sạch, nạp sạch, mà nút chết và còi
+im. Lệch bảng chân thì không có lỗi nào kêu lên.
+
+Vẫn giữ nguyên: **đừng dùng A1 và D13 cho việc khác.**
