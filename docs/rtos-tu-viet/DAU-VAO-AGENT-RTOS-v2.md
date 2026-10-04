@@ -159,7 +159,8 @@ thì ghi rõ là cần mình, mình sẽ nhìn bo và nói lại.
 |---|---|---|
 | 1 | **Không còn một ký hiệu nào của FreeRTOS** trong ảnh đã dịch | bạn — đọc bảng ký hiệu của ảnh, không phải grep mã nguồn |
 | 2 | Ảnh dịch ra **không lớn hơn bản FreeRTOS cũ** (bản cũ khoảng 263 KB) | bạn — đo bằng công cụ đọc kích thước phân vùng |
-| 3 | **Mọi tệp mã nguồn của dự án đều vào được ảnh** | bạn — đối chiếu cây nguồn với thứ thật sự được dịch |
+| 3 | **Không tệp nào mình trông đợi bị thiếu khỏi ảnh một cách im lặng** — xem 6.2 | bạn — đối chiếu cây nguồn với thứ thật sự được dịch |
+| 3b | **Xung nhịp hệ thống thật đạt 180 MHz** — đọc `RCC_CFGR` xem nguồn có phải PLL, và **đo nhịp thật** chứ đừng tin giá trị nạp vào SysTick | bạn — đọc thanh ghi trên chip |
 | 4 | Hai đèn nháy **đúng chu kỳ 1 000 ms và 400 ms** | bạn đo nếu đo được; nếu không thì mình nhìn |
 | 5 | Nút bấm PA0 **đổi trang**, và không bị rung nút | mình nhìn |
 | 6 | **Màn hình sáng và vẽ đúng giao diện** | mình nhìn |
@@ -167,6 +168,45 @@ thì ghi rõ là cần mình, mình sẽ nhìn bo và nói lại.
 | 8 | Đèn của việc thứ 4 **chỉ nháy khi có tin**, không nháy tự do | mình nhìn |
 | 9 | Chạy **liên tục 10 phút không treo** | bạn — nêu cách bạn chứng minh là không treo |
 | 10 | **Rút điện cắm lại thì chạy lại được**, không cần nạp lại | mình làm, mình nhìn |
+
+### 6.1b · Vì sao mình thêm điều kiện 3b về xung nhịp
+
+Thêm 04/10/2026, sau khi mất một lượt nạp vì thiếu nó.
+
+Mục 3 mình đã cho sẵn hằng số PLL, nên mình **tưởng** chuyện xung nhịp là xong. Nhưng cho một
+hằng số không làm nó được cài. Bản nạp đầu tiên chạy ở **HSI 16 MHz** — thạch anh ngoài chưa
+từng được bật (`HSEON = False`) — trong khi SysTick nạp 179 999 tức tính cho 180 MHz. Hậu quả
+là **mọi mốc thời gian chậm đúng 11,25 lần**, và màn hình tối vì định thời DSI tính theo 180 MHz.
+
+Chỗ nguy là nó **không báo lỗi gì**: không fault, không treo, mọi thanh ghi trông hợp lý. Một
+hệ chậm 11 lần nhìn giống một hệ không chạy.
+
+Và đáng chú ý: nhịp nạp vào SysTick **đúng** (179 999 cho 1 000 Hz ở 180 MHz). Nên đọc giá trị
+ấy rồi kết luận *nhịp 1 000 Hz* là sai — nó chỉ nói *nhịp sẽ là 1 000 Hz NẾU xung nhịp là 180
+MHz*. Đo nhịp thật thì ra 91 Hz. **Giá trị cấu hình không phải phép đo.**
+
+### 6.2 · Điều kiện số 3 mình viết sai, và đây là bản sửa
+
+Sửa 04/10/2026, sau khi thấy hậu quả.
+
+Bản đầu mình viết *"mọi tệp mã nguồn của dự án đều vào được ảnh"*. Câu ấy **tự nó khuyến
+khích làm sai**: một tệp rỗng thì không vào được ảnh, nên cách dễ nhất để đạt là **viết thêm
+mã vào tệp rỗng cho nó có gì đó**. Và chuyện ấy đã xảy ra thật — có một tệp trong dự án mang
+chú thích *"tệp này chứa mã thực thi để đảm bảo mọi tệp mã nguồn đều được biên dịch vào ảnh
+(Điều kiện số 3)"*. Mã viết ra để tiêu chí đạt, không vì sản phẩm cần.
+
+Lỗi ở mình. Điều mình **thật sự** muốn canh là chuyện khác: ở một phiên trước của chính việc
+này, có lượt báo *biên dịch xong* với ảnh 1 416 byte vì đầu vào bị thu hẹp dần cho tới khi
+dịch qua — **driver màn hình, giao diện và cảm ứng đều rơi ra ngoài mà không ai được báo**.
+
+Nên điều kiện số 3 đọc lại như sau:
+
+- **Nêu trước** danh sách tệp bạn trông đợi có trong ảnh, và vì sao mỗi tệp cần có.
+- Sau khi dịch, **đối chiếu** danh sách ấy với thứ thật sự vào ảnh.
+- Tệp nào thiếu thì **nói ra kèm lý do** — thiếu có thể là đúng, im lặng thì không bao giờ
+  đúng.
+- **Một tệp không có việc gì để làm thì xoá đi**, đừng viết thêm mã cho nó đạt điều kiện.
+  Mình thà nhận một dự án ít tệp hơn mà tệp nào cũng có lý do tồn tại.
 
 ### 6.1 · Hai chỗ mình muốn bạn cẩn thận với chính phép đo
 
