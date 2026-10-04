@@ -84,8 +84,13 @@ thành độ lệch con quay. Số đo thu được:
 Góc bò đều một chiều là dấu của **độ lệch con quay còn sót**, không phải dao động quanh điểm cân
 bằng. Nên bộ số này **không dùng được**, và nó không nói gì về robot — nó nói về cách thu.
 
-**Cách thu đúng**: lúc reset, đặt robot **nằm yên trên mặt phẳng, không giữ trên tay**, qua 1,5
-giây hiệu chuẩn rồi mới dựng lên. Phép đo này còn nợ.
+**Cách thu đúng** (ghi lại cho lần sau): lúc reset, đặt robot **nằm yên trên mặt phẳng, không
+giữ trên tay**, qua 1,5 giây hiệu chuẩn rồi mới dựng lên.
+
+**Phép đo này đóng lại mà không có số.** Robot đã được tháo ra ngày 04/10/2026, nên không thu
+lại được nữa trong phiên này. Nên `NT-BALANCE` **dừng ở tầng NGƯỜI**: có người quan sát trực
+tiếp robot đứng, không có phân bố góc kèm theo. Ai đọc báo cáo này cần biết đúng mức đó — không
+hơn.
 
 ### 2.2 · Chờ máy hiện sóng — **đo được trên nguồn USB, không cần pin**
 
@@ -106,14 +111,20 @@ nó **không thay được máy hiện sóng**, vì hai lẽ:
 Ghi lại vì chính người làm đã suy ra "đủ rồi" và **tác tử bác lại bằng lý do 1** — lý do người
 chưa nghĩ tới.
 
-### 2.3 · Đã có pin — đạt theo quan sát, chưa có số đo
+### 2.3 · Đã có pin — đạt theo quan sát, và đóng lại ở mức đó
 
-| # | điều kiện | trạng thái | thiếu gì |
+Robot **đã tháo ra ngày 04/10/2026**, nên bốn dòng dưới đây **chốt ở đúng mức hiện có**. Không
+dòng nào còn chờ việc — nếu sau này dựng lại robot thì là một phiên đo mới.
+
+| # | điều kiện | chốt ở mức | ghi chú |
 |---|---|---|---|
-| **NT-MOTOR** | động cơ bước đảo chiều, phát xung đúng tốc độ | **ĐẠT** — quan sát của người | — |
-| **NT-BALANCE** | robot đứng thẳng, giữ quanh 0° | **ĐẠT** — quan sát của người | phân bố góc lúc đứng, xem mục 2.1 |
-| **ba dấu** | `STATE_SELF_TEST` tách ba dấu | **chưa chạy** | một lượt vào `STATE_SELF_TEST` có nguồn động cơ |
-| `LOWBATT` | ngưỡng báo pin yếu | **chưa chuẩn** | đo điện áp pin thật tại A0 ở hai mức để chỉnh ngưỡng |
+| **NT-MOTOR** | động cơ bước đảo chiều, phát xung đúng tốc độ | **ĐẠT — tầng NGƯỜI** | người quan sát trực tiếp |
+| **NT-BALANCE** | robot đứng thẳng, giữ quanh 0° | **ĐẠT — tầng NGƯỜI** | **không có phân bố góc**; lý do ở mục 2.1 |
+| **ba dấu** | `STATE_SELF_TEST` tách ba dấu | **KHÔNG CHẠY** | không vào trạng thái này lần nào |
+| `LOWBATT` | ngưỡng báo pin yếu | **CHƯA CHUẨN** | ngưỡng vẫn là giá trị đặt trước, chưa đo điện áp pin thật tại A0 |
+
+Hai dòng cuối là **chỗ hở thật của việc này**, nói ra để không ai đọc bảng mục 1 rồi tưởng cả
+bài đã nghiệm thu kín.
 
 ---
 

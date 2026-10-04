@@ -174,11 +174,16 @@ Nói trước để không ai đọc quá tay. Điều thứ nhất là điều 
    làm mất **năm lượt** đuổi một lỗi định thời không tồn tại. Thời gian ấy nằm trong 4,53 giờ.
    Nếu người đo cẩn thận hơn thì con số còn thấp hơn — nghĩa là **4,53 giờ không phải mức sàn**.
 
-5. **Phép đo lúc robot đứng chưa lấy được.** Lần thu đầu bị chính phép đo phá: mở cổng nối tiếp
-   làm reset bo, reset làm chạy lại pha hiệu chuẩn con quay, mà lúc ấy người **đang giữ robot
-   trên tay** — chuyển động tay bị chốt thành độ lệch con quay, nên góc trôi đều 3,1°/giây và
-   robot ngã ở `30°`. Số liệu ấy **không dùng được**, và câu "robot đứng được" hiện là **quan
-   sát của người** chứ chưa có phân bố góc kèm theo.
+5. **Phép đo lúc robot đứng không lấy được, và đã đóng lại không có số.** Lần thu duy nhất bị
+   chính phép đo phá: mở cổng nối tiếp làm reset bo, reset làm chạy lại pha hiệu chuẩn con quay,
+   mà lúc ấy người **đang giữ robot trên tay** — chuyển động tay bị chốt thành độ lệch con quay,
+   nên góc trôi đều 3,1°/giây và robot ngã ở `30°`. Robot **đã tháo ra ngày 04/10/2026** nên
+   không thu lại được.
+
+   Nên câu "robot đứng được" trong mọi bảng của tài liệu này là **quan sát tầng NGƯỜI**, dứt
+   khoát không phải một phép đo. Hai dòng `NT-MOTOR` và `NT-BALANCE` chốt ở mức ấy. Đây là chỗ
+   yếu nhất của việc thứ tư, và nó đáng nêu ngay cạnh con số "57 lần" ở mục 3: **con số rút ngắn
+   thì đo được tới hai chữ số, còn chính kết quả cuối cùng thì chỉ có một người nhìn thấy.**
 
 ---
 

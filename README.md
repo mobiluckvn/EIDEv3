@@ -699,8 +699,10 @@ tuyệt đối** trong 1,5 giây. Lúc ấy người đang **giữ robot trên t
 30°. Số liệu ấy không nói gì về robot — nó nói về cách thu. Nên câu "robot đứng được" hiện là
 **quan sát tầng NGƯỜI**, chưa có phân bố góc kèm theo.
 
-Còn thiếu: phân bố góc lúc đứng (thu lại với robot **đặt yên trên sàn** suốt pha hiệu chuẩn),
-điều kiện 250 Hz chờ máy hiện sóng kẹp chân **A1**, và ngưỡng `LOWBATT` chờ đo điện áp pin thật.
+Robot **đã tháo ra ngày 04/10/2026**, nên ba mục này **đóng lại không có số**, và chốt ở đúng
+mức hiện có: phân bố góc lúc đứng (`NT-BALANCE` dừng ở tầng NGƯỜI), điều kiện 250 Hz (cần máy
+hiện sóng kẹp chân **A1**), và ngưỡng `LOWBATT` (vẫn là giá trị đặt trước, chưa đo điện áp pin
+thật). Dựng lại robot thì là một phiên đo mới.
 
 Chi tiết thời gian, token, tiền và bảng ngày công người làm:
 [**so sánh với người làm tay**](docs/robot-sinhvien/phien-sinhvien-04-10/SO-SANH-VOI-NGUOI.md).
