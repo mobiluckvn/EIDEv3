@@ -68,3 +68,16 @@ dự án** (`cs-0019`) thay vì chỉ xin lỗi:
 
 Lúc so, bốn con số nên đặt cạnh nhau: **số lỗi người phải bắt**, **số lời gọi bị cổng chặn**,
 **độ nhạy bộ đo ở lần chạy đầu**, và **số lượt phải quay lại sửa**.
+
+---
+
+## Bản làm lại đã chạy — 04/10/2026
+
+Việc số 3 ở mục trên (*làm lại toàn bộ phiên sinh viên với tác tử đã vá*) **đã làm**, trong dự
+án trống `du-lieu/robot-sinhvien2/`. Kết quả và bốn con số so hai phiên:
+[`phien-sinhvien-04-10/KET-QUA.md`](phien-sinhvien-04-10/KET-QUA.md).
+
+Gọn lại: **7 điều kiện đo được trên bo thật** (ngắt bước đo **50,0005 kHz**, lệch +0,0009 %),
+541 lời gọi với 18 lượt bị chặn (3,3 %, phiên 1 là 6,6 %), và chốt `DEV-336` vá trong phiên
+**nổ thật 3 lần**. Phần robot đứng thẳng còn **chờ pin và nguồn động cơ**; `NT-B` chờ máy hiện
+sóng kẹp chân A1 — đo được ngay trên nguồn USB, không cần pin.

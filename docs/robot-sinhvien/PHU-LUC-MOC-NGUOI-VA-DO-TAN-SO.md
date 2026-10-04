@@ -98,6 +98,31 @@ Dòng **NT-C** quan trọng riêng: ở việc RTOS, một hàm `memset` tự vi
 thành lời gọi **chính nó**, và chuyện ấy chỉ thấy khi mở `objdump`. Mã nguồn không chứa phép
 chia vẫn có thể sinh ra mã máy gọi hàm chia.
 
+### Cái bẫy nằm ở phía người đọc dữ liệu, không ở phía thiết bị
+
+`NT-A` đã đo được: **50,0005 kHz, lệch +0,0009 %** — tỉ số Timer2/Timer0 trên 36,8 giây, neo
+vào đồng hồ tường 40,015 s. Nhưng đường tới con số ấy lộ ra một lỗ **không nằm trong thiết bị**:
+
+Hai lần trong cùng một phiên, phép **lọc dữ liệu thô** theo định dạng *tự nhớ* đã làm sai, với
+hai giá chênh nhau rất xa:
+
+| phép lọc sai | đầu ra | giá phải trả |
+|---|---|---|
+| bỏ qua dòng `#STAGE` dùng chung bộ đếm | `115,7` / `112,2` / `90,85 ms` | **năm lượt** đuổi một lỗi định thời không tồn tại |
+| lọc theo tiền tố `#T ` không hề có | thu 406 dòng, lọc ra **0 dòng** | **một lượt** |
+
+Sự thật ở ca thứ nhất: 372/372 khoảng đúng 100 ms, 0 số thứ tự thiếu — **chưa từng có lỗi định
+thời nào**. Phép lọc đã tự sinh ra khoảng trống rồi báo cáo chúng như số đo.
+
+Rút ra, và nó áp cho mọi phép đo trong tài liệu này: một phép lọc sai mà trả về **rỗng** thì
+gãy to nên rẻ; cùng phép lọc ấy mà trả về **số trông hợp lý** thì không ai nghi, nên nó đi
+thẳng vào kết luận. **Giá của lỗi tỉ lệ với độ hợp lý của đầu ra, không tỉ lệ với độ sai.**
+
+Nên trước khi lọc bất kỳ bản ghi thô nào: mở vài dòng thô ra xem, đếm tiền tố thật
+(`awk '{print $1}' | sort | uniq -c`), và so **số dòng vào với số dòng được dùng**. Chênh bao
+nhiêu thì đúng chỗ ấy là chỗ cần đọc. Và cách chữa đã hiệu nghiệm hai lần: **bắt thiết bị tự
+khai mốc thời gian và số thứ tự của nó**, rồi đếm số thiếu — đừng để phía chủ đo suy ra thứ tự.
+
 ---
 
 ## C · Một câu thêm vào mục 2.6
@@ -130,3 +155,91 @@ lặng khỏi bảng 1.3 — và hậu quả là một bản firmware dịch s�
 im. Lệch bảng chân thì không có lỗi nào kêu lên.
 
 Vẫn giữ nguyên: **đừng dùng A1 và D13 cho việc khác.**
+
+---
+
+## E · Tham số điều khiển đã chạy thật — tầng NGƯỜI
+
+Thêm 04/10/2026. Mình tra từ bản firmware **đã đứng được trên bo thật** ngày 01/10/2026
+(`docs/robot-tu-can-bang/firmware/`), và chỉ lấy số từ những tệp **thật sự nằm trong đường
+chạy**.
+
+### E.0 · Vì sao mình phải nói chuyện này trước
+
+Bản chạy được ấy có tệp `control.c` với bốn hàm, và cả bốn **đều nằm trong ảnh đã nạp**. Nhưng
+mình đọc mã máy:
+
+```
+avr-nm mach.elf   → control_init, control_reset, control_set_state, control_update_4ms
+avr-objdump -d    → số lời gọi tới control_* = 0
+```
+
+**Không ai gọi chúng.** `control.c` là mã chết trong chính bản đã làm robot đứng. Nên mọi hằng
+số trong tệp ấy **chưa bao giờ góp phần vào việc robot đứng**, và lấy số từ đó là cấp cho bạn
+một bộ tham số chưa từng chạy.
+
+Đường chạy thật là `fsm.c` → `pid.c` → `motor.c`. Mọi số dưới đây lấy từ ba tệp ấy.
+
+### E.1 · Bộ điều khiển PID
+
+| | giá trị | lấy ở đâu |
+|---|---|---|
+| hệ số tỉ lệ `Kp` | **12,0** | `pid.c:4` |
+| hệ số tích phân `Ki` | **0,4** | `pid.c:5` |
+| hệ số vi phân `Kd` | **10,0** | `pid.c:6` |
+| kẹp bộ nhớ tích phân | **±400,0** | `pid.c:36-37` |
+| kẹp ngõ ra | **±400,0** | `pid.c:45-46` |
+
+Hai chi tiết mình thấy trong mã mà **tài liệu chính không nêu**, nên ghi vào đây:
+
+- **Phản hồi ngõ ra vào sai số.** Khi `|ngõ ra| > 10` thì sai số được cộng thêm
+  `ngõ ra × 0,015` (`pid.c:30-31`). Nó làm bộ điều khiển bớt hăng khi đã ra lệnh mạnh.
+- **Tự học điểm cân bằng.** Mỗi vòng, nếu ngõ ra âm thì điểm cân bằng `+= 0,002`; nếu dương thì
+  `-= 0,002` (`pid.c:57-58`). Đây chính là chỗ tài liệu chính mục 3.8 nói mơ hồ, và bạn đã nêu
+  ra ở lượt đọc đề — mình nhận, và đây là con số thật.
+- **Triệt tiêu khi ngã.** `!đang chạy` hoặc `|góc| > 30°` thì ngõ ra và bộ nhớ tích phân về 0
+  (`pid.c:62`).
+
+### E.2 · Quy đổi ngõ ra PID sang giá trị xung
+
+Công thức phi tuyến ở `motor.c:57-61`:
+
+```c
+nếu ngõ ra > 0:   out_nl =  405,0 - (5500,0 / (ngõ ra + 9,0));   xung =  400,0 - out_nl
+nếu ngõ ra < 0:   out_nl = -405,0 - (5500,0 / (ngõ ra - 9,0));   xung = -400,0 - out_nl
+```
+
+### E.3 · Dải chu kỳ bước
+
+| | giá trị | lấy ở đâu |
+|---|---|---|
+| quan hệ | `|thr| = (50 000 / f) − 1`, chu kỳ `= (|thr| + 1) × 20 µs` | `motor.c:44-45` |
+| dưới **10 Hz** | trả về 0, đứng im tường minh | `motor.c:41-42` |
+| `thr` nhỏ nhất | **1** → 25 000 xung/s, tốc độ tối đa thiết kế | `motor.c:48-49` |
+| `thr` lớn nhất | **2 000** → 25 xung/s, sát điểm thăng bằng | `motor.c:50-51` |
+
+### E.4 · Ngưỡng và hiệu chuẩn
+
+| | giá trị | xuất xứ trong bản chạy được |
+|---|---|---|
+| ngưỡng ngã, ngắt xung | **±30,0°** | `config.h:81`, ghi `(V1:319)` |
+| cửa sổ kích hoạt cân bằng | **±0,5°** | `config.h:82`, ghi `(V1:414)` |
+| hiệu chuẩn gia tốc tĩnh | **92** | `config.h:83`, ghi `(V1:76)` |
+| chiều tiến bánh trái D6 | **mức THẤP (0)** | `config.h:72`, ghi `(V1:581)` |
+| chiều tiến bánh phải D4 | **mức CAO (1)** | `config.h:73`, ghi `(V1:598)` |
+| số mẫu đo offset | **500** | `config.h:94` |
+| timeout chống treo I2C | **1 000** vòng | `config.h:91` |
+
+Ghi chú `(V1:nnn)` trỏ về dòng trong mã **V1 của nhà cung cấp**
+(`docs/robot-tu-can-bang/ncc/V1_Balancing_Robot_HC05_JQ6500/`) — tức bộ số đã làm một con
+robot đứng thật, không phải số mình nghĩ ra.
+
+### E.5 · Hai điều về cách dùng bộ số này
+
+**Dùng được ngay, nhưng không phải chân lý.** Số bù gia tốc **92** là của bo mẫu — bạn đã nói
+đúng chỗ này ở lượt đọc đề, và bo của mình cần tự đo lấy số riêng. Ba hệ số PID thì nên chạy
+được trước khi tinh chỉnh.
+
+**Và đừng lấy số từ `control.c`.** Mình nhắc lại vì nó dễ nhầm: tệp ấy có trong bản chạy được,
+có trong ảnh đã nạp, nhưng không ai gọi. Nếu bạn thấy hằng số nào trong đó khác với bảng trên,
+thì bảng trên đúng — vì bảng trên lấy từ mã đã thật sự thi hành.
