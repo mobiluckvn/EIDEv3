@@ -193,6 +193,7 @@ def chu_tu_html(html_chu: str) -> str:
 
 def tai_ve(url: str, thu_muc: Path, *, ten_tep: str = "", tran_byte: int = TRAN_BYTE,
            timeout: float = 60.0, nhan_html: bool = False,
+           giu_ban_cu: bool = True,
            mo_url: Callable[..., Any] | None = None) -> KetQuaTai:
     """Tải `url` vào `thu_muc`. Trả về sự thật đo được, không kèm kết luận "dùng được".
 
@@ -318,11 +319,29 @@ def tai_ve(url: str, thu_muc: Path, *, ten_tep: str = "", tran_byte: int = TRAN_
         ten += duoi_chuan
     p = thu_muc / ten
     if p.exists() and hashlib.sha256(p.read_bytes()).hexdigest() != kq.hash:
-        # Cùng tên, khác nội dung: giữ cả hai. Ghi đè im lặng là cách mất bản tài liệu cũ mà
-        # các Fact đã trích dẫn tới — và trích dẫn thì phải còn kiểm lại được.
-        goc, sau = (ten.rsplit(".", 1) + [""])[:2]
-        p = thu_muc / (f"{goc}-{kq.hash[:8]}" + (f".{sau}" if sau else ""))
-        kq.canh_bao.append(f"Đã có tệp cùng tên với nội dung khác — lưu thành {p.name}.")
+        # Cùng tên, khác nội dung. Hai kiểu tệp cần hai cách xử lý khác nhau, và trước
+        # 04/10/2026 chỉ có một cách cho cả hai:
+        #
+        # `giu_ban_cu=True` — TÀI LIỆU. Giữ cả hai bản. Ghi đè im lặng là cách mất bản tài
+        # liệu cũ mà các Fact đã trích dẫn tới, và trích dẫn thì phải còn kiểm lại được.
+        #
+        # `giu_ban_cu=False` — MÃ NGUỒN đưa vào thư mục được biên dịch. Ở đây giữ cả hai là
+        # SAI: cả hai bản cùng vào dòng lệnh dịch. Đo được trên phiên RTOS 04/10/2026 —
+        # `ft6x06.c` và `ft6x06-ac138c52.c`, `nt35510.c` và `nt35510-6b3d5f5f.c`,
+        # `otm8009a.c` và `otm8009a-1bf0e24c.c` đều nằm trong 45 tệp `.c` được dịch. Lần ấy
+        # link được chỉ vì hai bản đặt tên hàm khác nhau; cùng tên hàm là lỗi link, mà tệ hơn
+        # cả lỗi link là **link đúng bản sai**.
+        #
+        # Một chính sách hợp lý cho hiện vật trích dẫn không tự nhiên hợp lý cho đơn vị biên
+        # dịch. Chỗ hỏng không nằm ở chính sách mà ở việc chỉ có một chính sách.
+        if giu_ban_cu:
+            goc, sau = (ten.rsplit(".", 1) + [""])[:2]
+            p = thu_muc / (f"{goc}-{kq.hash[:8]}" + (f".{sau}" if sau else ""))
+            kq.canh_bao.append(f"Đã có tệp cùng tên với nội dung khác — lưu thành {p.name}.")
+        else:
+            kq.canh_bao.append(
+                f"`{ten}` đã có với nội dung khác — GHI ĐÈ, vì giữ cả hai bản trong thư mục "
+                "được biên dịch sẽ đưa cả hai vào dòng lệnh dịch.")
     p.write_bytes(noi_dung)
     kq.tep = p.name
     kq.dat = True

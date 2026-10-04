@@ -1,0 +1,246 @@
+# Giao việc: tự viết một hệ điều hành thời gian thực, bỏ FreeRTOS
+
+Chào bạn. Mình là sinh viên đang làm đồ án về lập trình nhúng. Việc này mình nhờ bạn làm cùng
+mình từ đầu tới cuối: **viết lấy một hệ điều hành thời gian thực nhỏ, rồi thay FreeRTOS trong
+một dự án đang chạy được bằng nó.**
+
+Mình viết tài liệu này cho bạn thực hiện, nên mình cố gắng nói rõ **mình cần gì** và **cái gì
+đã chắc chắn** — còn **làm thế nào** thì phần lớn là việc của bạn.
+
+---
+
+## 1 · Mình ở đâu trong việc này
+
+Mình là sinh viên, không phải người đã làm nhúng nhiều năm. Nói thẳng để bạn khỏi phải đoán:
+
+- Mình **đọc hiểu được** mã C, sơ đồ chân, và tài liệu chip khi có người chỉ chỗ.
+- Mình **chưa từng** viết bộ lập lịch, chưa từng viết chuyển ngữ cảnh bằng hợp ngữ, và chưa
+  từng gỡ lỗi màn hình DSI.
+- Mình **không đủ trình để soát từng dòng mã của bạn**. Nên thứ mình dựa vào là **số đo** và
+  **chỗ bạn trích dẫn**, không phải cảm giác mã trông có đúng không.
+- Mình **cắm bo và nhìn bo hộ bạn**. Bạn bảo mình nhìn gì thì mình nhìn và nói lại đúng điều
+  mình thấy. Mình không tự suy ra nguyên nhân.
+
+Vì vậy mình cần bạn làm một điều suốt cả việc: **mỗi lần bạn nói một việc đã xong, kèm theo
+phép đo nào chứng minh điều đó, và chỗ lấy số.** Câu "đã biên dịch xong" không giúp mình; câu
+"ảnh ra 259 488 byte, trong đó có đủ 15 tệp, đây là danh sách" thì giúp.
+
+---
+
+## 2 · Đề bài
+
+Có một dự án **đang chạy được** trên kit STM32F469I-DISCO: màn hình DSI 800×480, cảm ứng điện
+dung, sáu việc chạy song song, dùng **FreeRTOS v10**.
+
+Việc của bạn: **bỏ hẳn FreeRTOS, viết lấy nhân thời gian thực của mình, và dự án phải chạy
+đúng như trước.**
+
+Đây không phải bài tập viết thêm tính năng. Nó là bài tập **thay một thứ đang chạy bằng một thứ
+mình tự làm, mà không được làm hỏng thứ đang chạy** — nên phép đo quan trọng hơn mã.
+
+### Vì sao mình chọn việc này
+
+Vì nó có một mốc so sánh **không thể tranh luận**: bản cũ chạy được, nên bản mới chạy sai là
+thấy ngay. Và vì nhân thời gian thực là chỗ **sai một chút là treo hẳn**, không sai nhẹ.
+
+---
+
+## 3 · Phần cứng — số ở đây mình đã tra, bạn dùng được luôn
+
+Mình tra những con số này từ dự án đang chạy và từ linker script, không phải nhớ lại. Chỗ nào
+mình **không chắc** thì mình ghi rõ là không chắc.
+
+| | giá trị | mình lấy ở đâu |
+|---|---|---|
+| Vi điều khiển | STM32F469NI, lõi Cortex-M4F | nhãn trên chip và tên linker script |
+| Flash | **2 048 KB** tại `0x08000000` | `stm32f469ni.ld` mục `MEMORY` |
+| RAM nội | **320 KB** tại `0x20000000` | `stm32f469ni.ld` mục `MEMORY` |
+| Đỉnh ngăn xếp ban đầu | `ORIGIN(RAM) + LENGTH(RAM)` | `stm32f469ni.ld` dòng `_estack` |
+| Nguồn xung nhịp ngoài | HSE | mã cấu hình xung nhịp |
+| Xung nhịp hệ thống | **180 MHz** | PLL cấu hình như dưới |
+| PLL chính | `PLLM = 8` · `PLLN = 360` · `PLLP = ÷2` · `PLLQ = 7` · `PLLR = 6` | thanh ghi `RCC->PLLCFGR` trong mã đang chạy |
+| Màn hình | DSI 800×480, IC điều khiển **OTM8009A** | chuỗi hiện trên màn bản cũ |
+| Cảm ứng | điện dung, IC **FT6206**, giao tiếp I2C | mã driver cảm ứng |
+| Nút bấm người dùng | **PA0** | mã quét nút |
+| SDRAM dùng làm bộ đệm khung | có, bản cũ dùng | mã khởi tạo giao diện |
+
+**Chỗ mình không chắc, bạn tự xác định rồi ghi lại:**
+
+- Giao tiếp I2C với IC cảm ứng ở bản cũ **không dùng ngoại vi I2C của chip** mà tự lắc chân.
+  Mình không biết tần số bao nhiêu là đúng ở 180 MHz, cũng không biết nên đổi sang ngoại vi
+  I2C thật hay giữ cách lắc chân. Bạn quyết, và nói lý do.
+- Mình **không biết** ngăn xếp mỗi tác vụ cần bao nhiêu. Bản cũ đặt một con số, nhưng mình
+  không biết con số ấy có dư hay có thiếu. Bạn tự chọn, và **đo** chứ đừng đoán.
+
+---
+
+## 4 · Nhân thời gian thực — mình cần những gì
+
+Mình nêu **yêu cầu**, không nêu cách làm. Bạn thấy cách khác tốt hơn thì làm, nhưng phải nói ra.
+
+### 4.1 · Lập lịch
+
+- **Tiền định theo mức ưu tiên** — tác vụ ưu tiên cao hơn mà sẵn sàng thì phải chiếm CPU ngay,
+  không chờ tác vụ đang chạy nhường.
+- Có **đủ 32 mức ưu tiên**, trong đó mức thấp nhất dành cho tác vụ rỗi.
+- Chịu được **tối thiểu 16 tác vụ**.
+- Nhịp hệ thống **1 000 Hz** (một nhịp mỗi mili-giây).
+
+### 4.2 · Chuyển ngữ cảnh
+
+Đây là chỗ mình biết là khó nhất và mình không kiểm được bằng mắt, nên mình nêu rõ ràng buộc:
+
+- Chuyển ngữ cảnh phải xảy ra trong ngắt **PendSV**, không xảy ra trong `SysTick`.
+- Lõi này **có bộ xử lý số thực**. Khung ngăn xếp khi có dùng số thực **khác** khung thường, và
+  giá trị `EXC_RETURN` cũng khác. Nếu bạn làm sai chỗ này thì nó chạy đúng cho tới khi một tác
+  vụ nào đó dùng số thực, rồi treo — nên bạn phải xử lý cả hai khung, và **nói cho mình biết
+  bạn phân biệt chúng bằng cách nào**.
+- Tác vụ chạy ở **Thread mode dùng con trỏ ngăn xếp tiến trình (PSP)**; nhân và ngắt dùng con
+  trỏ ngăn xếp chính (MSP).
+- Khi dựng ngăn xếp cho một tác vụ mới, thanh ghi trạng thái ban đầu phải có **bit Thumb** bật.
+
+### 4.3 · Truyền tin giữa các tác vụ
+
+- Một kiểu **hàng đợi** là đủ, nhưng phải có:
+  - **cấp phát tĩnh** — không cấp phát động ở đâu trong nhân. Mình muốn biết trước lúc dịch là
+    nó tốn bao nhiêu RAM.
+  - **chờ có thời hạn** — gửi và nhận đều phải nêu được "chờ tối đa bao nhiêu nhịp", và phải
+    phân biệt được *nhận được* với *hết thời hạn*.
+- Một tác vụ đang chờ hàng đợi thì **không được chiếm CPU**.
+
+### 4.4 · Trễ
+
+- `trễ bao nhiêu mili-giây` — và trong lúc trễ thì tác vụ **không chiếm CPU**.
+- Mình cần bạn chú ý một chỗ: trong dự án có những đoạn khởi tạo phần cứng **có ràng buộc thời
+  gian cứng**, mà chúng đang gọi hàm trễ của thư viện phần cứng. Nếu hàm trễ ấy nhường CPU thì
+  đoạn khởi tạo bị chen ngang. Mình nêu ra để bạn cân nhắc, **không phải để bạn chữa theo cách
+  mình nghĩ** — bạn tự quyết.
+
+### 4.5 · Những thứ mình KHÔNG đòi
+
+Nói ra để bạn khỏi làm thừa:
+
+- Không cần cấp phát bộ nhớ động.
+- Không cần mutex, semaphore, event group, timer mềm — trừ khi dự án cần mới làm.
+- Không cần hỗ trợ nhiều lõi.
+- Không cần tương thích API của FreeRTOS. Bạn đặt tên hàm theo ý bạn.
+
+---
+
+## 5 · Sáu việc phải chạy song song
+
+Dự án cũ có sáu việc. Bản mới phải có đủ sáu, **hành vi nhìn thấy được phải giống**.
+
+| việc | nó làm gì | mốc thời gian |
+|---|---|---|
+| 1 | nháy một đèn | **chu kỳ 1 000 ms** |
+| 2 | nháy một đèn khác | **chu kỳ 400 ms** |
+| 3 | quét nút bấm PA0, chống rung | **quét mỗi 30 ms** |
+| 4 | một đèn nữa, chỉ nháy khi **nhận được tin qua hàng đợi** | chờ có thời hạn |
+| 5 | theo dõi và báo trạng thái hệ thống | chu kỳ mình để bạn chọn |
+| 6 | màn hình DSI và cảm ứng | xem dưới |
+
+Về **thứ tự ưu tiên** giữa sáu việc: mình **không chốt**. Bạn tự xếp, nhưng phải nói lý do, và
+phải nghĩ tới chuyện việc quét nút chạy mỗi 30 ms có thể chen vào giữa việc khác.
+
+Việc thứ 6 cần:
+- khởi tạo SDRAM và màn hình, vẽ được giao diện;
+- đọc được điểm chạm trên màn hình;
+- nút bấm vật lý **và** chạm màn hình đều đổi được trang hiển thị.
+
+---
+
+## 6 · Đạt nghĩa là gì — danh mục nghiệm thu
+
+Mỗi dòng dưới đây bạn phải báo **đạt hay chưa, kèm số đo và chỗ lấy số**. Dòng nào cần mắt mình
+thì ghi rõ là cần mình, mình sẽ nhìn bo và nói lại.
+
+| # | điều kiện | ai đo |
+|---|---|---|
+| 1 | **Không còn một ký hiệu nào của FreeRTOS** trong ảnh đã dịch | bạn — đọc bảng ký hiệu của ảnh, không phải grep mã nguồn |
+| 2 | Ảnh dịch ra **không lớn hơn bản FreeRTOS cũ** (bản cũ khoảng 263 KB) | bạn — đo bằng công cụ đọc kích thước phân vùng |
+| 3 | **Mọi tệp mã nguồn của dự án đều vào được ảnh** | bạn — đối chiếu cây nguồn với thứ thật sự được dịch |
+| 4 | Hai đèn nháy **đúng chu kỳ 1 000 ms và 400 ms** | bạn đo nếu đo được; nếu không thì mình nhìn |
+| 5 | Nút bấm PA0 **đổi trang**, và không bị rung nút | mình nhìn |
+| 6 | **Màn hình sáng và vẽ đúng giao diện** | mình nhìn |
+| 7 | **Chạm màn hình đổi trang** | mình nhìn |
+| 8 | Đèn của việc thứ 4 **chỉ nháy khi có tin**, không nháy tự do | mình nhìn |
+| 9 | Chạy **liên tục 10 phút không treo** | bạn — nêu cách bạn chứng minh là không treo |
+| 10 | **Rút điện cắm lại thì chạy lại được**, không cần nạp lại | mình làm, mình nhìn |
+
+### 6.1 · Hai chỗ mình muốn bạn cẩn thận với chính phép đo
+
+Mình đã bị hai chuyện này cắn ở việc trước nên nói trước:
+
+- **Một ảnh dịch ra nhỏ bất thường không phải là tin tốt.** Nếu bạn thu hẹp đầu vào cho tới khi
+  dịch qua được rồi báo "xong", thì lời báo ấy đúng về **lời gọi** mà sai về **việc**. Nên điều
+  kiện số 3 ở trên tồn tại: mình cần biết tệp nào **không** vào ảnh.
+- **Mốc đọc phải sau mốc nạp.** Nếu bạn nạp rồi đọc trạng thái bo, phải tự so hai mốc thời gian
+  ấy trước khi kết luận. Đọc trước khi nạp thì bạn đang đo **bản cũ**, và số sẽ trông hợp lý.
+
+---
+
+## 7 · Cách mình muốn làm việc với bạn
+
+### 7.1 · Mình giao một việc mỗi lượt
+
+Mình học được chuyện này ở việc trước: đưa cả tài liệu dài rồi nói "làm đi" thì bạn đọc rồi
+dừng. Nên mình sẽ gõ từng câu ngắn, mỗi câu một việc. Bạn cứ làm việc được giao trong lượt, báo
+lại, rồi mình giao tiếp.
+
+### 7.2 · Bắt buộc dừng lại hỏi mình, sáu chỗ
+
+1. Trước khi **nạp bất cứ thứ gì** lên bo.
+2. Khi bạn muốn **lệch khỏi tài liệu này** — kể cả lệch đúng.
+3. Khi bạn phát hiện **tài liệu này sai hoặc thiếu**. Mình viết nó, nên mình cũng sai được.
+4. Khi bạn cần mình **cắm mạch, nhìn bo, hoặc bấm nút**.
+5. Khi một quyết định làm **đổi chính thứ đang được đo**.
+6. Khi bạn nhận ra **mình đã báo một việc xong mà thực ra chưa xong**. Chỗ này mình để riêng vì
+   nó là chỗ khó nói nhất, và nó đáng giá nhất.
+
+### 7.3 · Mỗi lượt kết lại năm dòng
+
+1. Đã làm gì.
+2. Bỏ gì và vì sao.
+3. Giả định đang dùng.
+4. Hoàn tác được tới đâu.
+5. Hết bao nhiêu.
+
+### 7.4 · Tầng tin được
+
+Khi bạn đưa một con số, nói rõ nó ở tầng nào:
+
+- **NGƯỜI** — mình đo hoặc mình nhìn thấy.
+- **VÀNG** — bạn đo bằng công cụ, có hiện vật.
+- **ĐỒNG** — bạn ước lượng, suy ra, hoặc nhớ.
+
+Con số tầng ĐỒNG mình vẫn dùng, nhưng mình cần biết nó là ĐỒNG. Ở việc trước có một con số bạn
+tự khai ĐỒNG rồi sau nâng lên có số đo — làm đúng như vậy là đủ.
+
+### 7.5 · Bộ kiểm phải đo được sản phẩm
+
+Nếu bạn viết bài kiểm, mình cần biết **bài kiểm ấy có đo gì không**. Hai chỗ mình nghe nói hay
+sập, bạn tự tránh:
+
+- **Tệp kiểm chép lại logic** của mã sản phẩm thay vì dịch thẳng mã sản phẩm vào.
+- **Mốc so sánh lấy từ đầu ra của chính mã** — thì nó bảo vệ cả cái lỗi.
+
+Và sau khi bài kiểm xanh, mình muốn bạn **tự phá mã sản phẩm rồi chạy lại** để xem bài kiểm có
+kêu. Ca nào không kêu thì nói rõ ra — đó là chỗ nó không bảo vệ được, và nói ra thì đáng tin hơn
+một bảng toàn màu xanh.
+
+---
+
+## 8 · Thứ mình cần nhận cuối cùng
+
+| | |
+|---|---|
+| mã nguồn | nhân, driver, linker script, startup — chạy được |
+| ảnh đã nạp | tệp nhị phân đúng bản đang chạy trên bo |
+| bảng nghiệm thu | 10 dòng ở mục 6, mỗi dòng có số đo và chỗ lấy |
+| các quyết định | mỗi chỗ bạn lệch khỏi tài liệu này, kèm lý do và mặt dở |
+| chỗ chưa xong | thật thà, kể cả chỗ bạn đã báo xong rồi phát hiện chưa |
+| chỗ bảng nghiệm thu **không chứng minh được** | dù nó xanh hết |
+
+Dòng cuối mình để riêng. Một bảng nghiệm thu xanh toàn bộ là đúng loại kết quả dễ bị tin quá
+mức, nên mình cần bạn tự nói ra giới hạn của nó.

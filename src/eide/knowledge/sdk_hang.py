@@ -206,7 +206,19 @@ def lay_sdk(repo: str, tep: list[str], dich: Path, *, nhanh: str = "main",
             urllib.parse.quote(x) for x in tep[0].split("/"))
         thu_kq = tv.tai_ve(thu, dich, ten_tep=".eide-thu-nhanh", tran_byte=4096,
                            timeout=min(timeout, 20))
-        (dich / ".eide-thu-nhanh").unlink(missing_ok=True)
+        # Dọn theo TÊN ĐÃ GHI RA, không theo tên mình xin.
+        #
+        # `tai_ve` làm sạch tên bằng `.strip("-.")`, nên dấu chấm đầu bị cắt và tệp thử nằm
+        # lại thành `eide-thu-nhanh` — một tệp KHÔNG ẨN, trong `firmware/`, và lệnh dọn cũ
+        # xoá đúng cái tên không tồn tại. Đo được trên phiên RTOS 04/10/2026: ba tệp
+        # `eide-thu-nhanh`, `eide-thu-nhanh-223cd9d0`, `eide-thu-nhanh-f18a6eab` nằm lại
+        # trong thư mục mã nguồn của người dùng.
+        #
+        # Bài học chung: khi một hàm có quyền đổi tên tệp, chỗ dọn phải hỏi nó "mày ghi ra
+        # tên gì" chứ đừng tự nhớ tên mình đã xin.
+        for ten_rac in {".eide-thu-nhanh", thu_kq.tep, thu_kq.tep_goc}:
+            if ten_rac:
+                (dich / ten_rac).unlink(missing_ok=True)
         if "404" in thu_kq.vi_sao_khong_dat:
             that = nhanh_mac_dinh(*repo.split("/", 1))
             if that and that != nhanh:
@@ -235,8 +247,10 @@ def lay_sdk(repo: str, tep: list[str], dich: Path, *, nhanh: str = "main",
                + "/".join(urllib.parse.quote(x) for x in duong.split("/")))
         ra = (dich / ten)
         ra.parent.mkdir(parents=True, exist_ok=True)
+        # `giu_ban_cu=False`: đây là mã nguồn đi vào thư mục được biên dịch, không phải
+        # hiện vật trích dẫn. Xem chú thích trong `tai_ve`.
         r = tv.tai_ve(url, ra.parent, ten_tep=ra.name, tran_byte=TRAN_MOT_TEP,
-                      timeout=timeout, mo_url=mo_url)
+                      timeout=timeout, giu_ban_cu=False, mo_url=mo_url)
         if not r.dat:
             t.vi_sao = r.vi_sao_khong_dat[:200]
             continue
