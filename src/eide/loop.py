@@ -373,6 +373,13 @@ class Agent:
         if not im_lang:
             emit(uic.run_update(run_id, status="running", steps=[]))
 
+        # M1-02 — một lượt việc mới: già hoá danh sách công cụ mở tạm. KHÔNG đếm `attend`
+        # và `set` — bảy cú bấm chuyển tab không được làm tác tử mất công cụ nó đang dùng.
+        if act.kind not in ("attend", "set"):
+            da_go = self.registry.sang_luot_moi(ghim=self._cong_cu_ke_hoach())
+            if da_go:
+                self.ledger.append("note", {"run_id": run_id, "go_cong_cu_khong_dung": da_go})
+
         try:
             self._run(act, ctx)
             # Lượt kết thúc mà tác tử KHÔNG nói câu nào là một lượt người dùng không đọc
@@ -711,10 +718,14 @@ class Agent:
 
             asm = self._assemble(ctx, s0)
             stream_id = f"{ctx.run_id}-s{ctx.tool_calls_used}"
+            # M1-02 — dựng lược đồ MỘT lần rồi đo chính nó. Gọi `declarations()` hai lần
+            # thì con số ghi sổ có thể không phải con số đã gửi đi.
+            decls = self.registry.declarations()
+            tok_luoc_do = self._do_luoc_do(decls, ctx)
             try:
                 rsp = self.llm.stream(
                     system=asm.system_instruction, messages=self.messages,
-                    tools=self.registry.declarations(),
+                    tools=decls,
                     on_text=lambda d: ctx.emit(uic.console_stream(d, stream_id=stream_id)))
             except EideError as e:
                 # UC19: hỏng thì dừng an toàn, nói thật, không mất việc đã làm.
@@ -728,6 +739,8 @@ class Agent:
             self.ledger.append("llm_call", {"run_id": ctx.run_id, "model": rsp.model,
                                             "usage": rsp.usage.to_dict(),
                                             "tool_calls": [c.tool for c in rsp.tool_calls],
+                                            "tool_schema_tokens": tok_luoc_do,
+                                            "cong_cu_hien": len(decls),
                                             "elapsed_ms": round(rsp.elapsed_ms, 1)})
             self._usage_add(rsp.usage, ctx)
 
@@ -970,6 +983,45 @@ class Agent:
         self.messages.append({"role": "tool", "tool_call_id": call.id,
                               "tool": call.tool, "result": env.to_model(),
                               "envelope": env.to_ledger()})
+
+    def _do_luoc_do(self, decls: list[dict[str, Any]], ctx: TurnContext) -> int:
+        """M1-02 — đo lược đồ công cụ vừa dựng, và NÓI RA khi nó vượt trần.
+
+        Hạ tầng đo, chạy cả khi cờ `gon_cong_cu` tắt: `ContextBudget.tool_schema = 4000`
+        nằm trong `config.py` từ đầu mà chưa dòng mã nào đọc nó, nên cái trần ấy chưa từng
+        chặn hay cảnh báo điều gì. Vượt trần thì ghi `note` — **không chặn**: một lượt bị
+        chặn vì lược đồ dài là một lượt người dùng mất, còn một dòng sổ thì không mất gì.
+        """
+        import json as _json
+
+        from .context.assemble import approx_tokens
+
+        tok = approx_tokens(_json.dumps(decls, ensure_ascii=False))
+        tran = self.config.context_budget.tool_schema
+        if tok > tran:
+            self.ledger.append("note", {"run_id": ctx.run_id, "luoc_do_vuot_tran": {
+                "token": tok, "tran": tran, "so_cong_cu": len(decls),
+                "gon_cong_cu": bool(self.config.features.bat("gon_cong_cu"))}})
+        return tok
+
+    def _cong_cu_ke_hoach(self) -> list[str]:
+        """Tên công cụ mà kế hoạch đang nêu ở các bước CHƯA xong.
+
+        Dùng để ghim chúng lại trước LRU: kế hoạch là lời hứa về việc sắp làm, mà LRU chỉ
+        biết việc đã làm. Gỡ đúng công cụ của bước kế tiếp là bắt tác tử đi tìm lại nó.
+        """
+        kh = self._ke_hoach()
+        if kh is None or kh.trang_thai in ("da_huy", "hoan_thanh"):
+            return []
+        ra: list[str] = []
+        for b in kh.buoc:
+            if b.xong:
+                continue
+            for phan in str(b.cong_cu or "").replace(";", ",").split(","):
+                ten = phan.strip().strip("`")
+                if ten and self.registry.get(ten) is not None:
+                    ra.append(ten)
+        return ra
 
     def _chua_chay_vi_cho_cong(self, con_lai: list[Any], ctx: TurnContext) -> None:
         """M1-01 — trả kết quả E4031 cho các lời gọi nằm SAU lời gọi vừa bật cổng.

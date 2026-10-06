@@ -6919,3 +6919,92 @@ ngày 02/10/2026.
 
 `kiem_cap_goi_tra` **chưa** được gắn vào hook hay cổng nào — nó là thước đo, chưa là hàng rào.
 Gắn nó thành một phép soát tự động là việc của một nhiệm vụ sau.
+
+---
+
+## [DEV-331] [M1-02] Lược đồ công cụ: 25 869 token mỗi lời gọi, và một cái trần chưa ai đọc
+
+Nhiệm vụ #2 của kế hoạch tối ưu. Hai nửa tách rời: **phần đo** chạy luôn, **phần gọn** nằm
+sau cờ `EIDE_FEATURE_GON_CONG_CU`, mặc định TẮT (N-4 — nó đổi danh sách công cụ mô hình nhìn
+thấy, tức là đổi hành vi tác tử).
+
+### Cái trần không có thước
+
+`ContextBudget.tool_schema = 4000` nằm trong `config.py` từ đầu. `grep` ra đúng **hai** chỗ:
+dòng khai báo, và một ca kiểm cộng tổng các trần lại. **Không dòng mã nào đọc nó.** Nên suốt
+thời gian qua không ai biết lược đồ thật là bao nhiêu — và nó là **25 869 token, gửi lại mỗi
+lời gọi mô hình**, vượt trần hơn sáu lần.
+
+Đây đúng hình dạng bài học "cơ chế có sẵn, đường dẫn tới nó đứt" — cái trần tồn tại, chỉ là
+chưa ai nối dây tới nó.
+
+Nay: `Registry.token_luoc_do()` là thước; `llm_call` trong sổ cái mang thêm
+`tool_schema_tokens` và `cong_cu_hien`; vượt trần thì ghi `note` **và không chặn** (một lượt
+bị chặn vì lược đồ dài là một lượt người dùng mất, một dòng sổ thì không mất gì).
+
+### Số đo
+
+| | Cờ TẮT | Cờ BẬT |
+|---|---|---|
+| công cụ hiển thị | 73 | **18** |
+| ký tự lược đồ | 77 607 | 13 425 |
+| token lược đồ | **25 869** | **4 475** |
+
+Giảm **82,7 %**, và 4 475 ≤ trần 6 000 của nhiệm vụ. Bộ kiểm: 1615 → **1623 xanh, 0 đỏ**
+(+8 ca). "Phá lại thì đỏ" làm riêng cho **cả bảy** chỗ sửa.
+
+### Chỗ kế hoạch nói chưa đúng, đã đo lại
+
+Kế hoạch ghi: *"phần dài KHÔNG nằm ở `summary_vi` mà ở mô tả TRONG `params`"*, và đề nghị cắt
+mỗi mô tả tham số còn ≤ 160 ký tự. Nửa đầu đúng — `params` chiếm **76 %** số ký tự lược đồ.
+Nhưng cách sửa thì gần như không ăn gì:
+
+```
+388 mô tả tham số · dài nhất 475 · TRUNG VỊ 37 ký tự · chỉ 2 cái vượt 160
+luật cắt 160 ký tự thu về:  356 / 77 461 ký tự  =  0,46 %
+```
+
+Và cả hai cái vượt 160 (`fact.compare` 475, `target.flash` 201) đều **không** thuộc `CORE_GON`,
+nên trong lược đồ lúc cờ bật, luật ấy nổ **0 lần**. Toàn bộ 82,7 % tới từ việc thu tập công cụ,
+không từ việc cắt mô tả.
+
+Tôi vẫn hiện thực luật cắt đúng như kế hoạch ghi: nó rẻ, nó làm trên **bản sao** nên
+`spec.params` giữ nguyên cho `tool.search` và lỗi tham số đọc, và nó chặn trước ngày ai đó
+viết một mô tả 2 000 ký tự. Nhưng đừng tính nó vào phần tiết kiệm. Phần dài thật nằm ở **số
+lượng** trường và các `enum` trong `params`, không ở độ dài từng mô tả — muốn ăn tiếp vào 76 %
+ấy thì phải sửa chính lược đồ của từng công cụ, và đó là một nhiệm vụ khác.
+
+### LRU cho `_unlocked`
+
+`_unlocked` trước đây chỉ được `add`, **không bao giờ gỡ** — một phiên dài mở khoá dần mấy
+chục công cụ, lược đồ phình lên đúng lúc cửa sổ ngữ cảnh đã chật nhất. Nay (chỉ khi cờ bật):
+công cụ không được gọi trong `TRAN_LRU_LUOT = 3` lượt thì rời lược đồ, và tên bị gỡ được ghi
+`note` vào sổ.
+
+Hai chỗ phải cẩn thận, cả hai đều có ca kiểm riêng:
+
+* **Kế hoạch được ghim.** Bước kế hoạch chưa xong mà nêu `cong_cu` nào thì công cụ ấy không bị
+  gỡ, dù chưa gọi lần nào. LRU chỉ biết việc ĐÃ làm; kế hoạch là lời hứa về việc SẮP làm, và
+  gỡ đúng công cụ của bước kế tiếp là bắt tác tử đi tìm lại nó.
+* **`attend` và `set` không tính là một lượt.** Chuyển tab là sự chú ý, không phải yêu cầu
+  (DEV-226 đã học một lần với chuyện bảy cú bấm thành bảy lượt gọi mô hình). Đếm chúng thì bảy
+  cú bấm chuyển tab làm tác tử mất công cụ nó đang dùng dở.
+
+`tool.search` nằm trong `CORE_GON`. Thiếu nó thì tập gọn thành một cái lồng: tác tử không thấy
+công cụ nào khác, và cũng không có đường nào đi tìm.
+
+### Một ca cũ chuyển đỏ
+
+`test_sch0.py::test_mac_dinh_moi_co_deu_TAT` chốt cứng `to_dict() == {"schematic": False}`,
+nên **mỗi cờ mới làm nó đỏ** — kể cả một cờ mặc định TẮT đúng như nó đòi. Một ca kiểm phải đỏ
+khi ai đó làm **sai**, không phải khi ai đó làm **thêm**. Nay nó đo đúng điều nó nói: mọi giá
+trị trong `to_dict()` đều `False`, cộng một dòng khẳng định hai tên cờ có mặt. Tôi phá lại:
+cho `gon_cong_cu` mặc định `True` → ca ấy đỏ. Ngoài "Tệp chạm tới", ghi theo N-6.
+
+### Chưa làm, và vì sao
+
+Cờ **vẫn TẮT**. Cổng 4.3 đòi bốn điều trước khi đổi mặc định, và ba trong bốn chưa có: bộ eval
+phát lại (M4-21) chưa làm, bộ 76 ca với cờ BẬT chưa chạy (tốn tiền mô hình — §3.0 nói phải hỏi
+người dùng trước), và chỉ số chi phí (M1-20) chưa có. Con số 82,7 % là **token tiết kiệm**, nó
+không nói gì về việc tác tử làm việc tốt hơn hay tệ hơn khi chỉ còn 18 công cụ trong tầm mắt —
+thứ đó chỉ đo được bằng eval, và đó chính là lý do nó nằm sau một cờ.

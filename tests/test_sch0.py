@@ -129,10 +129,18 @@ def test_co_doc_tu_bien_moi_truong(monkeypatch):
 
 
 def test_mac_dinh_moi_co_deu_TAT():
-    """SCH-17: mặc định tắt. Một tính năng mới không được tự bật trên máy ai."""
+    """SCH-17: mặc định tắt. Một tính năng mới không được tự bật trên máy ai.
+
+    Trước M1-02 ca này chốt cứng `== {"schematic": False}`, nên **mỗi cờ mới làm nó đỏ**
+    dù cờ ấy mặc định TẮT đúng như nó đòi. Một ca kiểm phải đỏ khi ai đó làm sai, không
+    phải khi ai đó làm thêm. Nay nó đo đúng điều nó nói: **mọi** cờ đều TẮT.
+    """
     monkey = Features()
     assert monkey.dang_bat() == []
-    assert monkey.to_dict() == {"schematic": False}
+    d = monkey.to_dict()
+    assert d and all(v is False for v in d.values()), d
+    # Hai cờ phải CÓ MẶT — ca này cũng là chỗ ghi lại danh mục cờ đang tồn tại.
+    assert {"schematic", "gon_cong_cu"} <= set(d)
 
 
 def test_settings_json_hong_khong_lam_chet_app(tmp_path, monkeypatch):

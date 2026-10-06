@@ -32,6 +32,33 @@ from ..errors import EideError, missing_precondition, schema_violation
 # R0 người tự làm · R1 đọc · R2 ghi trong dự án · R3 chạm hệ thống/mạng · R4 không đảo ngược
 RISK_LEVELS = ("R0", "R1", "R2", "R3", "R4")
 
+# M1-02 — tập công cụ NỀN, chỉ dùng khi cờ `gon_cong_cu` bật.
+#
+# Đo ngày 06/10/2026: `visible()` trả 73 công cụ (`core=True`), và lược đồ của chúng là
+# **25 869 token gửi lại mỗi lời gọi mô hình**. Trần trong `ContextBudget.tool_schema` là
+# 4 000 — tức là đang vượt hơn sáu lần, và không ai biết, vì con số ấy chưa từng được đọc
+# ở đâu trong mã.
+#
+# Mười tám tên dưới đây là thứ tác tử cần để **bắt đầu** mọi việc: đọc được, ghi được, tra
+# được kho và Fact, hỏi được người, và tìm ra 100+ công cụ còn lại bằng `tool.search`.
+# Không có `target.flash`, `sim.run`, `ckm.*` ở đây — chúng thuộc một việc cụ thể, và
+# `tool.search` mở chúng đúng lúc việc ấy tới.
+#
+# `tool.search` PHẢI có trong tập này. Thiếu nó thì tập gọn thành một cái lồng: tác tử
+# không thấy công cụ nào khác và cũng không có đường nào đi tìm.
+CORE_GON: tuple[str, ...] = (
+    "ask_user", "build.compile", "fact.query", "fs.edit", "fs.glob", "fs.grep",
+    "fs.read", "fs.stat", "fs.write", "inventory.get", "ledger.query", "memory.note",
+    "plan.enter", "skill.load", "store.get", "store.list", "task.run", "tool.search",
+)
+
+# Số lượt một công cụ mở tạm được giữ lại dù không ai gọi. `_unlocked` trước M1-02 chỉ
+# được `add`, không bao giờ gỡ — một phiên dài phình lược đồ lên đúng lúc cửa sổ đã chật.
+TRAN_LRU_LUOT = 3
+
+# Trần một mô tả tham số khi cờ gọn bật. Bản đầy đủ vẫn nằm trong `spec.params`.
+TRAN_MO_TA = 160
+
 
 @dataclass(slots=True)
 class Requirement:
@@ -45,6 +72,27 @@ class Requirement:
 
     def describe(self) -> str:
         return self.label_vi or f"{self.min_count} {self.artefact}"
+
+
+def _cat_mo_ta(schema: Any) -> Any:
+    """Bản sao của một JSON Schema, mọi `description` cắt còn `TRAN_MO_TA` ký tự.
+
+    Đi đệ quy vì mô tả dài nằm sâu trong `properties`/`items`, không ở mức đỉnh. Cắt ở
+    ranh giới từ để câu không đứt giữa một chữ, và để lại `…` cho mô hình biết là còn.
+    """
+    if isinstance(schema, dict):
+        ra = {}
+        for k, v in schema.items():
+            if k == "description" and isinstance(v, str) and len(v) > TRAN_MO_TA:
+                cat = v[:TRAN_MO_TA - 1]
+                cho = cat.rfind(" ")
+                ra[k] = (cat[:cho] if cho > TRAN_MO_TA // 2 else cat).rstrip(" ,;.") + "…"
+            else:
+                ra[k] = _cat_mo_ta(v)
+        return ra
+    if isinstance(schema, list):
+        return [_cat_mo_ta(v) for v in schema]
+    return schema
 
 
 @dataclass(slots=True)
@@ -65,8 +113,13 @@ class ToolSpec:
     feature: str | None = None                 # thuộc cờ tính năng nào (SCH-44 §2.1)
     keywords: list[str] = field(default_factory=list)
 
-    def declaration(self) -> dict[str, Any]:
-        """Dạng khai báo hàm cho mô hình. Mô tả phải nói cả KHI NÀO KHÔNG dùng."""
+    def declaration(self, gon: bool = False) -> dict[str, Any]:
+        """Dạng khai báo hàm cho mô hình. Mô tả phải nói cả KHI NÀO KHÔNG dùng.
+
+        `gon=True` (cờ `gon_cong_cu`) cắt mọi mô tả tham số còn `TRAN_MO_TA` ký tự, trên
+        một BẢN SAO — `spec.params` giữ nguyên, vì `tool.search` và lỗi tham số đọc bản
+        đầy đủ để nói cho mô hình biết trường ấy cần gì.
+        """
         desc = self.summary_vi
         if self.requires:
             desc += " · Cần trước: " + "; ".join(r.describe() for r in self.requires)
@@ -74,7 +127,8 @@ class ToolSpec:
             desc += " · Sinh ra: " + ", ".join(self.produces)
         if self.gate:
             desc += f" · Đi qua cổng {self.gate} (người phải duyệt)"
-        return {"name": self.name, "description": desc, "parameters": self.params}
+        params = _cat_mo_ta(self.params) if gon else self.params
+        return {"name": self.name, "description": desc, "parameters": params}
 
 
 @dataclass(slots=True)
@@ -97,6 +151,10 @@ class Registry:
         self._unlocked: set[str] = set()       # công cụ đã nạp qua tool.search
         self.features = features
         self.bo_qua_vi_co: list[str] = []      # công cụ không đăng ký vì cờ tắt
+        # M1-02 — LRU cho `_unlocked`, chỉ chạy khi cờ `gon_cong_cu` bật.
+        self._luot = 0                         # số lượt người đã giao việc
+        self._lan_cuoi: dict[str, int] = {}    # tên công cụ → lượt dùng/mở gần nhất
+        self._ghim: set[str] = set()           # kế hoạch đang nêu — không gỡ
 
     def _co_bat(self, ten_co: str | None) -> bool:
         if not ten_co:
@@ -137,11 +195,62 @@ class Registry:
         return list(self._tools.values())
 
     def visible(self) -> list[ToolSpec]:
-        """Nạp trễ: chỉ công cụ core + cái đã mở bằng tool.search (§B3)."""
+        """Nạp trễ: chỉ công cụ core + cái đã mở bằng tool.search (§B3).
+
+        Cờ `gon_cong_cu` bật thì "core" hẹp lại còn `CORE_GON` — xem chú thích ở hằng số
+        ấy cho con số đo được. Cờ tắt: y nguyên như trước, không đổi một tên nào.
+        """
+        if self._co_bat("gon_cong_cu"):
+            cho_phep = set(CORE_GON) | self._unlocked
+            return [t for t in self._tools.values() if t.name in cho_phep]
         return [t for t in self._tools.values() if t.core or t.name in self._unlocked]
 
     def declarations(self) -> list[dict[str, Any]]:
-        return [t.declaration() for t in self.visible()]
+        gon = self._co_bat("gon_cong_cu")
+        ds = self.visible()
+        if gon:
+            # Sắp theo tên để prefix của request ổn định giữa các lượt — cache phía nhà
+            # cung cấp chỉ dùng lại được khi mấy nghìn token đầu không đổi thứ tự.
+            ds = sorted(ds, key=lambda t: t.name)
+        return [t.declaration(gon=gon) for t in ds]
+
+    def token_luoc_do(self) -> int:
+        """Lược đồ công cụ ĐANG gửi lên mô hình tốn bao nhiêu token.
+
+        Thước đo, luôn chạy, không phụ thuộc cờ: `ContextBudget.tool_schema = 4000` nằm
+        trong mã từ đầu mà **chưa từng được đọc ở đâu**, nên không ai biết thực tế là
+        25 869. Một trần không có thước đi kèm chỉ là một con số trong tệp cấu hình.
+        """
+        import json
+
+        from ..context.assemble import approx_tokens
+
+        return approx_tokens(json.dumps(self.declarations(), ensure_ascii=False))
+
+    def sang_luot_moi(self, ghim: Any = ()) -> list[str]:
+        """Sang một lượt mới: già hoá `_unlocked`, gỡ cái 3 lượt không ai gọi.
+
+        `ghim` là các công cụ kế hoạch đang nêu — chúng không bị gỡ dù chưa gọi lần nào,
+        vì kế hoạch là lời hứa về việc SẮP làm, còn LRU chỉ biết việc ĐÃ làm.
+
+        Trả danh sách tên vừa gỡ, để lõi ghi sổ. Cờ tắt thì không gỡ gì (N-4).
+        """
+        self._luot += 1
+        self._ghim = {str(x) for x in (ghim or ())}
+        if not self._co_bat("gon_cong_cu"):
+            return []
+        da_go = []
+        for ten in sorted(self._unlocked):
+            if ten in self._ghim or ten in CORE_GON:
+                continue
+            # Chưa có dấu thời gian (mở bằng đường khác, ví dụ `_mo_khoa_theo_ngu_canh`):
+            # đóng dấu bây giờ chứ không gỡ ngay — nó vừa được mở ra vì một lý do.
+            lan = self._lan_cuoi.setdefault(ten, self._luot)
+            if self._luot - lan >= TRAN_LRU_LUOT:
+                self._unlocked.discard(ten)
+                self._lan_cuoi.pop(ten, None)
+                da_go.append(ten)
+        return da_go
 
     def search(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
         """tool.search — tìm rồi MỞ KHOÁ công cụ khớp, để lượt sau mô hình gọi được."""
@@ -161,6 +270,7 @@ class Registry:
         out = []
         for _, t in scored[:limit]:
             self._unlocked.add(t.name)
+            self._lan_cuoi[t.name] = self._luot        # M1-02 — mốc để LRU đếm từ đây
             out.append({"name": t.name, "group": t.group, "summary_vi": t.summary_vi,
                         "risk": t.risk, "gate": t.gate,
                         "requires": [r.describe() for r in t.requires],
@@ -182,6 +292,7 @@ class Registry:
 
     def run(self, name: str, args: dict[str, Any], ctx: Any) -> ToolResult:
         t0 = time.perf_counter()
+        self._lan_cuoi[name] = self._luot      # M1-02 — "vừa dùng", cho LRU
         spec = self._tools.get(name)
         if spec is None:
             near = self.search(name, limit=3)

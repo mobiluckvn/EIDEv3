@@ -309,6 +309,10 @@ class Features:
     """
 
     schematic: bool = False        # SCH-44: sinh so do KiCad. Mac dinh TAT.
+    # M1-02 — thu hep danh sach cong cu hien thi con CORE_GON, cat mo ta tham so, va go
+    # cong cu mo tam sau 3 luot khong dung. Doi DANH SACH cong cu mo hinh nhin thay, tuc
+    # la doi hanh vi tac tu (N-4) — nen mac dinh TAT, cho toi khi bo eval noi nguoc lai.
+    gon_cong_cu: bool = False
 
     @classmethod
     def load(cls) -> "Features":
@@ -332,7 +336,7 @@ class Features:
 
     @staticmethod
     def ten_co() -> tuple[str, ...]:
-        return ("schematic",)
+        return ("schematic", "gon_cong_cu")
 
     def bat(self, ten: str) -> bool:
         return bool(getattr(self, ten, False))
