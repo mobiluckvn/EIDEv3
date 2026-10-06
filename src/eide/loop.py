@@ -48,7 +48,7 @@ from .protocol import HumanAct
 from .protocol import uicommand as uic
 from .protocol.ledger import Ledger
 from .store import EideMd, Store, inventory
-from .tools import Registry, build_registry
+from .tools import Registry, ToolResult, build_registry
 
 
 # =========================================================================== ngữ cảnh lượt
@@ -876,12 +876,31 @@ class Agent:
             alternatives=["plan.exit", "plan.cancel"], blame="agent")
 
     # ------------------------------------------------------------------ một công cụ
-    def _one_tool(self, call: Any, ctx: TurnContext) -> None:
+    #
+    # M1-03 — hai mã lỗi dưới đây KHÔNG phải sự cố: một cái là "đang chờ người", cái kia là
+    # "đang ở chế độ kế hoạch". Ghi chúng vào sổ như sự cố thì tab Nhật ký đầy báo động đỏ
+    # cho những lúc hệ thống đang làm đúng việc của nó.
+    _KHONG_LA_SU_CO = ("E4003", "E6005")
+
+    def kiem_va_chay(self, call: Any, ctx: TurnContext, *,
+                     che_do: str = "chinh") -> tuple[Any, Any]:
+        """Ba lớp xác định quanh MỘT lời gọi công cụ, dùng chung cho tác tử chính và con.
+
+        Thứ tự không đổi: `_khoa_khi_soan_ke_hoach` → `hooks.pre_tool_use` →
+        `policy.decide` → `registry.run` → `hooks.post_tool_use`. Trả `(ToolResult, perm)`.
+
+        Vì sao phải là MỘT hàm chứ không phải hai bản giống nhau: trước M1-03,
+        `subagent.chay` gọi thẳng `registry.run`, nên mọi luật trong `policy.yaml` — kể cả
+        `POL-N1-constant-guard` — không nổ lần nào cho lời gọi của tác tử con. Tác tử chính
+        bị chặn ghi một hằng số không nguồn chỉ cần bảo `firmware` ghi hộ. Một hàng rào đi
+        vòng được bằng một lớp gián tiếp thì không phải hàng rào, và hai bản logic song song
+        thì bản ít được đọc hơn sẽ là bản thiếu luật mới.
+
+        `che_do="con"`: gặp cổng thì KHÔNG dựng thẻ. Thẻ cổng là câu hỏi cho người đang
+        theo dõi một lượt việc; tác tử con chạy trong ngữ cảnh sạch, người dùng không thấy
+        nó — một thẻ do nó dựng là câu hỏi không có chỗ đứng.
+        """
         c = {"tool": call.tool, "args": call.args, "id": call.id}
-        ctx.tool_calls_used += 1
-        ctx.cong_cu_da_goi.append(call.tool)
-        self.ledger.append("tool_use", {"run_id": ctx.run_id, "tool": call.tool,
-                                        "args": call.args, "call_id": call.id})
         spec = self.registry.get(call.tool)
 
         # Plan mode: đang soạn kế hoạch thì mọi công cụ GHI bị khoá (§B5). Chặn ở ĐÂY, trước
@@ -890,18 +909,25 @@ class Agent:
         # dòng luật — và cái quên thêm sẽ đúng là cái lọt qua.
         chan = self._khoa_khi_soan_ke_hoach(call, spec)
         if chan is not None:
-            return self._tool_error(call, chan, ctx, as_incident=False)
+            return ToolResult(False, error=chan), None
 
         pre = self.hooks.pre_tool_use(c, ctx)
         if not pre.ok and pre.error is not None:
-            return self._tool_error(call, pre.error, ctx)
+            return ToolResult(False, error=pre.error), None
 
         perm = self.policy.decide(c, pre.facts, spec)
         self.ledger.append("hook", {"run_id": ctx.run_id, "hook": "policy",
                                     "tool": call.tool, **perm.to_ledger()})
 
         if perm.action == "deny":
-            return self._tool_error(call, self.policy.deny_error(c, perm, pre.facts), ctx)
+            return ToolResult(False, error=self.policy.deny_error(c, perm, pre.facts)), perm
+
+        if perm.action == "ask" and che_do == "con":
+            return ToolResult(False, error=EideError(
+                "E4032",
+                "Thao tác cần người duyệt — tác tử con không được tự mở cổng.",
+                hint_for_agent="Ghi việc này vào `chua_lam` rồi nộp báo cáo.",
+                blame="agent")), perm
 
         if perm.action == "ask" and self._da_duyet_roi(call.tool, perm):
             # Đã duyệt công cụ này trong chính lượt việc này rồi thì không hỏi lại.
@@ -940,11 +966,26 @@ class Agent:
             ctx.said_anything = True
             ctx.awaiting_human = True
             # I6: mô hình phải DỪNG, không được hỏi lại bằng lời để lách thẻ.
-            return self._tool_error(
-                call, gate_pending(perm.gate or "?", gid, perm.summary_vi), ctx, as_incident=False)
+            return ToolResult(
+                False, error=gate_pending(perm.gate or "?", gid, perm.summary_vi)), perm
 
         res = self.registry.run(call.tool, call.args, ctx)
         self.hooks.post_tool_use(c, res, ctx)
+        return res, perm
+
+    def _one_tool(self, call: Any, ctx: TurnContext) -> None:
+        ctx.tool_calls_used += 1
+        ctx.cong_cu_da_goi.append(call.tool)
+        self.ledger.append("tool_use", {"run_id": ctx.run_id, "tool": call.tool,
+                                        "args": call.args, "call_id": call.id})
+        spec = self.registry.get(call.tool)
+
+        res, _perm = self.kiem_va_chay(call, ctx, che_do="chinh")
+        if not res.ok and res.error is not None:
+            return self._tool_error(
+                call, res.error, ctx,
+                as_incident=res.error.code not in self._KHONG_LA_SU_CO)
+
         # "Đã ghi được gì chưa" — dùng để phân biệt một lượt đang tìm hiểu với một lượt đang
         # quay vòng. Lấy từ HỢP ĐỒNG công cụ, không từ tên nó: một công cụ mới thêm vào mà
         # có `writes_artefact` thì tự động tính, không phải nhớ cập nhật một danh sách.

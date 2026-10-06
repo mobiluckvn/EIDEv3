@@ -266,6 +266,28 @@ def gop_kiem_chung(bc: BaoCao, kc: BaoCao) -> BaoCao:
 
 
 # =========================================================================== chạy
+def _chay_qua_hang_rao(registry: Any, ctx: Any, call: Any) -> tuple[dict[str, Any], bool]:
+    """M1-03 — chạy một lời gọi của tác tử con qua ĐÚNG ba lớp của tác tử chính.
+
+    Trả `(kết quả dạng mô hình, có đi vòng hàng rào không)`.
+
+    Trước M1-03 chỗ này là `registry.run(...)` trần: không plan-lock, không
+    `pre_tool_use`, không `policy.decide`, không `post_tool_use`. Nên `policy.yaml` —
+    nơi giữ `POL-N1-constant-guard`, `POL-N8-explain`, `POL-MEM-eide-md-qua-tool` —
+    không nổ lần nào cho lời gọi của tác tử con, trong khi `firmware` và `sim-runner`
+    đều có `fs.write` trong tập công cụ.
+
+    Lối rơi về `registry.run` còn đó cho `ctx` không mang tác tử (ca kiểm cũ dựng ctx
+    giả). Nó báo `True` ở vế thứ hai để chỗ gọi ghi sổ, chứ không lặng lẽ chạy.
+    """
+    tac_tu = getattr(ctx, "agent", None)
+    ham = getattr(tac_tu, "kiem_va_chay", None)
+    if ham is None:
+        return registry.run(call.tool, call.args, ctx).to_model(), True
+    r, _perm = ham(call, ctx, che_do="con")
+    return r.to_model(), False
+
+
 def chay(*, llm: Any, registry: Any, ctx: Any, ma: str, viec: str,
          ghi_so: Any = None) -> BaoCao:
     """Chạy một subagent tới khi nó nộp báo cáo, hoặc hết ngân sách lời gọi.
@@ -299,6 +321,7 @@ def chay(*, llm: Any, registry: Any, ctx: Any, ma: str, viec: str,
         for call in rsp.tool_calls:
             bc.so_goi += 1
             bc.cong_cu_da_goi.append(call.tool)
+            di_vong = False
             if call.tool not in duoc:
                 kq = {"ok": False, "code": "E5006",
                       "message_vi": f"Subagent “{ma}” không được dùng {call.tool}.",
@@ -306,11 +329,17 @@ def chay(*, llm: Any, registry: Any, ctx: Any, ma: str, viec: str,
                                          + ". Việc cần công cụ khác thì ghi vào `chua_lam` "
                                            "rồi nộp báo cáo.")}
             else:
-                r = registry.run(call.tool, call.args, ctx)
-                kq = r.to_model()
+                kq, di_vong = _chay_qua_hang_rao(registry, ctx, call)
             if ghi_so is not None:
-                ghi_so("subagent_tool", {"subagent": ma, "tool": call.tool,
-                                         "ok": bool(kq.get("ok", True))})
+                dong = {"subagent": ma, "tool": call.tool, "ok": bool(kq.get("ok", True))}
+                if kq.get("code"):
+                    dong["code"] = kq["code"]
+                if call.tool in duoc and di_vong:
+                    # M1-03 — lời gọi KHÔNG đi qua ba lớp. Chỉ xảy ra khi `ctx` không mang
+                    # tác tử (ctx giả trong ca kiểm cũ). Ghi ra chứ không im lặng: một lời
+                    # gọi đi vòng hàng rào mà không ai biết là chỗ lỗ hổng sẽ mọc lại.
+                    dong["khong_qua_hang_rao"] = True
+                ghi_so("subagent_tool", dong)
             tin.append({"role": "tool", "tool_call_id": call.id, "tool": call.tool,
                         "result": kq})
 

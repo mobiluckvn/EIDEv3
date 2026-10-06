@@ -194,3 +194,124 @@ def test_skill_hint_vao_duoc_ngu_canh_that(make_agent):
     ctx.human_edits = []
     asm = agent._assemble(ctx, None)
     assert "skills_hint" in asm.blocks
+
+
+# ================================================== M1-03 — subagent cũng phải qua hàng rào
+def test_firmware_KHONG_ghi_duoc_hang_so_khong_nguon(make_agent):
+    """TC-M1-03-01 — `POL-N1-constant-guard` phải nổ cả khi lời gọi tới từ subagent.
+
+    Hàng rào của dự án này nằm ở `Agent._one_tool`: plan-lock → pre_tool_use →
+    policy.decide → run → post_tool_use. `subagent.chay` gọi thẳng `registry.run`, nên mọi
+    luật trong `policy.yaml` đều không nổ — và `firmware` có `fs.write` trong tập công cụ.
+
+    Tức là: luật "hằng số phải có nguồn" (N1) chặn tác tử CHÍNH, nhưng tác tử chính chỉ cần
+    bảo một tác tử con ghi hộ là xong. Một hàng rào đi vòng được bằng một lớp gián tiếp thì
+    không phải hàng rào.
+    """
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "fs.write",
+                                      {"path": "blink.c",
+                                       "content": "#define BAUD 115200\n", "explain": _EX})]),
+        Response(text=_bc(ket_luan="chua_du_du_kien", bang_chung=[])),
+    ])
+    so = []
+    SA.chay(llm=agent.llm, registry=agent.registry, ctx=_ctx(agent), ma="firmware",
+            viec="viết blink.c", ghi_so=lambda k, d: so.append((k, d)))
+
+    assert not (agent.config.paths.project_root / "blink.c").exists(), \
+        "subagent đã ghi được một hằng số không nguồn"
+    luat = [e.data.get("rule") for e in agent.ledger.read()
+            if e.kind == "hook" and e.data.get("hook") == "policy"]
+    assert "POL-N1-constant-guard" in luat, f"policy không nổ. Các luật đã chạy: {luat}"
+
+
+def test_subagent_bi_khoa_khi_dang_soan_ke_hoach(make_agent):
+    """TC-M1-03-02 — plan mode khoá công cụ ghi, kể cả qua tác tử con.
+
+    Không có bước này thì khoá plan mode (§B5) chỉ là một gợi ý: đang soạn kế hoạch mà vẫn
+    ghi được tệp, chỉ cần ghi qua `task.run`.
+    """
+    from eide.ke_hoach import MA_KE_HOACH, Buoc, KeHoach
+
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "fs.write",
+                                      {"path": "khoa.c", "content": "int main(void){}\n",
+                                       "explain": _EX})]),
+        Response(text=_bc(ket_luan="chua_du_du_kien", bang_chung=[])),
+    ])
+    kh = KeHoach(muc_tieu="làm đèn nháy", trang_thai="dang_soan",
+                 buoc=[Buoc(viec="viết mã", cong_cu="fs.write", hien_vat="blink.c")])
+    agent.store.apply(artefact_id=MA_KE_HOACH, type="plan", op="create", author="test",
+                      canonical=kh.to_dict(),
+                      explain={"summary": "kế hoạch thử", "why": "ca kiểm", "sources": [],
+                               "diff_prev": "—", "next": "—", "confidence": "BAC"},
+                      view_hint={"kind": "plan", "path": "kế hoạch"})
+
+    ma_loi = []
+    SA.chay(llm=agent.llm, registry=agent.registry, ctx=_ctx(agent), ma="firmware",
+            viec="viết khoa.c", ghi_so=lambda k, d: ma_loi.append(d.get("code")))
+
+    assert not (agent.config.paths.project_root / "khoa.c").exists()
+    assert "E6005" in ma_loi, f"mã lỗi thu được: {ma_loi}"
+
+
+def test_subagent_gap_cong_thi_E4032_khong_dung_the(make_agent, monkeypatch):
+    """TC-M1-03-03 — gặp cổng thì tác tử con DỪNG, không được dựng thẻ cho người duyệt.
+
+    Thẻ cổng là một câu hỏi cho người dùng về việc họ đang theo dõi. Một tác tử con chạy
+    trong ngữ cảnh sạch, người dùng không thấy nó, không biết nó đang làm gì — nên một thẻ
+    do nó dựng là một câu hỏi không có chỗ đứng. Nó phải ghi vào `chua_lam` và nộp báo cáo.
+    """
+    monkeypatch.setattr(SA.SUBAGENT["hardware"], "cong_cu",
+                        list(SA.SUBAGENT["hardware"].cong_cu) + ["target.flash"])
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "target.flash", {"explain": _EX})]),
+        Response(text=_bc(ket_luan="chua_du_du_kien", bang_chung=[])),
+    ])
+    ma_loi = []
+    SA.chay(llm=agent.llm, registry=agent.registry, ctx=_ctx(agent), ma="hardware",
+            viec="nạp firmware", ghi_so=lambda k, d: ma_loi.append(d.get("code")))
+
+    assert "E4032" in ma_loi, f"mã lỗi thu được: {ma_loi}"
+    assert agent.pending_cards == [], "tác tử con đã dựng thẻ cổng"
+    assert agent.pending_gates == {}
+
+
+def test_firmware_ghi_hop_le_van_ghi_duoc(make_agent):
+    """TC-M1-03-04 — ca âm: thêm hàng rào mà không khoá luôn đường đi đúng."""
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "fs.write",
+                                      {"path": "sach.c",
+                                       "content": "int main(void){return 0;}\n",
+                                       "explain": _EX})]),
+        Response(text=_bc()),
+    ])
+    ok = []
+    SA.chay(llm=agent.llm, registry=agent.registry, ctx=_ctx(agent), ma="firmware",
+            viec="viết sach.c", ghi_so=lambda k, d: ok.append(d.get("ok")))
+
+    assert (agent.config.paths.project_root / "sach.c").exists(), "đường đi đúng bị khoá"
+    assert ok and all(ok), ok
+
+
+def test_moi_loi_goi_cua_subagent_deu_qua_hang_rao(make_agent):
+    """Mỗi `subagent_tool` trong sổ phải có một dòng `hook policy` đi kèm.
+
+    Đây là phép soát của "Tiêu chí xong", viết thành ca kiểm để nó chạy mãi: khoá
+    `khong_qua_hang_rao` chỉ xuất hiện khi lời gọi KHÔNG đi qua ba lớp, và nó phải không
+    bao giờ xuất hiện trên đường chạy thật.
+    """
+    agent = make_agent([
+        Response(tool_calls=[ToolCall("c1", "fs.read", {"path": "main.c"})]),
+        Response(text=_bc()),
+    ])
+    dong = []
+    SA.chay(llm=agent.llm, registry=agent.registry, ctx=_ctx(agent), ma="firmware",
+            viec="đọc main.c", ghi_so=lambda k, d: dong.append(d))
+
+    assert dong, "không có bản ghi subagent_tool nào"
+    di_vong = [d for d in dong if d.get("khong_qua_hang_rao")]
+    assert not di_vong, di_vong
+    policy = [e for e in agent.ledger.read()
+              if e.kind == "hook" and e.data.get("hook") == "policy"]
+    assert len(policy) >= len(dong), f"{len(dong)} lời gọi mà chỉ {len(policy)} lần qua policy"

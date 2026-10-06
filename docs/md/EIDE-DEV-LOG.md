@@ -7008,3 +7008,61 @@ phát lại (M4-21) chưa làm, bộ 76 ca với cờ BẬT chưa chạy (tốn 
 người dùng trước), và chỉ số chi phí (M1-20) chưa có. Con số 82,7 % là **token tiết kiệm**, nó
 không nói gì về việc tác tử làm việc tốt hơn hay tệ hơn khi chỉ còn 18 công cụ trong tầm mắt —
 thứ đó chỉ đo được bằng eval, và đó chính là lý do nó nằm sau một cờ.
+
+---
+
+## [DEV-332] [M1-03] Tác tử con đi vòng cả ba lớp — 1 822 lời gọi, không lần nào qua policy
+
+Nhiệm vụ #3. **Sửa lỗi thuần** (đi vòng hàng rào), không cờ: N-5 nói lỗi thì phải hết, không
+để tuỳ chọn.
+
+### Lỗ hổng
+
+`subagent.chay` gọi thẳng `registry.run(call.tool, call.args, ctx)`. Không
+`_khoa_khi_soan_ke_hoach`, không `hooks.pre_tool_use`, không `policy.decide`, không
+`hooks.post_tool_use`. Trong khi `SUBAGENT["firmware"].cong_cu` có `fs.write`, `fs.edit`,
+`build.compile`, và `"sim-runner"` có `fs.write`.
+
+Nghĩa là: `POL-N1-constant-guard` chặn tác tử CHÍNH ghi `#define BAUD 115200` khi không có
+nguồn — nhưng tác tử chính chỉ cần bảo `firmware` ghi hộ. Cùng cách ấy đi vòng được khoá plan
+mode (§B5): đang soạn kế hoạch, công cụ ghi khoá, gọi `task.run` là xong.
+
+**Một hàng rào đi vòng được bằng một lớp gián tiếp thì không phải hàng rào.**
+
+### Đã xảy ra chưa? Có, 1 822 lần — nhưng chưa ai mất gì
+
+Soát 68 sổ cái trong `du-lieu/`:
+
+```
+1 822 lời gọi công cụ của tác tử con, trong 26 phiên — 0 lần qua policy.decide
+công cụ đã gọi: fs.read 599 · ledger.query 311 · store.get 263 · fs.glob 192 ·
+                fs.grep 186 · store.list 127 · history.diff 105 · fact.query 32 ·
+                env.check 2 · build.compile 1 · fs.stat 1 · blob.read 1
+```
+
+Toàn bộ là công cụ ĐỌC, trừ đúng một lời gọi `build.compile`. Nên lỗ hổng này chưa làm hỏng
+gì — không phải vì nó được canh, mà vì các tác tử con tình cờ chưa dùng tới `fs.write`. Một lỗ
+hổng chưa bị bước vào vẫn là một lỗ hổng, và đây là loại chỉ lộ ra đúng lúc nó đắt nhất.
+
+### Đã sửa
+
+Tách phần kiểm của `_one_tool` thành `Agent.kiem_va_chay(call, ctx, *, che_do)` — **một** bản
+logic cho cả hai loại tác tử, thứ tự ba lớp giữ nguyên. `_one_tool` nay gọi chính nó, nên
+không có hai bản song song để một bản thiếu luật mới.
+
+`che_do="con"` khác đúng một chỗ: gặp `policy.action == "ask"` thì **không dựng thẻ**, trả
+`E4032`. Thẻ cổng là câu hỏi cho người đang theo dõi một lượt việc; tác tử con chạy trong ngữ
+cảnh sạch, người dùng không thấy nó và không biết nó đang làm gì — một thẻ do nó dựng là câu
+hỏi không có chỗ đứng. Nó phải ghi vào `chua_lam` rồi nộp báo cáo.
+
+Lối rơi về `registry.run` còn đó cho `ctx` không mang tác tử (ca kiểm cũ dựng ctx giả), nhưng
+nó **ghi `khong_qua_hang_rao: True` vào sổ** chứ không lặng lẽ chạy — và có một ca kiểm khẳng
+định khoá ấy không bao giờ xuất hiện trên đường chạy thật.
+
+### Số đo
+
+Bộ kiểm 1623 → **1628 xanh, 0 đỏ** (+5 ca). "Phá lại thì đỏ" cho cả hai chỗ sửa: bỏ nhánh qua
+hàng rào → 3 ca đỏ, ca âm vẫn xanh; bỏ nhánh E4032 → ca thẻ cổng đỏ.
+
+Không ca cũ nào phải sửa lần này — `test_subagent_KHONG_dung_duoc_cong_cu_ngoai_tap_cua_no`
+vẫn trả `E5006` trước mọi hook, đúng như "Bảo vệ hồi quy" đòi.
