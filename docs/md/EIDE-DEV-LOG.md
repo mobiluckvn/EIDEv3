@@ -6827,3 +6827,95 @@ thô, nhưng nó bắt được đúng cái đã hỏng — tôi phá lại và 
 một ca đẹp mà không.
 
 Bộ kiểm Swift: 36 → **40**.
+
+---
+
+## [DEV-330] [M1-01] Toàn vẹn cặp `function_call` ↔ `function_response` — và 105 phiên thật đã hỏng
+
+Nhiệm vụ #1 của `toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md` (giai đoạn 1). **Sửa lỗi thuần**, không
+có cờ tính năng: ba đường trong lõi để lại một lịch sử mà Gemini đọc không khớp, và một lịch
+sử không khớp thì mô hình tự dựng ra phần còn thiếu.
+
+**Ba chỗ đã sửa** (`src/eide/loop.py`):
+
+1. `_tool_loop` — cổng bật ở lời gọi thứ k thì vòng lặp `return` ngay, k+1..n **không có
+   message `role=tool` nào**. Nay mỗi lời gọi còn lại nhận một kết quả `E4031` "chưa chạy, vì
+   lời gọi trước đang chờ người duyệt cổng" (`_chua_chay_vi_cho_cong`).
+2. `_one_tool` — lời nhắc "`ok` mà kết quả rỗng" được append **trước** kết quả của chính lời
+   gọi ấy, cắt đôi cặp gọi ↔ trả. Nay nó xếp vào `ctx._nhac_sau_batch` và chỉ vào lịch sử sau
+   khi mọi kết quả của batch đã vào (`_xa_nhac_sau_batch`, gọi ở **cả hai** lối ra của vòng).
+   Nội dung lời nhắc không đổi một chữ — chỉ đổi chỗ đặt.
+3. `_resolve_gate` — append một message `role=tool` **thứ hai** cho cùng `tool_call_id`, trong
+   khi kết quả `E4003` (`gate_pending`) đã nằm sẵn trong lịch sử. Nay tìm kết quả cũ và thay
+   tại chỗ (thêm khoá `_da_duyet_sau: <gate_id>`), rồi `transcript.thay_toan_bo` — vì
+   `DanhSachGhiDia` chỉ ghi xuống đĩa lúc `append`, nó không thấy một phép sửa ô.
+
+**Một chỗ nữa** (`src/eide/llm/gemini.py`): `_to_contents` sinh **một `Content` riêng cho mỗi**
+kết quả, và `Part.from_function_response` không mang `id`. Nay `_gom_ket_qua` dời message chen
+giữa xuống sau nhóm kết quả, và nhóm kết quả liền nhau thành **một** `Content` chứa N
+`FunctionResponse(id=…)`. `id` chỉ được gửi khi lượt mô hình tương ứng cũng đã gửi `id` ở
+`function_call` — gửi một id không khớp lời gọi nào còn tệ hơn không gửi id. Chỉ đụng danh sách
+lúc dựng request; transcript trên đĩa không đổi dạng.
+
+### Số đo
+
+| | Trước | Sau |
+|---|---|---|
+| `pytest -q` | 1610 xanh · 0 đỏ | **1615 xanh · 0 đỏ** (+5 ca mới) |
+| `tools/kiem_tai_lieu.py` | 0 lệch chắc chắn | 0 lệch chắc chắn |
+| `kiem_tra_day_du --nhanh` | 20/21 | không chạm |
+| `swift test` | 0 ca / 0 suite | không chạm |
+
+"Phá lại thì đỏ": làm riêng cho **cả bốn** chỗ sửa, mỗi chỗ hoàn nguyên một mình → đúng ca của
+nó đỏ, trả lại → xanh. Ca âm TC-M1-01-05 (lịch sử vốn đã chuẩn) vẫn xanh cả trên bản hỏng —
+đó là việc của nó.
+
+### Lỗi này không phải lý thuyết: 105 trong 309 phiên thật
+
+`kiem_cap_goi_tra(messages)` là hàm thuần, soát được cả transcript đã lưu. Chạy trên toàn bộ
+`du-lieu/` (783 tệp `.jsonl`, 309 tệp có lượt gọi công cụ):
+
+```
+  sạch: 204   có chỗ sai: 105        → 255 chỗ sai
+    156 chỗ ·  99 phiên   kết quả THỨ HAI cho cùng id
+     74 chỗ ·  47 phiên   message chen giữa gọi ↔ trả
+     24 chỗ ·   5 phiên   kết quả nằm trong lượt không gọi nó
+      1 chỗ ·   1 phiên   lời gọi KHÔNG có kết quả nào
+```
+
+Loại thứ ba nghe như một lỗi khác, nhưng mở ra thì vẫn là chỗ số 3: ở
+`du-lieu/riscv-tn20k/.eide/sessions/ses-0004`, lời gọi `call_58993` (`tool.install`) nhận kết
+quả `E4003` ở dòng 51, rồi **kết quả thứ hai** ở dòng 65 — cách 14 message, nên nó rơi vào cửa
+sổ của một lượt mô hình khác. Cùng một nguyên nhân, chỉ khác chỗ cái đuôi rơi xuống.
+
+Một phần ba số phiên có công cụ mang một lịch sử tự mâu thuẫn. Đây là nền của những lượt
+"tác tử kể sai chuyện đã xảy ra" mà DEV-323 ghi mà chưa truy được tới gốc.
+
+### Một ca cũ chuyển đỏ, và vì sao tôi sửa ca chứ không sửa mã
+
+`test_lõi_phat_NHIP_sau_moi_loi_goi_cong_cu` đỏ. Nó **đọc chữ trong mã nguồn**: nó neo vào
+đúng dòng `for call in rsp.tool_calls:`, mà tôi đổi thành `for k, call in enumerate(...)` để có
+chỉ số k. Hành vi nó đo — `_nhip` nằm ngay sau `_one_tool` trong thân vòng lặp — không hề đổi.
+Nên tôi nới cái neo cho nhận cả hai cách viết (§3.2: test cũ khoá một chi tiết không phải thứ
+nó đo).
+
+Nhưng mốc thứ hai của ca ấy — *"thân vòng lặp dưới 12 dòng, không phải nửa tệp"* — thì tôi
+**không** nới, dù nó cũng đỏ (16 dòng). Mốc ấy đang làm đúng việc: nó chống chính cái vô nghĩa
+mà bản đầu của ca mắc phải. Nới nó lên 20 là lấy thước đo của mã đi đo mã. Thay vào đó tôi
+tách phần E4031 ra `_chua_chay_vi_cho_cong` — thân vòng lặp còn 6 dòng, và chỗ cần giải thích
+dài thì nằm trong docstring của hàm riêng, nơi nó thuộc về.
+
+**Ngoài "Tệp chạm tới"** của nhiệm vụ: `tests/test_thanh_trang_thai_va_doi_du_an.py` (một cái
+neo, lý do ở trên). Ghi ra theo N-6.
+
+### Còn nợ
+
+Lời nhắc "ĐÃ DUYỆT" có một câu nói *"kết quả của nó là tin nhắn ngay sau đây"*. Sau khi kết quả
+được thay tại chỗ, nó không còn ở sau nữa — nó ở **trên**. Tôi đổi đúng câu ấy thành "đã thay
+chỗ lời từ chối cũ, ở ngay trên"; bốn câu mà `test_duyet_cong_chan_loi_goi_thi_PHAI_noi_ra`
+kiểm chữ thì giữ nguyên từng chữ. Nhiệm vụ ghi "không đổi nội dung lời nhắc hiện có" — để
+nguyên thì lời nhắc chỉ sai chỗ một tin nhắn, và đó đúng là loại khoảng trống đã tốn hai lượt
+ngày 02/10/2026.
+
+`kiem_cap_goi_tra` **chưa** được gắn vào hook hay cổng nào — nó là thước đo, chưa là hàng rào.
+Gắn nó thành một phép soát tự động là việc của một nhiệm vụ sau.

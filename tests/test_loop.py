@@ -559,3 +559,64 @@ def test_duyet_cong_chan_loi_goi_thi_PHAI_noi_ra(make_agent):
     assert "E4030" in t or "E4003" in t, "phải nói lời từ chối trước đó đã hết hiệu lực"
     assert "Tiếp tục" in t, "phải bảo nó tiếp tục, không để nó tự đoán"
     assert "không bị mất" in t, "phải nói thẳng đề bài còn nguyên — đó là chỗ nó kể sai"
+
+
+# =========================================================================== M1-01 — cặp gọi ↔ trả
+def test_cong_giua_batch_van_tra_du_ket_qua(make_agent):
+    """TC-M1-01-01 — cổng bật ở lời gọi thứ nhất thì lời gọi thứ hai vẫn phải có kết quả.
+
+    Lượt mô hình khai hai lời gọi. Lời gọi đầu đụng cổng → `awaiting_human` → vòng lặp
+    `return` ngay, và lời gọi thứ hai không có message `role=tool` nào. Lịch sử gửi lên
+    Gemini khi ấy có một `function_call` không ai trả lời: SDK báo 400, hoặc tệ hơn, mô
+    hình đọc một lượt khuyết và tự dựng ra chuyện đã xảy ra.
+    """
+    from eide.loop import kiem_cap_goi_tra
+    from eide.protocol.rpc import Core
+
+    ex = {"summary": "nạp bản vừa dịch", "why": "chạy thử trên bo", "sources": [],
+          "diff_prev": "—", "next": "đọc log", "confidence": "BAC"}
+    agent = make_agent([Response(tool_calls=[
+        ToolCall("c1", "target.flash", {"explain": ex}),
+        ToolCall("c2", "fs.read", {"path": "main.c"})])])
+    seen = []
+    core = Core(agent.ledger, agent.ids, agent.turn, on_emit=seen.append)
+    core.console_act({"kind": "say", "text": "nạp firmware lên bo đi"})
+
+    assert [c for c in _cards(seen) if c.get("type") == "gate"], "phải dựng thẻ cổng trước đã"
+    tra = [m for m in agent.messages if m.get("role") == "tool"]
+    assert [m["tool_call_id"] for m in tra].count("c1") == 1, [str(m)[:80] for m in tra]
+    assert [m["tool_call_id"] for m in tra].count("c2") == 1, (
+        "lời gọi c2 nằm sau cổng — nó vẫn phải có đúng một kết quả, không được bỏ trắng")
+    c2 = next(m for m in tra if m["tool_call_id"] == "c2")
+    assert c2["result"].get("code") == "E4031", c2["result"]
+    assert kiem_cap_goi_tra(list(agent.messages)) == []
+
+
+def test_duyet_cong_KHONG_sinh_ket_qua_thu_hai(make_agent):
+    """TC-M1-01-03 — duyệt cổng xong thì `c1` vẫn chỉ có MỘT kết quả.
+
+    Trước đây lời gọi bị chặn đã có sẵn một kết quả E4003 (`gate_pending`) trong lịch sử;
+    `_resolve_gate` append thêm một message `role=tool` nữa cho cùng `tool_call_id`. Hai
+    kết quả cho một lời gọi là một lịch sử nói dối — và cái mô hình đọc được sau cùng là
+    hai câu trả lời mâu thuẫn cho đúng một câu hỏi.
+    """
+    from eide.loop import kiem_cap_goi_tra
+    from eide.protocol.rpc import Core
+
+    ex = {"summary": "nạp bản vừa dịch", "why": "chạy thử trên bo", "sources": [],
+          "diff_prev": "—", "next": "đọc log", "confidence": "BAC"}
+    agent = make_agent([Response(tool_calls=[ToolCall("c1", "target.flash", {"explain": ex})])])
+    seen = []
+    core = Core(agent.ledger, agent.ids, agent.turn, on_emit=seen.append)
+    core.console_act({"kind": "say", "text": "nạp firmware lên bo đi"})
+    gid = [c for c in _cards(seen) if c.get("type") == "gate"][0]["gate_id"]
+
+    agent.llm.script = [Response(text="Đã nạp xong.")]
+    agent.llm._i = 0
+    core.console_act({"kind": "decide", "data": {"gate_id": gid, "approved": True}})
+
+    tra = [m for m in agent.messages if m.get("role") == "tool" and m["tool_call_id"] == "c1"]
+    assert len(tra) == 1, f"c1 có {len(tra)} kết quả: {[str(m)[:90] for m in tra]}"
+    assert tra[0]["result"].get("code") not in ("E4003", "E4030"), (
+        "kết quả còn lại phải là kết quả THẬT sau khi duyệt, không phải lời từ chối cũ")
+    assert kiem_cap_goi_tra(list(agent.messages)) == []

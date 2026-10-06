@@ -94,6 +94,10 @@ class TurnContext:
     # Công cụ đã bị nhắc "ok mà kết quả rỗng" trong lượt này. Nhắc lại mỗi lần gọi sẽ thành
     # tiếng ồn, và tiếng ồn thì bị bỏ qua — kể cả lần nó đáng đọc.
     da_nhac_rong: set[str] = field(default_factory=set)
+    # M1-01 — lời nhắc sinh ra GIỮA một batch lời gọi. Chúng phải đợi tới khi mọi kết quả
+    # của batch đã vào lịch sử: một message `role=user` chen vào giữa lời gọi và kết quả
+    # của chính nó cắt đôi cặp mà `kiem_cap_goi_tra` canh.
+    _nhac_sau_batch: list[dict[str, Any]] = field(default_factory=list)
     # Lượt này đã bị bắt tự kiểm chứng chưa. Vòng thứ hai là vòng tác tử đang TRẢ LỜI lời
     # nhắc ấy; bắt nó kiểm lại lần nữa sẽ thành vòng lặp.
     da_tu_kiem: bool = False
@@ -157,6 +161,52 @@ class DanhSachGhiDia(list):
     def append(self, m: dict[str, Any]) -> None:     # type: ignore[override]
         self._ts.ghi(m)
         super().append(m)
+
+
+def kiem_cap_goi_tra(messages: list[dict[str, Any]]) -> list[str]:
+    """Soát bất biến: mỗi lượt mô hình có N lời gọi thì theo sau đúng N kết quả cùng id,
+    liền nhau, không có message nào chen giữa. Trả danh sách chỗ sai — rỗng là sạch.
+
+    Vì sao là một hàm thuần chứ không phải một assert trong vòng lặp: bất biến này phải
+    soát được cả trên transcript ĐÃ LƯU của một phiên thật, không chỉ trên bộ nhớ của
+    tiến trình đang chạy. Soát một phiên cũ:
+
+        .venv/bin/python -c "import json,sys; from eide.loop import kiem_cap_goi_tra; \\
+          print(kiem_cap_goi_tra([json.loads(d) for d in open(sys.argv[1]) if d.strip()]))" \\
+          du-lieu/<ten-du-an>/phien/<id>.jsonl
+
+    Ba kiểu sai nó bắt, và cả ba đã có thật trong mã (M1-01): lời gọi không có kết quả
+    (cổng bật giữa batch), kết quả thứ hai cho cùng một id (duyệt cổng), và một lời nhắc
+    `role=user` chen vào giữa lời gọi và kết quả của chính nó.
+    """
+    loi: list[str] = []
+    i, n = 0, len(messages)
+    while i < n:
+        if messages[i].get("role") != "model":
+            i += 1
+            continue
+        ids = [str(c.get("id")) for c in (messages[i].get("tool_calls") or [])]
+        j = i + 1
+        while j < n and messages[j].get("role") != "model":
+            j += 1
+        cua_so = messages[i + 1:j]
+        vi_tri_tra = [k for k, m in enumerate(cua_so) if m.get("role") == "tool"]
+        da_tra = [str(cua_so[k].get("tool_call_id")) for k in vi_tri_tra]
+
+        for cid in ids:
+            dem = da_tra.count(cid)
+            if dem == 0:
+                loi.append(f"lượt #{i}: lời gọi {cid} không có kết quả nào")
+            elif dem > 1:
+                loi.append(f"lượt #{i}: lời gọi {cid} có {dem} kết quả, phải đúng 1")
+        for cid in dict.fromkeys(t for t in da_tra if t not in ids):
+            loi.append(f"lượt #{i}: có kết quả cho {cid} mà lượt này không gọi nó")
+        if vi_tri_tra and vi_tri_tra != list(range(len(vi_tri_tra))):
+            chen = [str(cua_so[k].get("role")) for k in range(vi_tri_tra[-1])
+                    if k not in vi_tri_tra]
+            loi.append(f"lượt #{i}: có message chen giữa lời gọi và kết quả: {chen}")
+        i = j
+    return loi
 
 
 # =========================================================================== tác tử
@@ -692,11 +742,14 @@ class Agent:
 
             self._nhip(ctx)          # token vừa tiêu — nói ngay, đừng đợi hết lượt
 
-            for call in rsp.tool_calls:
+            for k, call in enumerate(rsp.tool_calls):
                 self._one_tool(call, ctx)
                 self._nhip(ctx)      # bộ đếm công cụ và giây, sau MỖI lời gọi
                 if ctx.awaiting_human:
+                    self._chua_chay_vi_cho_cong(rsp.tool_calls[k + 1:], ctx)
+                    self._xa_nhac_sau_batch(ctx)
                     return
+            self._xa_nhac_sau_batch(ctx)
             nhac = self._nhac_neu_dang_quay_vong(ctx)
             if nhac:
                 self.messages.append({"role": "user", "_he_thong": True, "text": nhac})
@@ -903,8 +956,10 @@ class Agent:
                 ctx.da_nhac_rong.add(call.tool)
                 self.ledger.append("hook", {"run_id": ctx.run_id, "hook": "ket_qua_rong",
                                             "tool": call.tool, "ly_do": ly_do})
-                self.messages.append({"role": "user", "_he_thong": True,
-                                      "text": nhac_nho(call.tool, ly_do)})
+                # M1-01 — HOÃN tới sau batch. Append ngay ở đây thì lời nhắc nằm giữa lời
+                # gọi và kết quả của chính nó. Nội dung lời nhắc không đổi, chỉ chỗ đặt.
+                ctx._nhac_sau_batch.append({"role": "user", "_he_thong": True,
+                                            "text": nhac_nho(call.tool, ly_do)})
 
         # MEM-42 §5.1 — kết quả KHÔNG đi nguyên văn vào transcript. Phần vượt trần nằm
         # ở blob và mô hình đọc lại bằng `blob.read`. Đây là chỗ rẻ nhất để giữ cửa sổ.
@@ -915,6 +970,33 @@ class Agent:
         self.messages.append({"role": "tool", "tool_call_id": call.id,
                               "tool": call.tool, "result": env.to_model(),
                               "envelope": env.to_ledger()})
+
+    def _chua_chay_vi_cho_cong(self, con_lai: list[Any], ctx: TurnContext) -> None:
+        """M1-01 — trả kết quả E4031 cho các lời gọi nằm SAU lời gọi vừa bật cổng.
+
+        Cổng bật ở lời gọi thứ k thì k+1..n chưa chạy, nhưng chúng vẫn phải có kết quả:
+        một `function_call` không ai trả lời làm hỏng request kế tiếp, và làm mô hình đọc
+        một lượt khuyết rồi tự dựng ra chuyện đã xảy ra. Nói thẳng "chưa chạy, vì sao"
+        rẻ hơn nhiều — đo được ngày 02/10/2026: hai lượt mất vì một khoảng trống như thế.
+
+        `as_incident=False`: đây không phải sự cố, đây là hàng đợi đang chờ người.
+        """
+        for sau in con_lai:
+            self._tool_error(sau, EideError(
+                "E4031",
+                "Chưa chạy: lời gọi trước trong cùng lượt đang chờ người duyệt cổng.",
+                hint_for_agent="Đợi người duyệt; đừng gọi lại.",
+                blame="system"), ctx, as_incident=False)
+
+    def _xa_nhac_sau_batch(self, ctx: TurnContext) -> None:
+        """Đổ các lời nhắc đã hoãn vào lịch sử, SAU khi mọi kết quả của batch đã vào.
+
+        Gọi ở cả hai lối ra của vòng batch — lối thường và lối cổng bật — vì một lời nhắc
+        bị bỏ quên còn tệ hơn một lời nhắc đặt sai chỗ: nó biến mất không dấu vết.
+        """
+        for m in ctx._nhac_sau_batch:
+            self.messages.append(m)
+        ctx._nhac_sau_batch.clear()
 
     def _tool_error(self, call: Any, err: EideError, ctx: TurnContext,
                     *, as_incident: bool = True) -> None:
@@ -1408,7 +1490,7 @@ class Agent:
                                           "</system-reminder>"})
             return self._tool_loop(ctx, None)
 
-        # Nói ra rằng cổng đã được duyệt, TRƯỚC khi kết quả công cụ xuất hiện.
+        # Nói ra rằng cổng đã được duyệt, ngay cạnh kết quả công cụ.
         #
         # Thiếu dòng này thì mô hình thấy đúng hai thứ mâu thuẫn, liền nhau: lời từ chối
         # E4003 — *"DỪNG LẠI, đừng gọi lại tool này, kết thúc lượt và chờ quyết định"* — rồi
@@ -1422,13 +1504,14 @@ class Agent:
         #
         # Nhánh TỪ CHỐI và nhánh cổng do S0 phát đều đã có lời nhắc. Chỉ nhánh thường gặp
         # nhất là không.
-        self.messages.append({"role": "user", "_he_thong": True, "text": (
+        nhac_da_duyet = {"role": "user", "_he_thong": True, "text": (
             f"<system-reminder>\nNgười dùng ĐÃ DUYỆT cổng {gid} "
             f"({pend['card'].get('title')}). Lời gọi `{call['tool']}` bị chặn trước đó nay "
-            "đã được chạy thay bạn — kết quả của nó là tin nhắn ngay sau đây.\n\n"
+            "đã được chạy thay bạn — kết quả của nó đã thay chỗ lời từ chối cũ, ở ngay "
+            "trên.\n\n"
             "Lời từ chối `E4003` trước đó đã hết hiệu lực. **Tiếp tục đúng việc đang làm**: "
             "đề bài vẫn là lời người dùng giao ở đầu lượt, nó không bị mất và không cần hỏi "
-            "lại.\n</system-reminder>")})
+            "lại.\n</system-reminder>")}
 
         spec = self.registry.get(call["tool"])
         res = self.registry.run(call["tool"], call["args"], ctx)
@@ -1441,8 +1524,27 @@ class Agent:
         # Duyệt xong lại thấy tác tử nói nó vẫn đang chờ duyệt.
         if approved and call["tool"] == "plan.exit" and res.ok:
             self._duyet_ke_hoach(ctx, gid)
-        self.messages.append({"role": "tool", "tool_call_id": call.get("id", gid),
-                              "tool": call["tool"], "result": res.to_model()})
+
+        # M1-01 — THAY kết quả cũ tại chỗ, không sinh kết quả thứ hai cho cùng một id.
+        #
+        # Lời gọi bị chặn đã có sẵn một kết quả `E4003` (`gate_pending`) trong lịch sử.
+        # Append thêm một message `role=tool` nữa cho cùng `tool_call_id` làm lịch sử có
+        # hai câu trả lời cho đúng một câu hỏi — API đọc là lỗi, mô hình đọc là mâu thuẫn.
+        # Lịch sử trong bộ nhớ sửa tại chỗ thì transcript trên đĩa phải viết lại cả tệp:
+        # `DanhSachGhiDia` chỉ ghi thêm lúc `append`, nó không thấy một phép sửa ô.
+        cid = call.get("id", gid)
+        cu = next((m for m in reversed(self.messages)
+                   if m.get("role") == "tool" and m.get("tool_call_id") == cid), None)
+        if cu is not None:
+            cu["result"] = res.to_model()
+            cu["_da_duyet_sau"] = gid
+            self.transcript.thay_toan_bo(list(self.messages))
+        else:
+            # Không tìm thấy kết quả cũ (cổng phát từ đường khác): giữ nguyên lối cũ.
+            self.messages.append({"role": "tool", "tool_call_id": cid,
+                                  "tool": call["tool"], "result": res.to_model(),
+                                  "_da_duyet_sau": gid})
+        self.messages.append(nhac_da_duyet)
         self._tool_loop(ctx, None)
 
     def _duyet_ke_hoach(self, ctx: TurnContext, gid: str) -> None:

@@ -159,8 +159,13 @@ def test_lõi_phat_NHIP_sau_moi_loi_goi_cong_cu():
     src = (GOC / "src/eide/loop.py").read_text("utf-8").split("\n")
     # Neo vào dòng NGAY SAU vòng lặp, không neo vào dòng `for`: docstring đầu tệp cũng có
     # `for call in rsp.tool_calls:` với đúng thụt lề ấy, và đó chính là chỗ bản đầu bắt nhầm.
+    #
+    # M1-01 đổi dòng `for` thành `for k, call in enumerate(...)` (cần chỉ số k để trả
+    # E4031 cho các lời gọi sau cổng). Neo nhận cả hai cách viết: thứ ca này đo là
+    # "`_nhip` nằm ngay sau `_one_tool` trong thân vòng lặp", không phải cách gõ dòng `for`.
+    _FOR = ("for call in rsp.tool_calls:", "for k, call in enumerate(rsp.tool_calls):")
     i = next((k for k, l in enumerate(src)
-              if l.strip() == "for call in rsp.tool_calls:"
+              if l.strip() in _FOR
               and src[k + 1].strip().startswith("self._one_tool(")), None)
     assert i is not None, "không tìm thấy vòng lặp gọi công cụ trong thân hàm"
     than = []

@@ -328,3 +328,34 @@ def test_dang_giua_ke_hoach_thi_HOAN_kiem_chung(make_agent):
     ctx2 = _Ctx(["xong cả kế hoạch"], da_ghi=True)
     ctx2.store = agent.store
     assert _hook_tu_kiem().stop(ctx2).another_round is True
+
+
+def test_nhac_rong_KHONG_chen_giua_goi_va_ket_qua(make_agent):
+    """TC-M1-01-02 — lời nhắc "kết quả rỗng" phải đứng SAU kết quả, không chen vào giữa.
+
+    `_one_tool` append lời nhắc `role=user` ngay khi thấy kết quả rỗng, tức là TRƯỚC khi
+    append kết quả của chính lời gọi ấy. Lịch sử thành: lượt mô hình gọi `c1` → một lời
+    nhắc của người → rồi mới kết quả `c1`. Lời nhắc đúng, chỗ đặt sai: nó cắt đôi cặp
+    gọi ↔ trả mà `kiem_cap_goi_tra` canh.
+    """
+    from eide.llm import Response, ToolCall
+    from eide.loop import kiem_cap_goi_tra
+    from eide.protocol.humanact import HumanAct
+
+    agent = _agent_voi_cong_cu_rong(make_agent, [
+        Response(tool_calls=[ToolCall("c1", "thu.lay_tep", {"tep": ["a", "b", "c"]})]),
+        Response(text="xong")])
+    agent.turn(HumanAct.from_dict({"kind": "say", "text": "lấy giúp mấy tệp",
+                                   "origin": {"surface": "console"}}), lambda c: None)
+
+    vai = [m.get("role") for m in agent.messages]
+    i_model = next(k for k, m in enumerate(agent.messages)
+                   if m.get("role") == "model" and m.get("tool_calls"))
+    sau = agent.messages[i_model + 1]
+    assert sau.get("role") == "tool" and sau.get("tool_call_id") == "c1", (
+        f"ngay sau lượt gọi phải là kết quả của c1, đang là {str(sau)[:120]}. Vai: {vai}")
+
+    i_nhac = next(k for k, m in enumerate(agent.messages)
+                  if "vừa trả về **thành công**" in str(m.get("text", "")))
+    assert i_nhac > i_model + 1, "lời nhắc phải đứng sau kết quả, không chen vào giữa"
+    assert kiem_cap_goi_tra(list(agent.messages)) == []

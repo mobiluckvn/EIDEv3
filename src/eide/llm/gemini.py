@@ -140,27 +140,78 @@ class GeminiGateway:
                         elapsed_ms=(time.perf_counter() - t0) * 1000)
 
     # ------------------------------------------------------------------ dịch
+    @staticmethod
+    def _gom_ket_qua(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Dời mọi message không phải `tool` ra SAU nhóm kết quả liền sau một lượt mô hình.
+
+        Hàm thuần, chỉ đụng DANH SÁCH gửi đi — transcript trên đĩa không đổi. Lõi đã được
+        sửa để không chen lời nhắc vào giữa (M1-01), nhưng một phiên CŨ mở lại vẫn mang
+        lịch sử chen giữa, và một request hỏng vì lịch sử cũ thì người dùng không mở lại
+        được phiên ấy nữa. Vì vậy chỗ dựng request phải chịu được cả hai dạng.
+        """
+        ra: list[dict[str, Any]] = []
+        i, n = 0, len(messages)
+        while i < n:
+            m = messages[i]
+            ra.append(m)
+            if m.get("role") != "model" or not m.get("tool_calls"):
+                i += 1
+                continue
+            ids = {str(c.get("id")) for c in m["tool_calls"]}
+            j, tra, chen = i + 1, [], []
+            while j < n and messages[j].get("role") != "model":
+                if (messages[j].get("role") == "tool"
+                        and str(messages[j].get("tool_call_id")) in ids):
+                    tra.append(messages[j])
+                else:
+                    chen.append(messages[j])
+                j += 1
+            ra.extend(tra)
+            ra.extend(chen)
+            i = j
+        return ra
+
     def _to_contents(self, messages: list[dict[str, Any]]) -> list[Any]:
         from google.genai import types
 
         out: list[Any] = []
-        for m in messages:
+        cho_phep_id: set[str] = set()      # id đã đi kèm function_call ở lượt mô hình
+        nhom: list[Any] = []               # các function_response liền nhau đang gom
+
+        def xa_nhom() -> None:
+            if nhom:
+                out.append(types.Content(role="user", parts=list(nhom)))
+                nhom.clear()
+
+        for m in self._gom_ket_qua(messages):
             role = m.get("role")
+            if role == "tool":
+                res = m.get("result")
+                if not isinstance(res, dict):
+                    res = {"result": res}
+                # Id chỉ gửi kèm khi lượt mô hình tương ứng cũng đã gửi id ở function_call.
+                # Gửi một `function_response.id` không khớp lời gọi nào là tự dựng ra một
+                # cặp không tồn tại — tệ hơn là không gửi id.
+                cid = str(m.get("tool_call_id") or "")
+                fr = types.FunctionResponse(name=m.get("tool", "tool"), response=res)
+                if cid in cho_phep_id:
+                    fr.id = cid
+                nhom.append(types.Part(function_response=fr))
+                continue
+
+            xa_nhom()
             if role == "user":
                 out.append(types.Content(role="user",
                                          parts=[types.Part.from_text(text=m.get("text", ""))]))
             elif role == "model":
                 parts = self._model_parts(m)
+                cho_phep_id = {str(p["id"]) for p in (m.get("parts") or [])
+                               if p.get("type") == "call" and p.get("id")}
                 if parts:
                     out.append(types.Content(role="model", parts=parts))
-            elif role == "tool":
-                res = m.get("result")
-                if not isinstance(res, dict):
-                    res = {"result": res}
-                out.append(types.Content(role="user", parts=[
-                    types.Part.from_function_response(name=m.get("tool", "tool"), response=res)]))
             else:
                 raise ValueError(f"Vai trò thông điệp lạ: {role!r}")
+        xa_nhom()
         return out
 
     @staticmethod
