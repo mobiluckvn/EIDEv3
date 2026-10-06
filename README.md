@@ -67,7 +67,7 @@ lời gọi, không nói về tệp nằm trên đĩa.
 
 **Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà trong kho chưa có
 công cụ nào làm được, nó tự viết một công cụ mới kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ
-đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 122 công cụ kể ở trên — nó sinh
+đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 127 công cụ kể ở trên — nó sinh
 ra lúc chạy, trong đúng dự án đang làm. Việc này đã chạy thật, không phải tính năng trên giấy.
 
 ---
@@ -168,6 +168,16 @@ Lớp 3 — Hộp cát: tệp này có nằm trong thư mục dự án không? v
    ↓
 Chạy, rồi ghi vào sổ cả tham số lẫn kết quả lẫn mã lỗi
 ```
+
+**Từ 06/10/2026, ba lớp này áp cho cả Agent con.** Trước đó chúng chỉ quấn quanh Agent chính:
+Agent con gọi thẳng vào sổ công cụ, không qua lớp nào. Nghĩa là luật *"hằng số phải có chỗ lấy
+ra"* chặn Agent chính ghi `#define BAUD 115200`, nhưng Agent chính chỉ cần nhờ một Agent con
+ghi hộ là xong. Rà 68 sổ ghi việc: **1 822 lời gọi của Agent con đã chạy như thế**, không lần
+nào qua lớp luật. Toàn là công cụ đọc nên chưa hỏng gì — nhưng đó là may, không phải được canh.
+
+Agent con gặp một cửa duyệt thì **dừng và ghi vào mục "chưa làm"**, nó không được tự dựng thẻ
+hỏi người: người dùng không nhìn thấy Agent con, nên một câu hỏi từ nó là câu hỏi không có chỗ
+đứng.
 
 ### 3.3 · Ba cách gỡ lại, dùng cho ba tình huống khác nhau
 
@@ -315,7 +325,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **1 575 ca Python + 40 ca giao diện**
+### Mức 1 — Ca đơn vị: **1 628 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -327,7 +337,7 @@ nói được sản phẩm có dùng được không — nó chỉ nói mã làm
 Phần giao diện mới có bộ kiểm từ 02/10/2026:
 
 ```bash
-cd ui/EIDEApp && swift test        # 40 ca
+cd ui/EIDEApp && swift test        # 43 ca
 ```
 
 Trước đó **cả giao diện chưa từng có một ca kiểm nào** — `Package.swift` chỉ khai một mục tiêu
@@ -336,8 +346,15 @@ kết thúc bằng câu *"không con số nào bắt được, phải nhìn màn
 và màu sắc, nhưng **sai với phần tách khối, tách ô, đổi ký hiệu** — những phần ấy là hàm thuần,
 vào chuỗi ra chuỗi.
 
-Và một phép đo về chính bộ kiểm: **13 trong 40 ca đỏ khi trả lại mã cũ**. Con số ấy quan trọng
-hơn con số 40, vì nó nói bộ kiểm có canh được gì không.
+Và một phép đo về chính bộ kiểm: **13 trong 40 ca đỏ khi trả lại mã cũ** (đo ngày 02/10/2026,
+lúc bộ kiểm có 40 ca). Con số ấy quan trọng hơn con số 43, vì nó nói bộ kiểm có canh được gì
+không.
+
+Một cái bẫy trong chính lệnh đo, gặp ngày 06/10/2026: `swift test | tail -3` in ra
+*"Test run with 0 tests in 0 suites passed"* và trông như bộ kiểm giao diện rỗng. Ba dòng cuối
+ấy là bản tóm tắt của thư viện swift-testing (dự án chưa dùng); bản tóm tắt XCTest — **43 ca,
+0 đỏ** — nằm ngay phía trên, bị `tail` cắt mất. Một lệnh đo cắt nhầm chỗ thì nói sai theo cả
+hai chiều.
 
 ### Mức 2 — Ca đi qua giao thức thật, không tốn tiền mô hình
 
@@ -405,14 +422,14 @@ thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc ph
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **1 575** | `pytest -q` |
-| Ca đơn vị giao diện | **40** · 13 ca đỏ khi trả lại mã cũ | `cd ui/EIDEApp && swift test` |
+| Ca đơn vị Python | **1 628** | `pytest -q` |
+| Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
 | Vẽ sơ đồ (trên màn hình và trong tệp) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
 | Cách làm mã: đọc trước, đánh mốc, chọn cấu trúc | **8/8** | [`thu_quy_trinh_code.py`](tools/thu_quy_trinh_code.py) |
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
-| Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 15 tệp | `tools/kiem_tai_lieu.py` |
+| Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 18 tệp | `tools/kiem_tai_lieu.py` |
 | Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/`](docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/) |
 | Công cụ đã được dùng thật | **115/127** | rà toàn bộ sổ ghi việc |
 
@@ -425,11 +442,36 @@ nhau, nên gộp vào một cột là nói sai về sản phẩm.
 
 ### Một việc không thêm tính năng nào nhưng đáng kể
 
-Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào**. Bảy
-công cụ có đường dẫn tới chúng bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để
-kiểm. Nay **110/122 đã được dùng thật**.
+Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào** (số
+đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 127). Bảy công cụ có đường dẫn tới chúng
+bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/127 đã được dùng
+thật**.
 
 Một công cụ không bao giờ được dùng thì bằng không có nó.
+
+### Đợt rà lại chính Agent, từ 06/10/2026
+
+Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Ba việc
+đầu đã xong; mỗi việc tìm ra một chỗ mà bộ kiểm cũ không nhìn tới, và cả ba đều đo lại được
+trên dữ liệu phiên đã chạy chứ không chỉ trên ca kiểm.
+
+| Việc | Chỗ hỏng | Đo trên dữ liệu thật |
+|---|---|---|
+| Toàn vẹn cặp *gọi công cụ ↔ kết quả* | ba đường để lại một lịch sử mà mô hình đọc không khớp: cửa duyệt bật giữa chừng thì các lời gọi sau bỏ trắng; lời nhắc chen vào giữa; duyệt cửa xong sinh **kết quả thứ hai** cho cùng một lời gọi | **105 trong 309 phiên** có lịch sử tự mâu thuẫn — 255 chỗ |
+| Lược đồ công cụ gửi mỗi lời gọi | trần `tool_schema = 4000` nằm trong mã từ đầu mà **không dòng nào đọc nó** | thực tế **25 869 token**, gửi lại mỗi lời gọi. Bật cờ gọn: **4 475** (−82,7 %) |
+| Agent con đi vòng ba lớp | gọi thẳng sổ công cụ, không qua luật, cửa duyệt hay khoá chế độ kế hoạch | **1 822 lời gọi** trong 26 phiên, 0 lần qua lớp luật |
+
+Chỗ đáng nói nhất không phải ba lỗi, mà là **cả ba đều có cơ chế sẵn và đường dẫn tới nó đứt** —
+đúng hình dạng đã lặp lại suốt dự án này. Cái trần token tồn tại nhưng không ai nối dây tới nó.
+Ba lớp chặn tồn tại nhưng Agent con không đi qua. Lịch sử hội thoại có đủ dữ liệu nhưng không ai
+soát nó bao giờ.
+
+Nay có một hàm thuần `kiem_cap_goi_tra(messages)` soát được bất biến ấy trên **transcript đã
+lưu** của bất kỳ phiên nào, không chỉ trong ca kiểm. Nó vẫn chỉ là **thước đo, chưa là hàng
+rào**: chưa có hook nào chạy nó tự động.
+
+Kế hoạch đầy đủ 106 việc nằm ở [`toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md`](toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md);
+nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 · 331 · 332).
 
 ---
 
@@ -991,6 +1033,13 @@ Nói ra để người đọc không phải tự tìm:
 - **Tác tử xác minh con có hạn 10 lời gọi, quá chặt.** Nó cày hết hạn vào `ledger.query` rồi
   trả về `chua_du_du_kien` mà chưa kịp nộp báo cáo — nên lời xác minh biến mất đúng lúc cần
   nó nhất.
+- **Cách thu gọn lược đồ công cụ còn TẮT mặc định.** Bật cờ `EIDE_FEATURE_GON_CONG_CU` thì
+  lược đồ xuống 4 475 token, nhưng con số ấy chỉ nói **token tiết kiệm** — nó không nói Agent
+  làm việc tốt hơn hay tệ hơn khi chỉ còn 18 công cụ trong tầm mắt. Thứ đó phải đo bằng bộ 76
+  ca chạy cả hai chế độ, và bộ ấy tốn tiền mô hình nên chưa chạy.
+- **Phép soát "mỗi lời gọi một kết quả" chưa thành hàng rào.** `kiem_cap_goi_tra()` chạy được
+  trên mọi phiên đã lưu, nhưng chưa hook nào gọi nó tự động — nên nó bắt được chuyện cũ, chưa
+  chặn được chuyện mới.
 
 Danh sách đầy đủ, kèm chỗ cần sửa trong mã:
 [`docs/md/VIEC-CHO-LAM.md`](docs/md/VIEC-CHO-LAM.md).
@@ -1042,7 +1091,7 @@ và Python. App tự nhớ cho lần sau.
                │ JSON-RPC 2.0 trên stdio — không mở cổng mạng nào
 ┌──────────────┴──────────────┐
 │  Lõi EIDE  (Python)         │
-│  vòng lặp Agent · 122 công  │
+│  vòng lặp Agent · 127 công  │
 │  cụ · luật · cửa duyệt · kho│
 └──────────────┬──────────────┘
                │
@@ -1073,7 +1122,7 @@ bản kể lại nào.
 ```
 src/eide/
 ├── loop.py            vòng lặp Agent
-├── tools/             122 công cụ, chia theo nhóm
+├── tools/             127 công cụ, chia theo nhóm
 ├── policy/            luật chặn và cửa duyệt
 ├── knowledge/         đọc tài liệu, rút con số, chữ trong hình
 ├── store/             kho dữ liệu dựa trên sổ ghi việc + git
