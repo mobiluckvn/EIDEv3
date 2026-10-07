@@ -7437,3 +7437,84 @@ lần thứ hai trong đợt này một hằng số tự nhớ sinh ra một ph�
 
 Bộ kiểm 1671 → **1679 xanh, 0 đỏ** (+8 ca). "Phá lại thì đỏ" cho **cả sáu** chỗ sửa.
 `test_code_analyze_tra_loi_cau_AI_DANG_DUNG` vẫn xanh; kiểu trả về của `code.analyze` không đổi.
+
+---
+
+## [DEV-338] [M3-01] ERC quá áp: luật đã viết sẵn, `erc()` không gọi nó
+
+Nhiệm vụ #9. **Sửa lỗi thuần**, không cờ.
+
+### Chỗ đứt
+
+`compare.qua_ap(ap_cap, chiu_toi_da)` đã có sẵn **từ trước**: phép so, câu chữ tiếng Việt,
+mức `blocker`, và cả phép chặn vế ĐỒNG (N2). `KHOA["v_max"]` cũng đã có bí danh
+(`v_max`, `vdd.max`, `vin.max`, `ap_toi_da`). Nhưng `erc()` chỉ gọi **bốn** luật, và không
+luật nào gọi `qua_ap` — nên tác tử phải **tự nhớ** gọi `fact.compare` mới thấy.
+
+Một phép kiểm phụ thuộc vào việc ai đó nhớ gọi nó thì không phải một phép kiểm. Lần thứ sáu
+trong chín nhiệm vụ gặp đúng hình dạng này.
+
+Luật này khác ba luật kia của §4.2 ở một điểm đáng nói: chúng bắt mạch **chạy sai**, nó bắt
+mạch **hỏng**. 5 V vào chân chịu 3,6 V không làm lệch số đo — nó phá con chip, và không có
+cách nào "chạy lại để xem".
+
+### Đã làm
+
+`qua_ap_tren_net(cay, tf, phang, thuoc)`, gọi trong `erc()` ngay sau `muc_logic_tren_net`.
+Hai vế cấp, vì cùng một lỗi có hai đường vào:
+
+* **rail** — `canonical.ap_danh_dinh` của net (do `ckm.net_set` ghi, tầng `NGUOI`). Không suy
+  từ **tên** net: một net tên "3V3" mà bị cấp 5 V thì cái tên chính là thứ sai.
+* **tín hiệu** — `voh` lớn nhất của một chân trên net. Đường này thường gặp hơn: nối chân ra
+  5 V vào chân vào 3,3 V, và hai con chip đều "đúng" khi đọc riêng.
+
+Thêm hai khoá: `vddio_max` (nhiều chip có VDD lõi khác VDDIO) và `v_tolerant` — chân khai
+chịu được 5 V thì **bỏ qua**. Chân 5V-tolerant rất thường gặp (STM32); báo oan ở đó thì bảng
+ERC mất uy tín đúng vào loại mạch phổ biến nhất.
+
+Không có vế nào thì **im lặng**, và trong giới hạn thì cũng **không thêm dòng "đạt"**.
+
+### Hai ca kiểm của tôi không canh gì, và một ca trong số đó RỖNG
+
+Phá lại từng chỗ sửa: năm phép phá, **ba** đỏ, **hai** không.
+
+**Ca "không báo trên net đất" là một ca rỗng.** Dàn dựng `bo` của `tests/test_erc.py`
+**không có net GND nào** — nên ca ấy xanh cả khi tôi bỏ hẳn phép bỏ qua net đất. Nó không
+kiểm gì cả. Nay nó tự dựng một net `loai="gnd"` mang `ap_danh_dinh` (người khai nhầm, chuyện
+có thật) cùng một chân có `v_max`; thiếu phép bỏ qua thì ERC báo blocker trên net đất, và ca
+đỏ.
+
+**Ca "trong giới hạn" chỉ xét `khong_dat`.** Nên nó xanh cả khi luật sinh một dòng `đạt` cho
+mọi chân. Nay nó đòi `_tim(ds, "qua_ap") == []` — không dòng nào, kể cả "đạt".
+
+Đây là lần thứ ba trong đợt này một ca kiểm của tôi xanh vì nó không chạm tới thứ nó nói nó
+canh. Hai lần trước ở DEV-335 (một điều tôi tự nhớ sai) và DEV-336 (phép đo sai mức).
+
+### Đo trên dữ liệu thật: 0 phát hiện, và lý do đáng ghi hơn con số
+
+```
+5 kho có mô hình mạch chạy được ERC   →  0 phát hiện quá áp
+479 Fact thật, ERC đọc được 15:  v_max 5 · vih 3 · i_max 3 · addr 2 · vddio_max 1 · i_out_max 1
+```
+
+Mở ra xem thì **hai tập dữ liệu không giao nhau**: ba kho CÓ Fact `v_max` (`thu-nghiem-cuoi`,
+`thu-nghiem-g4`, `thu-nghiem-ing-b`) đều **không có mô hình mạch** — không lá, không net;
+chúng là dự án thử bộ rút Fact. Còn năm kho có mô hình mạch thì **không kho nào có Fact
+`v_max`**.
+
+Và có một đường còn đứt nữa, đứt ngay cả khi hai tập ấy giao nhau: Fact thật dùng chủ thể
+**`chip:ATmega328P`**, trong khi `chu_the_la` trả `["leaf:U1", "U1", "ATmega328P"]` — **không
+có tiền tố `chip:`**. Nên một Fact `chip:ATmega328P · vdd.max = 5,5 V` là vô hình với ERC dù
+mạch có U1 là ATmega328P.
+
+Đó đúng là việc của **M3-07** (#12: *"Nối Fact datasheet ↔ khoá/chủ thể ERC"*), và kế hoạch
+M3-01 đã ghi trước *"nên làm cùng M3-07, vì M3-07 sửa cách tra chủ thể `chip:X`"*. Tôi để
+nguyên theo phạm vi. Nhưng nói thẳng ở đây: **cho tới khi M3-07 xong, luật này chưa nổ được
+trên dữ liệu thật** — nó chỉ nổ trong ca kiểm, nơi Fact được ghi bằng chủ thể `leaf:`/`pin:`.
+Một luật đúng mà không có đường tới dữ liệu thì vẫn là một đường dẫn đứt, chỉ là đứt ở khúc
+sau.
+
+### Số đo
+
+Bộ kiểm 1679 → **1686 xanh, 0 đỏ** (+7 ca). `test_board_check…_dat == []` và
+`test_HIER17_moi_phat_hien_noi_ro_o_khoi_nao` vẫn xanh.

@@ -538,3 +538,116 @@ def test_khoi_cap_nhan_ra_bang_FACT_du_Port_chua_biet_huong(bo):
     _fact(bo, "leaf:U2", "i_max", 0.000085, unit="A")
     x = _tim(E.erc(bo), "ngan_sach_dong", "dat")
     assert x, [i.vi for i in E.erc(bo) if i.luat == "ngan_sach_dong"]
+
+
+# =========================================================================== 5. quá áp trên net
+#
+# Luật này khác bốn luật kia ở một điểm: ba luật kia bắt mạch CHẠY SAI, luật này bắt mạch
+# HỎNG. 5 V vào một chân chịu 3,6 V không làm sai sườn hay lệch số đo — nó phá con chip, và
+# không có cách nào "chạy lại để xem". Nên nó là luật duy nhất ở đây mà phát hiện muộn một
+# lần đã là quá muộn.
+#
+# Trước M3-01, `compare.qua_ap` đã có sẵn: câu chữ, mức blocker, cách chặn vế ĐỒNG — đủ cả.
+# Nhưng `erc()` chỉ gọi bốn luật và không luật nào gọi nó, nên con đường từ "có luật" tới
+# "luật nổ" bị đứt. Tác tử phải TỰ NHỚ gọi `fact.compare` mới thấy, mà một phép kiểm phụ
+# thuộc vào việc ai đó nhớ gọi nó thì không phải một phép kiểm.
+def _dat_rail(bo, ap: str):
+    """Đổi điện áp danh định của net 3V3 ở gốc."""
+    bo.ckm_dat_nut(node_id="net:/board.3V3", loai="net", ten="3V3",
+                   canonical={"ten": "3V3", "loai": "power", "ap_danh_dinh": ap})
+
+
+def test_qua_ap_rail_5V_vao_chan_3V6_bi_chan(bo):
+    """TC-M3-01-01 — rail 5 V, chân U2 chịu 3,6 V → blocker, và nói ở khối nào."""
+    _dat_rail(bo, "5 V")
+    _fact(bo, "leaf:U2", "vdd.max", 3.6, unit="V")
+
+    ds = E.erc(bo)
+    x = _tim(ds, "qua_ap", "khong_dat")
+    assert x, [f"{i.luat}/{i.ket_luan}" for i in ds]
+    assert x[0].muc == "blocker", x[0].muc
+    assert "U2" in x[0].vi, x[0].vi
+    assert x[0].path.startswith("/board/sense"), x[0].path
+    # Hai vế phải nêu được nguồn, không chỉ nêu kết luận.
+    assert len(x[0].bang_chung) >= 2, x[0].bang_chung
+
+
+def test_qua_ap_trong_gioi_han_khong_bao(bo):
+    """TC-M3-01-02 — ca âm: rail 3,3 V, chân chịu 5,5 V → KHÔNG dòng nào, kể cả "đạt".
+
+    Không chỉ "không có blocker": luật này không được thêm một dòng `đạt` nào vào bảng.
+    Bảng ERC đầy dòng "đạt" cho thứ chưa ai hỏi là cách nhanh nhất để người đọc học được
+    rằng bảng ấy không đáng đọc — và `test_board_check…_dat == []` canh đúng điều đó.
+    """
+    _fact(bo, "leaf:U2", "vdd.max", 5.5, unit="V")
+    ds = E.erc(bo)
+    assert _tim(ds, "qua_ap", "khong_dat") == []
+    assert _tim(ds, "qua_ap") == [], [x.vi for x in _tim(ds, "qua_ap")]
+
+
+def test_qua_ap_ve_DONG_thi_chua_du_du_kien(bo):
+    """TC-M3-01-03 — vế ĐỒNG thì KHÔNG kết luận (N2), dù con số nhìn là vượt rõ."""
+    _dat_rail(bo, "5 V")
+    _fact(bo, "leaf:U2", "vdd.max", 3.6, unit="V", tier="DONG")
+
+    ds = E.erc(bo)
+    assert _tim(ds, "qua_ap", "khong_dat") == []
+    x = _tim(ds, "qua_ap", "chua_du_du_kien")
+    assert x, [f"{i.luat}/{i.ket_luan}" for i in ds]
+
+
+def test_qua_ap_tin_hieu_voh_vuot_vmax_chan_thu(bo):
+    """TC-M3-01-04 — không có rail thì lấy VOH của bên phát làm vế cấp.
+
+    Đây là đường vào thật của lỗi mức 5 V: không phải ai cũng cấp sai nguồn, nhưng nối một
+    chân ra 5 V vào một chân vào 3,3 V thì rất dễ — hai con chip đều "đúng" khi đọc riêng.
+    """
+    _fact(bo, "pin:U1.27", "voh", 4.8, unit="V")
+    _fact(bo, "pin:U2.5", "v_max", 3.6, unit="V")
+
+    x = _tim(E.erc(bo), "qua_ap", "khong_dat")
+    assert x, "VOH 4,8 V vào chân chịu 3,6 V mà không ai báo"
+    assert x[0].muc == "blocker"
+    assert "U2" in x[0].vi, x[0].vi
+
+
+def test_qua_ap_chan_chiu_5V_khong_bao(bo):
+    """TC-M3-01-05 — ca âm: chân khai chịu được 5 V thì không báo, dù rail là 5 V.
+
+    Chân 5V-tolerant là chuyện có thật và rất thường gặp (STM32, nhiều chân I/O). Báo oan
+    ở đây thì bảng ERC mất uy tín đúng vào loại mạch phổ biến nhất.
+    """
+    _dat_rail(bo, "5 V")
+    _fact(bo, "leaf:U2", "vdd.max", 3.6, unit="V")
+    _fact(bo, "pin:U2.1", "v_tolerant", "1")
+
+    assert _tim(E.erc(bo), "qua_ap", "khong_dat") == []
+
+
+def test_qua_ap_khong_bao_tren_net_DAT(bo):
+    """Net đất không có "điện áp cấp" theo nghĩa này — báo ở đó là một dòng vô nghĩa.
+
+    Bản đầu của ca này **rỗng**: dàn dựng `bo` không có net GND nào, nên nó xanh cả khi tôi
+    bỏ hẳn phép bỏ qua net đất. Nay nó DỰNG một net GND, và dựng đúng tình huống làm phép
+    bỏ qua ấy có việc: một net `loai="gnd"` mang `ap_danh_dinh` (người khai nhầm, chuyện có
+    thật) cùng một chân có `v_max`. Thiếu phép bỏ qua thì ERC báo blocker trên net đất.
+    """
+    _fact(bo, "leaf:U2", "vdd.max", 3.6, unit="V")
+    g = _nut(bo, "net:/board.GND", "GND", loai="net", cha="module:/board",
+             path="/board.GND", canon={"ten": "GND", "loai": "gnd",
+                                       "ap_danh_dinh": "5 V"})
+    pg = _port(bo, "leaf:U2", "4", chan="4", path="/board/sense/U2")
+    bo.ckm_noi(net_id=g, port_id=pg)
+    _fact(bo, "pin:U2.4", "v_max", 3.6, unit="V")
+
+    tren_dat = [x for x in _tim(E.erc(bo), "qua_ap") if "GND" in x.vi.upper()]
+    assert tren_dat == [], [x.vi for x in tren_dat]
+
+
+def test_qua_ap_khong_co_fact_thi_IM_khong_lam_nhieu_bang(bo):
+    """Không có Fact `v_max` nào thì luật này KHÔNG sinh dòng "đạt" cho mọi chân.
+
+    Bảng ERC đầy dòng "đạt" cho những thứ chưa ai đo là cách nhanh nhất để người đọc học
+    được rằng bảng ấy không đáng đọc. Ca `test_board_check..._dat == []` canh đúng điều này.
+    """
+    assert _tim(E.erc(bo), "qua_ap") == []

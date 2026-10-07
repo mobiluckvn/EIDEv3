@@ -44,6 +44,11 @@ KHOA = {
     "vih": ("vih", "vih.min", "v_ih"),
     "addr": ("addr", "i2c.addr", "dia_chi", "slave_addr"),
     "v_max": ("v_max", "vdd.max", "vin.max", "ap_toi_da"),
+    # M3-01 — mức chịu của riêng miền I/O (nhiều chip có VDD lõi khác VDDIO), và cờ chân
+    # chịu được 5 V. Chân 5V-tolerant là chuyện rất thường gặp (STM32, nhiều chân I/O);
+    # báo oan ở đó thì bảng ERC mất uy tín đúng vào loại mạch phổ biến nhất.
+    "vddio_max": ("vddio.max", "vddio_max"),
+    "v_tolerant": ("v_tolerant", "ft", "five_volt_tolerant"),
 }
 
 
@@ -143,6 +148,7 @@ def erc(store: Any) -> list[PhatHien]:
     ra: list[PhatHien] = []
     ra += ngan_sach_dong(cay, tf, phang, thuoc)
     ra += muc_logic_tren_net(cay, tf, phang)
+    ra += qua_ap_tren_net(cay, tf, phang, thuoc)
     ra += trung_dia_chi_bus(cay, tf, phang)
     ra += pull_up_bus(cay, tf, phang)
     return ra
@@ -378,6 +384,129 @@ def muc_logic_tren_net(cay: C.Cay, tf: TraFact,
                     f"Net {ten}, {c_ra} → {c_vao}: {kq.giai_thich}",
                     kq.bang_chung, kq.cach_sua))
     return ra
+
+
+# --------------------------------------------------------------------------- 2b. quá áp
+def _ap_cap_cua_net(cay: C.Cay, nets: list[str]) -> dict[str, Any] | None:
+    """Điện áp mà net này ĐANG MANG, dựng thành một Fact để `compare` so được.
+
+    Lấy từ `canonical.ap_danh_dinh` — trường mà `ckm.net_set(ap_danh_dinh=…)` ghi, tức
+    **người khai**, nên tầng là `NGUOI`. Không suy từ tên net: một net tên "3V3" mà người
+    ta cấp 5 V vào thì cái tên là thứ sai, và đó đúng là lỗi cần bắt.
+    """
+    from .chuan_hoa import chuan_hoa
+
+    for nid in nets:
+        n = cay.nut.get(nid)
+        if n is None:
+            continue
+        raw = str(n["canonical"].get("ap_danh_dinh") or "").strip()
+        if not raw:
+            continue
+        g = chuan_hoa(raw, ngu_canh="điện áp")
+        if g.gia_tri is None:
+            continue
+        return {"key": "ap_danh_dinh", "value": g.gia_tri, "unit": g.don_vi or "V",
+                "tier": "NGUOI", "subject": f"net:{n.get('path') or n['ten']}",
+                "source": {"human_act_id": "ckm.net_set"},
+                "explain": {"summary": f"net khai {raw}"}}
+    return None
+
+
+def _chiu_cua_chan(tf: TraFact, ct: list[str]) -> dict[str, Any] | None:
+    """Mức chịu tối đa của một chân: `v_max` trước, rồi `vddio_max`."""
+    return tf.tra(ct, "v_max") or tf.tra(ct, "vddio_max")
+
+
+def qua_ap_tren_net(cay: C.Cay, tf: TraFact, phang: dict[str, list[str]],
+                    thuoc: dict[str, str]) -> list[PhatHien]:
+    """Net mang điện áp vượt mức chịu của một chân nối vào nó (§4.2, TC038).
+
+    Luật này khác ba luật kia ở một điểm: chúng bắt mạch **chạy sai**, nó bắt mạch **hỏng**.
+    5 V vào một chân chịu 3,6 V không làm lệch số đo — nó phá con chip, và không có cách
+    nào "chạy lại để xem". Nên đây là luật duy nhất mà phát hiện muộn một lần đã quá muộn.
+
+    `compare.qua_ap` đã có sẵn từ trước: câu chữ, mức `blocker`, cách chặn vế ĐỒNG — đủ cả.
+    Nhưng `erc()` chỉ gọi bốn luật và không luật nào gọi nó, nên tác tử phải **tự nhớ** gọi
+    `fact.compare` mới thấy. Một phép kiểm phụ thuộc vào việc ai đó nhớ gọi nó thì không
+    phải một phép kiểm.
+
+    Hai đường vào của cùng một lỗi, nên hai vế cấp:
+
+      * **rail** — `ap_danh_dinh` của net (cấp sai nguồn);
+      * **tín hiệu** — `voh` lớn nhất của một chân trên net (nối chân ra 5 V vào chân vào
+        3,3 V; đây là đường thường gặp hơn, vì hai con chip đều "đúng" khi đọc riêng).
+
+    Không có vế nào thì **im lặng** — không sinh dòng "đạt" cho mọi chân chưa ai đo. Một
+    bảng ERC đầy dòng "đạt" cho thứ chưa đo là cách nhanh nhất để người đọc học được rằng
+    bảng ấy không đáng đọc.
+    """
+    ra: list[PhatHien] = []
+    la_theo_ref = {(n["canonical"].get("ref") or n["ten"]): n
+                   for n in cay.nut.values() if n.get("kind") == "leaf"}
+    net_cua_nhom: dict[str, list[str]] = {}
+    for nid, ten in thuoc.items():
+        if cay.nut.get(nid, {}).get("loai") == "net":
+            net_cua_nhom.setdefault(ten, []).append(nid)
+
+    for ten, chan in sorted(phang.items()):
+        nets = sorted(net_cua_nhom.get(ten, []))
+        if nets and _la_dat(cay, nets):
+            continue
+
+        # Thu thập từng chân trên net: nó chịu tối đa bao nhiêu, và nó có đẩy ra mức nào.
+        chiu: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+        voh: list[tuple[str, dict[str, Any]]] = []
+        for c in chan:
+            ref, _, so = c.partition(".")
+            n = la_theo_ref.get(ref)
+            if n is None:
+                continue
+            ct = [f"pin:{ref}.{so}"] + chu_the_la(n)
+            if _co_bat(tf.tra(ct, "v_tolerant")):
+                continue          # chân khai chịu được 5 V — không phải chỗ hỏng
+            f_chiu = _chiu_cua_chan(tf, ct)
+            if f_chiu is not None:
+                chiu.append((c, n, f_chiu))
+            f_ra = tf.tra(ct, "voh")
+            if f_ra is not None:
+                voh.append((c, f_ra))
+        if not chiu:
+            continue
+
+        cap = _ap_cap_cua_net(cay, nets)
+        nguon_vi = f"rail {ten}"
+        if cap is None and voh:
+            c_ra, cap = max(voh, key=lambda x: _gt(x[1])[0])
+            nguon_vi = f"{c_ra} đẩy ra"
+        if cap is None:
+            continue
+
+        for c, n, f_chiu in chiu:
+            if cap.get("subject") == f_chiu.get("subject"):
+                continue
+            if nguon_vi.startswith(c + " "):
+                continue          # chính chân ấy đẩy ra — không tự so với mình
+            kq = CP.qua_ap(cap, f_chiu)
+            if kq.ket_luan == "dat":
+                continue          # trong giới hạn: đừng thêm một dòng vào bảng
+            ra.append(PhatHien(
+                "qua_ap",
+                "chua_du_du_kien" if kq.chua_kiem_chung else kq.ket_luan,
+                kq.muc, n.get("path") or _path_cua_ref(cay, c.partition(".")[0]),
+                f"Net {ten} ({nguon_vi}) → {c}: {kq.giai_thich}",
+                kq.bang_chung, kq.cach_sua))
+    return ra
+
+
+def _co_bat(f: dict[str, Any] | None) -> bool:
+    """Fact cờ: có mặt và mang giá trị thật sự là "có"."""
+    if f is None:
+        return False
+    v = f.get("value")
+    if isinstance(v, str):
+        return v.strip().lower() not in ("", "0", "false", "no", "khong", "không")
+    return bool(v)
 
 
 # --------------------------------------------------------------------------- 3. địa chỉ bus
