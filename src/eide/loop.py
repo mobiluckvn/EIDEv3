@@ -111,6 +111,12 @@ class TurnContext:
     # Tài liệu đã nạp trong phiên — giữ nguyên văn theo trang để trích Fact và trả lời
     # có trích trang. Không nằm trong kho vì nội dung PDF lớn và không cần phiên bản.
     tai_lieu: dict[str, Any] = field(default_factory=dict)
+    # M3-10 — ảnh ERC của lần ghi TRƯỚC, để chỉ báo lỗi MỚI. `None` = chưa chạy lần nào
+    # trong lượt này (khác với "đã chạy và sạch", là `set()`).
+    erc_truoc: set[tuple[str, str, str]] | None = None
+    # (luật, path) → đã sửa mấy lần mà lỗi vẫn còn. Trần 3 rồi thì hỏi người.
+    erc_lan_sua: dict[tuple[str, str], int] = field(default_factory=dict)
+    erc_moi_chua_xu: list[dict[str, Any]] = field(default_factory=list)
 
     def mark_agent_read(self, path: str) -> None:
         """Ghi nhận tác tử đã ĐỌC một tệp trong lượt này.

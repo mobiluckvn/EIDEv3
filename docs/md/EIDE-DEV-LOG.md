@@ -7748,3 +7748,71 @@ nới tay phép tra là ca ấy đỏ ngay.
 Đây là lần thứ tư trong đợt này một ca kiểm xanh vì không chạm tới thứ nó canh (DEV-335,
 DEV-338, DEV-339, và lần này) — nhưng là lần đầu **phép phá cũng sai**, nên suýt nữa tôi kết
 luận "ca âm này canh tốt" từ hai cái sai cùng che nhau.
+
+---
+
+## [DEV-342] [M3-10] Vòng sinh → ERC → sửa, có trần — và ERC chỉ chạy khi có ai gọi
+
+Nhiệm vụ #13. Sau cờ `EIDE_FEATURE_ERC_TU_DONG`, mặc định TẮT. Tiền đề M3-03, M3-04, M3-07 —
+cả ba vừa xong, nên từ nay ERC đã có thứ đáng báo.
+
+### Chỗ hở
+
+ERC chỉ chạy khi **có ai gọi**: `board.check`, `ckm.build`, `sch.netlist`. Nên một tác tử
+dựng mạch bằng mười lời gọi `ckm.*` rồi nói "xong" **chưa bao giờ nhìn thấy** bảng ERC — trừ
+khi nó tự nhớ gọi. Và đo trên dữ liệu thật (DEV-338, DEV-339): không phiên nào gọi
+`board.check` sau một chuỗi sửa bản đồ.
+
+Đây là cùng một hình dạng với M1-01 → M3-07, nhưng ở một tầng khác: không phải "cơ chế có mà
+đường dẫn đứt", mà **"cơ chế có, đường dẫn thông, và không ai đi vào đường ấy"**.
+
+### Ba chỗ cố ý làm hẹp, mỗi chỗ chữa một cách hỏng khác
+
+* **Chỉ báo lỗi MỚI** (so với ảnh ERC của lần ghi trước, `ctx.erc_truoc`). Báo lại lỗi cũ ở
+  mỗi lời gọi thì sau năm lời gọi tác tử đọc cùng một dòng năm lần — và nó học được cách bỏ
+  qua khối ấy, kể cả lần có dòng mới.
+* **Trần 3 lần sửa cho cùng một `(luật, path)`**, rồi đổi lời nhắc sang `ask_user`. Hai lần
+  sửa đầu không đúng thì cái sai thường nằm ở chỗ **hiểu đề bài**, không ở chỗ gõ — lần sửa
+  thứ tư chỉ để khẳng định điều đó, bằng tiền.
+* **Chỉ sau công cụ GHI**, lọc bằng `spec.writes_artefact`. `ckm.graph` và `khoi.list` là
+  `writes_artefact=False`, nên chúng không kích ERC. ERC là mã thuần, nhưng không miễn phí.
+
+Và một cửa im lặng nữa ở hook Stop: tác tử **đã nói ra** lỗi (khớp tên luật hoặc `path` trong
+`ctx.loi_da_noi`) thì thôi. Thiếu cửa đó thì hook thành vòng lặp — nó bắt thêm vòng, tác tử
+nói về lỗi, nó vẫn thấy lỗi còn đó và bắt thêm vòng nữa.
+
+### Chi phí: đo, không đoán
+
+Hook chạy sau **mỗi** lần ghi bản đồ, nên chi phí là câu hỏi thật:
+
+```
+robot-canbang    187 nút · ERC  7,6 ms · 6 phát hiện, 4 nặng
+thu-nghiem-ckm    41 nút ·      0,7 ms
+thu-18            21 nút ·      0,4 ms
+thu-so-do          6 nút ·      0,3 ms
+```
+
+187 nút là mô hình mạch lớn nhất trong kho, và 7,6 ms thì không đáng một dòng bàn. Trần 2000
+nút vẫn đặt, và khi vượt thì hook **nói ra** trong `note_vi` thay vì im lặng bỏ qua: một hook
+im lặng chậm còn tệ hơn một hook không chạy, vì người dùng không biết nó đang ở đâu.
+
+### Hai ca kiểm của tôi đo chính câu lệnh của mình
+
+**Dàn dựng sai luật của sản phẩm.** Bản đầu tôi dựng lỗi `xung_dau_ra` bằng `ckm.chip_add`,
+và nó bị chặn bằng **E8002**: *"không có Fact chân nào mang khoá `net`"* — đúng luật
+(`chip_add` không cho tự đặt net). Ca kiểm đỏ, nhưng đỏ vì một luật khác. Dựng lại quanh
+`chap_nguon` (rail nối vào GND), lỗi chỉ cần khối/Port/net — đúng những gì công cụ `ckm.*`
+làm được, và cũng đúng cách tác tử thật dựng bản đồ.
+
+**Ca "trần 3 lần" đo chính nó.** Bản đầu đặt thẳng `ctx.erc_lan_sua[k] = 3` rồi khẳng định
+`ctx.erc_lan_sua` khác rỗng — tức nó đo câu lệnh vừa gõ, không đo mã sản phẩm. Thực tế bộ đếm
+**rỗng** ở thời điểm ấy: nó chỉ tăng khi lỗi **còn lại sau một lần ghi nữa**. Nay ca kiểm ghi
+thêm một lần rồi `assert` bộ đếm khác rỗng **trước** khi ép nó lên 3.
+
+### Số đo
+
+Bộ kiểm 1713 → **1720 xanh, 0 đỏ** (+7 ca). `thu_sch.py` 63/63, `kiem_tai_lieu` 0 chỗ lệch.
+Bảy phép phá, **bảy** đỏ — lần đầu trong đợt này không phép phá nào trượt.
+
+Cờ vẫn TẮT: "Tiêu chí xong" đòi eval 76 ca và bộ phát lại không tụt trước khi bật mặc định,
+và nó chèn lời nhắc vào transcript nên chỉ eval nói được nó làm tác tử khá hơn hay tệ hơn.

@@ -145,7 +145,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 10 | [M3-03](#m3-03) | ERC theo kiểu chân (ma trận điện thay KiCad ERC) | P0 | M | — | — | xong 07/10/2026 · DEV-339 · 8 phát hiện trên 5 mạch thật | ☑ |
 | 11 | [M3-04](#m3-04) | ERC tranh chấp nguồn và ngắn mạch rail–GND | P0 | S | — | — | xong 07/10/2026 · DEV-340 · 0 trên mạch thật, đã cấy lỗi để chứng minh luật sống | ☑ |
 | 12 | [M3-07](#m3-07) | Nối Fact datasheet ↔ khoá/chủ thể ERC, và báo độ phủ ERC | P0 | S | — | — | xong 07/10/2026 · DEV-341 · Fact tới được ERC 5→17 | ☑ |
-| 13 | [M3-10](#m3-10) | Vòng sinh → ERC → sửa có trần cho bản đồ mạch (hook `erc_delta`) | P0 | M | M3-03, M3-04, M3-07 | ERC_TU_DONG |  | ☐ |
+| 13 | [M3-10](#m3-10) | Vòng sinh → ERC → sửa có trần cho bản đồ mạch (hook `erc_delta`) | P0 | M | M3-03, M3-04, M3-07 | ERC_TU_DONG | xong 07/10/2026 · DEV-342 · ERC 7,6 ms trên mạch 187 nút | ☑ |
 | 14 | [M3-12](#m3-12) | Mô phỏng HDL: đọc PASS/FAIL chặt, chỉ từ log chạy, tính cả mã thoát và `$fatal` | P0 | S | — | — |  | ☐ |
 | 15 | [M3-13](#m3-13) | `hdl.sensitivity`: đo độ nhạy testbench Verilog bằng đột biến thật | P0 | M | M3-12 | — |  | ☐ |
 | 16 | [M3-18](#m3-18) | Kiểm ràng buộc chân FPGA (`.cst`) với cổng mô-đun đỉnh và chân của kit | P0 | M | — | — |  | ☐ |

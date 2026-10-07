@@ -320,7 +320,126 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                     "Công cụ chạy xong nhưng không trả về dữ liệu nào. Đây KHÔNG phải "
                     "'đạt' — đây là 'không kết luận được'. Nói rõ điều đó với người dùng.")
 
+    # M3-10 — công cụ SỬA BẢN ĐỒ MẠCH. Chỉ sau những cái này mới chạy ERC: nó là phép
+    # tính thuần, nhưng không phải miễn phí, và chạy nó sau một lời gọi chỉ-đọc thì tốn
+    # thời gian để nói lại đúng thứ vừa nói.
+    _SUA_MACH = ("ckm.", "khoi.place", "khoi.upgrade")
+    # Cây lớn hơn mức này thì bỏ qua và NÓI RA. Một hook im lặng chậm còn tệ hơn một hook
+    # không chạy: người dùng không biết nó đang ở đâu.
+    _TRAN_NUT_ERC = 2000
+    # Sửa cùng một lỗi mấy lần thì thôi, hỏi người. Hai lần sửa đầu không đúng thì cái sai
+    # thường ở chỗ hiểu đề bài, không ở chỗ gõ.
+    _TRAN_SUA_ERC = 3
+
+    def _bat_erc_tu_dong(ctx: Any) -> bool:
+        co = getattr(getattr(ctx, "config", None), "features", None)
+        return bool(co is not None and co.bat("erc_tu_dong"))
+
+    def _khoa_erc(x: Any) -> tuple[str, str, str]:
+        return (x.luat, x.path, x.vi[:60])
+
+    def _nang(x: Any) -> bool:
+        return x.ket_luan == "khong_dat" or x.muc in ("blocker", "major")
+
+    @bus.on_post_tool
+    def erc_delta(call: dict[str, Any], result: Any, ctx: Any) -> None:
+        """M3-10 — sau mỗi lần sửa bản đồ, nói ra lỗi chặn MỚI do chính lời gọi ấy gây ra.
+
+        ERC chỉ chạy khi có ai gọi `board.check` / `ckm.build` / `sch.netlist`. Nên một tác
+        tử dựng mạch bằng mười lời gọi `ckm.*` rồi nói "xong" chưa bao giờ nhìn thấy bảng
+        ERC — trừ khi nó tự nhớ gọi, và đo trên dữ liệu thật thì nó không nhớ.
+
+        Chỉ báo lỗi **MỚI**. Báo lại lỗi cũ ở mỗi lời gọi thì sau năm lời gọi tác tử đọc
+        cùng một dòng năm lần, và nó học được cách bỏ qua khối ấy — kể cả lần có dòng mới.
+        """
+        if not _bat_erc_tu_dong(ctx) or not getattr(result, "ok", False):
+            return
+        ten = str(call.get("tool") or "")
+        if not (ten.startswith(_SUA_MACH[0]) or ten in _SUA_MACH[1:]):
+            return
+        reg = getattr(ctx, "registry", None)
+        spec = reg.get(ten) if reg is not None else None
+        if spec is not None and not getattr(spec, "writes_artefact", False):
+            return                      # công cụ chỉ-đọc (ckm.graph, khoi.list)
+        kho = getattr(ctx, "store", None)
+        if kho is None:
+            return
+        du = result.data if isinstance(getattr(result, "data", None), dict) else None
+        if du is None:
+            return
+
+        from ..knowledge import erc as ERC
+
+        try:
+            so_nut = len(kho.ckm_cac_nut(limit=_TRAN_NUT_ERC + 1))
+        except Exception:                                        # noqa: BLE001
+            return
+        if so_nut > _TRAN_NUT_ERC:
+            du["erc_moi"] = []
+            du["note_vi"] = (str(du.get("note_vi", ""))
+                             + f" (ERC tự động BỎ QUA: cây có hơn {_TRAN_NUT_ERC} nút. "
+                               "Gọi `board.check` khi cần.)")
+            return
+
+        ds = [x for x in ERC.erc(kho) if _nang(x)]
+        bay_gio = {_khoa_erc(x) for x in ds}
+        truoc = ctx.erc_truoc if ctx.erc_truoc is not None else set()
+        moi = [x for x in ds if _khoa_erc(x) not in truoc]
+        # Lỗi CÒN LẠI sau một lần ghi nữa: đếm, vì đó là một lần sửa không ăn.
+        for x in ds:
+            k = _khoa_erc(x)
+            if k in truoc:
+                ctx.erc_lan_sua[(x.luat, x.path)] = \
+                    ctx.erc_lan_sua.get((x.luat, x.path), 0) + 1
+        ctx.erc_truoc = bay_gio
+
+        du["erc_moi"] = [x.to_dict() for x in moi[:3]]
+        if moi:
+            ctx.erc_moi_chua_xu.extend(x.to_dict() for x in moi)
+            du["note_vi"] = (str(du.get("note_vi", ""))
+                             + f" ERC: lời gọi này làm xuất hiện {len(moi)} lỗi chặn MỚI — "
+                             + "; ".join(f"[{x.path}] {x.luat}: {x.vi[:70]}"
+                                         for x in moi[:2])
+                             + ". Sửa hoặc nói rõ với người dùng.")
+
     # ================================================================== Stop
+    @bus.on_stop
+    def erc_chua_xu(ctx: Any) -> StopResult:
+        """M3-10 — còn lỗi chặn MỚI mà tác tử chưa nhắc tới thì cho thêm một vòng.
+
+        Khớp theo tên luật hoặc `path` trong `ctx.loi_da_noi`: tác tử đã NÓI RA thì thôi.
+        Không có cửa đó thì hook thành vòng lặp — nó bắt thêm vòng, tác tử nói về lỗi, hook
+        vẫn thấy lỗi còn đó và bắt thêm vòng nữa.
+        """
+        if not _bat_erc_tu_dong(ctx) or not getattr(ctx, "erc_moi_chua_xu", None):
+            return StopResult()
+        if not getattr(ctx, "said_anything", False):
+            return StopResult()
+        da_noi = " ".join(getattr(ctx, "loi_da_noi", []) or []).lower()
+        con = [x for x in ctx.erc_moi_chua_xu
+               if x["luat"].lower() not in da_noi and x["path"].lower() not in da_noi]
+        if not con:
+            return StopResult(fired=["erc_da_nhac"])
+
+        qua_tran = [k for k, v in (getattr(ctx, "erc_lan_sua", {}) or {}).items()
+                    if v >= _TRAN_SUA_ERC]
+        ds = "; ".join(f"[{x['path']}] {x['luat']}: {x['vi'][:80]}" for x in con[:3])
+        if qua_tran:
+            them = ("\n\nBạn đã sửa "
+                    + ", ".join(f"`{l}` ở `{p}`" for l, p in qua_tran[:3])
+                    + f" {_TRAN_SUA_ERC} lần mà lỗi vẫn còn. **DỪNG sửa, gọi `ask_user`**: "
+                      "hai lần sửa đầu không đúng thì cái sai thường nằm ở chỗ hiểu đề bài, "
+                      "không ở chỗ gõ — và lần sửa thứ tư chỉ để khẳng định điều đó.")
+        else:
+            them = ("\n\nSửa bản đồ rồi gọi lại, hoặc NÓI RÕ với người dùng là mạch còn "
+                    "lỗi này và vì sao bạn chưa sửa. Đừng trả lượt về như thể bản đồ sạch.")
+        return StopResult(
+            another_round=True, reason_vi=f"{len(con)} lỗi chặn ERC mới chưa ai nhắc tới",
+            fired=["erc_chua_xu"],
+            injection=("<system-reminder>\nBản đồ mạch bạn vừa sửa có "
+                       f"{len(con)} lỗi CHẶN mới mà lượt này chưa nhắc tới: {ds}." + them
+                       + "\n</system-reminder>"))
+
     @bus.on_stop
     def assumptions_stated(ctx: Any) -> StopResult:
         """N4 — giả định đang dùng phải được nói ra, không nằm ngầm trong hiện vật."""

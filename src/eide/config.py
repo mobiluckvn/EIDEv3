@@ -329,6 +329,10 @@ class Features:
     # phep kiem ay da chay thanh cong SAU lan ghi cua buoc chua. Them truong vao luoc do
     # plan.exit va them mot cua chan o step_done — doi hanh vi tac tu (N-4).
     ke_hoach_cong_kiem: bool = False
+    # M3-10 — chay ERC ngay sau moi lan sua ban do mach, va khong de luot ket thuc khi con
+    # loi chan MOI chua ai nhac toi. Doi `result.data` va chen loi nhac vao transcript, tuc
+    # doi thu mo hinh doc moi luot (N-4).
+    erc_tu_dong: bool = False
 
     @classmethod
     def load(cls) -> "Features":
@@ -353,7 +357,7 @@ class Features:
     @staticmethod
     def ten_co() -> tuple[str, ...]:
         return ("schematic", "gon_cong_cu", "truy_vet", "req_phu", "req_chat_luong",
-                "ke_hoach_cong_kiem")
+                "ke_hoach_cong_kiem", "erc_tu_dong")
 
     def bat(self, ten: str) -> bool:
         return bool(getattr(self, ten, False))
