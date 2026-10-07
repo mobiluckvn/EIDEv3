@@ -7218,3 +7218,88 @@ Bộ kiểm 1637 → **1646 xanh, 0 đỏ** (+9 ca). `swift test` 43 ca, 0 đỏ
 Cờ `req_phu` vẫn TẮT: "Tiêu chí xong" đòi chạy lại bộ 76 ca với cờ bật để so pass-rate, và bộ
 ấy tốn tiền mô hình nên §3.0 bắt hỏi người dùng trước. Lời nhắc này chèn chữ vào transcript
 mỗi lượt có ghi, nên nó đổi hành vi theo cách chỉ eval đo được.
+
+---
+
+## [DEV-335] [M2-03] Chất lượng yêu cầu đo bằng mã — và hai lần bộ kiểm của tôi không canh gì
+
+Nhiệm vụ #6. `src/eide/yeu_cau.py` là module **thuần, luôn có**; phần nối vào kết quả công cụ
+nằm sau cờ `EIDE_FEATURE_REQ_CHAT_LUONG`, mặc định TẮT.
+
+Ba phép đo, cả ba 0 token: `kiem_tieu_chi` (có số kèm đơn vị hoặc phép so không),
+`tu_mo_ho` (10 từ mà hai người đọc ra hai nghĩa), `trung_lap` (Jaccard theo từ ≥ 0,6).
+**Không chặn ghi** — chặn một yêu cầu vì nó mơ hồ là lấy mất quyền của người đang còn mơ hồ
+về chính việc họ muốn. Nó nói ra, rồi chỉ đường `ask_user`.
+
+### Lỗi trong `_go_dau` của design.py, chưa sửa
+
+`tools/design.py:359` viết `.replace("d", "d")` — một phép thay **vô nghĩa**, gần như chắc là
+gõ nhầm từ `.replace("đ", "d")`. Hệ quả đo được:
+
+```
+_go_dau("ổn định") → "on đinh"
+_go_dau("ON DINH") → "on dinh"      ← hai câu này KHÔNG khớp nhau
+```
+
+Hàm ấy đang được `_kiem_nguoi_that_su_chon` dùng để đối chiếu câu trích với sổ cái — tức một
+phép kiểm an toàn ("người có thật sự chọn không"). Tôi **không sửa** nó: `design.py` ngoài
+"Tệp chạm tới", và đổi cách so khớp của một phép kiểm an toàn là việc cần ca kiểm riêng chứ
+không nên kèm vào đây. `yeu_cau.go_dau` làm đúng, và docstring của nó chỉ thẳng sang chỗ sai
+kia để lần sau ai đọc cũng thấy.
+
+### Hai lần "phá lại thì đỏ" KHÔNG đỏ — và lý do của từng lần khác nhau
+
+Đây là phần đáng ghi nhất của nhiệm vụ này.
+
+**Lần một — ca kiểm dựng trên một điều tôi tự nhớ sai.** Tôi viết ca
+`test_tu_mo_ho_khong_bat_trong_long_tu_khac` với lý lẽ *"thiết" chứa "it" sau khi bỏ dấu, nên
+so theo chuỗi con sẽ kêu oan*. Đổi hàm sang so chuỗi con → ca vẫn **xanh**. Vì `go_dau("thiết")`
+ra `"thiet"`, và `"thiet"` **không chứa** `"it"` (t-h-i-e-t). Tôi chưa mở ra đo, chỉ nhớ.
+
+Chỗ va thật thì nhiều và dễ: `bit`, `unit`, `init`, `exit` — đều chứa `"it"`, đều là từ thường
+gặp nhất trong một yêu cầu phần mềm nhúng. Đo lại: cả bốn câu đều bị phép so chuỗi con kêu là
+có từ "ít". Ca kiểm nay dùng bốn câu ấy, và nó đỏ đúng khi đổi sang chuỗi con.
+
+**Lần hai — `__pycache__` cũ, và nó chỉ xảy ra vì phép phá dài đúng bằng mã gốc.** Phép phá
+đổi `_NGUONG_TRUNG = 0.6` thành `= 0.0`: **cùng số byte**, và xảy ra trong cùng một giây với
+lệnh `cp` trả lại mã. Python xác thực `.pyc` bằng (mtime giây, kích thước nguồn) — cả hai
+khớp, nên nó dùng lại bản biên dịch của **mã đã bị phá** sau khi mã đã được trả lại.
+
+Tôi phát hiện vì một con số trông lạ: `grep` nói ngưỡng là 0,6, mà hàm xử sự như 0,0. Nếu
+không dừng lại ở chỗ ấy thì tôi đã ghi vào nhật ký rằng ca kiểm "không canh ngưỡng", trong khi
+thật ra **phép đo đang chạy mã khác với mã trong tệp**.
+
+Từ đây mọi phép "phá lại thì đỏ" đều xoá `__pycache__` trước khi chạy. Tôi đã soát lại năm
+nhiệm vụ trước: chỉ phép phá này có độ dài trùng khít, các phép khác đều đổi kích thước tệp
+nên `.pyc` tự mất hiệu lực.
+
+Ca `test_trung_lap` nay cũng ghim thật cái ngưỡng: *"Nhận tệp ảnh qua USB"* so với *"Nhận tệp
+phim qua LAN"* giống nhau **3/7 từ = 0,429** — cùng dạng câu, khác hẳn việc, nên KHÔNG phải
+trùng lặp. Hạ ngưỡng xuống 0,4 là ca ấy đỏ.
+
+### Đo trên 37 REQ thật, và một ca kêu oan đã vá
+
+Chạy bộ dò trên REQ của 63 kho `store.sqlite`:
+
+```
+37 REQ · 25 sạch (67%) · tieu_chi 11 · tu_mo_ho 2
+```
+
+Lần chạy đầu ra `tu_mo_ho 3`, và một trong ba là **kêu oan**: FR-01 của dự án RISC-V,
+*"SoC mô phỏng thành công và in đúng chuỗi ra UART **ít nhất 2 lần**"*. "ít nhất 2 lần" là một
+mức ĐO ĐƯỢC; "ít" ở đây là lượng từ, không phải tính từ. Đã vá: lượng từ đứng ngay trước một
+con số (cho phép một từ đệm như "nhất" chen giữa) thì không kêu. `"Dùng ít RAM"` vẫn bị bắt.
+
+11 cảnh báo `tieu_chi` thì là tín hiệu thật: những REQ ấy có trường `criteria` để trống hoặc
+không có con số nào kèm đơn vị.
+
+### Số đo
+
+Bộ kiểm 1646 → **1657 xanh, 0 đỏ** (+11 ca). "Phá lại thì đỏ" cho **cả bảy** chỗ sửa, chạy lại
+toàn bộ sau khi xoá `__pycache__`. Không ca cũ nào phải sửa; thông điệp luật N7 không đổi.
+
+### Chưa làm
+
+Subagent `req-critic` (bước 4, đánh dấu "tuỳ chọn, gộp M2-13") **chưa làm** — nó cần khung
+subagent của M2-13. Cờ `req_chat_luong` vẫn TẮT: "Tiêu chí xong" đòi chạy TC004/TC005 với cờ
+bật để xem số câu hỏi làm rõ có tăng, và bộ ấy tốn tiền mô hình.

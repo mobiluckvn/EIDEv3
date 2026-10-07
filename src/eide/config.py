@@ -321,6 +321,10 @@ class Features:
     # transcript la doi thu mo hinh doc moi luot (N-4). Khoi A2.2 tren tab A2 thi KHONG
     # phu thuoc co: no chi trinh bay thu da co trong kho.
     req_phu: bool = False
+    # M2-03 — tra canh bao chat luong yeu cau (tieu chi khong do duoc, tu mo ho, trung
+    # lap) trong ket qua cua store.req_create/req_update. Doi thu mo hinh doc sau moi lan
+    # ghi yeu cau, nen sau co (N-4). Module `yeu_cau.py` thi luon co va luon kiem duoc.
+    req_chat_luong: bool = False
 
     @classmethod
     def load(cls) -> "Features":
@@ -344,7 +348,7 @@ class Features:
 
     @staticmethod
     def ten_co() -> tuple[str, ...]:
-        return ("schematic", "gon_cong_cu", "truy_vet", "req_phu")
+        return ("schematic", "gon_cong_cu", "truy_vet", "req_phu", "req_chat_luong")
 
     def bat(self, ten: str) -> bool:
         return bool(getattr(self, ten, False))

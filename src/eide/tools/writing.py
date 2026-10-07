@@ -73,6 +73,23 @@ def _them_truy_vet(r: Registry, props: dict[str, Any]) -> dict[str, Any]:
     return {**props, "hien_thuc_req": HIEN_THUC_REQ}
 
 
+def _canh_bao_req(ctx: Any, r: Registry, text: str, criteria: str,
+                  *, bo_qua_id: str = "") -> dict[str, Any]:
+    """M2-03 — ba phép đo chất lượng yêu cầu, gói thành phần thêm vào kết quả công cụ.
+
+    Cờ TẮT thì trả `{}` — kết quả của công cụ không mọc thêm khoá nào, y như trước.
+    Không bao giờ CHẶN: chặn một yêu cầu vì nó mơ hồ là lấy mất quyền của người đang còn
+    mơ hồ về chính việc họ muốn.
+    """
+    if not r._co_bat("req_chat_luong"):
+        return {}
+    from ..yeu_cau import cau_nhac, kiem_yeu_cau
+
+    cb = kiem_yeu_cau(text, criteria, ctx.store.list("req", limit=200),
+                      bo_qua_id=bo_qua_id)
+    return {"canh_bao_chat_luong": cb, "_nhac": cau_nhac(cb)}
+
+
 def register(r: Registry) -> Registry:
     """Thêm bộ công cụ ghi vào sổ đăng ký đã có."""
 
@@ -207,6 +224,7 @@ def register(r: Registry) -> Registry:
                          explain: dict[str, Any], criteria: str = "",
                          risk: list[str] | None = None):
         cu = ctx.store.get(id)
+        cb = _canh_bao_req(ctx, r, text, criteria, bo_qua_id=id)
         cs = ctx.history.ghi_kho(
             author=f"agent:{ctx.run_id}", artefact_id=id, type="req",
             op="update" if cu else "create",
@@ -214,7 +232,9 @@ def register(r: Registry) -> Registry:
                        "source_quote": source_quote, "risk": risk or []},
             explain=explain, run_id=ctx.run_id)
         return {"id": id, "version": cs.touches[0].to_version, "changeset": cs.id,
-                "stale": cs.stale_marked, "note_vi": _note_stale(cs)}
+                "stale": cs.stale_marked,
+                **{k: v for k, v in cb.items() if k != "_nhac"},
+                "note_vi": _note_stale(cs) + cb.get("_nhac", "")}
 
     @r.tool("store.req_update", "Store",
             "Sửa một yêu cầu đã có. Hạ nguồn của nó sẽ được đánh dấu cần cập nhật.",
@@ -239,11 +259,15 @@ def register(r: Registry) -> Registry:
             can["text"] = text
         if criteria is not None:
             can["criteria"] = criteria
+        cb = _canh_bao_req(ctx, r, can.get("text", ""), can.get("criteria", ""),
+                           bo_qua_id=id)
         cs = ctx.history.ghi_kho(author=f"agent:{ctx.run_id}", artefact_id=id, type="req",
                                  op="update", canonical=can, explain=explain,
                                  run_id=ctx.run_id)
         return {"id": id, "version": cs.touches[0].to_version, "changeset": cs.id,
-                "stale": cs.stale_marked, "note_vi": _note_stale(cs)}
+                "stale": cs.stale_marked,
+                **{k: v for k, v in cb.items() if k != "_nhac"},
+                "note_vi": _note_stale(cs) + cb.get("_nhac", "")}
 
     # ====================================================================== bộ nhớ
     @r.tool("memory.note", "Store",
