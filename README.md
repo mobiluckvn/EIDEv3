@@ -325,7 +325,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **1 628 ca Python + 43 ca giao diện**
+### Mức 1 — Ca đơn vị: **1 657 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -422,7 +422,7 @@ thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc ph
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **1 628** | `pytest -q` |
+| Ca đơn vị Python | **1 657** | `pytest -q` |
 | Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -451,15 +451,18 @@ Một công cụ không bao giờ được dùng thì bằng không có nó.
 
 ### Đợt rà lại chính Agent, từ 06/10/2026
 
-Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Ba việc
-đầu đã xong; mỗi việc tìm ra một chỗ mà bộ kiểm cũ không nhìn tới, và cả ba đều đo lại được
-trên dữ liệu phiên đã chạy chứ không chỉ trên ca kiểm.
+Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Kế hoạch
+có 106 việc; **6 việc đầu đã xong**. Mỗi việc tìm ra một chỗ mà bộ kiểm cũ không nhìn tới, và
+mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca kiểm.
 
 | Việc | Chỗ hỏng | Đo trên dữ liệu thật |
 |---|---|---|
 | Toàn vẹn cặp *gọi công cụ ↔ kết quả* | ba đường để lại một lịch sử mà mô hình đọc không khớp: cửa duyệt bật giữa chừng thì các lời gọi sau bỏ trắng; lời nhắc chen vào giữa; duyệt cửa xong sinh **kết quả thứ hai** cho cùng một lời gọi | **105 trong 309 phiên** có lịch sử tự mâu thuẫn — 255 chỗ |
 | Lược đồ công cụ gửi mỗi lời gọi | trần `tool_schema = 4000` nằm trong mã từ đầu mà **không dòng nào đọc nó** | thực tế **25 869 token**, gửi lại mỗi lời gọi. Bật cờ gọn: **4 475** (−82,7 %) |
 | Agent con đi vòng ba lớp | gọi thẳng sổ công cụ, không qua luật, cửa duyệt hay khoá chế độ kế hoạch | **1 822 lời gọi** trong 26 phiên, 0 lần qua lớp luật |
+| Truy vết yêu cầu → mã | đường "hiện vật này dựng từ REQ nào" có mã, có ca kiểm, và **chưa chạy lần nào**: ba chỗ đứt nối tiếp nhau | sửa **một** yêu cầu làm **9** hiện vật lỗi thời → còn **3** |
+| Không ai thấy REQ nào chưa làm | tab A2 có ba bảng, cả ba nhìn theo *hiện vật* — không bảng nào nhìn theo *yêu cầu* | **5/37 REQ** có ít nhất một phép đo · 27 chưa có phương án nào nhận |
+| Chất lượng của chính yêu cầu | `req_create` nhận mọi câu trích được lời người dùng, không kiểm gì thêm — "mạch thông minh" vào kho trót lọt | **25/37 REQ** sạch · 11 thiếu tiêu chí đo được |
 
 Chỗ đáng nói nhất không phải ba lỗi, mà là **cả ba đều có cơ chế sẵn và đường dẫn tới nó đứt** —
 đúng hình dạng đã lặp lại suốt dự án này. Cái trần token tồn tại nhưng không ai nối dây tới nó.
@@ -470,8 +473,22 @@ Nay có một hàm thuần `kiem_cap_goi_tra(messages)` soát được bất bi�
 lưu** của bất kỳ phiên nào, không chỉ trong ca kiểm. Nó vẫn chỉ là **thước đo, chưa là hàng
 rào**: chưa có hook nào chạy nó tự động.
 
+Mỗi việc đều đi qua cùng một quy trình: viết ca kiểm trước và xác nhận nó **đỏ đúng lý do**,
+sửa mã, rồi **hoàn nguyên từng chỗ sửa một** để chắc đúng ca ấy đỏ trở lại. Ba lần quy trình
+đó bắt được lỗi trong chính phép đo của tôi, không phải trong sản phẩm:
+
+* một kịch bản đo bị **hàng rào của sản phẩm chặn** (ghi tệp chưa đọc) và trả về một con số
+  hợp lý thay vì nổ — 6→2 trông đẹp y như 9→3 đúng;
+* một ca kiểm dựng trên điều tôi **tự nhớ sai** (`"thiết"` bỏ dấu không chứa `"it"`), nên nó
+  xanh cả khi tôi cố ý làm hỏng hàm nó canh;
+* một phép phá dài **đúng bằng** mã gốc, nên `__pycache__` cũ còn hiệu lực và phép đo chạy mã
+  khác với mã trong tệp.
+
+Cả ba đều chỉ lộ ra vì một con số trông lạ. Đó là lý do mỗi việc trong nhật ký đều ghi con số,
+không chỉ ghi "đã xong".
+
 Kế hoạch đầy đủ 106 việc nằm ở [`toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md`](toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md);
-nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 · 331 · 332).
+nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-335).
 
 ---
 
@@ -1040,6 +1057,20 @@ Nói ra để người đọc không phải tự tìm:
 - **Phép soát "mỗi lời gọi một kết quả" chưa thành hàng rào.** `kiem_cap_goi_tra()` chạy được
   trên mọi phiên đã lưu, nhưng chưa hook nào gọi nó tự động — nên nó bắt được chuyện cũ, chưa
   chặn được chuyện mới.
+- **Bốn cờ của đợt rà lại đều còn TẮT**, và cùng một lý do: `GON_CONG_CU` (thu gọn lược đồ),
+  `TRUY_VET` (khai REQ khi ghi tệp), `REQ_PHU` (nhắc khi còn yêu cầu chưa đo), `REQ_CHAT_LUONG`
+  (cảnh báo yêu cầu mơ hồ). Cả bốn đổi **thứ Agent nhìn thấy hoặc đọc mỗi lượt**, nên chỉ bộ 76
+  ca chạy cả hai chế độ mới nói được chúng làm Agent khá hơn hay tệ hơn — mà bộ ấy tốn tiền mô
+  hình. Phần nền của từng việc (đo, ghi sổ, bảng trên tab) chạy cả khi cờ tắt.
+- **Cột "Mã nguồn" của ma trận truy vết còn trống ở mọi dự án.** Nó đọc trường `hien_thuc_req`,
+  mà trường ấy vừa mới tồn tại — nên "chưa hiện thực" ở đó nghĩa là *"không tệp nào KHAI rằng
+  nó làm yêu cầu này"*, không phải *"chưa ai viết mã"*. Robot hai bánh có mã chạy trên bo thật
+  và vẫn nằm trong số ấy.
+- **Hàm bỏ dấu trong `src/eide/tools/design.py` không đổi chữ `đ`.** Nó viết `.replace("d", "d")` — một
+  phép thay vô nghĩa, gần như chắc gõ nhầm từ `.replace("đ", "d")` — nên `"ổn định"` và
+  `"ON DINH"` không khớp nhau. Hàm ấy đang dùng để đối chiếu câu trích của người với sổ ghi
+  việc, tức một phép kiểm an toàn. Đã ghi lại, chưa sửa: đổi cách so khớp của một phép kiểm an
+  toàn cần bộ ca kiểm riêng.
 
 Danh sách đầy đủ, kèm chỗ cần sửa trong mã:
 [`docs/md/VIEC-CHO-LAM.md`](docs/md/VIEC-CHO-LAM.md).
