@@ -325,7 +325,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **1 671 ca Python + 43 ca giao diện**
+### Mức 1 — Ca đơn vị: **1 695 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -422,7 +422,7 @@ thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc ph
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **1 671** | `pytest -q` |
+| Ca đơn vị Python | **1 695** | `pytest -q` |
 | Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -452,7 +452,7 @@ Một công cụ không bao giờ được dùng thì bằng không có nó.
 ### Đợt rà lại chính Agent, từ 06/10/2026
 
 Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Kế hoạch
-có 106 việc; **7 việc đầu đã xong**. Mỗi việc tìm ra một chỗ mà bộ kiểm cũ không nhìn tới, và
+có 106 việc; **10 việc đầu đã xong**. Mỗi việc tìm ra một chỗ mà bộ kiểm cũ không nhìn tới, và
 mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca kiểm.
 
 | Việc | Chỗ hỏng | Đo trên dữ liệu thật |
@@ -464,6 +464,9 @@ mỗi việc đều đo lại được trên dữ liệu phiên đã chạy ch�
 | Không ai thấy REQ nào chưa làm | tab A2 có ba bảng, cả ba nhìn theo *hiện vật* — không bảng nào nhìn theo *yêu cầu* | **5/37 REQ** có ít nhất một phép đo · 27 chưa có phương án nào nhận |
 | Chất lượng của chính yêu cầu | `req_create` nhận mọi câu trích được lời người dùng, không kiểm gì thêm — "mạch thông minh" vào kho trót lọt | **25/37 REQ** sạch · 11 thiếu tiêu chí đo được |
 | Dấu "xong" của một bước kế hoạch | bước đòi một *hiện vật mở ra xem được*, nhưng một tệp `.c` nằm trên đĩa không nói nó **dịch được** | **19 trong 26** lần đánh dấu xong không có phép kiểm nào đạt ở giữa |
+| Tài liệu phân tích mã bỏ sót hàm | `ISR(...)` của AVR không khớp mẫu nào, và một regex tham lam nuốt luôn hàm kế tiếp | trên 185 tệp `.c` thật: **+28 hàm** trước đây vô hình (8 ngắt · 20 bị nuốt) |
+| Luật ERC "quá áp" không ai gọi | phép so, câu chữ, mức blocker đều đã viết sẵn — nhưng `erc()` chỉ gọi bốn luật, nên phải **tự nhớ** gọi mới thấy | chưa nổ được trên dữ liệu thật: Fact dùng chủ thể `chip:X` mà ERC không tra tiền tố ấy |
+| Bốn lỗi mạch mà KiCad bắt, ở đây không ai bắt | máy không cài KiCad, và EIDE không có ma trận kiểu chân nội bộ | **8 phát hiện** trên 5 mô hình mạch thật — trong đó net clock I2C nối đúng một chân |
 
 Chỗ đáng nói nhất không phải ba lỗi, mà là **cả ba đều có cơ chế sẵn và đường dẫn tới nó đứt** —
 đúng hình dạng đã lặp lại suốt dự án này. Cái trần token tồn tại nhưng không ai nối dây tới nó.
@@ -488,11 +491,17 @@ sửa mã, rồi **hoàn nguyên từng chỗ sửa một** để chắc đúng 
   và ra 0 chỗ cần chặn, trong khi câu phải hỏi là "lần ghi NÀY đã được kiểm chưa" — đo lại đúng
   câu ấy thì ra 19 trong 26.
 
+Và hai lần nữa cùng một hình dạng với mục thứ hai: một ca kiểm **xanh vì nó không chạm tới
+thứ nó nói nó canh** — một lần vì dàn dựng của nó không có net đất nào để mà kiểm, một lần vì
+nhánh mã nó định canh chưa bao giờ chạy. Cả hai chỉ lộ ra ở bước *hoàn nguyên từng chỗ sửa*,
+và lần sau thì nó còn chỉ ra **thiết kế** sai chứ không chỉ ca kiểm yếu: tôi đã miễn net đất
+cho cả ba luật ERC mới, trong khi một net đất nối đúng một chân là lỗi thật.
+
 Cả bốn đều chỉ lộ ra vì một con số trông lạ. Đó là lý do mỗi việc trong nhật ký đều ghi con số,
 không chỉ ghi "đã xong".
 
 Kế hoạch đầy đủ 106 việc nằm ở [`toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md`](toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md);
-nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-336).
+nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-339).
 
 ---
 
@@ -1071,6 +1080,16 @@ Nói ra để người đọc không phải tự tìm:
   mà trường ấy vừa mới tồn tại — nên "chưa hiện thực" ở đó nghĩa là *"không tệp nào KHAI rằng
   nó làm yêu cầu này"*, không phải *"chưa ai viết mã"*. Robot hai bánh có mã chạy trên bo thật
   và vẫn nằm trong số ấy.
+- **Luật ERC "quá áp" chưa nổ được trên dữ liệu thật.** Luật đã chạy trong `board.check`, và
+  nó bắt đúng trong bộ ca kiểm. Nhưng Fact rút từ datasheet dùng chủ thể `chip:ATmega328P`,
+  trong khi phép tra của ERC chỉ nhận `leaf:U1` · `U1` · `ATmega328P` — **không có tiền tố
+  `chip:`**. Thêm nữa, ba dự án *có* Fact điện áp tối đa thì **không có mô hình mạch**, còn
+  năm dự án *có* mô hình mạch thì không có Fact ấy. Việc nối hai đầu này là việc #12 của kế
+  hoạch tối ưu.
+- **Sáu trong tám phát hiện ERC mới trên mạch thật là "mô hình chưa khai", không phải "mạch
+  sai".** Hướng chân của mạch di cư từ netlist phẳng mặc định là `passive`, nên EIDE không
+  biết ai cấp nguồn cho một net — nó nói ra điều đó (đúng cách KiCad làm, và cách sửa cũng
+  giống: khai một cờ nguồn). Người đọc bảng ERC cần biết khác biệt ấy.
 - **Hàm bỏ dấu trong `src/eide/tools/design.py` không đổi chữ `đ`.** Nó viết `.replace("d", "d")` — một
   phép thay vô nghĩa, gần như chắc gõ nhầm từ `.replace("đ", "d")` — nên `"ổn định"` và
   `"ON DINH"` không khớp nhau. Hàm ấy đang dùng để đối chiếu câu trích của người với sổ ghi
