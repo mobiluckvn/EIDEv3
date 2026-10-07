@@ -7518,3 +7518,86 @@ sau.
 
 Bộ kiểm 1679 → **1686 xanh, 0 đỏ** (+7 ca). `test_board_check…_dat == []` và
 `test_HIER17_moi_phat_hien_noi_ro_o_khoi_nao` vẫn xanh.
+
+---
+
+## [DEV-339] [M3-03] ERC theo kiểu chân — và hai phép phá chỉ ra THIẾT KẾ của tôi sai
+
+Nhiệm vụ #10. **Sửa lỗi thuần**, không cờ. Tệp mới: `src/eide/knowledge/erc_kieu_chan.py`.
+
+`tools/sch.py` ghi thẳng ở đầu tệp: **máy này không cài KiCad**. Nên bốn lỗi mà ERC của KiCad
+bắt bằng một ma trận kiểu chân thì hoặc EIDE tự bắt, hoặc không ai bắt. Bốn luật:
+`xung_dau_ra` (blocker) · `nguon_khong_cap` (major) · `net_mot_chan` (minor) ·
+`dau_vao_treo` (minor).
+
+`net_mot_chan` đã có từ trước trong `knowledge/ckm.py` (`cho_dut`) — nhưng chỉ là một **dòng
+chữ** trong kết quả `ckm.build`: không `path`, không mức, không vào bảng ERC. Nên không ai
+lọc được theo mức, và nó mất ngay khi người dùng nhìn sang chỗ khác.
+
+### Hai quyết định để bảng ERC không bị tắt
+
+**`passive` không bao giờ là xung đột.** Mạch di cư từ netlist phẳng có hướng Port mặc định
+là `passive` cho gần như mọi chân (`cay._huong_theo_ten` chỉ đoán `power_in` cho VCC/GND). Đo
+trên `robot-canbang`: **107 Port lá, không một Port nào là `power_out`**, và phần lớn là
+`passive`. Coi `passive` là xung đột thì mạch ấy sáng đèn đỏ hàng loạt.
+
+**Không sinh phát hiện `dat`.** Bốn luật này nói về chỗ sai; một dòng "net này ổn" cho từng
+net trên mạch 200 net chôn mất ba dòng đáng đọc.
+
+### Sáu phép phá, ba không đỏ — và hai trong ba là lỗi THIẾT KẾ, không phải lỗi ca kiểm
+
+Đây là lần đầu trong đợt này phép "phá lại thì đỏ" bắt được **thiết kế sai**, chứ chỉ bắt ca
+kiểm yếu.
+
+**1. Tôi miễn net ĐẤT cho cả ba luật — và điều đó sai.** Ca kiểm vẫn xanh khi tôi bỏ hẳn phép
+miễn, nên tôi mở ra nghĩ lại: đất không được "cấp" (nên `nguon_khong_cap` phải miễn), nhưng
+một net GND nối **đúng một chân** nghĩa là chân đất của con ấy **không nối về đâu** — đó là
+lỗi thật, và là loại làm mạch chạy chập chờn chứ không chết hẳn. Nay `la_dat` chỉ miễn cho
+`nguon_khong_cap` và `dau_vao_treo`, không miễn `net_mot_chan`. Ca kiểm nay ghim cả hai chiều.
+
+**2. Nhánh "cấp được vì khai `iout_max`" không ca nào chạm tới.** Bỏ hẳn nhánh ấy mà mọi ca
+vẫn xanh — vì trong dàn dựng, U3 đã có hướng `power_out` nên nhánh Fact không bao giờ chạy.
+Nhánh ấy lại đúng là thứ cần cho **mạch di cư** (hướng Port là `passive`, nhưng khối nguồn có
+Fact `iout_max`). Đã thêm ca kiểm đi đúng đường đó.
+
+Phép phá thứ ba (`net_mot_chan` mất `path`) thì ca của chính nó đỏ — chỉ
+`test_HIER17_moi_phat_hien_noi_ro_o_khoi_nao` không đỏ, vì `"/board"` vẫn là một path hợp lệ.
+Đó không phải lỗ: ca HIER17 canh "có path", không canh "path đúng chỗ".
+
+### Đo trên 5 mô hình mạch thật: 8 phát hiện, và tôi đã soi từng cái
+
+`EIDE_FEATURE_SCHEMATIC=1 tools/thu_sch.py` → **63/63**, không tụt.
+
+```
+nguon_khong_cap  6    net_mot_chan  2
+  robot-canbang    +5V (U2.MS1…), VMOT (U2.VMOT, U3.VMOT)
+  thu-18           +3V3 (C2.1, U1.2), +5V (C1.1, U1.3)
+  thu-nghiem-ckm   3V3 (U1.7, U2.1) · net ALERT một chân (U2.3) · net SCL một chân (U1.28)
+  thu-nghiem-sch   3V3 (U1.7, U3.2)
+```
+
+Soi từng cái, không gọi gộp là "báo nhầm" hay "bắt đúng":
+
+* **`robot-canbang` +5V và VMOT — đúng, và đúng y như KiCad.** Mô hình **không có Port
+  `power_out` nào**: 5 V đến từ bo Arduino, VMOT từ nguồn ngoài. KiCad gặp đúng tình huống
+  này cũng báo *"Input power pin not driven by any Output Power pin"*, và cách sửa của nó là
+  thêm **PWR_FLAG**. Lời nhắc của ta chỉ thẳng sang `ckm.net_set(pwr_flag=true)` — cùng một
+  cơ chế, cùng một câu trả lời.
+* **`thu-nghiem-ckm` net SCL nối đúng một chân (`U1.28`) — bắt đúng một lỗi thật.** Chân
+  clock của I2C không nối tới cảm biến. Đây là dự án thử nên mô hình dựng dở, nhưng phát hiện
+  thì không sai: mô hình đang nói SCL không dẫn đi đâu.
+* **`thu-nghiem-sch` và `thu-18` — nói đúng về MÔ HÌNH, chưa chắc đúng về mạch.** `U3.2`
+  (VOUT của LDO) có hướng `passive`, nên mô hình **không khai** ai cấp 3V3. Đó là "chưa
+  biết", không phải "sai". Ta vẫn báo, và vẫn là mức `canh_bao/major` chứ không phải blocker
+  — đúng cách KiCad xử: chân `passive` trên net nguồn **không** làm im lời nhắc, vẫn phải
+  khai PWR_FLAG hoặc đặt đúng kiểu chân.
+
+Tổng 8 phát hiện trên 5 mạch — không phải nhiễu hàng loạt, và mỗi cái dẫn tới một việc cụ
+thể. Nhưng ghi rõ ở đây: **sáu trong tám là "mô hình chưa khai", không phải "mạch sai"**. Ai
+đọc bảng ERC cần biết khác biệt ấy, nên câu `cach_sua` của luật nói cả hai lối: nối tới chân
+`power_out`, **hoặc** khai `pwr_flag` nếu nguồn đến từ ngoài bo.
+
+### Số đo
+
+Bộ kiểm 1686 → **1695 xanh, 0 đỏ** (+9 ca). `thu_sch.py` 63/63.
+`test_board_check…_dat == []` và `test_HIER17_moi_phat_hien_noi_ro_o_khoi_nao` vẫn xanh.

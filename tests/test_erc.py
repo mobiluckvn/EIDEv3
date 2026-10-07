@@ -651,3 +651,168 @@ def test_qua_ap_khong_co_fact_thi_IM_khong_lam_nhieu_bang(bo):
     được rằng bảng ấy không đáng đọc. Ca `test_board_check..._dat == []` canh đúng điều này.
     """
     assert _tim(E.erc(bo), "qua_ap") == []
+
+
+# =========================================================================== 6. kiểu chân
+#
+# Bốn lỗi mà KiCad ERC bắt được bằng một ma trận kiểu chân, và máy này KHÔNG cài KiCad
+# (`tools/sch.py` ghi thẳng điều đó). Nên hoặc EIDE tự bắt, hoặc không ai bắt.
+#
+# `knowledge/ckm.py` đã có `cho_dut.net_mot_chan` từ trước — nhưng nó chỉ là một DÒNG CHỮ
+# trong kết quả `ckm.build`, không phải một `PhatHien` có `path` và mức. Nghĩa là nó không
+# vào bảng ERC, không ai lọc được theo mức, và nó biến mất ngay khi người dùng không đọc
+# đúng cái kết quả lời gọi ấy.
+def _la_co_port(bo, ref: str, *, khoi: str, huong: str, chan: str = "1"):
+    """Thêm một lá có đúng một Port, trả port_id."""
+    _nut(bo, f"leaf:{ref}", ref, loai="linh_kien", cha=f"module:/board/{khoi}",
+         kind="leaf", path=f"/board/{khoi}/{ref}", ref=ref)
+    return _port(bo, f"leaf:{ref}", chan, huong=huong, chan=chan,
+                 path=f"/board/{khoi}/{ref}")
+
+
+def test_hai_dau_ra_noi_chung_bi_chan(bo):
+    """TC-M3-03-01 — hai chân `out` trên cùng một net: blocker, và nêu đủ hai tên.
+
+    Hai đầu ra đẩy ngược nhau thì dòng chạy từ con này sang con kia. Mạch có thể vẫn "chạy"
+    một lúc — rồi một trong hai con chết, và cái chết ấy không nói nó đến từ đâu.
+    """
+    p1 = _la_co_port(bo, "Q1", khoi="mcu", huong="out")
+    p2 = _la_co_port(bo, "Q2", khoi="mcu", huong="out")
+    n = _nut(bo, "net:/board/mcu.X", "X", loai="net", cha="module:/board/mcu",
+             path="/board/mcu.X", canon={"ten": "X"})
+    bo.ckm_noi(net_id=n, port_id=p1)
+    bo.ckm_noi(net_id=n, port_id=p2)
+
+    x = _tim(E.erc(bo), "xung_dau_ra", "khong_dat")
+    assert x, [f"{i.luat}/{i.ket_luan}" for i in E.erc(bo)]
+    assert x[0].muc == "blocker", x[0].muc
+    assert "Q1" in x[0].vi and "Q2" in x[0].vi, x[0].vi
+    assert x[0].path.startswith("/board/mcu"), x[0].path
+
+
+def test_power_out_noi_dau_ra_cung_bi_chan(bo):
+    """Chân cấp nguồn nối vào một chân đẩy tín hiệu — cùng một loại hỏng, khác cặp kiểu."""
+    p1 = _la_co_port(bo, "Q3", khoi="mcu", huong="power_out")
+    p2 = _la_co_port(bo, "Q4", khoi="mcu", huong="out")
+    n = _nut(bo, "net:/board/mcu.Y", "Y", loai="net", cha="module:/board/mcu",
+             path="/board/mcu.Y", canon={"ten": "Y"})
+    bo.ckm_noi(net_id=n, port_id=p1)
+    bo.ckm_noi(net_id=n, port_id=p2)
+
+    assert _tim(E.erc(bo), "xung_dau_ra", "khong_dat"), "power_out nối out mà không ai báo"
+
+
+def test_bo_mau_khong_co_xung_dot_kieu_chan(bo):
+    """TC-M3-03-02 — ca âm quan trọng nhất: mạch mẫu ĐÚNG thì không luật mới nào nổ.
+
+    Mạch này có U3 `power_out` cấp 3V3 cho hai khối, một bus I2C có pull-up. Nếu luật mới
+    báo gì ở đây thì nó sẽ báo trên mọi mạch, và một bảng ERC báo trên mọi mạch thì bị tắt.
+    """
+    moi = ("xung_dau_ra", "nguon_khong_cap", "net_mot_chan", "dau_vao_treo")
+    xau = [f"{x.luat}: {x.vi}" for x in E.erc(bo)
+           if x.luat in moi and x.ket_luan == "khong_dat"]
+    assert xau == [], xau
+
+
+def test_net_nguon_khong_ai_cap_thi_canh_bao(bo):
+    """TC-M3-03-03 — net nguồn chỉ có người tiêu thụ, không ai cấp."""
+    p = _port(bo, "leaf:U1", "20", huong="power_in", chan="20", path="/board/mcu/U1")
+    n = _nut(bo, "net:/board.5V", "5V", loai="net", cha="module:/board",
+             path="/board.5V", canon={"ten": "5V", "loai": "power"})
+    bo.ckm_noi(net_id=n, port_id=p)
+
+    x = _tim(E.erc(bo), "nguon_khong_cap")
+    assert x, [f"{i.luat}/{i.ket_luan}" for i in E.erc(bo)]
+    assert x[0].ket_luan == "canh_bao", x[0].ket_luan
+    assert "5V" in x[0].vi, x[0].vi
+
+
+def test_net_nguon_co_pwr_flag_thi_khong_bao(bo):
+    """Người đã khai "net này được cấp từ ngoài bo" thì đừng hỏi lại.
+
+    `pwr_flag` là đúng cơ chế KiCad dùng cho cùng câu hỏi — một đầu nối nguồn ngoài không
+    có chân `power_out` nào, và đó không phải lỗi.
+    """
+    p = _port(bo, "leaf:U1", "21", huong="power_in", chan="21", path="/board/mcu/U1")
+    n = _nut(bo, "net:/board.12V", "12V", loai="net", cha="module:/board",
+             path="/board.12V", canon={"ten": "12V", "loai": "power", "pwr_flag": True})
+    bo.ckm_noi(net_id=n, port_id=p)
+
+    assert [x for x in _tim(E.erc(bo), "nguon_khong_cap") if "12V" in x.vi] == []
+
+
+def test_net_GND_khong_doi_nguon_cap_nhung_VAN_bat_net_mot_chan(bo):
+    """TC-M3-03-04 — đất không được "cấp", nhưng đất một chân VẪN là lỗi.
+
+    Phép "phá lại thì đỏ" chỉ ra chỗ này: bản đầu tôi miễn net đất cho cả ba luật, và ca
+    kiểm vẫn xanh khi tôi bỏ hẳn phép miễn ấy — tức nó không canh gì. Mở ra nghĩ lại thì
+    phép miễn rộng kia **sai**: một net GND nối đúng một chân nghĩa là chân đất của con ấy
+    không nối về đâu, và đó là loại lỗi làm mạch chạy chập chờn chứ không chết hẳn.
+    """
+    p = _port(bo, "leaf:U1", "8", huong="power_in", chan="8", path="/board/mcu/U1")
+    n = _nut(bo, "net:/board.GND2", "GND", loai="net", cha="module:/board",
+             path="/board.GND2", canon={"ten": "GND", "loai": "gnd"})
+    bo.ckm_noi(net_id=n, port_id=p)
+
+    ds = E.erc(bo)
+    assert [x for x in _tim(ds, "nguon_khong_cap") if "GND" in x.vi.upper()] == []
+    mot = [x for x in _tim(ds, "net_mot_chan") if "U1.8" in x.vi]
+    assert mot, "đất nối đúng một chân mà không ai báo"
+
+
+def test_la_cap_nguon_bang_FACT_iout_max_thi_khong_doi_power_out(bo):
+    """Khối nguồn khai `iout_max` thì nó cấp được, dù hướng Port chưa ai khai.
+
+    Mạch di cư từ netlist phẳng có hướng Port mặc định là `passive`; đòi đúng `power_out`
+    thì mọi mạch di cư bị báo "nguồn không ai cấp". Đây là ca canh chuyện đó, và nó cũng
+    là phép phá chỉ ra rằng nhánh `iout_max` của tôi trước đó **không ca nào chạm tới**.
+    """
+    pld = _la_co_port(bo, "U9", khoi="pwr", huong="passive", chan="3")
+    pin_ = _port(bo, "leaf:U1", "22", huong="power_in", chan="22", path="/board/mcu/U1")
+    n = _nut(bo, "net:/board.1V8", "1V8", loai="net", cha="module:/board",
+             path="/board.1V8", canon={"ten": "1V8", "loai": "power"})
+    bo.ckm_noi(net_id=n, port_id=pld)
+    bo.ckm_noi(net_id=n, port_id=pin_)
+
+    # Chưa có Fact: phải báo, vì chẳng có gì nói U9 cấp được.
+    assert [x for x in _tim(E.erc(bo), "nguon_khong_cap") if "1V8" in x.vi], "chưa Fact mà im"
+
+    _fact(bo, "pin:U9.3", "iout_max", 0.5, unit="A")
+    assert [x for x in _tim(E.erc(bo), "nguon_khong_cap") if "1V8" in x.vi] == [], \
+        "đã khai iout_max mà vẫn bảo không ai cấp"
+
+
+def test_net_mot_chan_la_phat_hien_erc(bo):
+    """TC-M3-03-05 — net chỉ nối đúng một chân lá: một `PhatHien` có `path`, không phải một
+    dòng chữ trong kết quả lời gọi.
+
+    `ckm.build` đã nói được điều này từ trước, nhưng chỉ nói trong kết quả của chính lời gọi
+    ấy. Một phát hiện không vào bảng ERC thì không ai lọc theo mức được, và nó mất ngay khi
+    người dùng nhìn sang chỗ khác.
+    """
+    p = _la_co_port(bo, "TP1", khoi="sense", huong="passive")
+    n = _nut(bo, "net:/board/sense.LE", "LE", loai="net", cha="module:/board/sense",
+             path="/board/sense.LE", canon={"ten": "LE"})
+    bo.ckm_noi(net_id=n, port_id=p)
+
+    x = _tim(E.erc(bo), "net_mot_chan")
+    assert x, [f"{i.luat}/{i.ket_luan}" for i in E.erc(bo)]
+    assert x[0].path.startswith("/board/sense"), x[0].path
+    assert x[0].muc == "minor", x[0].muc
+
+
+def test_passive_noi_passive_khong_bao(bo):
+    """`passive` KHÔNG tham gia xung đột.
+
+    Mạch di cư từ netlist phẳng có hướng Port mặc định là `passive` cho gần như mọi chân
+    (`cay._huong_theo_ten`). Coi `passive` là xung đột thì mọi mạch di cư sáng đèn đỏ hàng
+    loạt — và đó là cách chắc chắn nhất để bảng ERC bị bỏ qua.
+    """
+    p1 = _la_co_port(bo, "R9", khoi="sense", huong="passive")
+    p2 = _la_co_port(bo, "R8", khoi="sense", huong="passive")
+    n = _nut(bo, "net:/board/sense.PP", "PP", loai="net", cha="module:/board/sense",
+             path="/board/sense.PP", canon={"ten": "PP"})
+    bo.ckm_noi(net_id=n, port_id=p1)
+    bo.ckm_noi(net_id=n, port_id=p2)
+
+    assert _tim(E.erc(bo), "xung_dau_ra") == []

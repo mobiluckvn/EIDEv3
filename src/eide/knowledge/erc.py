@@ -151,6 +151,10 @@ def erc(store: Any) -> list[PhatHien]:
     ra += qua_ap_tren_net(cay, tf, phang, thuoc)
     ra += trung_dia_chi_bus(cay, tf, phang)
     ra += pull_up_bus(cay, tf, phang)
+    # M3-03 — ma trận kiểu chân, thay phần ERC của KiCad (máy này không cài KiCad).
+    from .erc_kieu_chan import kiem_kieu_chan, _kieu_nguoi_xac_nhan
+
+    ra += kiem_kieu_chan(cay, tf, phang, thuoc, _kieu_nguoi_xac_nhan(store))
     return ra
 
 
