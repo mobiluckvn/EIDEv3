@@ -325,6 +325,10 @@ class Features:
     # lap) trong ket qua cua store.req_create/req_update. Doi thu mo hinh doc sau moi lan
     # ghi yeu cau, nen sau co (N-4). Module `yeu_cau.py` thi luon co va luon kiem duoc.
     req_chat_luong: bool = False
+    # M2-06 — buoc ke hoach phai khai KIEM BANG GI, va plan.step_done doi chieu so cai xem
+    # phep kiem ay da chay thanh cong SAU lan ghi cua buoc chua. Them truong vao luoc do
+    # plan.exit va them mot cua chan o step_done — doi hanh vi tac tu (N-4).
+    ke_hoach_cong_kiem: bool = False
 
     @classmethod
     def load(cls) -> "Features":
@@ -348,7 +352,8 @@ class Features:
 
     @staticmethod
     def ten_co() -> tuple[str, ...]:
-        return ("schematic", "gon_cong_cu", "truy_vet", "req_phu", "req_chat_luong")
+        return ("schematic", "gon_cong_cu", "truy_vet", "req_phu", "req_chat_luong",
+                "ke_hoach_cong_kiem")
 
     def bat(self, ten: str) -> bool:
         return bool(getattr(self, ten, False))

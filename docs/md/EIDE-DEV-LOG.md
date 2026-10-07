@@ -7303,3 +7303,71 @@ toàn bộ sau khi xoá `__pycache__`. Không ca cũ nào phải sửa; thông �
 Subagent `req-critic` (bước 4, đánh dấu "tuỳ chọn, gộp M2-13") **chưa làm** — nó cần khung
 subagent của M2-13. Cờ `req_chat_luong` vẫn TẮT: "Tiêu chí xong" đòi chạy TC004/TC005 với cờ
 bật để xem số câu hỏi làm rõ có tăng, và bộ ấy tốn tiền mô hình.
+
+---
+
+## [DEV-336] [M2-06] Bước kế hoạch phải khai kiểm bằng gì, và `step_done` đối chiếu sổ cái
+
+Nhiệm vụ #7. Sau cờ `EIDE_FEATURE_KE_HOACH_CONG_KIEM`, mặc định TẮT. Mã lỗi mới: **E6012**.
+
+### Chỗ hở
+
+`plan.step_done` đòi một **hiện vật mở ra xem được** (E6004) — đã là bước tiến so với bản đầu
+nhận cả câu *"tôi đã viết xong chương 1 rồi nhé"*. Nhưng một tệp `.c` tồn tại trên đĩa **không
+nói nó biên dịch được**. Tác tử ghi tệp, đánh dấu xong, sang bước sau; lỗi dịch chỉ lộ ra ở
+bước cuối, khi đã có mấy bước dựng trên nó.
+
+Đây là một lớp nữa của đúng bài học "ô xanh chưa nói gì tới khi biết cơ chế nào làm nó xanh":
+dấu "xong" ở đây được bật bởi *sự tồn tại của một tệp*, không bởi *tệp ấy làm được việc*.
+
+### Đã làm
+
+`Buoc` thêm `kiem` và `req`. Khi cờ bật: `kiem_ke_hoach` đòi mọi bước **sinh mã** phải khai
+`kiem` (`build.compile`/`test.run`/`sim.run`/`hdl.lint`/`code.analyze`, hoặc `khong` **kèm lý
+do ở `ghi_chu`**); `plan.step_done` duyệt sổ cái và đòi `tool_result{tool==kiem, ok==True}` có
+`seq` **lớn hơn** `seq` của lần `tool_result` gần nhất của công cụ ghi của bước.
+
+**Thứ tự là cả vấn đề**, không chỉ "đã chạy chưa": một lần biên dịch TRƯỚC khi sửa tệp không
+nói gì về tệp sau khi sửa. Có một ca kiểm riêng cho đúng chuyện đó, và một ca nữa cho lần kiểm
+**đỏ** không được tính là đã kiểm.
+
+Dữ liệu để trả lời đã có trong sổ cái **từ trước**: `ledger_and_lint` ghi
+`tool_result {tool, ok}` theo thứ tự ở mọi lời gọi. Không thêm một dòng dữ liệu mới nào — chỉ
+là chưa ai đọc nó để hỏi câu này. Lần thứ năm trong bảy nhiệm vụ gặp hình dạng ấy.
+
+### Đo trên phiên thật: 19 trong 26
+
+Phép đo đầu tôi làm ở mức **dự án** — "sổ cái của dự án này có lần kiểm nào đạt không" — và ra
+**0 bước bị chặn**. Con số ấy đúng nhưng **đo sai câu hỏi**: cổng không hỏi "dự án có bao giờ
+dịch được không", nó hỏi "lần ghi NÀY đã được kiểm chưa".
+
+Đo lại ở đúng mức: tìm mọi lần `plan.step_done` thành công trong sổ cái thật, lùi về lần
+`fs.write`/`fs.edit` gần nhất trước đó, rồi xem giữa hai mốc có phép kiểm nào đạt không.
+
+```
+26 lần đánh dấu xong ngay sau một lần ghi mã
+19 lần KHÔNG có phép kiểm nào đạt ở giữa  →  cổng sẽ chặn
+   robot-tu-can-bang 9 · rtos-ptit 5 · thu-chia-viec 5
+```
+
+73 % số lần đánh dấu "xong" cho một bước vừa ghi mã không có bằng chứng nào rằng mã ấy chạy
+được. Trong đó có `rtos-ptit` và `robot-tu-can-bang` — hai dự án **cuối cùng vẫn chạy trên bo
+thật**, nên con số này không nói sản phẩm sai; nó nói **dấu "xong" được bật sớm hơn bằng
+chứng**, và chuỗi bước sau đó dựng trên một niềm tin chưa kiểm.
+
+### Số đo
+
+Bộ kiểm 1657 → **1671 xanh, 0 đỏ** (+14 ca). "Phá lại thì đỏ" cho **cả chín** chỗ sửa, chạy
+sau khi xoá `__pycache__`. Không ca cũ nào phải sửa; E6003/E6004/E6009 và thông điệp của chúng
+không đổi.
+
+### Hai chỗ ca kiểm của tôi đo sai, đã sửa trước khi tin nó
+
+**Kế hoạch thử không hợp lệ theo luật có từ trước.** Bản đầu của `_kh()` dựng một kế hoạch ghi
+`drv.c` mà không có bước chọn kiến trúc — nên `plan.exit` chặn bằng **E6009** (`thieu_phan_tich`,
+luật của 30/09/2026) trước khi tới được cổng mới. Ca kiểm đỏ, nhưng đỏ vì một luật khác. Đã
+thêm bước `store.adr_create` và một câu nói cấu trúc mã; nay nó đo đúng cổng nó định đo.
+
+**Bảng TC của nhiệm vụ ghi mã lỗi sai.** Tên ca là `test_step_done_chua_build_thi_E6010`, trong
+khi E6010 thuộc M1-10; phần thân nhiệm vụ và bảng cấp phát §6 đều ghi **E6012**. Dùng E6012 và
+đặt tên ca theo nó.

@@ -57,11 +57,19 @@ class Buoc:
     chi_phi: str = ""              # ước lượng của tác tử: bao nhiêu lời gọi / bao lâu
     ghi_chu: str = ""
     xong: bool = False
+    # M2-06 — bước này kiểm bằng gì, và nó hiện thực yêu cầu nào.
+    #
+    # `plan.step_done` vốn đòi một HIỆN VẬT mở ra xem được (E6004), và đó đã là bước tiến
+    # so với bản đầu nhận cả câu "tôi viết xong rồi nhé". Nhưng một tệp `.c` tồn tại trên
+    # đĩa KHÔNG nói nó biên dịch được: tác tử ghi tệp, đánh dấu xong, sang bước sau, và lỗi
+    # dịch chỉ lộ ra ở bước cuối — khi đã có bốn bước dựng trên nó.
+    kiem: str = ""                 # tên công cụ kiểm, hoặc "khong" kèm lý do ở `ghi_chu`
+    req: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {"viec": self.viec, "cong_cu": self.cong_cu, "hien_vat": self.hien_vat,
                 "cong": self.cong, "chi_phi": self.chi_phi, "ghi_chu": self.ghi_chu,
-                "xong": self.xong}
+                "xong": self.xong, "kiem": self.kiem, "req": list(self.req)}
 
 
 # Sáu trạng thái của một kế hoạch, kèm chữ cho người đọc. Đặt cạnh định nghĩa vì chú thích
@@ -102,7 +110,16 @@ class KeHoach:
                    run_id=str(d.get("run_id") or ""))
 
 
-def kiem_ke_hoach(kh: KeHoach, co_cong_cu) -> list[str]:
+# M2-06 — công cụ được nhận làm PHÉP KIỂM của một bước. Mỗi cái trả lời đúng một câu khác
+# nhau về mã vừa ghi, và cả bốn đều để lại dấu trong sổ cái nên đối chiếu được.
+CONG_CU_KIEM = ("build.compile", "test.run", "sim.run", "hdl.lint", "code.analyze")
+
+# Khai "không kiểm được" là một lựa chọn HỢP LỆ — có thật những bước như thế (chưa có
+# toolchain, chưa có bo trên bàn). Nó chỉ không được khai suông: phải nói vì sao, ở `ghi_chu`.
+KIEM_KHONG = "khong"
+
+
+def kiem_ke_hoach(kh: KeHoach, co_cong_cu, *, doi_kiem: bool = False) -> list[str]:
     """Những chỗ kế hoạch chưa dùng được. Rỗng = dùng được.
 
     `co_cong_cu(ten) -> bool` do tầng trên đưa vào, để mô-đun này không phải biết registry.
@@ -132,7 +149,35 @@ def kiem_ke_hoach(kh: KeHoach, co_cong_cu) -> list[str]:
         if not b.hien_vat.strip():
             loi.append(f"bước {i}: thiếu `hien_vat` — bước không để lại gì thì không kiểm "
                        "được là đã làm hay chưa.")
+        if doi_kiem:
+            loi.extend(_kiem_cua_buoc(i, b))
     return loi
+
+
+def _kiem_cua_buoc(i: int, b: Buoc) -> list[str]:
+    """M2-06 — bước SINH MÃ phải nói nó kiểm bằng gì. Bước viết tài liệu thì không.
+
+    Không đòi phép kiểm cho bước tài liệu là cố ý: báo động giả dạy người ta bỏ qua cảnh
+    báo, nên nó đắt hơn hẳn việc không có cảnh báo — cùng lý lẽ đã chữa lỗi `.m` khớp
+    trong `tai-lieu/1.md` ở `_la_ma`.
+    """
+    if not _la_ma(b):
+        return []
+    kiem = (b.kiem or "").strip()
+    if not kiem:
+        return [f"bước {i}: sinh mã mà không nói kiểm bằng gì. Khai `kiem` là một trong "
+                + ", ".join(f"`{x}`" for x in CONG_CU_KIEM)
+                + f", hoặc `{KIEM_KHONG}` kèm lý do ở `ghi_chu`."]
+    if kiem == KIEM_KHONG:
+        if not b.ghi_chu.strip():
+            return [f"bước {i}: khai `kiem=\"{KIEM_KHONG}\"` mà không nói vì sao. Viết lý do "
+                    "vào `ghi_chu` — một bước không kiểm được là chuyện có thật, nhưng nó "
+                    "phải đọc được, không khai suông."]
+        return []
+    if kiem not in CONG_CU_KIEM:
+        return [f"bước {i}: `kiem={kiem}` không phải phép kiểm nhận được. Chọn một trong "
+                + ", ".join(f"`{x}`" for x in CONG_CU_KIEM) + f" hoặc `{KIEM_KHONG}`."]
+    return []
 
 
 # Công cụ SINH RA MÃ. Kế hoạch có bước dùng chúng thì là kế hoạch viết mã, và lúc ấy hai

@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any
 
 from ..errors import EideError
-from ..ke_hoach import (MA_KE_HOACH, Buoc, KeHoach, doi_chieu, kiem_ke_hoach,
-                        thieu_phan_tich,
+from ..ke_hoach import (CONG_CU_KIEM, KIEM_KHONG, MA_KE_HOACH, Buoc, KeHoach, doi_chieu,
+                        kiem_ke_hoach, thieu_phan_tich,
                         la_viec_lon)
 from .registry import Registry, ToolResult
 from .writing import EXPLAIN_SCHEMA
@@ -37,10 +37,75 @@ _SCHEMA_BUOC = {
         "ghi_chu": {"type": "string"}},
     "required": ["viec", "cong_cu", "hien_vat"]}
 
+# M2-06 — hai trường chỉ có mặt trên lược đồ khi cờ `ke_hoach_cong_kiem` bật. Thêm trường
+# vào lược đồ `plan.exit` là đổi thứ mô hình nhìn thấy mỗi lần soạn kế hoạch (N-4).
+_TRUONG_KIEM = {
+    "kiem": {"type": "string", "enum": list(CONG_CU_KIEM) + [KIEM_KHONG],
+             "description": ("bước sinh MÃ phải nói kiểm bằng gì; `khong` thì nêu lý do ở "
+                             "`ghi_chu`. Bước viết tài liệu không cần trường này.")},
+    "req": {"type": "array", "items": {"type": "string"},
+            "description": "mã REQ mà bước này hiện thực (FR-01…)"},
+}
+
+
+def _schema_buoc(r: Registry) -> dict[str, Any]:
+    """Lược đồ một bước, nở thêm hai trường khi cờ bật. Cờ tắt: y nguyên như trước."""
+    if not r._co_bat("ke_hoach_cong_kiem"):
+        return _SCHEMA_BUOC
+    return {**_SCHEMA_BUOC,
+            "properties": {**_SCHEMA_BUOC["properties"], **_TRUONG_KIEM}}
+
 
 def register(r: Registry) -> Registry:
     dang_ky(r)
     return r
+
+
+def _chua_qua_cong_kiem(ctx: Any, r: Registry, b: Buoc) -> EideError | None:
+    """M2-06 — phép kiểm của bước đã chạy ĐƯỢC, và chạy SAU lần ghi của bước, hay chưa.
+
+    `None` = qua. Dữ liệu lấy từ sổ cái, chỗ `ledger_and_lint` đã ghi
+    `tool_result {tool, ok}` theo thứ tự từ trước — nên câu hỏi này trả lời được mà không
+    cần thêm một dòng dữ liệu nào mới. Nó chỉ chưa từng được ai hỏi.
+
+    **Thứ tự là cả vấn đề.** Một lần biên dịch TRƯỚC khi sửa tệp không nói gì về tệp sau
+    khi sửa. Đó là lý do ở đây so vị trí trong sổ, không chỉ hỏi "đã chạy chưa".
+    """
+    if not r._co_bat("ke_hoach_cong_kiem"):
+        return None
+    kiem = (b.kiem or "").strip()
+    if not kiem or kiem == KIEM_KHONG or kiem not in CONG_CU_KIEM:
+        return None
+    so_cai = getattr(ctx, "ledger", None)
+    if so_cai is None:
+        return None
+
+    seq_ghi = seq_kiem = -1
+    for e in so_cai.read():
+        if e.kind != "tool_result":
+            continue
+        ten = (e.data or {}).get("tool")
+        if ten == b.cong_cu:
+            seq_ghi = e.seq
+        elif ten == kiem and (e.data or {}).get("ok"):
+            seq_kiem = e.seq
+    if seq_kiem > seq_ghi:
+        return None
+
+    vi_sao = ("chưa chạy lần nào, hoặc lần nào cũng không đạt"
+              if seq_kiem < 0 else
+              f"chỉ chạy TRƯỚC lần `{b.cong_cu}` gần nhất, nên nó không nói gì về thứ "
+              "vừa được ghi")
+    return EideError(
+        "E6012",
+        f"Bước này khai kiểm bằng `{kiem}`, mà `{kiem}` {vi_sao} — chưa đánh dấu xong được.",
+        hint_for_agent=(
+            f"Chạy `{kiem}` rồi đánh dấu lại. Một tệp tồn tại trên đĩa không nói nó dịch "
+            "được: đánh dấu xong bây giờ thì lỗi chỉ lộ ra ở bước cuối, khi đã có mấy bước "
+            "dựng trên nó. Thật sự không kiểm được thì sửa kế hoạch: `kiem=\"khong\"` kèm "
+            "lý do ở `ghi_chu`."),
+        details={"kiem": kiem, "cong_cu": b.cong_cu},
+        alternatives=[kiem, "plan.cancel"], blame="agent")
 
 
 def _lay(ctx: Any) -> KeHoach | None:
@@ -220,7 +285,7 @@ def dang_ky(r: Registry) -> None:
             "xong mới mở lại công cụ ghi.",
             {"type": "object",
              "properties": {
-                 "buoc": {"type": "array", "items": _SCHEMA_BUOC,
+                 "buoc": {"type": "array", "items": _schema_buoc(r),
                           "description": "các bước, theo đúng thứ tự sẽ làm"},
                  "gia_dinh": {"type": "array", "items": {"type": "string"},
                               "description": "điều bạn đang cho là đúng mà chưa kiểm được"},
@@ -243,7 +308,8 @@ def dang_ky(r: Registry) -> None:
         kh.gia_dinh = list(gia_dinh or [])
         kh.ngoai_pham_vi = list(ngoai_pham_vi or [])
 
-        loi = kiem_ke_hoach(kh, lambda t: ctx.registry.get(t) is not None)
+        loi = kiem_ke_hoach(kh, lambda t: ctx.registry.get(t) is not None,
+                            doi_kiem=r._co_bat("ke_hoach_cong_kiem"))
         if loi:
             return ToolResult(False, error=EideError(
                 "E6003", "Kế hoạch chưa dùng được: " + " · ".join(loi[:4]),
@@ -357,6 +423,9 @@ def dang_ky(r: Registry) -> None:
                        "rõ bạn để lại thứ khác và thứ ấy ở đâu." if hua else "")),
                 details={"hua": hua, "nhan_duoc": hien_vat.strip()[:120]},
                 alternatives=["fs.write", "store.list", "history.diff"], blame="agent"))
+        chua = _chua_qua_cong_kiem(ctx, r, kh.buoc[so - 1])
+        if chua is not None:
+            return ToolResult(False, error=chua)
         kh.buoc[so - 1].xong = True
         # Xong hết thì ĐÓNG kế hoạch. Để nó ở `da_duyet` mãi thì nó chiếm chỗ "kế hoạch hiện
         # tại" và làm tác tử tưởng việc mới cũng nằm trong nó — đo được đúng thế trên phiên
