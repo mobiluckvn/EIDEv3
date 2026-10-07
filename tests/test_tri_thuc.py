@@ -268,3 +268,53 @@ def test_luat_la_thi_liet_ke_luat_co_that():
 def test_du_tam_luat_deu_co_mo_ta():
     assert len(cmp_mod.LUAT) == 8
     assert set(cmp_mod.LUAT) == set(cmp_mod.MO_TA_LUAT)
+
+
+# =========================================================================== M3-07
+def test_trich_IOUT_va_dia_chi_i2c(tmp_path):
+    """TC-M3-07-03 — hai thông số mà ERC cần mà bộ rút Fact chưa có mẫu nào.
+
+    `iout.max` là **vế cấp** của luật ngân sách dòng, và `i2c.addr` là vế duy nhất của luật
+    trùng địa chỉ bus. Không có mẫu trích cho chúng nghĩa là hai luật ấy chỉ chạy được khi
+    người dùng tự gõ Fact bằng tay — mà ERC thì vẫn in ra "0 lỗi chặn".
+    """
+    p = lam_pdf(tmp_path / "ldo.pdf", [[
+        "AMS1117 Low Dropout Regulator",
+        "Output Current IOUT 1 A",
+        "Dropout Voltage 1.1 V",
+        "I2C address 0x48",
+    ]])
+    tl = docs_mod.nap_tai_lieu(p, doc_id="DS-LDO")
+    uv = docs_mod.trich_fact_ung_vien(tl, thuc_the="chip:AMS1117")
+    theo = {f.khoa: f for f in uv}
+
+    assert "iout.max" in theo, sorted(theo)
+    assert abs(float(theo["iout.max"].gia_tri) - 1.0) < 1e-9, theo["iout.max"].gia_tri
+    assert theo["iout.max"].don_vi == "A", theo["iout.max"].don_vi
+
+    assert "i2c.addr" in theo, sorted(theo)
+    assert str(theo["i2c.addr"].gia_tri).lower() == "0x48", theo["i2c.addr"].gia_tri
+
+
+def test_dia_chi_i2c_dang_nhi_phan_doc_thanh_hex(tmp_path):
+    """Datasheet hay ghi địa chỉ 7 bit dạng nhị phân — đọc thành hex cho khớp `i2c.addr`."""
+    p = lam_pdf(tmp_path / "tmp.pdf", [[
+        "TMP102 Temperature Sensor",
+        "Slave address 1001000",
+    ]])
+    tl = docs_mod.nap_tai_lieu(p, doc_id="DS-TMP")
+    theo = {f.khoa: f for f in docs_mod.trich_fact_ung_vien(tl, thuc_the="chip:TMP102")}
+    assert "i2c.addr" in theo, sorted(theo)
+    assert str(theo["i2c.addr"].gia_tri).lower() == "0x48", theo["i2c.addr"].gia_tri
+
+
+def test_iout_ngoai_khoang_hop_ly_bi_loai(tmp_path):
+    """Khoảng hợp lý cho `iout.max` phải có, không thì một số lạc vào thành dòng cấp.
+
+    Đo được ở DEV-317: thiếu khoảng hợp lý thì một con số bất kỳ cùng dòng trở thành Fact,
+    và một Fact sai ở vế CẤP làm ngân sách dòng kết luận "đạt" cho một mạch thiếu nguồn.
+    """
+    p = lam_pdf(tmp_path / "x.pdf", [["Output Current IOUT 9000 A"]])
+    tl = docs_mod.nap_tai_lieu(p, doc_id="DS-X")
+    theo = {f.khoa: f for f in docs_mod.trich_fact_ung_vien(tl, thuc_the="chip:X")}
+    assert "iout.max" not in theo, theo.get("iout.max")

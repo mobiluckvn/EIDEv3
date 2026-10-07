@@ -38,7 +38,12 @@ TIEN_TO_CAP = ("module:", "port:", "net:", "leaf:", "pin:")
 # Khoá Fact mà ERC đọc. Danh sách đóng và có bí danh, vì cùng một đại lượng được datasheet
 # gọi bằng nhiều tên, và bắt người dùng nhớ đúng một tên là bắt sai chỗ.
 KHOA = {
-    "i_max": ("i_max", "i.max", "icc.max", "idd.max", "supply_current", "dong_tieu_thu"),
+    # M3-07 — `icc.typ` vào đây vì `docs.py` sinh đúng khoá ấy ở chế độ dòng chữ
+    # (`icc.max` chỉ ở chế độ bảng). Thiếu nó thì dòng tiêu thụ trích từ một datasheet dạng
+    # văn bản không bao giờ vào được phép cộng. Nhận, nhưng NÓI RÕ nó là danh định —
+    # xem `_la_typ`.
+    "i_max": ("i_max", "i.max", "icc.max", "idd.max", "icc.typ", "idd.typ",
+              "supply_current", "dong_tieu_thu"),
     "i_out_max": ("iout_max", "iout.max", "i_out.max", "dong_ra_max"),
     "voh": ("voh", "voh.min", "v_oh"),
     "vih": ("vih", "vih.min", "v_ih"),
@@ -106,7 +111,18 @@ class TraFact:
             k = khoa_chuan(str(f.get("key", "")))
             if k is None:
                 continue
-            self._theo.setdefault((str(f.get("subject", "")), k), []).append(f)
+            ct = str(f.get("subject", ""))
+            self._theo.setdefault((ct, k), []).append(f)
+            # M3-07 — `fact.extract` ghi chủ thể `chip:ATmega328P@1.0.0` (mô tả công cụ
+            # khuyên đúng dạng ấy), còn `chu_the_la` chỉ tra `leaf:U1` · `U1` · tên chip, và
+            # phép tra khớp chuỗi TUYỆT ĐỐI. Nên mọi Fact trích từ datasheet không bao giờ
+            # tới được ERC: bộ rút Fact chạy đúng, ERC chạy đúng, hai bên không thấy nhau.
+            #
+            # Đánh chỉ mục THÊM dưới tên trần. Chỉ bỏ tiền tố và phiên bản — không nới gì
+            # khác: một Fact của `chip:LM1117` vẫn không được dùng cho lá tên AMS1117.
+            ten = _ten_chip(ct)
+            if ten and ten != ct:
+                self._theo.setdefault((ten, k), []).append(f)
 
     def tra(self, chu_the: list[str], khoa: str) -> dict[str, Any] | None:
         for ct in chu_the:
@@ -122,6 +138,23 @@ class TraFact:
         for ct in chu_the:
             ra += self._theo.get((ct, khoa), [])
         return ra
+
+
+def _ten_chip(chu_the: str) -> str:
+    """`"chip:ATmega328P@1.0.0"` → `"ATmega328P"`. Không phải dạng `chip:` thì trả `""`."""
+    s = (chu_the or "").strip()
+    if not s.lower().startswith("chip:"):
+        return ""
+    return s[5:].split("@", 1)[0].strip()
+
+
+def _la_typ(f: dict[str, Any] | None) -> bool:
+    """Fact này là con số DANH ĐỊNH (`.typ`) hay tối đa?
+
+    Dòng danh định nhỏ hơn dòng tối đa, nên một ngân sách "đạt" tính bằng `typ` có thể
+    không đạt khi chạy thật. Nhận con số ấy thì được — im lặng về nó thì không.
+    """
+    return bool(f) and str(f.get("key", "")).strip().lower().endswith(".typ")
 
 
 def _uu_tien(f: dict[str, Any]) -> int:
@@ -317,7 +350,8 @@ def ngan_sach_dong(cay: C.Cay, tf: TraFact, phang: dict[str, list[str]],
         i_cap, dv = _gt(cap["fact"])
         tong = 0.0
         thieu: list[str] = []
-        bc = [_cite(cap["fact"])]
+        bc = [_danh_dau_typ(_cite(cap["fact"]), cap["fact"])]
+        co_typ = _la_typ(cap["fact"])
         for t in tieu:
             if t.get("fact") is None:
                 thieu.append(t["ten"])
@@ -327,9 +361,13 @@ def ngan_sach_dong(cay: C.Cay, tf: TraFact, phang: dict[str, list[str]],
             if v != v:
                 thieu.append(t["ten"])
             else:
-                bc.append(_cite(t["fact"]))
+                bc.append(_danh_dau_typ(_cite(t["fact"]), t["fact"]))
+                co_typ = co_typ or _la_typ(t["fact"])
 
         du = f"{_mA(i_cap)} cấp cho {_mA(tong)} tiêu thụ"
+        if co_typ:
+            du += (" (có vế dùng con số **danh định** `.typ`, không phải tối đa — tổng thật "
+                   "khi chạy có thể lớn hơn)")
         if thieu:
             ra.append(PhatHien(
                 "ngan_sach_dong", "chua_du_du_kien", "info", path,
@@ -673,6 +711,43 @@ def _chuan_addr(v: Any) -> str:
     if s.isdigit():
         return f"0x{int(s):02x}"
     return s
+
+
+def _danh_dau_typ(bc: dict[str, Any], f: dict[str, Any]) -> dict[str, Any]:
+    """Gắn cờ vào một mục bằng chứng dựng từ Fact `.typ`."""
+    if _la_typ(f):
+        return {**bc, "dung_typ_thay_max": True,
+                "luu_y": "con số danh định, không phải tối đa"}
+    return bc
+
+
+# --------------------------------------------------------------------------- độ phủ
+def do_phu(ds: list[PhatHien]) -> dict[str, Any]:
+    """ERC vừa rồi **kết luận được bao nhiêu** — không chỉ "mấy lỗi chặn".
+
+    Ô xanh giả khó thấy nhất của bảng ERC: *"0 lỗi chặn"* và *"không kết luận được gì vì
+    không có vế nào"* in ra giống hệt nhau. `ket_qua["dat"] == []` đã canh một chiều (đừng
+    gọi chưa-đủ là đạt); cái này canh chiều còn lại — **nói ra con số**.
+
+    `_fact_con_thieu` gom từ `cach_sua` của các phát hiện `chua_du_du_kien`, vì đó là chỗ
+    từng luật đã nói sẵn nó còn thiếu gì. Người đọc không phải đi dò từng dòng.
+    """
+    ra: dict[str, Any] = {}
+    tong = {"dat": 0, "khong_dat": 0, "canh_bao": 0, "chua_du": 0}
+    thieu: list[str] = []
+    for x in ds:
+        o = ra.setdefault(x.luat, {"dat": 0, "khong_dat": 0, "canh_bao": 0, "chua_du": 0})
+        k = "chua_du" if x.ket_luan == "chua_du_du_kien" else x.ket_luan
+        if k not in o:
+            continue
+        o[k] += 1
+        tong[k] += 1
+        if k == "chua_du" and x.cach_sua and x.cach_sua not in thieu:
+            thieu.append(x.cach_sua)
+    ra["_tong"] = tong
+    ra["_fact_con_thieu"] = thieu
+    ra["_ket_luan_duoc"] = tong["dat"] + tong["khong_dat"] + tong["canh_bao"]
+    return ra
 
 
 def _path_cua_ref(cay: C.Cay, ref: str) -> str:

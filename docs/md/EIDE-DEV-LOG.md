@@ -7674,3 +7674,77 @@ ERC trông giống nhau y hệt.
 
 Bộ kiểm 1695 → **1703 xanh, 0 đỏ** (+8 ca). `thu_sch.py` 63/63. Các ca `test_HIER07_*` và
 `test_khoi_cap_nhan_ra_bang_FACT_du_Port_chua_biet_huong` giữ nguyên.
+
+---
+
+## [DEV-341] [M3-07] Nối Fact datasheet ↔ ERC, và nói ra ERC kết luận được bao nhiêu
+
+Nhiệm vụ #12. **Sửa lỗi thuần** — và nó gỡ đúng chỗ đứt mà DEV-338 (#9) đã đo ra và nói trước.
+
+### Bốn chỗ đứt, nối lại
+
+1. **Chủ thể.** `fact.extract` ghi `subject = thuc_the`, và mô tả công cụ khuyên dạng
+   `chip:ATmega328P@1.0.0`. Còn `chu_the_la` chỉ tra `leaf:U1` · `U1` · tên chip, và
+   `TraFact.tra` khớp chuỗi **tuyệt đối**. Nên **mọi Fact trích từ datasheet không bao giờ
+   tới được ERC**: bộ rút Fact chạy đúng, ERC chạy đúng, hai bên không nhìn thấy nhau.
+   Nay `TraFact` đánh chỉ mục **thêm** dưới tên trần (`chip:X@ver` → `X`), bỏ tiền tố và
+   phiên bản, **không nới gì khác**.
+2. **Khoá.** `docs.py` sinh `icc.typ` ở chế độ dòng chữ (`icc.max` chỉ ở chế độ bảng), mà bí
+   danh `i_max` không có `icc.typ`. Nay có — nhưng kèm cờ `dung_typ_thay_max` trong bằng
+   chứng và một câu trong `vi`: *"có vế dùng con số **danh định** `.typ`, không phải tối đa"*.
+   Dòng danh định nhỏ hơn dòng tối đa, nên một ngân sách "đạt" tính bằng `typ` có thể không
+   đạt khi chạy thật. Nhận con số thì được; im lặng về nó thì không.
+3. **Mẫu trích còn thiếu.** Không có mẫu nào cho `iout.max` (vế **CẤP** của luật ngân sách
+   dòng) và `i2c.addr` (vế **duy nhất** của luật trùng địa chỉ bus). Nay có cả hai, kèm
+   khoảng hợp lý `iout.max = (1 mA, 50 A)` — cái phanh cuối cho vế cấp, vì một Fact sai ở
+   đó làm ERC kết luận "đạt" cho một mạch thiếu nguồn.
+   Địa chỉ đọc được cả `0x48` và `1001000` (nhị phân 7 bit), **cùng trả về `0x48`**: hai
+   Fact cùng một địa chỉ mà ghi khác dạng thì phép so trùng không bắt được — đúng lỗi nó
+   sinh ra để bắt.
+4. **Độ phủ.** `erc.do_phu(ds)` trả `{luat: {dat, khong_dat, canh_bao, chua_du}}` kèm
+   `_fact_con_thieu`. `board.check` và `sch.netlist` trả thêm khoá `do_phu` (khoá cũ không
+   đổi). `sch.netlist` trước đây chỉ trả `khong_dat` — `chua_du_du_kien` **bị ẩn hẳn**, nên
+   "netlist sạch" và "ERC không kết luận được gì" đọc ra giống nhau.
+
+### Số đo
+
+**Fact tới được ERC: 5 → 17 (+12).** Ba kho có Fact trích từ datasheet
+(`thu-nghiem-cuoi` 4, `thu-nghiem-g4` 6, `thu-nghiem-ing-b` 2) — **toàn bộ** đều mang chủ
+thể `chip:`, tức trước M3-07 **không một Fact nào trong số đó tới được ERC**.
+
+**Độ phủ ERC trên 5 mô hình mạch thật** (con số nay đọc được, trước đây không có):
+
+```
+robot-canbang     6 phát hiện · kết luận được 4 · chưa đủ 2
+thu-18            4            · 2 · 2
+thu-nghiem-ckm    6            · 5 · 1
+thu-nghiem-hier   3            · 3 · 0
+thu-nghiem-sch    2            · 1 · 1
+```
+
+Bộ kiểm 1703 → **1713 xanh, 0 đỏ** (+10 ca). `thu_sch.py` 63/63.
+
+Hai tập dữ liệu vẫn chưa giao nhau (ba kho có Fact `v_max` vẫn không có mô hình mạch), nên
+luật quá áp của M3-01 vẫn chưa nổ trên dữ liệu thật — nhưng **đường dẫn đã thông**: từ nay một
+Fact `chip:X` trên một kho có mạch sẽ tới được ERC.
+
+### Phép phá của tôi dựng sai, và ca âm thì xanh vì lý do khác
+
+Tám phép phá, bảy đỏ. Cái không đỏ là phép phá "nới tay phép tra chủ thể" — và nó phơi ra
+**hai** lỗi của tôi, lồng vào nhau:
+
+**Phép phá dựng sai.** Tôi cắt tên chip còn 2 ký tự (`AMS1117` → `AM`) tưởng là nới lỏng.
+Không phải: `"AM"` chẳng khớp chủ thể nào, nên nó còn **chặt hơn** bản đúng. Dựng lại cho
+đúng kiểu nới tay thật: cho `tra()` rơi về **bất kỳ** Fact `chip:` nào cùng khoá.
+
+**Ca âm vẫn xanh.** Và lần này không phải vì phép phá: ca `test_chip_khac_ten_khong_bi_gan_nham`
+chỉ khai `i_max` cho U1, không khai cho U2 — nên kết luận là `chua_du_du_kien` **vì U2 thiếu
+Fact dòng**, bất kể vế cấp có bị gán nhầm hay không. Nó xanh vì một lý do khác hẳn thứ nó nói
+nó canh.
+
+Sửa: khai đủ `i_max` cho **cả hai** vế tiêu thụ, để thứ duy nhất còn thiếu là vế **CẤP**. Nay
+nới tay phép tra là ca ấy đỏ ngay.
+
+Đây là lần thứ tư trong đợt này một ca kiểm xanh vì không chạm tới thứ nó canh (DEV-335,
+DEV-338, DEV-339, và lần này) — nhưng là lần đầu **phép phá cũng sai**, nên suýt nữa tôi kết
+luận "ca âm này canh tốt" từ hai cái sai cùng che nhau.

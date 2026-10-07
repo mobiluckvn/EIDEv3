@@ -786,8 +786,11 @@ def register(r: Registry) -> Registry:
         for x in ds:
             theo.setdefault(x.ket_luan, []).append(x.to_dict())
 
+        # M3-07 — nói ra ERC KẾT LUẬN ĐƯỢC bao nhiêu, không chỉ nói mấy lỗi chặn. Khoá
+        # THÊM, không đổi khoá cũ.
+        dp = ERC.do_phu(ds)
         if not ds:
-            return {"so_phat_hien": 0, "ket_qua": theo,
+            return {"so_phat_hien": 0, "ket_qua": theo, "do_phu": dp,
                     "note_vi": ("Chưa kiểm được gì: bản đồ chưa có net nguồn hay bus nào để "
                                 "xét. Dựng cây và net trước (ckm.net_set / ckm.port_set).")}
         # Thứ tự câu nói theo mức độ hậu quả, không theo thứ tự luật chạy.
@@ -805,9 +808,13 @@ def register(r: Registry) -> Registry:
                                     for x in theo["chua_du_du_kien"][:2]))
         if theo["dat"] and not (theo["khong_dat"] or theo["canh_bao"]):
             phan.append(f"{len(theo['dat'])} ràng buộc kiểm được và ĐẠT")
-        return {"so_phat_hien": len(ds), "ket_qua": theo,
+        return {"so_phat_hien": len(ds), "ket_qua": theo, "do_phu": dp,
                 "theo_khoi": sorted({x.path for x in ds}),
-                "note_vi": ". ".join(phan) + "."}
+                "note_vi": (". ".join(phan) + "."
+                            + (f" ĐỘ PHỦ: kết luận được {dp['_ket_luan_duoc']}/{len(ds)} "
+                               f"phát hiện, còn {dp['_tong']['chua_du']} chỗ chưa đủ dữ kiện."
+                               if dp["_tong"]["chua_du"] else
+                               f" ĐỘ PHỦ: kết luận được cả {len(ds)} phát hiện."))}
 
     # ====================================================================== đọc & gộp
     @r.tool("ckm.graph", "Thiết kế",

@@ -213,9 +213,14 @@ def register(r: Registry) -> Registry:
         from ..knowledge import erc as ERC
         ph = ERC.erc(ctx.store)
         nang = [x for x in ph if x.ket_luan == "khong_dat"]
+        # M3-07 — `chua_du_du_kien` trước đây bị ẩn hẳn ở đây: chỉ `khong_dat` được trả về,
+        # nên "netlist sạch" và "ERC không kết luận được gì" đọc ra giống nhau.
+        chua = [x for x in ph if x.ket_luan == "chua_du_du_kien"]
+        dp = ERC.do_phu(ph)
         return {"tep": TEP_NET, "so_net": len(phang), "so_linh_kien": len(m.part),
                 "dang_cau": kq.to_dict(), "khong_hieu": m.khong_hieu,
                 "erc_loi_chan": [x.to_dict() for x in nang], "changeset": cs.id,
+                "do_phu": dp,
                 "note_vi": (f"Netlist {len(phang)} net khớp bản đồ mạch — kiểm bằng cách "
                             "ĐỌC LẠI tệp SKiDL rồi so với cây, không phải so cây với chính "
                             "nó."
@@ -223,7 +228,10 @@ def register(r: Registry) -> Registry:
                                + "; ".join(m.khong_hieu[:2]) + " — nói cho người dùng biết."
                                if m.khong_hieu else "")
                             + (f" ERC còn {len(nang)} lỗi chặn, xem board.check."
-                               if nang else ""))}
+                               if nang else "")
+                            + (f" Và {len(chua)} luật CHƯA ĐỦ DỮ KIỆN — đây không phải "
+                               "'không có lỗi', xem `do_phu`."
+                               if chua else ""))}
 
     # ====================================================================== 3. ký hiệu
     @r.tool("sch.symbols", "Thiết kế",

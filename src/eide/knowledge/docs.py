@@ -67,12 +67,17 @@ _HE_SO: dict[str, tuple[float, str]] = {
 }
 
 
-def ve_si(gia_tri: float, don_vi: str) -> tuple[float, str]:
+def ve_si(gia_tri: float | str, don_vi: str) -> tuple[float | str, str]:
     """Đưa về đơn vị cơ bản. `4,7 kΩ` → `(4700.0, "Ω")`.
 
     Không có bước này thì `fact.compare` phải so `5000 mV` với `5 V` bằng chuỗi và sẽ
     kết luận sai — đúng loại lỗi mà một hệ thống "so sánh có bằng chứng" không được có.
+
+    Giá trị KHÔNG phải số (M3-07: `i2c.addr` = `"0x48"`) thì trả nguyên — một địa chỉ không
+    có đơn vị để quy đổi, và nhân nó với một hệ số là làm ra một con số vô nghĩa.
     """
+    if not isinstance(gia_tri, (int, float)) or isinstance(gia_tri, bool):
+        return gia_tri, don_vi
     he, co_ban = _HE_SO.get(don_vi.strip().lower(), (1.0, don_vi))
     return gia_tri * he, co_ban
 
@@ -322,7 +327,9 @@ def ghep_chan_tu_dinh_nghia(ds: list[DinhNghiaUngVien]) -> dict[str, dict[str, A
 @dataclass(slots=True)
 class FactUngVien:
     khoa: str
-    gia_tri: float
+    # `float` cho mọi thông số đo được; `str` cho `i2c.addr` ("0x48") — một địa chỉ không
+    # phải một đại lượng, và ép nó thành số thì mất dạng hex mà phép so trùng cần.
+    gia_tri: float | str
     don_vi: str
     trang: int
     trich_doan: str
@@ -355,6 +362,12 @@ _MAU_THONG_SO: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bEEPROM\b", re.I), "eeprom.size"),
     (re.compile(r"\b(max(imum)?\s+)?(operating\s+)?frequency\b", re.I), "fmax"),
     (re.compile(r"\bI\s*CC\b|\bsupply\s+current\b", re.I), "icc.typ"),
+    # M3-07 — hai thông số mà ERC CẦN mà trước đây không có mẫu nào: `iout.max` là vế CẤP
+    # của luật ngân sách dòng, `i2c.addr` là vế duy nhất của luật trùng địa chỉ bus. Thiếu
+    # chúng thì hai luật ấy chỉ chạy được khi người dùng tự gõ Fact bằng tay — mà ERC vẫn
+    # in ra "0 lỗi chặn".
+    (re.compile(r"\bI\s*OUT\b|\boutput\s+current\b", re.I), "iout.max"),
+    (re.compile(r"\b(?:I2C|slave)\s+address\b", re.I), "i2c.addr"),
     (re.compile(r"\bI\s*OL\b", re.I), "iol.max"),
     (re.compile(r"\bI\s*OH\b", re.I), "ioh.max"),
     (re.compile(r"\bpull-?up\b", re.I), "i2c.pullup.typ"),
@@ -402,6 +415,15 @@ def trich_fact_ung_vien(tl: TaiLieu, *, thuc_the: str,
                     break
             if khoa is None:
                 continue
+            if khoa == "i2c.addr":
+                dc = doc_dia_chi_i2c(chu)
+                if dc:
+                    ra.append(FactUngVien(
+                        khoa=khoa, gia_tri=dc, don_vi="", trang=t.so,
+                        trich_doan=chu[:200], thuc_the=thuc_the, nguyen_van=dc))
+                    if len(ra) >= gioi_han:
+                        return _gom(ra)
+                continue
             for m in _SO_DON_VI.finditer(chu):
                 try:
                     gt = float(m.group(1).replace(",", "."))
@@ -430,6 +452,29 @@ def _la_dong_dia_chi(chu: str) -> bool:
     return bool(_MAU_DIA_CHI.search(chu))
 
 
+# M3-07 — địa chỉ I2C không phải "số kèm đơn vị", nên `_SO_DON_VI` không bắt được. Hai cách
+# datasheet hay ghi, và cả hai phải ra cùng một dạng để `erc.trung_dia_chi_bus` so được:
+# `0x48` và `1001000` (nhị phân 7 bit) là **cùng một địa chỉ**.
+_DIA_CHI_HEX = re.compile(r"\b0x([0-9a-f]{1,2})\b", re.I)
+_DIA_CHI_NHI_PHAN = re.compile(r"\b([01]{7})b?\b")
+
+
+def doc_dia_chi_i2c(chu: str) -> str:
+    """`"0x48"` từ một dòng chữ. Rỗng nếu không thấy địa chỉ nào đọc được.
+
+    Trả dạng hex hai chữ số vì đó là dạng `erc.trung_dia_chi_bus` chuẩn hoá về — hai Fact
+    cùng một địa chỉ mà ghi khác dạng thì phép so trùng không bắt được, và đó đúng là lỗi
+    nó sinh ra để bắt.
+    """
+    m = _DIA_CHI_HEX.search(chu)
+    if m:
+        return f"0x{int(m.group(1), 16):02x}"
+    m = _DIA_CHI_NHI_PHAN.search(chu)
+    if m:
+        return f"0x{int(m.group(1), 2):02x}"
+    return ""
+
+
 # Khoảng giá trị hợp lý cho từng khoá, theo ĐƠN VỊ CƠ BẢN (V, A, Hz, byte, °C).
 # Đây là cái phanh cuối: một mẫu khớp nhầm dòng vẫn có thể cho ra một con số, và một con số
 # vô lý đi tiếp được vào mọi phép tính phía sau mà không ai chặn. Thà bỏ một Fact đúng hiếm
@@ -441,6 +486,10 @@ PHAM_VI_HOP_LY: dict[str, tuple[float, float]] = {
     "eeprom.size": (16, 1024 * 1024),
     "vdd.min": (0.5, 60), "vdd.max": (0.5, 60), "vdd.typ": (0.5, 60),
     "vih.min": (0.3, 60), "vil.max": (0.0, 60),
+    # Dòng ra của một bộ cấp: từ 1 mA (tham chiếu điện áp) tới 50 A (module nguồn lớn).
+    # Có khoảng này là cái phanh cuối cho vế CẤP — một Fact sai ở vế ấy làm ngân sách dòng
+    # kết luận "đạt" cho một mạch thiếu nguồn, tức một ô xanh giả đúng chỗ đắt nhất.
+    "iout.max": (1e-3, 50),
     "f.max": (1_000, 2_000_000_000),
     "temp.min": (-100, 200), "temp.max": (-100, 200),
 }
@@ -595,10 +644,12 @@ def _tu_hang_bang(t: "Trang", thuc_the: str) -> list["FactUngVien"]:
 
 def _gom(ds: list[FactUngVien]) -> list[FactUngVien]:
     """Cùng khoá + cùng giá trị SI thì giữ một, ưu tiên trang sớm nhất."""
-    thay: dict[tuple[str, float, str], FactUngVien] = {}
+    thay: dict[tuple[str, Any, str], FactUngVien] = {}
     for f in ds:
         si, dv = ve_si(f.gia_tri, f.don_vi)
-        k = (f.khoa, round(si, 9), dv)
+        # Giá trị không phải số (`i2c.addr`) thì gom theo chính chuỗi ấy — `round` trên một
+        # chuỗi là một `TypeError`, và nó sẽ nổ ở đúng chỗ khó đoán nhất: lúc gom kết quả.
+        k = (f.khoa, round(si, 9) if isinstance(si, (int, float)) else str(si), dv)
         if k not in thay or f.trang < thay[k].trang:
             thay[k] = f
     return sorted(thay.values(), key=lambda x: (x.khoa, x.trang))

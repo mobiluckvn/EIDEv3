@@ -921,3 +921,126 @@ def test_HIER07_mot_bo_cap_van_giu_nguyen_ket_qua(bo):
     _fact(bo, "leaf:U2", "i_max", 0.01, unit="A")
     x = _tim(E.erc(bo), "ngan_sach_dong")
     assert x and x[0].ket_luan == "dat", [f"{i.ket_luan}: {i.vi}" for i in x]
+
+
+# =========================================================================== 8. nối Fact ↔ ERC
+#
+# Chỗ đứt đo được ở DEV-338: `fact.extract` ghi Fact với chủ thể `chip:ATmega328P@1.0.0`
+# (mô tả công cụ khuyên đúng dạng ấy), còn `chu_the_la` chỉ tra `leaf:U1` · `U1` ·
+# `ATmega328P`, và `TraFact.tra` khớp chuỗi TUYỆT ĐỐI. Nên **mọi Fact trích từ datasheet
+# không bao giờ tới được ERC** — bộ rút Fact chạy đúng, ERC chạy đúng, và hai bên không
+# nhìn thấy nhau.
+#
+# Hệ quả là một ô xanh giả theo kiểu khó thấy nhất: "ERC 0 lỗi chặn" trong khi sự thật là
+# "ERC không kết luận được gì vì không có vế nào".
+def test_fact_chu_the_chip_co_phien_ban_duoc_ERC_thay(bo):
+    """TC-M3-07-01 — Fact `chip:AMS1117@1.0.0` phải tới được lá U3 (AMS1117)."""
+    _fact(bo, "chip:AMS1117@1.0.0", "iout_max", 0.8, unit="A")
+    _fact(bo, "leaf:U1", "i_max", 0.2, unit="A")
+    _fact(bo, "leaf:U2", "i_max", 0.01, unit="A")
+
+    x = _tim(E.erc(bo), "ngan_sach_dong")
+    assert x, "không có phát hiện ngân sách dòng nào"
+    assert x[0].ket_luan == "dat", f"{x[0].ket_luan}: {x[0].vi}"
+
+
+def test_fact_chu_the_chip_khong_phien_ban_cung_duoc_thay(bo):
+    _fact(bo, "chip:AMS1117", "iout_max", 0.8, unit="A")
+    _fact(bo, "leaf:U1", "i_max", 0.2, unit="A")
+    _fact(bo, "leaf:U2", "i_max", 0.01, unit="A")
+    assert _tim(E.erc(bo), "ngan_sach_dong")[0].ket_luan == "dat"
+
+
+def test_chip_khac_ten_khong_bi_gan_nham(bo):
+    """TC-M3-07-05 — ca âm: `chip:LM1117` KHÔNG được gán cho lá tên AMS1117.
+
+    Đây là ranh giới của phép nới lỏng này. Nới quá tay thì một Fact của con chip khác
+    thành bằng chứng cho con chip này — và ERC sẽ kết luận "đạt" bằng một con số không
+    thuộc về mạch ấy. Thà chưa đủ dữ kiện.
+    """
+    # Cho ĐỦ cả hai vế tiêu thụ, để thứ duy nhất còn thiếu là VẾ CẤP. Bản đầu của ca này
+    # chỉ khai `i_max` cho U1, nên nó xanh vì "U2 chưa có Fact dòng" — tức xanh vì một lý
+    # do khác hẳn thứ nó nói nó canh, và nó xanh cả khi tôi cố ý nới phép tra chủ thể sang
+    # bất kỳ `chip:` nào.
+    _fact(bo, "chip:LM1117@1", "iout_max", 0.8, unit="A")
+    _fact(bo, "leaf:U1", "i_max", 0.2, unit="A")
+    _fact(bo, "leaf:U2", "i_max", 0.01, unit="A")
+
+    x = _tim(E.erc(bo), "ngan_sach_dong")
+    assert x and x[0].ket_luan == "chua_du_du_kien", f"{x[0].ket_luan}: {x[0].vi}"
+    assert "iout_max" in x[0].cach_sua, x[0].cach_sua
+
+
+def test_icc_typ_duoc_cong_va_noi_ro_la_typ(bo):
+    """TC-M3-07-02 — `icc.typ` cộng được, nhưng phải NÓI RÕ nó là danh định.
+
+    `docs.py` sinh khoá `icc.typ` ở chế độ dòng chữ (`icc.max` ở chế độ bảng), mà bí danh
+    `i_max` của ERC không có `icc.typ`. Nên dòng tiêu thụ trích từ một datasheet dạng văn
+    bản không bao giờ vào được phép cộng.
+
+    Nhận nó, nhưng không im lặng: dòng danh định nhỏ hơn dòng tối đa, nên một ngân sách
+    "đạt" tính bằng `typ` có thể không đạt khi chạy thật. Bằng chứng phải mang cờ ấy.
+    """
+    _fact(bo, "leaf:U3", "iout_max", 0.2, unit="A")
+    _fact(bo, "leaf:U1", "icc.typ", 0.05, unit="A")
+    _fact(bo, "leaf:U2", "i_max", 0.01, unit="A")
+
+    x = _tim(E.erc(bo), "ngan_sach_dong")
+    assert x and x[0].ket_luan == "dat", f"{x[0].ket_luan}: {x[0].vi}"
+    co_co = [b for b in x[0].bang_chung if b.get("dung_typ_thay_max")]
+    assert co_co, x[0].bang_chung
+    assert "danh định" in x[0].vi, x[0].vi
+
+
+def test_do_phu_noi_ro_bao_nhieu_luat_da_ket_luan(bo):
+    """`do_phu` — bảng ERC phải nói nó kết luận được bao nhiêu, không chỉ nói "0 lỗi chặn".
+
+    Đây là ô xanh giả theo kiểu khó thấy nhất: "0 lỗi chặn" và "không kết luận được gì" in
+    ra giống nhau. Ca kiểm `test_board_check…_dat == []` đã canh chiều "đừng gọi chưa-đủ là
+    đạt"; `do_phu` canh chiều còn lại — nói ra con số.
+    """
+    dp = E.do_phu(E.erc(bo))
+    assert "ngan_sach_dong" in dp, dp
+    assert dp["ngan_sach_dong"]["chua_du"] >= 1, dp["ngan_sach_dong"]
+    assert dp["_tong"]["chua_du"] >= 1, dp["_tong"]
+    assert dp["_fact_con_thieu"], dp.keys()
+
+
+def test_do_phu_het_chua_du_khi_du_fact(bo):
+    """Đủ Fact thì `chua_du` về 0 — con số phải ĐỘNG, không phải một nhãn dán cứng."""
+    _fact(bo, "chip:AMS1117@1.0.0", "iout_max", 0.8, unit="A")
+    _fact(bo, "leaf:U1", "i_max", 0.2, unit="A")
+    _fact(bo, "leaf:U2", "i_max", 0.01, unit="A")
+
+    dp = E.do_phu(E.erc(bo))
+    assert dp["ngan_sach_dong"]["chua_du"] == 0, dp["ngan_sach_dong"]
+    assert dp["ngan_sach_dong"]["dat"] >= 1, dp["ngan_sach_dong"]
+
+
+def test_board_check_tra_do_phu(make_agent):
+    """TC-M3-07-04 — `board.check` trả thêm khoá `do_phu`, không đổi khoá cũ."""
+    from eide.loop import TurnContext
+
+    a = make_agent([])
+    ex = {"summary": "s", "why": "w", "sources": [], "diff_prev": "—", "next": "—",
+          "confidence": "VANG"}
+    ctx = TurnContext(config=a.config, store=a.store, ledger=a.ledger, eide_md=a.eide_md,
+                      ids=a.ids, registry=a.registry, emit=lambda c: None,
+                      history=a.history, run_id="run-1")
+
+    def goi(cong_cu, /, **kw):
+        if "explain" in (a.registry.get(cong_cu).params.get("properties") or {}):
+            kw.setdefault("explain", ex)
+        return a.registry.run(cong_cu, kw, ctx)
+
+    assert goi("ckm.module_set", ma="PWR", ten="Nguồn", muc_dich="3V3").ok
+    assert goi("ckm.port_set", khoi="PWR", ten="VOUT", huong="power_out").ok
+    assert goi("ckm.net_set", ten="3V3", loai="power", noi_port=[["PWR", "VOUT"]]).ok
+
+    r = goi("board.check")
+    assert r.ok, r.error
+    # Khoá cũ không đổi.
+    assert "so_phat_hien" in r.data and "ket_qua" in r.data
+    assert r.data["ket_qua"]["dat"] == []
+    # Khoá mới.
+    assert r.data["do_phu"]["ngan_sach_dong"]["chua_du"] >= 1, r.data["do_phu"]
