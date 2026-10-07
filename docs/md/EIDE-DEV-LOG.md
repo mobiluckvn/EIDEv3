@@ -7066,3 +7066,76 @@ hàng rào → 3 ca đỏ, ca âm vẫn xanh; bỏ nhánh E4032 → ca thẻ c�
 
 Không ca cũ nào phải sửa lần này — `test_subagent_KHONG_dung_duoc_cong_cu_ngoai_tap_cua_no`
 vẫn trả `E5006` trước mọi hook, đúng như "Bảo vệ hồi quy" đòi.
+
+---
+
+## [DEV-333] [M2-01] Đường truy vết khai báo có mã, có ca kiểm, và chưa từng chạy một lần
+
+Nhiệm vụ #4. Phần nền là **sửa lỗi thuần**; phần mở trường mới trên lược đồ nằm sau cờ
+`EIDE_FEATURE_TRUY_VET`, mặc định TẮT.
+
+### Lỗ hổng: ba chỗ, mỗi chỗ đứt một kiểu
+
+`deps.ha_nguon_cua` vốn có hai đường và cộng lại: **theo khai báo** (`deps.upstream`) và
+**theo loại** (chuỗi mặc định §E5.4). Đường khai báo chính xác hơn hẳn — nó nói *hiện vật
+này* dựng từ *cái kia*, chứ không phải *loại này* thường dựng từ *loại kia*. Nhưng:
+
+1. `History.ghi_kho` và `History.ghi_tep` **không có tham số `deps`**, nên `store.apply` luôn
+   nhận `None`. Grep `deps=` trong `src/eide`: không một lời gọi nào ngoài chính `db.py`.
+2. `Store.apply` ghi `deps=excluded.deps` trong câu upsert, nên kể cả có ghi được thì **lần
+   sửa thứ hai sẽ xoá sạch**. Đường khai báo sống được đúng một version.
+3. Cộng hai đường lại nghĩa là khai báo **không bao giờ thu hẹp** được gì: một tiêu chí khai
+   `do_req: FR-01` vẫn lỗi thời khi người ta sửa FR-02, vì đường theo loại vẫn quét nó.
+
+Cả ba cộng lại: `upstream` **luôn rỗng**, và đường khai báo chưa chạy lần nào kể từ khi được
+viết ra. Lại đúng hình dạng "cơ chế có sẵn, đường dẫn tới nó đứt" — lần thứ tư trong bốn
+nhiệm vụ của đợt này.
+
+### Số đo
+
+Kịch bản 3 REQ, mỗi REQ một phương án + một tiêu chí + một tệp mã, rồi sửa **một** REQ:
+
+```
+KHÔNG khai gì (như trước M2-01)  →  9 hiện vật STALE   (tất cả)
+khai đúng nguồn                  →  3 hiện vật STALE   (PA-1 · criteria:sim-1 · mod1.c)
+```
+
+Một băng cảnh báo lúc nào cũng sáng là một băng cảnh báo không ai đọc — đó mới là cái giá
+thật của con số 9, chứ không phải chín dòng thừa.
+
+Bộ kiểm 1628 → **1637 xanh, 0 đỏ** (+9 ca). "Phá lại thì đỏ" riêng cho **cả sáu** chỗ sửa.
+Không ca cũ nào phải sửa; CX06 vẫn ra STALE đúng danh sách.
+
+### Hai chỗ phải cẩn thận
+
+**Khai báo chỉ thắng ĐÚNG LOẠI nó khai.** Một phương án khai nguồn là REQ thì nó tự quyết lấy
+chuyện "REQ nào làm tôi lỗi thời", nhưng nó **vẫn** phải lỗi thời khi ADR đổi — chuyện ấy nó
+chưa nói gì. Không có ràng buộc này thì khai một dòng `upstream` là vô tình tự miễn trừ khỏi
+mọi đường phụ thuộc khác.
+
+**Hiện vật không khai gì vẫn lan theo loại y như cũ.** Phần lớn kho hiện nay không khai gì, và
+một ca âm riêng (`test_tep_ma_khong_khai_REQ_van_stale_theo_loai`) canh đúng điều đó — nó vẫn
+xanh cả trên bản bị phá, như một ca âm phải thế.
+
+### Một phép đo hỏng, bắt được vì con số trông lạ
+
+Lần đo đầu ra **6 → 2**, và ba tệp `.c` không xuất hiện ở *cả hai* cột. Nếu chỉ nhìn tỉ lệ thì
+6→2 cũng "đẹp" như 9→3 và dễ ghi thẳng vào nhật ký. Nguyên nhân: kịch bản đo tạo tệp trên đĩa
+bằng `write_text` **trước** khi gọi `fs.write`, nên `fs.write` chặn đúng luật E4020 *"chưa đọc
+thì chưa đè"* — không tệp nào vào kho. Phép đo đã bị chính hàng rào của sản phẩm chặn, và nó
+trả về một con số hợp lý thay vì nổ.
+
+Nay kịch bản có `assert` rằng `fs.write` trả ok và tệp có mặt trong kho trước khi đọc kết quả.
+Một phép đo không tự kiểm tiền đề của nó thì chỉ nói được rằng *nó đã chạy*, không nói được
+rằng *nó đã đo*.
+
+### Chưa làm
+
+`ma_tran_truy_vet(store)` đã có và đã được kiểm, nhưng **chưa ai hiện nó lên tab A2** — đó là
+M2-02, nhiệm vụ kế tiếp và phụ thuộc đúng hàm này. Ma trận chỉ gom năm cột (option · adr ·
+code · criteria · ket_qua); loại hiện vật khác không lên bảng, vì một cột "khác" gộp mọi thứ
+lại thì không trả lời được câu hỏi nào.
+
+Cờ `truy_vet` vẫn TẮT: nó thêm một trường vào lược đồ của `fs.write` và `fs.edit` — hai công
+cụ dùng nhiều nhất — nên đó là đổi thứ mô hình nhìn thấy mỗi lượt. Phần nền (ghi và đọc
+`deps.upstream`, ma trận, `option_create`, `sim.criteria` tự khai nguồn) chạy **cả khi cờ tắt**.

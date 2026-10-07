@@ -565,10 +565,13 @@ def dang_ky(r: Registry) -> None:
         # chữ "đạt" bắt đầu trùm lên những thứ chưa ai đo. Ghi đè thì được, im lặng thì không.
         mat_kmp = [x for x in ((cu or {}).get("canonical") or {}).get("khong_mo_phong_duoc")
                    or [] if x not in moi.khong_mo_phong_duoc]
+        # M2-01 — từng assert đã khai `do_req`; gom lại thành upstream để sửa một REQ chỉ
+        # làm lỗi thời đúng những tiêu chí ĐO nó.
+        do_req = [x for x in dict.fromkeys(str(a.get("do_req") or "").strip() for a in ds) if x]
         cs = ctx.history.ghi_kho(
             author=f"agent:{ctx.run_id}", artefact_id=_ma_tc(moi.ma), type="criteria",
             op="update" if cu else "create", canonical=moi.to_dict(), explain=explain,
-            run_id=ctx.run_id)
+            run_id=ctx.run_id, deps={"upstream": do_req} if do_req else None)
         return {
             **moi.to_dict(), "changeset": cs.id, "thieu_nguon_nguong": khong_nguon,
             "mat_khong_mo_phong_duoc": mat_kmp,

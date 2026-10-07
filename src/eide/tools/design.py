@@ -69,7 +69,11 @@ def register(r: Registry) -> Registry:
                        "chi_phi_uoc": chi_phi_uoc, "do_kho": do_kho,
                        "rui_ro": rui_ro or [], "dap_ung_req": dap_ung_req or [],
                        "khong_dap_ung": khong_dap_ung or [], "da_chon": False},
-            explain=explain, run_id=ctx.run_id)
+            explain=explain, run_id=ctx.run_id,
+            # M2-01 — `dap_ung_req` vốn đã nằm trong canonical, nhưng đồ thị phụ thuộc không
+            # đọc canonical. Ghi thêm vào `deps` để STALE lan đúng phương án nào dựng từ REQ
+            # nào, thay vì mọi phương án trong kho cùng sáng đèn.
+            deps={"upstream": list(dap_ung_req)} if dap_ung_req else None)
         return {"id": id, "changeset": cs.id,
                 "note_vi": "Đã ghi phương án. Khi người dùng chọn, gọi store.option_choose "
                            "— nó sẽ sinh một ADR ghi lại ai quyết và vì sao."}

@@ -402,11 +402,20 @@ class Store:
             raise ValueError(f"Hiện vật {artefact_id} không có lớp giải thích (N8).")
         with self._lock:
             cur = self._db.execute(
-                "SELECT version, created_at FROM artefacts WHERE id=?", (artefact_id,)
+                "SELECT version, created_at, deps FROM artefacts WHERE id=?", (artefact_id,)
             ).fetchone()
             version = (cur["version"] + 1) if cur else 1
             created = cur["created_at"] if cur else _now()
             ts = _now()
+            # M2-01 — `deps=None` nghĩa là "lần ghi này không nói gì về phụ thuộc", KHÁC với
+            # `{}` nghĩa là "xoá hết". Câu upsert dùng `deps=excluded.deps`, nên trước đây mọi
+            # lần ghi lại đều xoá sạch liên kết đã khai: một hiện vật mất đường về nguồn ngay
+            # ở lần sửa thứ hai, và đường truy vết chỉ sống được đúng một version.
+            if deps is None and cur is not None:
+                try:
+                    deps = json.loads(cur["deps"] or "{}")
+                except (ValueError, TypeError):
+                    deps = {}
             payload = json.dumps({"canonical": canonical, "explain": explain,
                                   "deps": deps or {}, "view_hint": view_hint or {}},
                                  ensure_ascii=False)

@@ -19,7 +19,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import changeset as cs_mod
-from . import deps
+# `deps` cũng là tên tham số của `ghi_kho`/`ghi_tep` (M2-01) — đặt bí danh cho
+# module để một cái không che mất cái kia.
+from . import deps as deps_mod
 from .changeset import BlobStore, Changeset, ChangesetLog
 from .vcs import GitKhongSan, Vcs
 
@@ -110,7 +112,8 @@ class History:
                 canonical: dict[str, Any], explain: dict[str, Any],
                 run_id: str | None = None, tool_call_id: str | None = None,
                 human_act_id: str | None = None, note: str | None = None,
-                gay_stale: bool = True) -> Changeset:
+                gay_stale: bool = True,
+                deps: dict[str, Any] | None = None) -> Changeset:
         """Ghi một hiện vật vào kho VÀ sinh changeset. Không có đường nào khác để ghi.
 
         `gay_stale=False` cho các sửa chỉ chạm cách trình bày (§E4.1, ca CX08): đổi tên
@@ -123,7 +126,7 @@ class History:
 
         to_v = self.store.apply(artefact_id=artefact_id, type=type, op=op, author=author,
                                 canonical=canonical, explain=explain,
-                                changeset_id=None)
+                                changeset_id=None, deps=deps)
 
         cs = cs_mod.for_store_write(
             cs_id=self.ids.next("cs"), author=author, artefact_id=artefact_id, type=type,
@@ -133,7 +136,7 @@ class History:
             human_act_id=human_act_id, note=note)
 
         if gay_stale:
-            cs.stale_marked = deps.danh_dau_stale(
+            cs.stale_marked = deps_mod.danh_dau_stale(
                 self.store, thuong_nguon=[artefact_id], ly_do_cs=cs.id,
                 mo_ta=("anh sửa" if author == "human" else "tác tử sửa") + f" {artefact_id}")
 
@@ -143,7 +146,8 @@ class History:
                 explain: dict[str, Any], noi_dung_truoc: dict[str, str] | None = None,
                 run_id: str | None = None, tool_call_id: str | None = None,
                 human_act_id: str | None = None, note: str | None = None,
-                loai: str | None = None) -> Changeset:
+                loai: str | None = None,
+                deps: dict[str, Any] | None = None) -> Changeset:
         """Commit thay đổi tệp thành một changeset.
 
         Tệp cũng được đăng ký thành **hiện vật trong kho**, không chỉ nằm trong git.
@@ -208,13 +212,13 @@ class History:
                 canonical={"path": p, "sha": sha,
                            "bytes": (self.paths.project_root / p).stat().st_size
                            if (self.paths.project_root / p).exists() else 0},
-                explain=explain, changeset_id=cs_id)
+                explain=explain, changeset_id=cs_id, deps=deps)
             cs.touches[i].type = lp
             cs.touches[i].from_version = cu["version"] if cu else None
             cs.touches[i].to_version = v
             cs.touches[i].op = "update" if cu else "create"
 
-        cs.stale_marked = deps.danh_dau_stale(
+        cs.stale_marked = deps_mod.danh_dau_stale(
             self.store, thuong_nguon=paths, ly_do_cs=cs.id,
             mo_ta=("anh sửa" if author == "human" else "tác tử sửa") + " mã")
         return self._chot(cs)
@@ -351,7 +355,7 @@ class History:
                 "confidence": "VANG"},
             undoes=da_lui[0] if len(da_lui) == 1 else None)
 
-        stale = deps.danh_dau_stale(self.store, thuong_nguon=list(dict.fromkeys(cham)),
+        stale = deps_mod.danh_dau_stale(self.store, thuong_nguon=list(dict.fromkeys(cham)),
                                     ly_do_cs=moi.id, mo_ta=mo_ta)
         moi.stale_marked = stale
         self._chot(moi)

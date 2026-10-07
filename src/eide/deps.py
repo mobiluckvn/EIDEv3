@@ -61,22 +61,79 @@ def ha_nguon_cua(store: Any, artefact_id: str) -> list[str]:
         return []
 
     ket: list[str] = []
+    tat_ca = store.list(limit=2000)
+    loai_cua = {a["id"]: a["type"] for a in tat_ca}
+
+    # M2-01 — hiện vật đã NÓI RÕ nó dựng từ những cái nào cùng loại với `goc` thì lời khai
+    # của nó thắng chuỗi mặc định. Một tiêu chí khai `do_req: FR-01` mà vẫn lỗi thời khi
+    # người ta sửa FR-02 thì lời khai ấy chẳng để làm gì — và băng cảnh báo lúc nào cũng
+    # sáng là băng cảnh báo không ai đọc.
+    #
+    # Chỉ chặn khi khai CÙNG LOẠI: một phương án khai nguồn là REQ thì nó tự quyết lấy
+    # chuyện "REQ nào làm tôi lỗi thời", nhưng nó vẫn phải lỗi thời khi ADR đổi — chuyện
+    # ấy nó chưa nói gì.
+    khai_ro: set[str] = set()
 
     # Đường khai báo: ai ghi rằng mình phụ thuộc vào goc.
-    for a in store.list(limit=2000):
+    for a in tat_ca:
         if a["id"] == artefact_id or a["type"] in KHONG_STALE:
             continue
         up = (a.get("deps") or {}).get("upstream") or []
         if artefact_id in up:
             ket.append(a["id"])
+        elif any(loai_cua.get(u) == goc["type"] for u in up):
+            khai_ro.add(a["id"])
 
-    # Đường mặc định theo loại.
+    # Đường mặc định theo loại — cho những hiện vật CHƯA khai gì về loại này.
     for loai in HA_NGUON.get(goc["type"], ()):
         for a in store.list(loai, limit=500):
-            if a["id"] != artefact_id and a["id"] not in ket:
+            if a["id"] != artefact_id and a["id"] not in ket and a["id"] not in khai_ro:
                 ket.append(a["id"])
 
     return ket
+
+
+# Loại hiện vật → cột trong ma trận truy vết. Năm cột này là thứ tab A2 dựng (M2-02);
+# loại không có trong bảng thì không lên ma trận, vì một cột "khác" gộp mọi thứ lại thì
+# không trả lời được câu hỏi nào.
+_COT_TRUY_VET: dict[str, str] = {
+    "option": "option", "adr": "adr", "code": "code",
+    "criteria": "criteria", "sim_result": "ket_qua",
+}
+
+
+def ma_tran_truy_vet(store: Any) -> list[dict[str, Any]]:
+    """Mỗi REQ một dòng: yêu cầu này đã được phương án / ADR / mã / tiêu chí nào đụng tới.
+
+    Ba nguồn nối, vì dữ liệu nối REQ nằm ở ba chỗ khác nhau và không chỗ nào sai:
+
+      * `deps.upstream` — lời khai chung, dùng được cho mọi loại;
+      * `option.canonical.dap_ung_req` — phương án đã khai từ trước M2-01;
+      * `criteria.canonical.assert[*].do_req` — tiêu chí khai theo từng assert.
+
+    Dòng rỗng là một câu trả lời, không phải thiếu dữ liệu: REQ không có ai ở hạ nguồn là
+    **REQ chưa ai làm**, và đó đúng là thứ cần nhìn thấy.
+    """
+    tat_ca = store.list(limit=2000)
+    ra: list[dict[str, Any]] = []
+    for rq in sorted((a for a in tat_ca if a["type"] == "req"), key=lambda a: a["id"]):
+        dong: dict[str, Any] = {"req": rq["id"], "option": [], "adr": [], "code": [],
+                                "criteria": [], "ket_qua": []}
+        for a in tat_ca:
+            cot = _COT_TRUY_VET.get(a["type"])
+            if cot is None or a["id"] == rq["id"]:
+                continue
+            can = a.get("canonical") or {}
+            noi = rq["id"] in ((a.get("deps") or {}).get("upstream") or [])
+            if not noi and a["type"] == "option":
+                noi = rq["id"] in (can.get("dap_ung_req") or [])
+            if not noi and a["type"] == "criteria":
+                noi = any(str(x.get("do_req") or "") == rq["id"]
+                          for x in (can.get("assert") or []))
+            if noi and a["id"] not in dong[cot]:
+                dong[cot].append(a["id"])
+        ra.append(dong)
+    return ra
 
 
 def fact_ha_nguon(store: Any, fact_id: str) -> list[str]:

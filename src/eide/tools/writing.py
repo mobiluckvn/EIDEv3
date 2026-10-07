@@ -58,6 +58,21 @@ def _rel(ctx: Any, p: Path) -> str:
         return str(p)
 
 
+# M2-01 — trường khai "tệp này hiện thực REQ nào". Chỉ có mặt trên lược đồ khi cờ
+# `truy_vet` bật: thêm một trường vào hai công cụ dùng nhiều nhất là đổi thứ mô hình nhìn
+# thấy mỗi lượt, tức đổi hành vi tác tử (N-4).
+HIEN_THUC_REQ = {"type": "array", "items": {"type": "string"},
+                 "description": "Mã REQ mà tệp này hiện thực (FR-01…). Khai ra thì sửa một "
+                                "yêu cầu chỉ làm lỗi thời đúng tệp dựng từ nó."}
+
+
+def _them_truy_vet(r: Registry, props: dict[str, Any]) -> dict[str, Any]:
+    """Thêm `hien_thuc_req` vào `properties` nếu cờ bật. Cờ tắt: trả lại y nguyên."""
+    if not r._co_bat("truy_vet"):
+        return props
+    return {**props, "hien_thuc_req": HIEN_THUC_REQ}
+
+
 def register(r: Registry) -> Registry:
     """Thêm bộ công cụ ghi vào sổ đăng ký đã có."""
 
@@ -66,13 +81,15 @@ def register(r: Registry) -> Registry:
             "Ghi một tệp trong dự án (tạo mới hoặc thay toàn bộ nội dung). Sinh changeset "
             "hoàn tác được. Đọc tệp trước bằng fs.read nếu nó đã tồn tại.",
             {"type": "object",
-             "properties": {"path": {"type": "string", "description": "Đường dẫn tương đối"},
-                            "content": {"type": "string"},
-                            "explain": EXPLAIN_SCHEMA},
+             "properties": _them_truy_vet(r, {
+                 "path": {"type": "string", "description": "Đường dẫn tương đối"},
+                 "content": {"type": "string"},
+                 "explain": EXPLAIN_SCHEMA}),
              "required": ["path", "content", "explain"]},
             risk="R2", writes_artefact=True, needs_explain=True,
             produces=["code"], keywords=["ghi", "tạo tệp", "viết tệp"])
-    def fs_write(ctx: Any, path: str, content: str, explain: dict[str, Any]):
+    def fs_write(ctx: Any, path: str, content: str, explain: dict[str, Any],
+                 hien_thuc_req: list[str] | None = None):
         p = _sandbox(ctx, path)
         rel = _rel(ctx, p)
         cu = p.read_text("utf-8", errors="replace") if p.exists() else None
@@ -112,7 +129,8 @@ def register(r: Registry) -> Registry:
             author=f"agent:{ctx.run_id}", paths=[rel],
             summary=explain.get("summary", "ghi tệp"), explain=explain,
             noi_dung_truoc={rel: cu} if cu is not None else None,
-            run_id=ctx.run_id)
+            run_id=ctx.run_id,
+            deps={"upstream": list(hien_thuc_req)} if hien_thuc_req else None)
         ctx.mark_agent_wrote(rel)
         return {"path": rel, "bytes": len(content.encode("utf-8")),
                 "changeset": cs.id, "tao_moi": cu is None,
@@ -125,15 +143,16 @@ def register(r: Registry) -> Registry:
             "người khác đang dùng thì chạy `code.analyze` trước: nó trả lời câu `fs.read` "
             "không trả lời được — ai đang gọi hàm này, tức chỗ nào sẽ gãy.",
             {"type": "object",
-             "properties": {"path": {"type": "string"},
-                            "old_string": {"type": "string"},
-                            "new_string": {"type": "string"},
-                            "explain": EXPLAIN_SCHEMA},
+             "properties": _them_truy_vet(r, {
+                 "path": {"type": "string"},
+                 "old_string": {"type": "string"},
+                 "new_string": {"type": "string"},
+                 "explain": EXPLAIN_SCHEMA}),
              "required": ["path", "old_string", "new_string", "explain"]},
             risk="R2", writes_artefact=True, needs_explain=True,
             keywords=["sửa", "thay", "edit"])
     def fs_edit(ctx: Any, path: str, old_string: str, new_string: str,
-                explain: dict[str, Any]):
+                explain: dict[str, Any], hien_thuc_req: list[str] | None = None):
         p = _sandbox(ctx, path)
         rel = _rel(ctx, p)
         if not p.exists():
@@ -156,7 +175,8 @@ def register(r: Registry) -> Registry:
         cs = ctx.history.ghi_tep(
             author=f"agent:{ctx.run_id}", paths=[rel],
             summary=explain.get("summary", "sửa tệp"), explain=explain,
-            noi_dung_truoc={rel: cu}, run_id=ctx.run_id)
+            noi_dung_truoc={rel: cu}, run_id=ctx.run_id,
+            deps={"upstream": list(hien_thuc_req)} if hien_thuc_req else None)
         ctx.mark_agent_wrote(rel)
         return {"path": rel, "changeset": cs.id, "stale": cs.stale_marked,
                 "note_vi": _note_stale(cs)}

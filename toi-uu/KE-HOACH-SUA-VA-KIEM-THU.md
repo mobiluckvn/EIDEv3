@@ -136,7 +136,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 1 | [M1-01](#m1-01) | Bảo đảm toàn vẹn cặp function_call ↔ function_response | P0 | M | — | — | xong 06/10/2026 · DEV-330 · 1610→1615 ca | ☑ |
 | 2 | [M1-02](#m1-02) | Đưa lược đồ công cụ hiển thị về trong ngân sách | P0 | M | — | GON_CONG_CU | xong 06/10/2026 · DEV-331 · 25 869→4 475 token · cờ vẫn TẮT | ☑ |
 | 3 | [M1-03](#m1-03) | Tác tử con phải đi qua hook, policy và khoá plan mode | P0 | M | — | — | xong 06/10/2026 · DEV-332 · 1 822 lời gọi từng đi vòng | ☑ |
-| 4 | [M2-01](#m2-01) | Truy vết khai báo: `deps.upstream` thật cho REQ → thiết kế → mã → test | P0 | M | — | TRUY_VET |  | ☐ |
+| 4 | [M2-01](#m2-01) | Truy vết khai báo: `deps.upstream` thật cho REQ → thiết kế → mã → test | P0 | M | — | TRUY_VET | xong 06/10/2026 · DEV-333 · STALE 9→3 | ☑ |
 | 5 | [M2-02](#m2-02) | Khối "Ma trận truy vết" trên tab A2 và hook Stop "REQ chưa ai đo" | P0 | S | M2-01 | REQ_PHU |  | ☐ |
 | 6 | [M2-03](#m2-03) | Kiểm chất lượng yêu cầu: tiêu chí đo được, từ mơ hồ, trùng lặp | P0 | M | — | REQ_CHAT_LUONG |  | ☐ |
 | 7 | [M2-06](#m2-06) | Bước kế hoạch có cổng kiểm (`kiem`) và mã REQ; `step_done` đối chiếu sổ cái | P0 | M | — | KE_HOACH_CONG_KIEM |  | ☐ |
