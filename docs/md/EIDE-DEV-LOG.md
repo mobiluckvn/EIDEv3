@@ -7601,3 +7601,76 @@ thể. Nhưng ghi rõ ở đây: **sáu trong tám là "mô hình chưa khai", k
 
 Bộ kiểm 1686 → **1695 xanh, 0 đỏ** (+9 ca). `thu_sch.py` 63/63.
 `test_board_check…_dat == []` và `test_HIER17_moi_phat_hien_noi_ro_o_khoi_nao` vẫn xanh.
+
+---
+
+## [DEV-340] [M3-04] Hai bộ cấp trên một rail, và rail nối vào GND — hai lỗi bị bỏ qua lặng lẽ
+
+Nhiệm vụ #11. **Sửa lỗi thuần**, không cờ.
+
+### Hai chỗ im lặng, và cái thứ hai im lặng theo kiểu tệ hơn
+
+**`_hai_ve_dong` giữ MỘT bộ cấp và bỏ các bộ khác.** Đúng một dòng:
+`if f_cap is not None and (cap is None or _uu_tien(f_cap) < _uu_tien(cap["fact"]))` — bộ cấp
+ở tầng tin nhất thắng, các bộ còn lại **không được nhắc tới ở đâu cả**. Hai LDO cùng đẩy lên
+một rail thì con có điện áp ra cao hơn gánh hết tải, con kia chạy ngược, cả hai nóng lên — và
+chuyện đó không đọc ra được từ sơ đồ.
+
+**`_nhom_nguon` loại CẢ NHÓM nếu chỉ MỘT net thành viên là đất.** Nên một rail +3V3 bị nối
+nhầm vào GND thì cả nhóm rơi khỏi **mọi** phép kiểm — không phải "bỏ qua một luật", mà là
+biến mất khỏi bảng ERC, đúng lúc nó đáng được kiểm nhất. Mạch ấy sẽ chết ngay khi cấp điện.
+
+### Đã làm
+
+`tranh_chap_nguon(cay, tf, thuoc)` — blocker khi từ **2 lá** trở lên cấp một nhóm net, nhận
+ra bằng Fact `iout_max` **hoặc** hướng `power_out`. `chap_nguon(cay, thuoc)` — blocker khi một
+nhóm điện có cả net nguồn lẫn net đất.
+
+Ba chỗ phải cẩn thận, cả ba có ca kiểm riêng:
+
+* **Port của KHỐI không được đếm.** Trên mạch mẫu, net 3V3 có **hai** Port `power_out`: của
+  lá U3 và của khối `/board/pwr`. Port khối là *đường đi qua* cấp, không phải bộ cấp thứ hai
+  — đếm cả nó thì mọi mạch có khối nguồn đều bị báo tranh chấp, tức luật nổ trên chính cái
+  mạch đúng.
+* **Gom theo `ref`.** Một LDO có hai chân VOUT song song vẫn là MỘT bộ cấp.
+* **`or_ing` khai rõ thì im.** Cấp song song qua diode OR-ing (nguồn dự phòng) là thiết kế có
+  thật. Báo oan ở mức `blocker` thì người ta học được cách bỏ qua blocker — mức duy nhất
+  không được phép bị bỏ qua.
+
+### Phép phá thứ năm không đỏ: nhánh nhận dạng đất THEO TÊN chưa ca nào chạm tới
+
+Năm phép phá, bốn đỏ. Cái không đỏ: bỏ `ten_net.upper() in TEN_DAT` khỏi `chap_nguon` mà ca
+vẫn xanh — vì net GND trong ca kiểm của tôi khai `loai="gnd"` tử tế.
+
+Nhánh theo tên lại đúng là nhánh **cần nhất**: mạch di cư từ netlist phẳng thường chỉ có
+**tên** net, không có `loai`. Chỉ xét `loai=="gnd"` thì luật im đúng trên loại mạch mà người
+ta nối sai nhiều nhất. Đã thêm ca dùng net tên `VSS` không khai `loai`, và phá lại thì đỏ.
+
+### Đo trên 5 mô hình mạch thật: 0 phát hiện — và đây là con số ĐÚNG
+
+```
+5 kho chạy được ERC  →  tranh_chap_nguon 0 · chap_nguon 0        (thu_sch.py 63/63)
+```
+
+Con số 0 này **khác hẳn** con số 0 của DEV-338. Ở M3-01, luật không nổ được vì **đường tới
+dữ liệu bị đứt** (Fact dùng chủ thể `chip:X`). Ở đây 0 là câu trả lời đúng: hai lỗi này là
+loại *catastrophic* — không bo nào sống tới lúc được lưu vào kho mà vẫn còn hai LDO đánh nhau
+trên một rail.
+
+Để con số 0 ấy không bị đọc thành "luật chết", tôi **cấy lỗi vào bản sao của một kho thật**
+(`robot-canbang`): thêm hai lá, mỗi lá một chân `power_out` nối vào net `+5V` thật của mạch
+ấy.
+
+```
+trước khi cấy:  không phát hiện nào
+sau khi cấy:    1 blocker — "Net nguồn +5V có 2 bộ cấp: `UX1`, `UX2`"
+```
+
+Luật sống, chạy trên mô hình thật, và im khi không có gì để nói. Đó là hai điều khác nhau và
+cả hai đều cần đo — một luật im vì không có lỗi và một luật im vì nó không chạy thì trên bảng
+ERC trông giống nhau y hệt.
+
+### Số đo
+
+Bộ kiểm 1695 → **1703 xanh, 0 đỏ** (+8 ca). `thu_sch.py` 63/63. Các ca `test_HIER07_*` và
+`test_khoi_cap_nhan_ra_bang_FACT_du_Port_chua_biet_huong` giữ nguyên.

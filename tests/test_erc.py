@@ -816,3 +816,108 @@ def test_passive_noi_passive_khong_bao(bo):
     bo.ckm_noi(net_id=n, port_id=p2)
 
     assert _tim(E.erc(bo), "xung_dau_ra") == []
+
+
+# =========================================================================== 7. tranh chấp nguồn
+#
+# Hai lỗi nguồn mà `ngan_sach_dong` đi qua mà không nói gì:
+#
+#   `_hai_ve_dong` giữ MỘT bộ cấp (cái ở tầng tin nhất) và bỏ các bộ khác — im lặng. Hai
+#   LDO cùng đẩy lên một rail thì con có điện áp ra cao hơn gánh hết, con kia chạy ngược,
+#   và cả hai nóng lên theo cách không ai đo được từ sơ đồ.
+#
+#   `_nhom_nguon` loại cả nhóm nếu CHỈ MỘT net thành viên là đất. Nên một rail +3V3 bị nối
+#   nhầm vào GND thì cả nhóm biến khỏi mọi phép kiểm — đúng lúc nó đáng được kiểm nhất.
+def test_hai_LDO_cung_rail_bi_chan(bo):
+    """TC-M3-04-01 — hai lá cùng cấp một rail: blocker, và nêu cả hai tên."""
+    p7 = _la_co_port(bo, "U7", khoi="pwr", huong="power_out", chan="2")
+    bo.ckm_noi(net_id="net:/board/pwr.VOUT_I", port_id=p7)
+
+    x = _tim(E.erc(bo), "tranh_chap_nguon", "khong_dat")
+    assert x, [f"{i.luat}/{i.ket_luan}" for i in E.erc(bo)]
+    assert x[0].muc == "blocker", x[0].muc
+    assert "U3" in x[0].vi and "U7" in x[0].vi, x[0].vi
+    # Bằng chứng phải nêu từng bộ cấp, không chỉ nói "có hai cái".
+    assert len(x[0].bang_chung) >= 2, x[0].bang_chung
+
+
+def test_port_khoi_power_out_khong_tinh_la_bo_cap_thu_hai(bo):
+    """TC-M3-04-02 — ca âm quan trọng nhất: Port của KHỐI là đường đi qua, không phải bộ cấp.
+
+    Trên mạch mẫu, net 3V3 có HAI Port `power_out`: của lá U3, và của khối `/board/pwr`
+    (Port `VOUT`). Đếm cả Port khối thì mọi mạch có khối nguồn đều bị báo tranh chấp — tức
+    luật mới sẽ nổ trên chính cái mạch đúng.
+    """
+    assert _tim(E.erc(bo), "tranh_chap_nguon") == [], \
+        [x.vi for x in _tim(E.erc(bo), "tranh_chap_nguon")]
+
+
+def test_mot_la_noi_HAI_port_vao_cung_rail_khong_la_tranh_chap(bo):
+    """Một con LDO có hai chân VOUT song song vẫn là MỘT bộ cấp."""
+    p = _port(bo, "leaf:U3", "3", huong="power_out", chan="3", path="/board/pwr/U3")
+    bo.ckm_noi(net_id="net:/board/pwr.VOUT_I", port_id=p)
+
+    assert _tim(E.erc(bo), "tranh_chap_nguon") == []
+
+
+def test_rail_noi_vao_GND_bi_chan(bo):
+    """TC-M3-04-03 — rail nối vào đất: blocker, và nêu tên cả hai net.
+
+    Đây là lỗi mà bản cũ **không thể** báo: `_nhom_nguon` loại cả nhóm khi có một net đất,
+    nên nhóm 3V3 bị nối vào GND thì nó rơi khỏi mọi phép kiểm — im lặng tuyệt đối, đúng
+    lúc mạch sắp chết ngay khi cấp điện.
+    """
+    g = _nut(bo, "net:/board/mcu.GND_I", "GND", loai="net", cha="module:/board/mcu",
+             path="/board/mcu.GND_I", canon={"ten": "GND", "loai": "gnd"})
+    bo.ckm_noi(net_id=g, port_id="port:/board/mcu.VDD")
+
+    x = _tim(E.erc(bo), "chap_nguon", "khong_dat")
+    assert x, [f"{i.luat}/{i.ket_luan}" for i in E.erc(bo)]
+    assert x[0].muc == "blocker", x[0].muc
+    assert "3V3" in x[0].vi and "GND" in x[0].vi.upper(), x[0].vi
+
+
+def test_rail_noi_vao_net_ten_VSS_khong_khai_loai_van_bi_chan(bo):
+    """Net tên `VSS` mà chưa ai khai `loai` vẫn là đất.
+
+    Mạch di cư từ netlist phẳng thường không có `loai` trên net — chỉ có tên. Nếu luật chỉ
+    xét `loai=="gnd"` thì nó im đúng trên loại mạch mà người ta hay nối sai nhất. Phép
+    "phá lại thì đỏ" chỉ ra rằng nhánh theo TÊN của tôi chưa ca nào chạm tới.
+    """
+    g = _nut(bo, "net:/board/mcu.VSS_I", "VSS", loai="net", cha="module:/board/mcu",
+             path="/board/mcu.VSS_I", canon={"ten": "VSS"})
+    bo.ckm_noi(net_id=g, port_id="port:/board/mcu.VDD")
+
+    x = _tim(E.erc(bo), "chap_nguon", "khong_dat")
+    assert x, [f"{i.luat}/{i.ket_luan}" for i in E.erc(bo)]
+    assert "VSS" in x[0].vi.upper(), x[0].vi
+
+
+def test_bo_mau_khong_bi_bao_chap_nguon(bo):
+    """Ca âm: mạch mẫu không có rail nào chạm đất → không báo."""
+    assert _tim(E.erc(bo), "chap_nguon") == []
+
+
+def test_or_ing_khai_ro_thi_khong_bao(bo):
+    """TC-M3-04-04 — người đã khai "rail này cấp song song có chủ ý" thì đừng báo.
+
+    Hai nguồn cấp song song qua diode OR-ing là thiết kế có thật (nguồn dự phòng). Báo oan
+    ở đó thì người ta học được cách bỏ qua mức blocker — mà blocker là mức duy nhất không
+    được phép bị bỏ qua.
+    """
+    p7 = _la_co_port(bo, "U7", khoi="pwr", huong="power_out", chan="2")
+    bo.ckm_noi(net_id="net:/board/pwr.VOUT_I", port_id=p7)
+    bo.ckm_dat_nut(node_id="net:/board.3V3", loai="net", ten="3V3",
+                   canonical={"ten": "3V3", "loai": "power", "ap_danh_dinh": "3,3 V",
+                              "or_ing": True})
+
+    assert _tim(E.erc(bo), "tranh_chap_nguon") == []
+
+
+def test_HIER07_mot_bo_cap_van_giu_nguyen_ket_qua(bo):
+    """Luật mới không được đổi kết quả của `ngan_sach_dong` khi chỉ có một bộ cấp."""
+    _fact(bo, "leaf:U3", "iout_max", 0.8, unit="A")
+    _fact(bo, "leaf:U1", "i_max", 0.2, unit="A")
+    _fact(bo, "leaf:U2", "i_max", 0.01, unit="A")
+    x = _tim(E.erc(bo), "ngan_sach_dong")
+    assert x and x[0].ket_luan == "dat", [f"{i.ket_luan}: {i.vi}" for i in x]

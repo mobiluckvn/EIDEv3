@@ -155,6 +155,120 @@ def erc(store: Any) -> list[PhatHien]:
     from .erc_kieu_chan import kiem_kieu_chan, _kieu_nguoi_xac_nhan
 
     ra += kiem_kieu_chan(cay, tf, phang, thuoc, _kieu_nguoi_xac_nhan(store))
+    ra += tranh_chap_nguon(cay, tf, thuoc)
+    ra += chap_nguon(cay, thuoc)
+    return ra
+
+
+# --------------------------------------------------------------------------- 1b. hai bộ cấp
+# Tên net được coi là ĐẤT dù `loai` khai gì. Đặt cạnh `_la_dat` vì cả hai dùng chung danh
+# sách này, và một danh sách chép ở hai chỗ sẽ lệch nhau đúng lúc ai đó thêm tên thứ năm.
+TEN_DAT = ("GND", "VSS", "AGND", "DGND")
+
+
+def _nhom_net(cay: C.Cay, thuoc: dict[str, str]) -> dict[str, list[str]]:
+    """Nhóm điện → các net phạm vi thuộc nó. Không lọc gì — người gọi tự lọc."""
+    ra: dict[str, list[str]] = {}
+    for nid, ten in thuoc.items():
+        if cay.nut.get(nid, {}).get("loai") == "net":
+            ra.setdefault(ten, []).append(nid)
+    return {k: sorted(v) for k, v in ra.items()}
+
+
+def _bo_cap_tren_nhom(cay: C.Cay, tf: TraFact,
+                      nets: list[str]) -> list[tuple[str, dict[str, Any] | None]]:
+    """Các **LÁ** cấp nguồn cho nhóm net này: `[(ref, Fact iout_max hoặc None)]`.
+
+    Chỉ đếm LÁ. Port của KHỐI là **đường đi qua** cấp, không phải một bộ cấp thứ hai — trên
+    mạch mẫu, net 3V3 có hai Port `power_out`: của lá U3 và của khối `/board/pwr`. Đếm cả
+    Port khối thì mọi mạch có khối nguồn đều bị báo tranh chấp, tức luật này sẽ nổ trên
+    chính cái mạch đúng.
+
+    Nhận ra bằng Fact `iout_max` HOẶC hướng `power_out` — cùng lý lẽ với `_hai_ve_dong`:
+    hướng Port của mạch di cư là `passive`, nên gate theo hướng thì một LDO có Fact hẳn hoi
+    vẫn không được tính.
+    """
+    theo_ref: dict[str, dict[str, Any] | None] = {}
+    for pid in sorted({p for nid in nets for p in cay.noi.get(nid, [])}):
+        p = cay.port.get(pid)
+        if p is None:
+            continue
+        m = cay.nut.get(p["module_id"])
+        if m is None or m.get("kind") != "leaf":
+            continue
+        ref = m["canonical"].get("ref") or m["ten"]
+        ct = [f"pin:{ref}.{p.get('chan') or p['ten']}"] + chu_the_la(m)
+        f = tf.tra(ct, "i_out_max")
+        if f is None and str(p.get("huong")) != "power_out":
+            continue
+        # Một lá có hai chân VOUT song song vẫn là MỘT bộ cấp — gom theo ref.
+        if ref not in theo_ref or (f is not None and theo_ref[ref] is None):
+            theo_ref[ref] = f
+    return sorted(theo_ref.items())
+
+
+def tranh_chap_nguon(cay: C.Cay, tf: TraFact, thuoc: dict[str, str]) -> list[PhatHien]:
+    """Hai lá trở lên cùng cấp một rail (§4.2 mở rộng, M3-04).
+
+    `_hai_ve_dong` giữ MỘT bộ cấp — cái ở tầng tin nhất — và bỏ các bộ khác **không nói
+    gì**. Hai LDO cùng đẩy lên một rail thì con có điện áp ra cao hơn gánh hết tải, con kia
+    chạy ngược, và cả hai nóng lên theo cách không đọc ra được từ sơ đồ.
+
+    Cấp song song có chủ ý (OR-ing qua diode, nguồn dự phòng) là thiết kế có thật: khai
+    `ckm.net_set(or_ing=true)` thì luật im. Báo oan ở mức blocker thì người ta học được cách
+    bỏ qua blocker — mà đó là mức duy nhất không được phép bị bỏ qua.
+    """
+    ra: list[PhatHien] = []
+    for ten, nets in sorted(_nhom_net(cay, thuoc).items()):
+        if _la_dat(cay, nets):
+            continue
+        if any((cay.nut.get(n, {}).get("canonical", {}) or {}).get("or_ing") for n in nets):
+            continue
+        cap = _bo_cap_tren_nhom(cay, tf, nets)
+        if len(cap) < 2:
+            continue
+        bc = [{"ref": ref, **({"fact": f.get("fact_id") or f.get("key")} if f else
+                              {"nguon": "hướng Port power_out"})} for ref, f in cap]
+        ra.append(PhatHien(
+            "tranh_chap_nguon", "khong_dat", "blocker", _path_nong_nhat(cay, nets),
+            f"Net nguồn {ten} có {len(cap)} bộ cấp: "
+            + ", ".join(f"`{ref}`" for ref, _ in cap)
+            + ". Con có điện áp ra cao hơn sẽ gánh hết tải và đẩy ngược vào con kia; cả hai "
+              "nóng lên, và chuyện đó không đọc ra được từ sơ đồ.",
+            bc,
+            cach_sua="Chỉ một bộ cấp cho mỗi rail. Nếu là cấp song song có chủ ý (OR-ing, "
+                     "nguồn dự phòng) thì khai `ckm.net_set(or_ing=true)`."))
+    return ra
+
+
+# --------------------------------------------------------------------------- 1c. chập rail–đất
+def chap_nguon(cay: C.Cay, thuoc: dict[str, str]) -> list[PhatHien]:
+    """Một nhóm điện có cả net nguồn lẫn net đất — tức rail bị nối vào GND (M3-04).
+
+    Bản cũ **không thể** báo chuyện này: `_nhom_nguon` loại cả nhóm khi chỉ một net thành
+    viên là đất, nên một rail +3V3 bị nối nhầm vào GND thì cả nhóm rơi khỏi mọi phép kiểm —
+    im lặng tuyệt đối, đúng lúc mạch sẽ chết ngay khi cấp điện.
+    """
+    ra: list[PhatHien] = []
+    for ten, nets in sorted(_nhom_net(cay, thuoc).items()):
+        nguon, dat = [], []
+        for nid in nets:
+            c = cay.nut.get(nid, {}).get("canonical", {}) or {}
+            ten_net = str(c.get("ten", "")).strip()
+            if (c.get("loai") or "") == "gnd" or ten_net.upper() in TEN_DAT:
+                dat.append((nid, ten_net or "GND"))
+            elif (c.get("loai") or "") in ("power", "rail"):
+                nguon.append((nid, ten_net or ten))
+        if not (nguon and dat):
+            continue
+        cho = ", ".join(f"`{t}` ({cay.nut.get(n, {}).get('path') or n})"
+                        for n, t in nguon[:2] + dat[:2])
+        ra.append(PhatHien(
+            "chap_nguon", "khong_dat", "blocker", _path_nong_nhat(cay, nets),
+            f"Nhóm net {ten} gồm cả net nguồn lẫn net ĐẤT — rail đang nối vào GND: {cho}. "
+            "Mạch sẽ chết ngay khi cấp điện, và cầu chì (nếu có) là thứ duy nhất đứng giữa.",
+            cach_sua="Tách hai net ra. Đây gần như luôn là một Port nối sai hoặc một net "
+                     "trùng tên bị hợp nhất ngoài ý muốn."))
     return ra
 
 
