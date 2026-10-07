@@ -140,7 +140,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 5 | [M2-02](#m2-02) | Khối "Ma trận truy vết" trên tab A2 và hook Stop "REQ chưa ai đo" | P0 | S | M2-01 | REQ_PHU | xong 07/10/2026 · DEV-334 · khối là A2.2 (A2.5 đã có chủ) | ☑ |
 | 6 | [M2-03](#m2-03) | Kiểm chất lượng yêu cầu: tiêu chí đo được, từ mơ hồ, trùng lặp | P0 | M | — | REQ_CHAT_LUONG | xong 07/10/2026 · DEV-335 · req-critic chưa làm (chờ M2-13) | ☑ |
 | 7 | [M2-06](#m2-06) | Bước kế hoạch có cổng kiểm (`kiem`) và mã REQ; `step_done` đối chiếu sổ cái | P0 | M | — | KE_HOACH_CONG_KIEM | xong 07/10/2026 · DEV-336 · sẽ chặn 19/26 lần trong phiên thật | ☑ |
-| 8 | [M2-08](#m2-08) | `phan_tich_ma`: nhận ISR/handler và không nuốt hàm kế tiếp | P0 | S | — | — |  | ☐ |
+| 8 | [M2-08](#m2-08) | `phan_tich_ma`: nhận ISR/handler và không nuốt hàm kế tiếp | P0 | S | — | — | xong 07/10/2026 · DEV-337 · +28 hàm trước đây vô hình | ☑ |
 | 9 | [M3-01](#m3-01) | ERC luật quá áp trên net (5 V vào chân 3,3 V) | P0 | S | — | — |  | ☐ |
 | 10 | [M3-03](#m3-03) | ERC theo kiểu chân (ma trận điện thay KiCad ERC) | P0 | M | — | — |  | ☐ |
 | 11 | [M3-04](#m3-04) | ERC tranh chấp nguồn và ngắn mạch rail–GND | P0 | S | — | — |  | ☐ |

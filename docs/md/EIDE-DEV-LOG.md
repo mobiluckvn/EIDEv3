@@ -7371,3 +7371,69 @@ thêm bước `store.adr_create` và một câu nói cấu trúc mã; nay nó đ
 **Bảng TC của nhiệm vụ ghi mã lỗi sai.** Tên ca là `test_step_done_chua_build_thi_E6010`, trong
 khi E6010 thuộc M1-10; phần thân nhiệm vụ và bảng cấp phát §6 đều ghi **E6012**. Dùng E6012 và
 đặt tên ca theo nó.
+
+---
+
+## [DEV-337] [M2-08] `code.analyze` không thấy ngắt, và một regex tham lam nuốt 20 hàm
+
+Nhiệm vụ #8. **Sửa lỗi thuần**, không cờ.
+
+### Hai lỗi, cùng một hệ quả: tài liệu nói thiếu mà không ai biết
+
+Tài liệu phân tích mã sinh ra để người đọc **trước khi duyệt cho sửa**. Nó nói "tệp này có
+những hàm nào" — nên một hàm nó không thấy là một hàm **không ai nhìn trước khi sửa**.
+
+1. **Ngắt không khớp mẫu nào.** `_HAM[".c"]` đòi có kiểu trả về trước tên hàm, nên
+   `ISR(TIMER0_COMPA_vect)` (cú pháp AVR) và `void __attribute__((interrupt)) TIM2_IRQHandler`
+   đều rơi ra ngoài. Đo trên `du-lieu/robot-tu-can-bang/firmware/timer.c`: tài liệu liệt kê
+   bốn hàm, **hai ngắt vắng mặt**.
+2. **`[^;]*` trong mẫu là tham lam.** Một hàm thân rỗng không có dấu `;` nào, nên mẫu vượt
+   qua nó và nuốt luôn các hàm phía sau. Ba hàm thân rỗng liền nhau thì chỉ hàm đầu được
+   thấy — đo được: `['phu']` thay vì ba tên.
+
+Ngắt là chỗ đắt nhất để bỏ sót: nó chạy ngoài luồng chính, nó chạm biến chia sẻ, và một lỗi
+đồng bộ ở đó **không tái hiện được bằng cách đọc luồng chính** — nên nó cũng không lộ ra trong
+lúc thử.
+
+### Số đo trên 185 tệp `.c` thật
+
+```
+mẫu cũ thấy 1 758 hàm · mẫu mới thấy 1 786  →  thêm 28 hàm trước đây VÔ HÌNH
+   8 ngắt  (cú pháp ISR(...) hoặc __attribute__((interrupt)))
+  20 hàm thường  (regex tham lam nuốt)
+78 hàm nay được GẮN NHÃN "isr" — 70 trong số đó vốn đã có trong danh sách,
+   chỉ chưa ai nói chúng là ngắt
+```
+
+**Lần đầu tôi gộp hai con số này thành một câu** — *"thêm 28 hàm, trong đó 78 là ngắt"* — và
+nó vô nghĩa ngay trên mặt chữ: 78 không thể là tập con của 28. Hai phép đếm khác nhau: *mới
+thấy được* (28) và *nay được gắn nhãn ngắt* (78, phần lớn là hàm `*_IRQHandler` có kiểu trả về
+nên mẫu cũ vẫn thấy, chỉ không biết chúng là ngắt). Suýt nữa thì một câu sai vào nhật ký.
+
+### Đã làm
+
+* `_THAM_SO` thay `[^;]*`: không vượt `{`/`}`/`;`, cho đúng một lớp ngoặc lồng (con trỏ hàm
+  `void f(void (*cb)(int))`). Danh sách tham số trải nhiều dòng vẫn nhận được — có ca kiểm
+  riêng, và nó **vẫn xanh** khi tôi trả lại regex cũ, đúng như một ca canh-đừng-làm-hỏng.
+* Ba mẫu ngắt: `ISR(vector)`, `__attribute__((interrupt|signal))`, và tên khớp
+  `\w+_(IRQ)?Handler`.
+* `_tim_ky_hieu` gộp nhiều mẫu rồi **sắp theo vị trí trong tệp** — thứ tự trong tài liệu là
+  thứ tự người đọc thấy khi mở tệp, không phải thứ tự các mẫu regex chạy.
+* `phan_loai(p, chu) -> {tên: "ham"|"isr"|"static"}` là **hàm mới**, không đổi kiểu
+  `TepMa.ky_hieu` (vẫn `list[str]`): `ai_dung` dùng nó làm khoá, và đổi kiểu ở đó là đổi hợp
+  đồng của `code.analyze`.
+* Tài liệu thêm cột **Ngắt (ISR)** và một câu nói **hệ quả**, không chỉ liệt kê tên: biến nào
+  vừa bị ngắt ghi vừa bị luồng chính đọc thì phải `volatile`, và đoạn đọc nhiều byte phải chặn
+  ngắt. Một bảng liệt kê tên không đổi cách người ta đọc phần còn lại; một câu như thế thì có.
+
+### Một tên tôi tự nhớ, và nó sai
+
+Ca kiểm trên firmware thật bản đầu tôi ghi ngắt của `uart.c` là `USART_RX_vect`. Mã thật là
+**`USART_UDRE_vect`** (truyền, không phải nhận). Ca đỏ, tôi tra `grep` rồi sửa theo mã. Đây là
+lần thứ hai trong đợt này một hằng số tự nhớ sinh ra một phép đo sai — lần trước là
+`"thiết"` chứa `"it"` ở DEV-335.
+
+### Số đo
+
+Bộ kiểm 1671 → **1679 xanh, 0 đỏ** (+8 ca). "Phá lại thì đỏ" cho **cả sáu** chỗ sửa.
+`test_code_analyze_tra_loi_cau_AI_DANG_DUNG` vẫn xanh; kiểu trả về của `code.analyze` không đổi.
