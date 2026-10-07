@@ -40,7 +40,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 
 ## 1 · Nhìn một lượt: EIDE làm được gì
 
-Agent có **127 công cụ** (118 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch bật bằng cờ), **7
+Agent có **128 công cụ** (119 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch bật bằng cờ), **7
 Agent con**, **8 bộ hướng dẫn nạp theo việc**, **11 cửa duyệt**, và **11 tab** để người xem
 việc đang tới đâu.
 
@@ -55,7 +55,7 @@ Bảng dưới xếp theo *việc người cần làm*, không theo cách chia m
 | **Viết mã** | 8 | đọc hiểu mã cũ trước khi sửa · dịch mã · bản đồ bộ nhớ · chạy bộ kiểm · đo xem bộ kiểm có đo gì không |
 | **Chạy thử trên máy** | 2 | nêu mức đo trước, chạy, rồi đối chiếu |
 | **Làm việc với bo thật** | 6 | dò bo · nạp · đọc ngược để so từng byte · đọc log · tìm chỗ treo · đọc khung ảnh từ chip |
-| **Làm chip trên FPGA** | 5 | soát cú pháp Verilog · mô phỏng testbench · tổng hợp · đặt-đi dây và **đo Fmax thật** · đóng gói bitstream |
+| **Làm chip trên FPGA** | 6 | soát cú pháp Verilog · mô phỏng testbench · **phá mã RTL thật để xem testbench có canh không** · tổng hợp · đặt-đi dây và **đo Fmax thật** · đóng gói bitstream |
 | **Nhớ và quản việc** | 28 | kho dữ liệu · sổ ghi việc · gỡ lại · bản chốt · nhánh · chia việc nhiều chặng |
 | **Tự lo cho mình** | 4 | tìm công cụ · **tự viết công cụ mới** rồi tự kiểm trước khi dùng |
 
@@ -67,7 +67,7 @@ lời gọi, không nói về tệp nằm trên đĩa.
 
 **Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà trong kho chưa có
 công cụ nào làm được, nó tự viết một công cụ mới kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ
-đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 127 công cụ kể ở trên — nó sinh
+đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 128 công cụ kể ở trên — nó sinh
 ra lúc chạy, trong đúng dự án đang làm. Việc này đã chạy thật, không phải tính năng trên giấy.
 
 ---
@@ -443,8 +443,8 @@ nhau, nên gộp vào một cột là nói sai về sản phẩm.
 ### Một việc không thêm tính năng nào nhưng đáng kể
 
 Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào** (số
-đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 127). Bảy công cụ có đường dẫn tới chúng
-bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/127 đã được dùng
+đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 128). Bảy công cụ có đường dẫn tới chúng
+bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/128 đã được dùng
 thật**.
 
 Một công cụ không bao giờ được dùng thì bằng không có nó.
@@ -1038,8 +1038,9 @@ là chỗ hay đứt nhất. Nay mỗi khối có một ca đi qua đúng đư�
 
 Nói ra để người đọc không phải tự tìm:
 
-- **12 trong 127 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
-  bo, chưa viết xong.
+- **13 trong 128 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
+  bo, chưa viết xong. Và `hdl.sensitivity`: mã của nó đã chạy trên testbench thật của Bài 3
+  (xem DEV-344), nhưng chưa lượt Agent nào *gọi công cụ* ấy — nên nó vẫn tính là chưa dùng.
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
 - **Sáu ca kiểm cần người trực tiếp làm**, chưa tự động hoá được.
 - **Robot còn 23 trong 109 điều kiện chưa làm**, phần lớn là các điểm đo để cắm máy hiện sóng.
@@ -1177,7 +1178,7 @@ bản kể lại nào.
 ```
 src/eide/
 ├── loop.py            vòng lặp Agent
-├── tools/             127 công cụ, chia theo nhóm
+├── tools/             128 công cụ, chia theo nhóm
 ├── policy/            luật chặn và cửa duyệt
 ├── knowledge/         đọc tài liệu, rút con số, chữ trong hình
 ├── store/             kho dữ liệu dựa trên sổ ghi việc + git

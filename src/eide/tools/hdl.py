@@ -217,7 +217,10 @@ def register(r: Registry) -> None:
             "bat": bat, "tong": tong, "tep": r_do["tep"],
             "so_chua_do": r_do["so_chua_do"], "so_khong_nap": r_do["so_khong_nap"],
             "note_vi": (
-                f"Độ nhạy ĐO ĐƯỢC: bắt {bat}/{tong} phép phá mã."
+                # Nói ra mẫu số là TỆP. Vòng đo dừng ở phép phá đầu tiên làm bộ kiểm đỏ,
+                # nên "1/1" nghĩa là "1 trong 1 tệp RTL", KHÔNG phải "1 trong 1 phép phá"
+                # — và càng không so được với con số kiểu "7/7 phép" của một bản đo tay.
+                f"Độ nhạy ĐO ĐƯỢC: {bat}/{tong} tệp RTL bị phá thì testbench ĐỎ."
                 + ("" if bat == tong else
                    f" Còn {tong - bat} tệp bị phá mà testbench **vẫn xanh** — nghĩa là "
                    "testbench không canh phần ấy, và chữ PASS của nó không nói gì về chúng.")

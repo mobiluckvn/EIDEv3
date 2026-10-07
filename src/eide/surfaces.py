@@ -612,12 +612,19 @@ def _khoi_mo_phong_hdl(store: Any) -> list[dict[str, Any]]:
         # khác nhau, và trước đây khối này hiện chúng giống hệt nhau — một con số tự khai
         # trông y như một con số đã đo, ngay ở dòng quan trọng nhất của khối.
         bang_ma = (nhay.get("do_bang") == "ma")
+        # ...và nói đúng ĐƠN VỊ của nó, vì hai nguồn đếm hai thứ khác nhau. `hdl.sensitivity`
+        # dừng ở phép phá ĐẦU TIÊN làm bộ kiểm đỏ (`do_do_nhay` có `break`), nên mẫu số của
+        # nó là số TỆP RTL đã phá, không phải số phép phá. Con số tác tử tự khai thì thường
+        # là số phép phá — như "7/7" mà bản đo tay của Bài 3 ghi. Hiện cả hai bằng một nhãn
+        # là mời người đọc so 1/1 với 7/7 như hai con số cùng thước.
+        don_vi = "tệp RTL bị phá thì bộ kiểm ĐỎ" if bang_ma else "phép phá mã"
         hang.insert(1, [
             "Độ nhạy bộ kiểm",
-            f"bắt {bat}/{tong} phép phá mã"
+            f"bắt {bat}/{tong} {don_vi}"
             + (" (đo bằng mã)" if bang_ma else " — **tác tử tự khai**, chưa ai đo lại")
             + ("" if bat == tong
-               else f" — còn {tong - bat} phép LỌT, nên có chỗ bộ kiểm không canh")])
+               else f" — còn {tong - bat} {'tệp' if bang_ma else 'phép'} LỌT, nên có chỗ "
+                    "bộ kiểm không canh")])
     else:
         hang.insert(1, [
             "Độ nhạy bộ kiểm",

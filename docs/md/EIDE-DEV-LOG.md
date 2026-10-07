@@ -7905,3 +7905,131 @@ phép neo dòng đã chặn sẵn. Tách thành một ca riêng với log biên 
 
 Bộ kiểm 1720 → **1732 xanh, 0 đỏ** (+12 ca). `kiem_tai_lieu` 0 chỗ lệch.
 Tám phép phá, tám ca đỏ. Giao thức tối thiểu giữ nguyên: testbench chỉ in `PASS` vẫn đạt.
+
+---
+
+## [DEV-344] [M3-13] `hdl.sensitivity` — và một con số tự khai trông y như một con số đã đo
+
+Nhiệm vụ #15. **Công cụ mới**, R1, `core=False`, không cờ.
+
+### Chỗ hổng: `hdl.sim` nhận `do_nhay` do tác tử **tự điền**
+
+DEV-343 vừa làm `hdl.sim` đọc `PASS`/`FAIL` thật chặt. Nhưng tham số `do_nhay` của nó thì
+không ai kiểm: tác tử gõ `{"bat": 7, "tong": 7}` là kho nhận. Mô tả tham số có dặn *"chỉ điền
+khi đã thật sự làm"* — và một lời dặn không phải một phép đo.
+
+Con số ấy đi thẳng lên **dòng quan trọng nhất của khối A8.0**, dòng đặt ngay dưới chữ PASS.
+Trước nhiệm vụ này, một con số tự khai và một con số đo được hiện ra **giống hệt nhau** ở đó.
+
+### Ba chỗ sửa
+
+**`dot_bien.PHEP_VERILOG`** — năm phép đột biến cho Verilog: đảo điều kiện `if`, `&` → `|`,
+hằng `'d` cộng 1, `posedge` → `negedge`, `==` → `!=`. `dot_bien_van_ban`/`do_do_nhay` nhận
+thêm tham số `bang`, **mặc định vẫn bảng C**, nên `test.sensitivity` của firmware không đổi
+hành vi một chút nào.
+
+**`hdl.do_do_nhay_hdl()`** — phá mã RTL thật rồi chạy lại testbench. Nó không viết lại vòng
+đột biến: chỉ đưa bảng Verilog và một hàm `chay` vào `do_do_nhay` đã có, nên phần *"trả tệp
+về nguyên vẹn trong `finally`"* cũng dùng lại chứ không viết lần hai.
+
+**Công cụ `hdl.sensitivity`** — ghi `{bat, tong, do_bang: "ma"}` **đè** lên con số tự khai: một
+phép đo thắng một lời khai. Và `hdl.sim` từ nay đánh dấu con số nó nhận là `do_bang: "tu_khai"`,
+để khối A8.0 nói thẳng ra *"tác tử tự khai, chưa ai đo lại"*.
+
+Ca đắt nhất của cả nhiệm vụ là testbench in `PASS` **vô điều kiện**: nó cho ra đúng chữ mà
+`hdl.sim` đọc được, và không phép kiểm nào phân biệt được nó với testbench thật — trừ phép này.
+Phá gì nó cũng xanh, và `so_khong_thay` đếm đúng chỗ đó.
+
+### Đo trên testbench thật của Bài 3 (lõi RISC-V)
+
+| testbench | kết quả |
+|---|---|
+| `tb_pcpi_dot4` | **1/1** — *đảo điều kiện if (3 chỗ)* → bộ kiểm ĐỎ |
+| `tb_pcpi_mac` | **1/1** — *đảo điều kiện if (2 chỗ)* → bộ kiểm ĐỎ |
+| `tb_pcpi_vmini` | **không đo được** — bộ kiểm ĐỎ từ trước khi phá gì |
+
+Cổng chặn *"bộ kiểm phải xanh trước khi đo"* đã làm đúng việc của nó ở dòng thứ ba, và thứ nó
+chặn lại là một phát hiện: `tb_pcpi_vmini.v` tạo thực thể `bram` với năm cổng
+`b_en`/`b_addr`/`b_wdata`/`b_wstrb`/`b_rdata` — **bản hai cổng**. Mà `rtl/bram.v` đã bị đưa về
+một cổng ngày 02/10/2026, có lý do ghi sẵn trong chính tệp ấy: bản hai cổng làm suy luận BSRAM
+đứt hoàn toàn, yosys dựng cả 32 KB thành 262 144 flip-flop trên con GW2AR-18 chỉ có 15 552.
+Nên testbench của nấc 3c **không dịch nổi** từ hôm ấy tới nay:
+
+```
+tb_pcpi_vmini.v:50: error: port ``b_en'' is not a port of ram.   (và 4 cổng nữa)
+```
+
+`bai3/NGOAI-PHAM-VI.md` vẫn ghi *"bộ kiểm 3c — độ nhạy 7/7, có đồng hồ canh đã chứng minh nổ
+được"*. Câu ấy **đúng vào lúc nó được viết** và sai từ lúc `bram.v` đổi — một con số đo đúng
+rồi nằm lại trong tài liệu sau khi thứ nó đo đã biến mất. Bài 3 đã ở ngoài đường dựng
+(`NGOAI-PHAM-VI.md` nói thế), nên tôi **không sửa RTL**; chỗ này ghi vào đây là để con số 7/7
+kia đừng được đọc như một số còn hiệu lực.
+
+### Mẫu số là **TỆP**, không phải phép phá — và nhãn đang gọi sai
+
+Thấy ra khi đối chiếu `1/1` của tôi với `7/7` của bản đo tay `tai-lieu/do-nhay-dot4.py`.
+`do_do_nhay` có `break` ngay khi một phép phá làm bộ kiểm đỏ, nên nó **không bao giờ** đếm hết
+năm phép: `1/1` nghĩa là *1 trong 1 tệp RTL*. Nhãn thì ghi `bắt 1/1 phép phá mã`.
+
+Hai nguồn đổ vào cùng một ô ấy đếm hai thứ khác nhau — tác tử tự khai thường khai số **phép**,
+công cụ đo trả số **tệp** — và một nhãn chung mời người đọc so `1/1` với `7/7` như hai con số
+cùng thước, rồi kết luận bộ kiểm yếu đi trong khi chỉ có cái thước đổi. Nhãn giờ đi theo
+`do_bang`: *"bắt 1/1 tệp RTL bị phá thì bộ kiểm ĐỎ (đo bằng mã)"* với con số đo được, giữ
+*"phép phá mã"* cho con số tự khai. `note_vi` của công cụ sửa cùng một chỗ — câu của nó trước
+đây mở đầu bằng "phép phá mã" rồi nửa sau lại nói "tệp", sai đơn vị với chính nó trong một câu.
+
+### Một lỗi của chính phép đo, không phải của sản phẩm
+
+Dàn dựng đầu tiên của tôi gom RTL và testbench vào **một** thư mục. `tb_pcpi_mac.v` ghi
+`` `include "bai3/rtl/pcpi_mac.v" `` — đường dẫn tính từ gốc cây Bài 3 — nên include đứt, và
+**cả ba** ca báo *"bộ kiểm đang ĐỎ từ trước"*. Một kết luận sai **về sản phẩm**, sinh ra từ một
+dàn dựng sai của phép đo. Đặt `goc` đúng ở `docs/riscv-tn20k/` thì hai ca đầu xanh ngay.
+
+Đây đúng hình dạng việc còn mở trong README §8 về đường dựng bitstream: `include` tính từ gốc
+dự án thì mọi phép đo phải đứng đúng chỗ ấy mới chạy, và khi nó không chạy thì lỗi hiện ra như
+lỗi của thiết kế.
+
+Lần đo ghi vào mục này chạy trên một **bản sao** của `docs/riscv-tn20k/`, không trên cây theo
+git — phép đo này ghi đè tệp RTL thật rồi trả về trong `finally`, và một lần ngắt giữa vòng sẽ
+để lại mã đã bị phá trong thư mục làm việc. `diff -rq` sau khi đo: không chỗ nào lệch.
+
+### Một ca kiểm cũ phải nới
+
+`test_do_nhay_di_theo_hien_vat_khong_chi_tra_cho_mo_hinh` chốt cứng **cả dict** `do_nhay`, nên
+thêm khoá `do_bang` là nó đỏ. Nay nó kiểm `bat`/`tong` **có vào kho** chứ không so cả dict —
+đúng ý "Bảo vệ hồi quy" của nhiệm vụ: ca ấy canh việc con số tới được kho, không canh việc
+dict có đúng ba khoá.
+
+### "6/6" của bản WIP là 7/9 khi phá bằng tập rộng hơn
+
+Bản WIP khai *"phá lại thì đỏ: 6/6 chỗ sửa"*. Trước khi chốt, tôi dựng lại phép phá với **chín**
+chỗ — mỗi chỗ một cách tháo khác nhau, xoá `__pycache__` trước từng lượt (DEV-335) — và được
+**7/9**. Hai chỗ LỌT:
+
+* **Tháo `bang=PHEP_VERILOG` khỏi `do_do_nhay_hdl`** → bộ kiểm **vẫn xanh**. Bảng kiểu C tình
+  cờ cũng phá được `dem.v` của hai ca có sẵn (`q + 1` → `q - 1`), nên không ca nào chứng minh
+  được rằng đường HDL thật sự dùng bảng Verilog. Cả năm phép Verilog — thứ duy nhất khiến
+  nhiệm vụ này tồn tại — có thể bị tháo mà bộ kiểm không nhúc nhích.
+* **Đổi cổng *"bộ kiểm phải XANH trước khi đo"* thành `if False`** → bộ kiểm **vẫn xanh**. Đúng
+  cái cổng vừa phát hiện ra `tb_pcpi_vmini` thì không có ca nào canh. Tháo nó đi là
+  `hdl.sensitivity` ghi `{bat: 0, tong: 0, do_bang: "ma"}` vào kho — một lời khai mặc áo phép đo,
+  tức đúng cái bệnh nhiệm vụ này đi chữa, lần này do chính công cụ chữa bệnh gây ra.
+
+"6/6" không sai về số; nó sai về **tập**. Sáu phép phá ấy chọn đúng sáu chỗ đã có ca canh. Một
+tỉ lệ bắt 100 % chỉ nói được điều gì khi tập phép phá không do người đang mong nó đẹp chọn ra.
+
+Bù hai ca: `TC-M3-13-06` dùng một mô-đun mà **chỗ duy nhất** phá được là `posedge` (bảng C
+không có phép nào khớp: không hằng ≥ 2 chữ số, không `==`, không `<` vì `<=` bị chặn, không
+`+`), kèm một testbench phân biệt được hai sườn; và `TC-M3-13-07` gọi **chính công cụ** với
+một testbench in `FAIL` ngay, rồi kiểm đủ ba điều: trả `ok=False`, mã `E4030`, **và kho không
+bị ghi**. Phá lại: **9/9**.
+
+### Số đo
+
+Bộ kiểm 1732 → **1744 xanh, 0 đỏ** (+12 ca). `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN, và số
+"cần đọc lại" 15 → 11 sau khi cập nhật số công cụ 127 → 128 trong README.
+**Phá lại thì đỏ: 9/9 chỗ sửa.**
+
+Công cụ thứ 128 này **chưa lượt Agent nào gọi** — mã của nó đã chạy trên hiện vật thật, nhưng
+đó là tôi gọi hàm, không phải tác tử gọi công cụ. README §8 đếm nó vào phần chưa dùng thật,
+vì đúng cái phân biệt ấy là nội dung của nhiệm vụ này.

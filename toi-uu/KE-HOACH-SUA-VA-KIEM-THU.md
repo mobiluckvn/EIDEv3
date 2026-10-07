@@ -147,7 +147,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 12 | [M3-07](#m3-07) | Nối Fact datasheet ↔ khoá/chủ thể ERC, và báo độ phủ ERC | P0 | S | — | — | xong 07/10/2026 · DEV-341 · Fact tới được ERC 5→17 | ☑ |
 | 13 | [M3-10](#m3-10) | Vòng sinh → ERC → sửa có trần cho bản đồ mạch (hook `erc_delta`) | P0 | M | M3-03, M3-04, M3-07 | ERC_TU_DONG | xong 07/10/2026 · DEV-342 · ERC 7,6 ms trên mạch 187 nút | ☑ |
 | 14 | [M3-12](#m3-12) | Mô phỏng HDL: đọc PASS/FAIL chặt, chỉ từ log chạy, tính cả mã thoát và `$fatal` | P0 | S | — | — | xong 07/10/2026 · DEV-343 · regex kế hoạch từ chối oan 588/846, đã nới | ☑ |
-| 15 | [M3-13](#m3-13) | `hdl.sensitivity`: đo độ nhạy testbench Verilog bằng đột biến thật | P0 | M | M3-12 | — |  | ☐ |
+| 15 | [M3-13](#m3-13) | `hdl.sensitivity`: đo độ nhạy testbench Verilog bằng đột biến thật | P0 | M | M3-12 | — | xong 08/10/2026 · DEV-344 · 1732→1744 ca · đo thật: `tb_pcpi_dot4` 1/1, `tb_pcpi_mac` 1/1, `tb_pcpi_vmini` không dịch nổi từ 02/10 | ☑ |
 | 16 | [M3-18](#m3-18) | Kiểm ràng buộc chân FPGA (`.cst`) với cổng mô-đun đỉnh và chân của kit | P0 | M | — | — |  | ☐ |
 | 17 | [M4-01](#m4-01) | Máy chấm unit test do EIDE phán (`test.criteria`) | P0 | M | — | — |  | ☐ |
 | 18 | [M4-02](#m4-02) | Cổng G-QUAL khi sửa/xoá tệp test sau kết quả đỏ + sửa `criteria.has_result` | P0 | M | — | SIM_RUNNER_GIOI_HAN |  | ☐ |
@@ -1127,16 +1127,28 @@ Mỗi nhiệm vụ mở đầu bằng dòng `<!-- TASK Mx-yy -->` để tìm nha
 | TC-M3-13-03 | Tích hợp (`can_iv`) | tests/test_hdl.py::test_hdl_sensitivity_bo_kiem_that_bat_duoc | RTL bộ đếm + tb kiểm giá trị cụ thể → `so_thay==1` |
 | TC-M3-13-04 | Ca âm (`can_iv`) | tests/test_hdl.py::test_hdl_sensitivity_tb_chi_in_PASS_thi_khong_thay | tb in PASS vô điều kiện → `so_khong_thay==1` |
 | TC-M3-13-05 | Đơn vị | tests/test_hdl.py::test_do_nhay_tu_khai_duoc_danh_dau | `hdl.sim` với `do_nhay` tự điền → kho có `do_bang=="tu_khai"` |
-| TC-M3-13-06 | Ca biên | tests/test_hdl.py::test_hdl_sensitivity_tra_tep_ve_nguyen_ven | `chay` ném lỗi → tệp `.v` giống hệt ban đầu |
+| TC-M3-13-06 | Ca biên | tests/test_dot_bien.py::test_tra_tep_ve_nguyen_ven_khi_chay_nem_loi | `chay` ném lỗi → tệp `.v` giống hệt ban đầu |
+
+**Ba TC thêm khi chốt** (phép phá rộng hơn tìm ra hai chỗ **không có ca nào canh** — xem
+DEV-344; TC-06 cũng nằm ở tệp khác tên khác so với bảng trên, vì vòng đột biến là của
+`dot_bien`, không phải của `hdl`):
+
+| Mã TC | Loại | Tệp test | Cho trước → Khi → Thì |
+|---|---|---|---|
+| TC-M3-13-07 | Đơn vị | tests/test_hdl.py::test_A8_do_nhay_do_bang_ma_noi_dung_mau_so_la_TEP | `do_bang=="ma"` → nhãn A8.0 nói "tệp RTL", KHÔNG nói "phép phá mã" |
+| TC-M3-13-08 | Tích hợp (`can_iv`) | tests/test_hdl.py::test_hdl_sensitivity_dung_bang_VERILOG_khong_phai_bang_C | RTL chỉ phá được bằng `posedge` → `so_thay==1` **và** lý do là phép đổi sườn |
+| TC-M3-13-09 | Ca âm (`can_iv`) | tests/test_hdl.py::test_hdl_sensitivity_tu_choi_khi_bo_kiem_DO_tu_truoc | tb in `FAIL` ngay → công cụ trả `ok=False` mã `E4030`, **và kho không bị ghi** |
 
 **Bảo vệ hồi quy (phải vẫn XANH):**
 - `.venv/bin/python -m pytest -q tests/test_dot_bien.py tests/test_hdl.py tests/test_xay_dung*.py`
 - `test_do_nhay_di_theo_hien_vat_khong_chi_tra_cho_mo_hinh` giữ nguyên (vẫn lưu `bat`/`tong`).
+  **Đã phải nới**: ca này chốt cứng cả dict `do_nhay` nên thêm khoá `do_bang` là đỏ; nay nó
+  kiểm `bat`/`tong` có vào kho, không so cả dict.
 
 **Tiêu chí xong:**
-- [ ] TC xanh, phá lại thì đỏ.
-- [ ] `pytest -q` xanh, ≥ mốc.
-- [ ] Ghi DEV-LOG.
+- [x] TC xanh, phá lại thì đỏ. — 9 chỗ sửa, **9/9 đỏ** (lượt đầu 7/9, xem DEV-344)
+- [x] `pytest -q` xanh, ≥ mốc. — 1732 → **1744 xanh, 0 đỏ**
+- [x] Ghi DEV-LOG. — **DEV-344**
 
 **Hoàn tác:** revert commit.
 

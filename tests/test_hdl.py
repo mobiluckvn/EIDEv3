@@ -1394,6 +1394,35 @@ def test_A8_noi_ro_do_nhay_la_TU_KHAI():
     chu = str(kh)
     assert "6/7" in chu, chu[:300]
     assert "tự khai" in chu, "không nói ra rằng con số do tác tử khai"
+    # Con số tự khai thì đơn vị của nó là PHÉP phá — xem ca kế tiếp cho con số đo bằng mã.
+    assert "phép phá mã" in chu, chu[:300]
+
+
+def test_A8_do_nhay_do_bang_ma_noi_dung_mau_so_la_TEP():
+    """TC-M3-13-07 — mẫu số của con số ĐO ĐƯỢC là số TỆP RTL, không phải số phép phá.
+
+    `do_do_nhay` `break` ngay khi một phép phá làm bộ kiểm đỏ, nên nó không bao giờ đếm hết
+    5 phép của `PHEP_VERILOG`: "1/1" nghĩa là *1 trong 1 tệp RTL*. Bản đo tay của Bài 3 lại
+    ghi "7/7 phép". Nếu khối hiện cả hai bằng một nhãn, người đọc sẽ so 1/1 với 7/7 như hai
+    con số cùng thước — và kết luận bộ kiểm yếu đi, trong khi chỉ có cái thước đổi.
+    """
+    from eide import surfaces as S
+
+    class _Kho:
+        def get(self, ma):
+            if ma != "build:hdl:sim":
+                return None
+            return {"id": ma, "type": "build", "version": 1, "author": "agent:run-1",
+                    "canonical": {"dat": True, "pass_fail": "PASS", "cong_cu": "vvp",
+                                  "giay": 1.0,
+                                  "do_nhay": {"bat": 1, "tong": 1, "do_bang": "ma"}},
+                    "explain": {"summary": ""}, "stale": False, "stale_reason": None}
+
+    chu = str(S._khoi_mo_phong_hdl(_Kho()))
+    assert "1/1" in chu, chu[:400]
+    assert "tệp" in chu, "không nói ra rằng mẫu số là số TỆP RTL"
+    assert "phép phá mã" not in chu, "vẫn gọi con số đếm tệp là “phép phá mã”"
+    assert "đo bằng mã" in chu, chu[:400]
 
 
 @can_iv
@@ -1455,3 +1484,109 @@ def test_hdl_sensitivity_tb_chi_in_PASS_thi_khong_thay(tmp_path):
     r = H2.do_do_nhay_hdl(goc=goc, rtl=[rtl / "dem.v"], nguon=rtl, dinh="tb")
     assert r["bo_kiem_xanh_luc_dau"], r
     assert r["so_khong_thay"] == 1, r["tep"]
+
+
+# ===================================================== hai chỗ bản WIP tưởng đã có ca canh
+#
+# Bản WIP của M3-13 khai "phá lại thì đỏ: 6/6". Chạy lại phép phá với tập rộng hơn thì **9
+# chỗ sửa, 7 đỏ** — hai chỗ LỌT, và cả hai đều là chỗ đáng canh nhất:
+#
+#   · bỏ `bang=PHEP_VERILOG` khỏi `do_do_nhay_hdl` → bộ kiểm VẪN XANH. Bảng kiểu C tình cờ
+#     vẫn phá được `dem.v` của hai ca trên (`q + 1` → `q - 1`), nên không ca nào chứng minh
+#     được rằng đường HDL thật sự dùng bảng Verilog. Năm phép Verilog có thể bị tháo mà
+#     không ai biết.
+#   · đổi cổng "bộ kiểm phải XANH trước khi đo" thành `if False` → bộ kiểm VẪN XANH. Đúng
+#     cái cổng đã phát hiện ra `tb_pcpi_vmini` không dịch nổi (DEV-344) thì không có ca nào
+#     canh nó. Bỏ nó đi là `hdl.sensitivity` ghi `0/0` vào kho như một phép đo bình thường.
+#
+# Hai ca dưới đây canh đúng hai chỗ ấy.
+
+# Mô-đun chỉ có MỘT chỗ đột biến được, và chỗ ấy chỉ bảng Verilog chạm tới: `posedge`. Bảng
+# kiểu C không có phép nào khớp — không hằng ≥ 2 chữ số, không `==`, không `<` (vì `<=` bị
+# chặn), không `+`. Nên nếu ai tháo bảng Verilog ra, phép đo trả về "không có chỗ nào để
+# đột biến" chứ không trả về "bắt được".
+CHOT_SUON = """\
+module chot(input clk, input a, output reg q);
+  always @(posedge clk) q <= a;
+endmodule
+"""
+
+# Chốt ở sườn LÊN thì q giữ giá trị a lúc t=1 (a = 1). Chốt ở sườn XUỐNG thì nó lấy a lúc
+# t=3 (a đã về 0) — nên testbench này phân biệt được hai sườn, và đó là điều kiện để phép
+# `posedge → negedge` nói được điều gì.
+TB_CHOT_SUON = """\
+module tb_chot;
+  reg clk = 0, a = 0; wire q;
+  chot u(.clk(clk), .a(a), .q(q));
+  initial begin
+    a = 1;
+    #1 clk = 1;
+    #1 a = 0;
+    #1 clk = 0;
+    #1 if (q === 1'b1) $display("KET QUA: PASS");
+       else $display("KET QUA: FAIL q=%b", q);
+    $finish;
+  end
+endmodule
+"""
+
+
+@can_iv
+def test_hdl_sensitivity_dung_bang_VERILOG_khong_phai_bang_C(tmp_path):
+    """TC-M3-13-08 — đường HDL phải đi bằng `PHEP_VERILOG`, không bằng bảng kiểu C.
+
+    Chỗ duy nhất phá được trong `chot.v` là `posedge`, và chỉ bảng Verilog có phép ấy. Tháo
+    `bang=PHEP_VERILOG` ra thì bảng C không tìm thấy chỗ nào, `so_thay` về 0, và ca này đỏ.
+    """
+    from eide.build import hdl as H2
+
+    goc = tmp_path
+    rtl = goc / "rtl"
+    rtl.mkdir()
+    (rtl / "chot.v").write_text(CHOT_SUON, "utf-8")
+    (rtl / "tb_chot.v").write_text(TB_CHOT_SUON, "utf-8")
+
+    r = H2.do_do_nhay_hdl(goc=goc, rtl=[rtl / "chot.v"], nguon=rtl, dinh="tb_chot")
+    assert r["bo_kiem_xanh_luc_dau"], r.get("vi_sao_khong_do_duoc") or r
+    assert r["so_thay"] == 1, r["tep"]
+    assert "sườn" in str(r["tep"]), (
+        "bắt được, nhưng KHÔNG bằng phép đổi sườn — ca này không còn canh bảng Verilog nữa: "
+        f"{r['tep']}")
+
+
+@can_iv
+def test_hdl_sensitivity_tu_choi_khi_bo_kiem_DO_tu_truoc(tmp_path):
+    """TC-M3-13-09 — bộ kiểm đỏ sẵn thì công cụ phải TỪ CHỐI bằng E4030, không ghi kho.
+
+    Nếu đo tiếp, mọi đột biến đều "bị bắt" (bộ kiểm vốn đã đỏ) hoặc không phân biệt được —
+    và kho nhận một con số `do_bang: "ma"` vô nghĩa, tức một lời khai giả mạo một phép đo.
+    Chính cổng này đã phát hiện `tb_pcpi_vmini` của Bài 3 không dịch nổi từ 02/10/2026.
+    """
+    from types import SimpleNamespace
+
+    from eide.tools import build_registry
+
+    goc = tmp_path
+    rtl = goc / "rtl"
+    rtl.mkdir()
+    (rtl / "chot.v").write_text(CHOT_SUON, "utf-8")
+    # Testbench in FAIL ngay, chưa phá gì: đúng trạng thái "đỏ từ trước".
+    (rtl / "tb_do.v").write_text(
+        "module tb_do;\n"
+        "  reg clk = 0, a = 0; wire q;\n"
+        "  chot u(.clk(clk), .a(a), .q(q));\n"
+        "  initial begin #10 $display(\"KET QUA: FAIL\"); $finish; end\n"
+        "endmodule\n", "utf-8")
+
+    ghi: list = []
+    ctx = SimpleNamespace(
+        config=SimpleNamespace(paths=SimpleNamespace(project_root=goc)),
+        run_id="test",
+        store=SimpleNamespace(get=lambda _m: None, apply=lambda **k: ghi.append(k)))
+    sp = next(t for t in build_registry().all() if t.name == "hdl.sensitivity")
+    kq = sp.fn(ctx, explain={"summary": "đo", "why": "ca kiểm"},
+               nguon="rtl", nguon_rtl=["rtl/chot.v"], dinh="tb_do")
+
+    assert getattr(kq, "ok", True) is False, f"công cụ KHÔNG từ chối: {kq}"
+    assert kq.error is not None and kq.error.code == "E4030", kq.error
+    assert not ghi, f"đã từ chối mà vẫn ghi kho: {ghi}"
