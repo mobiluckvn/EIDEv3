@@ -65,6 +65,11 @@ class KetQuaHdl:
     loi: list[dict[str, Any]] = field(default_factory=list)
     canh_bao: list[dict[str, Any]] = field(default_factory=list)
     pass_fail: str = ""           # "PASS" | "FAIL" | "" — do testbench tự in
+    # M3-12 — ĐẾM ca, không chỉ nói "có chữ PASS". Một con số đọc được nhiều hơn một chữ:
+    # "2 pass / 1 fail" nói ngay rằng testbench có chạy và có ca đỏ, còn chữ "FAIL" trần thì
+    # không phân biệt được "một ca đỏ" với "testbench chết ngay dòng đầu".
+    so_ca_pass: int = 0
+    so_ca_fail: int = 0
     # Độ nhạy bộ kiểm: bắt mấy trên mấy phép phá mã. Rỗng nghĩa là CHƯA ĐO, và khối A8.0
     # nói ra điều đó thay vì im lặng hiện một chữ PASS màu xanh — một bộ kiểm PASS mà chưa
     # ai phá mã thì chưa biết nó canh được gì.
@@ -74,6 +79,7 @@ class KetQuaHdl:
 
     def to_dict(self) -> dict[str, Any]:
         return {"chang": self.chang, "dat": self.dat, "cong_cu": self.cong_cu,
+                "so_ca_pass": self.so_ca_pass, "so_ca_fail": self.so_ca_fail,
                 "lenh": list(self.lenh), "ma_thoat": self.ma_thoat,
                 "giay": round(self.giay, 2),
                 "tep_ra": self.tep_ra, "so_byte_ra": self.so_byte_ra,
@@ -415,6 +421,67 @@ def lint(*, goc: Path, nguon: Path, dinh: str = "") -> KetQuaHdl:
     return kq
 
 
+# M3-12 — một DÒNG kết quả, không phải một chuỗi con bất kỳ trong log.
+#
+# Giao thức tối thiểu giữ nguyên: testbench chỉ in `PASS` vẫn đạt. Nhưng phải là một dòng
+# bắt đầu bằng PASS/FAIL (cho phép tiền tố `TEST <tên>`), vì "bypass mode on" cũng chứa
+# "PASS" và tên tệp `pass_through.v` cũng vậy.
+# Cho phép một NHÃN đứng trước, kết thúc bằng `:` hoặc `]`. Đo trên 846 bản ghi mô phỏng
+# thật trong kho: testbench của dự án này in `KET QUA: PASS` (243 lần), `TB_PCPI_DOT4: PASS`
+# (201), `KET QUA MO PHONG BAI 2: PASS` (51) — **nhãn đứng trước từ khoá**. Mẫu chỉ neo đầu
+# dòng (như kế hoạch M3-12 ghi) từ chối oan 588 trong 846 bản ghi ấy.
+#
+# Vẫn KHÔNG bắt chuỗi con: `bypass mode on` không có `:` ngay trước `pass`;
+# `pass_through.v:3` thì `PASS\b` không khớp vì sau nó là `_`; và câu
+# `OK: Tat ca cac ca am tinh deu pass (...)` có `:` nhưng sau dấu ấy là chữ khác, nên
+# cũng không tính — đúng, vì đó là một câu kể, không phải một dòng kết quả.
+_DONG_KQ = re.compile(
+    r"^\s*(?:TEST\s+\S+\s+|[^\n]{0,60}?[:\]]\s*)?(PASS|FAIL)\b", re.I | re.M)
+
+# Dấu mô phỏng CHẾT, dù trước đó có in PASS. `$fatal` của Verilog in "FATAL"; Verilator in
+# "%Error"; assertion của SystemVerilog in "Assertion failed".
+_DAU_HONG = re.compile(r"^\s*(FATAL|ERROR)\b|%Error|Assertion failed|\$fatal", re.I | re.M)
+
+
+def doc_ket_qua_tb(log_chay: str, ma_thoat: int | None) -> dict[str, Any]:
+    """Đọc kết quả testbench từ **log CHẠY**, chặt. Hàm thuần, kiểm được không cần iverilog.
+
+    Bản cũ đọc bằng ba dòng: `"PASS" in tren` / `"FAIL" in tren` trên **log biên dịch cộng
+    log chạy**, không xét mã thoát. Ba lỗ, và cả ba cho ra một chữ PASS màu xanh:
+
+      * log biên dịch cộng vào, nên một cảnh báo nhắc tên tệp `pass_through.v` làm cả chặng
+        "đạt" trong khi testbench **không in gì**;
+      * dò chuỗi con, nên `"bypass mode on"` chứa `"PASS"`;
+      * không xét `ma_thoat`, nên `$fatal` sau khi đã in PASS thì vẫn đạt.
+
+    Đây là ô xanh giả nằm trên **chính đường đo**, loại đắt nhất — mọi thứ phía sau đều tin
+    vào nó.
+    """
+    dong = [m.group(1).upper() for m in _DONG_KQ.finditer(log_chay or "")]
+    so_pass = dong.count("PASS")
+    so_fail = dong.count("FAIL")
+    hong = _DAU_HONG.search(log_chay or "")
+    dat = so_pass >= 1 and so_fail == 0 and hong is None and ma_thoat == 0
+
+    ly_do = ""
+    if so_fail:
+        ly_do = f"Testbench in FAIL ({so_fail} ca)."
+    elif hong is not None:
+        ly_do = (f"Mô phỏng CHẾT giữa đường: `{hong.group(0).strip()}`. "
+                 + ("Có in PASS trước đó, nhưng một dòng PASS trước khi chương trình chết "
+                    "không nói ca ấy đã chạy xong." if so_pass else ""))
+    elif so_pass == 0:
+        ly_do = ("Testbench chạy xong nhưng **không in PASS cũng không in FAIL**. Theo đề "
+                 "bài, testbench phải tự kiểm rồi tự in kết quả — không in thì không có "
+                 "phép đo nào ở đây, và đó là lỗi của testbench chứ không phải của thiết kế.")
+    elif ma_thoat != 0:
+        ly_do = (f"Testbench in PASS nhưng chương trình mô phỏng trả **mã thoát "
+                 f"{ma_thoat}**. Mã thoát khác 0 nghĩa là nó không kết thúc bình thường, "
+                 "nên chữ PASS in ra trước đó chưa nói được ca nào đã chạy trọn.")
+    return {"pass_fail": "FAIL" if so_fail else ("PASS" if so_pass else ""),
+            "so_pass": so_pass, "so_fail": so_fail, "dat": dat, "ly_do": ly_do}
+
+
 def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
              bo_may: str = "iverilog", dinh_nghia: dict[str, str] | None = None,
              lenh_mo_rong: dict[str, int] | None = None) -> KetQuaHdl:
@@ -469,6 +536,11 @@ def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
         kq.nguyen_van = (kq.nguyen_van + "\n" + kq2.nguyen_van).strip()
         kq.ma_thoat = kq2.ma_thoat
         kq.giay += kq2.giay
+        log_chay = kq2.nguyen_van
+        # Lý do hỏng của chặng CHẠY (quá hạn, không chạy nổi) trước đây bị bỏ rơi: `kq2`
+        # mang nó, `kq` thì không, nên nó không tới được người đọc.
+        if kq2.vi_sao_khong_dat:
+            kq.vi_sao_khong_dat = kq2.vi_sao_khong_dat
     else:
         vl = _tim_lenh("verilator")
         if not vl:
@@ -492,17 +564,17 @@ def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
         kq.nguyen_van = (kq.nguyen_van + "\n" + kq2.nguyen_van).strip()
         kq.ma_thoat = kq2.ma_thoat
         kq.giay += kq2.giay
+        log_chay = kq2.nguyen_van
+        if kq2.vi_sao_khong_dat:
+            kq.vi_sao_khong_dat = kq2.vi_sao_khong_dat
 
-    tren = kq.nguyen_van.upper()
-    co_pass, co_fail = "PASS" in tren, "FAIL" in tren
-    kq.pass_fail = "FAIL" if co_fail else ("PASS" if co_pass else "")
-    kq.dat = co_pass and not co_fail
-    if not kq.dat:
-        kq.vi_sao_khong_dat = (
-            "Testbench in FAIL." if co_fail else
-            "Testbench chạy xong nhưng **không in PASS cũng không in FAIL**. Theo đề bài, "
-            "testbench phải tự kiểm rồi tự in kết quả — không in thì không có phép đo nào ở "
-            "đây, và đó là lỗi của testbench chứ không phải của thiết kế.")
+    # Đọc CHỈ log chạy (`log_chay`), không đọc log biên dịch — xem `doc_ket_qua_tb`.
+    r = doc_ket_qua_tb(log_chay, kq.ma_thoat)
+    kq.pass_fail = r["pass_fail"]
+    kq.so_ca_pass, kq.so_ca_fail = r["so_pass"], r["so_fail"]
+    kq.dat = r["dat"]
+    if not kq.dat and not kq.vi_sao_khong_dat:
+        kq.vi_sao_khong_dat = r["ly_do"]
     return kq
 
 

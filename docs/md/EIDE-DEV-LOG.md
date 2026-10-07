@@ -7816,3 +7816,92 @@ Bảy phép phá, **bảy** đỏ — lần đầu trong đợt này không phé
 
 Cờ vẫn TẮT: "Tiêu chí xong" đòi eval 76 ca và bộ phát lại không tụt trước khi bật mặc định,
 và nó chèn lời nhắc vào transcript nên chỉ eval nói được nó làm tác tử khá hơn hay tệ hơn.
+
+---
+
+## [DEV-343] [M3-12] PASS giả của mô phỏng HDL — và regex của kế hoạch từ chối oan 588/846
+
+Nhiệm vụ #14. **Sửa lỗi thuần** (ô xanh giả), không cờ.
+
+### Ba lỗ, cả ba cho ra một chữ PASS màu xanh
+
+Bản cũ đọc kết quả mô phỏng bằng đúng ba dòng:
+
+```python
+tren = kq.nguyen_van.upper()
+co_pass, co_fail = "PASS" in tren, "FAIL" in tren
+kq.dat = co_pass and not co_fail
+```
+
+* `nguyen_van` là log **biên dịch cộng** log chạy. Nên một dòng do chặng biên dịch in ra làm
+  cả chặng "đạt" trong khi testbench **không in gì**.
+* Dò **chuỗi con**, nên `"bypass mode on"` chứa `"PASS"`.
+* **Không xét `ma_thoat`**, nên `$fatal` sau khi đã in PASS thì vẫn đạt.
+
+Đây là ô xanh giả nằm trên **chính đường đo** — loại đắt nhất, vì mọi thứ phía sau đều tin
+vào nó. Và `kq2.vi_sao_khong_dat` (quá hạn, không chạy nổi) trước đây bị bỏ rơi: `kq2` mang
+nó, `kq` thì không, nên nó không tới được người đọc.
+
+### Hàm thuần `doc_ket_qua_tb(log_chay, ma_thoat)`
+
+`dat` = có ≥ 1 dòng PASS, 0 dòng FAIL, không dấu hỏng (`FATAL`/`ERROR` đầu dòng, `%Error`,
+`Assertion failed`, `$fatal`), **và** `ma_thoat == 0`. Thêm `so_ca_pass`/`so_ca_fail` vào
+`KetQuaHdl.to_dict()`: "2 pass / 1 fail" nói ngay rằng testbench có chạy và có ca đỏ, còn
+chữ `FAIL` trần không phân biệt được "một ca đỏ" với "testbench chết ngay dòng đầu".
+
+### Regex mà kế hoạch ghi sẵn từ chối oan 588 trong 846 bản ghi thật
+
+Kế hoạch M3-12 ghi mẫu `^\s*(?:TEST\s+\S+\s+)?(PASS|FAIL)\b`. Tôi hiện thực đúng thế, rồi
+chạy nó trên **846 bản ghi chặng mô phỏng thật** trong `du-lieu/`:
+
+```
+846 bản ghi · bản cũ gọi ĐẠT 846 · bản mới (theo regex kế hoạch) 258 · lệch 588
+```
+
+**588 lệch là con số quá lớn để mừng.** Mở log ra đếm thì thấy quy ước in của testbench dự
+án này là **nhãn đứng TRƯỚC** từ khoá:
+
+```
+KET QUA: PASS                    243 lần
+TB_PCPI_DOT4: PASS               201
+KET QUA MO PHONG: PASS            69
+PASS: Hoan tat 4 phep do...       40
+KET QUA MO PHONG BAI 2: PASS      51
+```
+
+Mẫu chỉ-neo-đầu-dòng gọi **toàn bộ** những dòng ấy là "không in gì". Một bộ đọc chặt tới mức
+gọi mọi testbench đang chạy đúng là "không in gì" thì nó không chặt — nó chỉ sai theo chiều
+khác, và chiều ấy còn tệ hơn: nó biến 588 phép đo thật thành rác.
+
+Nới đúng một chỗ: cho phép một **nhãn kết thúc bằng `:` hoặc `]`** trước từ khoá. Vẫn không
+bắt chuỗi con:
+
+* `bypass mode on` — không có `:` ngay trước `pass`;
+* `pass_through.v:3` — `PASS\b` không khớp vì sau nó là `_`;
+* `OK: Tat ca cac ca am tinh deu pass (...)` — có `:`, nhưng sau dấu ấy là chữ khác. Đây là
+  một câu **kể**, không phải một dòng kết quả, và nó cũng lấy từ log thật.
+
+Đo lại: **846/846 khớp bản cũ, 0 từ chối oan.** Và bộ kiểm vẫn bắt đủ bốn ca PASS giả.
+
+Hai phép phá mới canh đúng hai chiều của chỗ nới này: thu mẫu về như kế hoạch ghi → ca quy
+ước thật đỏ; bỏ yêu cầu dấu `:`/`]` → ca câu-kể và ca `bypass` đỏ.
+
+### Hai ca kiểm của tôi xanh vì lý do sai
+
+**Tệp mô phỏng giả dùng `$4`, mà `-o <anh>` là `$3`.** Nên `iverilog` giả không sinh ra tệp,
+`mo_phong` dừng ngay ở *"iverilog không sinh ra tệp mô phỏng"*, và `vvp` giả **chưa bao giờ
+chạy** — hai ca kiểm xanh mà chưa chạm tới thứ chúng định đo.
+
+**Ca FATAL bắt được do tình cờ.** Bản đầu dùng `"FATAL: assertion failed"`, và mã cũ bắt được
+nó vì `"FAILED"` **chứa** `"FAIL"` — tức ca ấy xanh cả trước lẫn sau khi sửa. Đổi sang
+`"FATAL: timeout at t=10000"` (không có chữ "failed") thì nó đỏ đúng trên mã cũ.
+
+**Và một ca nữa không canh được chỗ nó tưởng.** Ca "tên tệp `pass_through.v` trong log biên
+dịch" vẫn xanh khi tôi cố ý đọc lại log gộp — vì chữ `pass` của nó nằm **giữa dòng**, nên
+phép neo dòng đã chặn sẵn. Tách thành một ca riêng với log biên dịch in `PASS: lint clean`
+**đầu dòng** (chuyện có thật với script bọc lint) thì chỗ "chỉ đọc log chạy" mới có ca canh.
+
+### Số đo
+
+Bộ kiểm 1720 → **1732 xanh, 0 đỏ** (+12 ca). `kiem_tai_lieu` 0 chỗ lệch.
+Tám phép phá, tám ca đỏ. Giao thức tối thiểu giữ nguyên: testbench chỉ in `PASS` vẫn đạt.

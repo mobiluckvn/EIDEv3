@@ -1145,3 +1145,188 @@ def test_A8_di_qua_BO_DUNG_TAB_that_khong_chi_goi_ham():
     assert any(str(m).startswith("A8.0") for m in ma), (
         f"khối A8.0 chưa được nối vào tab Mô phỏng — khối hiện có: {ma}")
     assert "7/7" in str(bm), "con số độ nhạy phải tới được tab, không chỉ tới hàm dựng khối"
+
+
+# =============================================================== M3-12 đọc PASS/FAIL cho chặt
+#
+# Bản cũ đọc kết quả mô phỏng bằng đúng ba dòng:
+#
+#     tren = kq.nguyen_van.upper()
+#     co_pass, co_fail = "PASS" in tren, "FAIL" in tren
+#     kq.dat = co_pass and not co_fail
+#
+# Ba lỗ, và cả ba đều cho ra một chữ PASS màu xanh:
+#
+#   `nguyen_van` là log BIÊN DỊCH **cộng** log chạy. Nên một cảnh báo của iverilog nhắc tên
+#   tệp `pass_through.v` làm cả chặng "đạt" — testbench không in gì cũng được.
+#   Dò CHUỖI CON, nên "bypass mode on" chứa "PASS".
+#   KHÔNG xét `ma_thoat`, nên `$fatal` sau khi đã in PASS thì vẫn đạt.
+#
+# Đây là ô xanh giả nằm trên **chính đường đo** — loại đắt nhất, vì mọi thứ phía sau đều tin
+# vào nó.
+def _hai_lenh(tmp_path: Path, than_bien_dich: str, than_chay: str, ma_thoat: int = 0):
+    """Trả một `_tim_lenh` giả: `iverilog`/`verilator` một thân, `vvp`/`sim` một thân."""
+    bd = tmp_path / "bd.sh"
+    bd.write_text("#!/bin/sh\n" + than_bien_dich + "\nexit 0\n", "utf-8")
+    bd.chmod(0o755)
+    ch = tmp_path / "ch.sh"
+    ch.write_text("#!/bin/sh\n" + than_chay + f"\nexit {ma_thoat}\n", "utf-8")
+    ch.chmod(0o755)
+
+    def _tim(ten: str) -> str:
+        return str(ch) if ten in ("vvp", "sim") else str(bd)
+    return _tim
+
+
+# `iverilog -g2012 -o <anh> ...` — tham số thứ BA là đường dẫn tệp mô phỏng.
+#
+# Bản đầu tôi viết `$4` và hai ca kiểm xanh VÌ LÝ DO SAI: không có tệp ảnh thì `mo_phong`
+# dừng ngay ở "iverilog không sinh ra tệp mô phỏng", `vvp` giả chưa bao giờ chạy, nên cái
+# nó định đo (đọc log chạy) không được chạm tới lần nào.
+_TAO_ANH = ': > "$3"'
+
+
+def test_doc_ket_qua_tb_dem_ca():
+    """TC-M3-12-06 — đếm được bao nhiêu ca PASS, không chỉ "có chữ PASS"."""
+    r = H.doc_ket_qua_tb("TEST a PASS\nTEST b PASS\n", 0)
+    assert r["so_pass"] == 2 and r["so_fail"] == 0, r
+    assert r["pass_fail"] == "PASS" and r["dat"], r
+
+
+def test_doc_ket_qua_tb_bypass_khong_phai_pass():
+    """"bypass mode on" chứa "PASS" — nhưng nó không phải một dòng kết quả."""
+    r = H.doc_ket_qua_tb("bypass mode on\nsimulation finished\n", 0)
+    assert r["so_pass"] == 0 and not r["dat"], r
+    assert r["pass_fail"] == "", r
+
+
+def test_doc_ket_qua_tb_fatal_va_assertion():
+    for log in ("PASS\nFATAL: assertion failed at t=10\n",
+                "PASS\n%Error: tb.v:12: Assertion failed\n",
+                "TEST x PASS\nERROR: bus contention\n"):
+        r = H.doc_ket_qua_tb(log, 0)
+        assert not r["dat"], (log, r)
+        assert r["ly_do"], r
+
+
+def test_doc_ket_qua_tb_ma_thoat_khac_0():
+    r = H.doc_ket_qua_tb("PASS\n", 1)
+    assert not r["dat"] and "mã thoát" in r["ly_do"], r
+
+
+def test_sim_BYPASS_khong_phai_PASS(tmp_path, monkeypatch):
+    """TC-M3-12-01 — testbench in "bypass mode on" thì KHÔNG đạt."""
+    goc = _du_an(tmp_path)
+    monkeypatch.setattr(H, "_tim_lenh",
+                        _hai_lenh(tmp_path, _TAO_ANH, 'echo "bypass mode on"'))
+    kq = H.mo_phong(goc=goc, nguon=goc / "rtl", dinh="tb")
+    assert not kq.dat, kq.nguyen_van
+    assert kq.pass_fail == "", kq.pass_fail
+
+
+def test_sim_PASS_nhung_ma_thoat_1_thi_khong_dat(tmp_path, monkeypatch):
+    """TC-M3-12-02 — in PASS rồi thoát 1: chương trình mô phỏng đã chết, PASS vô nghĩa."""
+    goc = _du_an(tmp_path)
+    monkeypatch.setattr(H, "_tim_lenh",
+                        _hai_lenh(tmp_path, _TAO_ANH, 'echo PASS', ma_thoat=1))
+    kq = H.mo_phong(goc=goc, nguon=goc / "rtl", dinh="tb")
+    assert not kq.dat
+    assert "mã thoát" in kq.vi_sao_khong_dat, kq.vi_sao_khong_dat
+
+
+def test_sim_PASS_roi_FATAL_thi_khong_dat(tmp_path, monkeypatch):
+    """TC-M3-12-03 — `$fatal` sau khi đã in PASS vẫn là không đạt.
+
+    Dòng FATAL ở đây cố ý **không** chứa chữ "failed": bản đầu của ca này dùng
+    `"FATAL: assertion failed"`, và mã cũ bắt được nó **do tình cờ** — `"FAILED"` chứa
+    `"FAIL"`. Tức ca kiểm xanh cả trước lẫn sau khi sửa, và nó không canh gì.
+    """
+    goc = _du_an(tmp_path)
+    monkeypatch.setattr(H, "_tim_lenh", _hai_lenh(
+        tmp_path, _TAO_ANH, 'printf "PASS\\nFATAL: timeout at t=10000\\n"'))
+    kq = H.mo_phong(goc=goc, nguon=goc / "rtl", dinh="tb")
+    assert not kq.dat, kq.nguyen_van
+    assert kq.vi_sao_khong_dat, "không đạt mà không nói vì sao"
+
+
+def test_sim_ten_tep_pass_trong_log_bien_dich_khong_tinh(tmp_path, monkeypatch):
+    """TC-M3-12-04 — chữ PASS trong log BIÊN DỊCH không phải kết quả của testbench.
+
+    Đây là lỗ tệ nhất của bản cũ: `nguyen_van` cộng cả hai log, nên một cảnh báo nhắc tên
+    tệp `pass_through.v` làm cả chặng "đạt" trong khi testbench **không in gì**.
+    """
+    goc = _du_an(tmp_path)
+    monkeypatch.setattr(H, "_tim_lenh", _hai_lenh(
+        tmp_path, 'echo "warning: pass_through.v:3: unused"\n' + _TAO_ANH, 'true'))
+    kq = H.mo_phong(goc=goc, nguon=goc / "rtl", dinh="tb")
+    assert not kq.dat, kq.nguyen_van
+    assert "testbench" in kq.vi_sao_khong_dat, kq.vi_sao_khong_dat
+
+
+def test_sim_PASS_o_DAU_DONG_cua_log_bien_dich_khong_tinh(tmp_path, monkeypatch):
+    """Một dòng `PASS` do chặng BIÊN DỊCH in ra cũng không phải kết quả của testbench.
+
+    Ca này tách khỏi ca trên vì hai chỗ sửa khác nhau: ca trên canh **phép neo dòng** (chữ
+    `pass` giữa tên tệp), ca này canh **chỉ đọc log CHẠY**. Phép "phá lại thì đỏ" chỉ ra
+    rằng ca trên không canh được chỗ thứ hai: chữ `pass` của nó nằm giữa dòng, nên phép neo
+    dòng đã chặn sẵn và việc đọc log gộp hay log chạy không đổi kết quả.
+
+    Script bọc công cụ in `PASS: ...` ở đầu dòng là chuyện có thật (wrapper lint, Makefile).
+    """
+    goc = _du_an(tmp_path)
+    monkeypatch.setattr(H, "_tim_lenh", _hai_lenh(
+        tmp_path, 'echo "PASS: lint clean"\n' + _TAO_ANH, 'true'))
+    kq = H.mo_phong(goc=goc, nguon=goc / "rtl", dinh="tb")
+    assert not kq.dat, kq.nguyen_van
+    assert "testbench" in kq.vi_sao_khong_dat, kq.vi_sao_khong_dat
+
+
+def test_sim_dem_ca_pass_vao_ket_qua(tmp_path, monkeypatch):
+    """Số ca PASS/FAIL phải vào `to_dict()` — một con số đọc được hơn một chữ."""
+    goc = _du_an(tmp_path)
+    monkeypatch.setattr(H, "_tim_lenh", _hai_lenh(
+        tmp_path, _TAO_ANH, 'printf "TEST a PASS\\nTEST b PASS\\nTEST c FAIL\\n"'))
+    kq = H.mo_phong(goc=goc, nguon=goc / "rtl", dinh="tb")
+    assert not kq.dat
+    d = kq.to_dict()
+    assert d["so_ca_pass"] == 2 and d["so_ca_fail"] == 1, d
+
+
+def test_doc_ket_qua_tb_theo_dung_quy_uoc_THAT_cua_du_an():
+    """Quy ước in kết quả của testbench dự án này: **nhãn đứng trước** từ khoá.
+
+    Lấy từ 846 bản ghi chặng mô phỏng thật trong `du-lieu/`, không tự nghĩ ra:
+
+        KET QUA: PASS                    243 lần
+        TB_PCPI_DOT4: PASS               201
+        KET QUA MO PHONG BAI 2: PASS      51
+
+    Mẫu chỉ neo đầu dòng — như kế hoạch M3-12 ghi — **từ chối oan 588 trong 846** bản ghi
+    ấy. Một bộ đọc chặt tới mức gọi mọi testbench đang chạy đúng là "không in gì" thì nó
+    không chặt, nó chỉ sai theo chiều khác.
+    """
+    for log in ("KET QUA: PASS\n",
+                "TB_PCPI_DOT4: PASS\n",
+                "KET QUA MO PHONG BAI 2: PASS\n",
+                "[TB] PASS\n",
+                "PASS: Hoan tat 4 phep do, tat ca deu ok=1!\n"):
+        r = H.doc_ket_qua_tb(log, 0)
+        assert r["dat"] and r["so_pass"] == 1, (log, r)
+
+    r = H.doc_ket_qua_tb("KET QUA: FAIL\n", 0)
+    assert not r["dat"] and r["so_fail"] == 1, r
+
+
+def test_doc_ket_qua_tb_cau_ke_co_chu_pass_khong_tinh():
+    """Một câu KỂ có chữ "pass" không phải một dòng kết quả.
+
+    Cũng lấy từ log thật: `OK: Tat ca cac ca am tinh deu pass (khoi im hoan toan...)` —
+    có dấu hai chấm, nhưng sau dấu ấy là chữ khác, nên nó không phải dòng kết quả.
+    """
+    r = H.doc_ket_qua_tb(
+        "OK: Tat ca cac ca am tinh deu pass (khoi im hoan toan, acc khong doi).\n", 0)
+    assert r["so_pass"] == 0 and not r["dat"], r
+
+    # Và chuỗi con vẫn không tính, dù có dấu hai chấm ở đâu đó trên dòng.
+    assert H.doc_ket_qua_tb("note: bypass mode on\n", 0)["so_pass"] == 0
+    assert H.doc_ket_qua_tb("warning: pass_through.v:3: unused\n", 0)["so_pass"] == 0
