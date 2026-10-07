@@ -608,6 +608,62 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                        "Verifier bảo `khong_dat` hay `chua_du_du_kien` thì NÓI RA điều đó "
                        "với người dùng, đừng giữ lại kết luận cũ.\n</system-reminder>"))
 
+    @bus.on_stop
+    def req_chua_phu(ctx: Any) -> StopResult:
+        """M2-02 — còn YÊU CẦU chưa ai đo mà lượt đã kết thúc thì nhắc một vòng.
+
+        `kiem_viec_chua_ai_kiem` hỏi *"việc đã ghi có ai kiểm chưa"*. Hook này hỏi một câu
+        khác hẳn: *"yêu cầu nào chưa ai làm tới"*. Verifier không trả lời được câu sau —
+        nó có `doc_duoc_viec=False`, tức cố ý không biết đề bài, nên nó không đếm được
+        phủ yêu cầu.
+
+        Sau cờ `req_phu` (mặc định TẮT): nó chèn lời nhắc vào transcript, tức đổi thứ mô
+        hình đọc mỗi lượt — đó là đổi hành vi tác tử (N-4).
+
+        KHÔNG chặn trả lượt, và chỉ nổ MỘT lần mỗi lượt: vòng thứ hai là vòng tác tử đang
+        TRẢ LỜI lời nhắc, bắt nó trả lời lần nữa thì thành vòng lặp.
+        """
+        if getattr(ctx, "da_nhac_req_phu", False):
+            return StopResult()
+        cfg = getattr(ctx, "config", None)
+        co = getattr(cfg, "features", None)
+        if co is None or not co.bat("req_phu"):
+            return StopResult()
+        kho = getattr(ctx, "store", None)
+        if kho is None or not getattr(ctx, "da_ghi_gi_do", False):
+            return StopResult()
+        # Đang giữa một kế hoạch đã duyệt thì khoan — cùng lý lẽ với hook trên: phủ yêu
+        # cầu là câu hỏi của lúc KẾT THÚC, không phải của mỗi chặng nghỉ giữa đường.
+        kh = _ke_hoach_dang_chay(ctx)
+        if kh is not None and any(not b.get("xong") for b in kh.get("steps") or []):
+            return StopResult(fired=["req_chua_phu_hoan_vi_ke_hoach"])
+
+        from .. import deps as deps_mod
+
+        mo_coi = [d["req"] for d in deps_mod.ma_tran_truy_vet(kho)
+                  if not (d["criteria"] or d["ket_qua"])]
+        if not mo_coi:
+            return StopResult()
+        ctx.da_nhac_req_phu = True
+        ds = ", ".join(mo_coi[:8]) + (f" (và {len(mo_coi) - 8} nữa)"
+                                      if len(mo_coi) > 8 else "")
+        return StopResult(
+            another_round=True,
+            reason_vi=f"{len(mo_coi)} yêu cầu chưa có phép đo nào",
+            fired=["req_chua_phu"],
+            injection=("<system-reminder>\nBạn đang trả lượt về, mà những yêu cầu này "
+                       f"**chưa có một phép đo nào** gắn vào: {ds}.\n\n"
+                       "Một yêu cầu không có tiêu chí đo thì không ai biết nó đã xong "
+                       "chưa — kể cả bạn. Hai lối đi, chọn một cho TỪNG mã ở trên:\n\n"
+                       "1. Viết phép đo: `sim.criteria` với `do_req` trỏ đúng mã REQ, hoặc "
+                       "một tệp test, rồi khai `hien_thuc_req` khi ghi tệp.\n"
+                       "2. Nói thẳng nó **ngoài phạm vi** lượt này, và vì sao — "
+                       "người dùng cần biết nó đang nằm lại, chứ không cần nó được đẩy "
+                       "vào một tiêu chí viết cho có.\n\n"
+                       "Lối 2 là lối hợp lệ. Đừng dựng một tiêu chí rỗng chỉ để cột “đã "
+                       "kiểm” sáng lên — một phép đo không đo gì làm hỏng đúng cái bảng "
+                       "nó vừa làm sáng.\n</system-reminder>"))
+
     return bus
 
 

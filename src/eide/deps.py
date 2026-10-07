@@ -114,9 +114,14 @@ def ma_tran_truy_vet(store: Any) -> list[dict[str, Any]]:
     Dòng rỗng là một câu trả lời, không phải thiếu dữ liệu: REQ không có ai ở hạ nguồn là
     **REQ chưa ai làm**, và đó đúng là thứ cần nhìn thấy.
     """
-    tat_ca = store.list(limit=2000)
+    # Gom THEO LOẠI, không gọi `store.list(limit=2000)` một lần: danh sách phẳng vừa bị trần
+    # 2000 cắt im lặng, vừa buộc mọi chỗ gọi phải có một kho đầy đủ. Bề mặt A2 dựng ma trận
+    # này từ một kho chỉ biết `list(loai)` — xem `surfaces.requirements`.
+    tat_ca: list[dict[str, Any]] = []
+    for loai in _COT_TRUY_VET:
+        tat_ca.extend(store.list(loai, limit=500))
     ra: list[dict[str, Any]] = []
-    for rq in sorted((a for a in tat_ca if a["type"] == "req"), key=lambda a: a["id"]):
+    for rq in sorted(store.list("req", limit=500), key=lambda a: a["id"]):
         dong: dict[str, Any] = {"req": rq["id"], "option": [], "adr": [], "code": [],
                                 "criteria": [], "ket_qua": []}
         for a in tat_ca:

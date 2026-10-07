@@ -126,6 +126,61 @@ def _ai_quyet(a: dict[str, Any], cong: set[str]) -> str:
     return "Tác tử tự quyết — chưa ai duyệt"
 
 
+# M2-02 — chữ cho từng chặng còn thiếu của một yêu cầu. Bốn chữ khác nhau cho bốn tình
+# trạng khác nhau: gộp chúng thành "chưa xong" thì người đọc vẫn phải tự đi tìm thiếu ở đâu.
+#
+# Mã khối là A2.2, KHÔNG phải A2.5 như kế hoạch M2-02 ghi: A2.5 đã là khối "Kế hoạch chia
+# việc" từ trước. A2.2 còn trống trong cả mã lẫn tài liệu, và nó nằm đúng chỗ — ngay sau
+# bảng REQ, vì đây là cái nhìn THEO YÊU CẦU chứ không theo hiện vật.
+_TINH_TRANG_TRUY_VET = (
+    ("option", "chưa thiết kế"),      # chưa có phương án/ADR nào nhận yêu cầu này
+    ("code", "chưa hiện thực"),       # có thiết kế mà chưa có mã khai là làm nó
+    ("criteria", "chưa kiểm"),        # có mã mà chưa có tiêu chí/kết quả nào đo nó
+)
+
+
+def _tinh_trang_req(dong: dict[str, Any]) -> str:
+    """Chặng ĐẦU TIÊN còn thiếu trong chuỗi yêu cầu → thiết kế → mã → phép đo."""
+    if dong["option"] or dong["adr"]:
+        if dong["code"]:
+            if dong["criteria"] or dong["ket_qua"]:
+                return "đủ"
+            return "chưa kiểm"
+        return "chưa hiện thực"
+    return "chưa thiết kế"
+
+
+def _khoi_ma_tran(store: Any, so_req: int) -> dict[str, Any]:
+    """A2.2 — một dòng một yêu cầu: nó đã đi tới đâu trong chuỗi, và còn thiếu chặng nào.
+
+    Ba bảng cũ của tab A2 (REQ, phương án, ADR) đều là cái nhìn **theo hiện vật**. Câu hỏi
+    *"yêu cầu nào chưa ai làm"* vì thế chỉ trả lời được bằng cách đối chiếu ba bảng bằng
+    mắt — và một câu hỏi phải đối chiếu bằng mắt là câu hỏi không ai hỏi.
+
+    Khối này chỉ TRÌNH BÀY: không nút bấm, không ô sửa. Người sửa yêu cầu ở bảng A2.1, nơi
+    có lớp giải thích và phiên bản của từng dòng.
+    """
+    from . import deps as deps_mod
+
+    mt = deps_mod.ma_tran_truy_vet(store)
+    rows = [[d["req"], ", ".join(d["option"] + d["adr"]), ", ".join(d["code"]),
+             ", ".join(d["criteria"] + d["ket_qua"]), _tinh_trang_req(d)] for d in mt]
+    co_do = sum(1 for d in mt if d["criteria"] or d["ket_qua"])
+    thieu = [d["req"] for d in mt if _tinh_trang_req(d) != "đủ"]
+    return block(
+        "A2.2", "Ma trận truy vết", "table",
+        summary=(f"{co_do}/{so_req} REQ có ít nhất một phép đo"
+                 + (f" · còn thiếu chặng ở: {', '.join(thieu[:6])}"
+                    + (f" (và {len(thieu) - 6} nữa)" if len(thieu) > 6 else "")
+                    if thieu else " · đủ cả")
+                 # Nói thẳng bảng này đọc GÌ. Một ô trống ở đây nghĩa là "không hiện vật
+                 # nào KHAI rằng nó làm yêu cầu này" — không phải "việc ấy chưa làm". Hai
+                 # câu đó khác nhau, và gộp chúng lại là cách một bảng bắt đầu nói quá.
+                 + " · đọc theo lời khai: dap_ung_req · hien_thuc_req · do_req"),
+        columns=["Mã", "Phương án / ADR", "Mã nguồn", "Tiêu chí / Test", "Tình trạng"],
+        rows=rows)
+
+
 def requirements(store: Any, inv: Any, ledger: Any = None) -> dict[str, Any]:
     reqs = store.list("req", limit=200)
     opts = store.list("option", limit=20)
@@ -160,6 +215,9 @@ def requirements(store: Any, inv: Any, ledger: Any = None) -> dict[str, Any]:
                    "nó không tự bịa ra yêu cầu từ một câu mô tả chung.",
             can_gi="Nói cho tác tử biết anh muốn làm gì, rồi trả lời cụm câu hỏi làm rõ.",
             buoc="G3"))
+
+    if reqs:
+        blocks.append(_khoi_ma_tran(store, len(reqs)))
 
     if opts:
         chon = next((o for o in opts if o["canonical"].get("da_chon")), None)

@@ -294,7 +294,9 @@ def test_KHONG_co_khoi_A7_2_khi_chua_phan_tich_gi():
 
 
 # ============================================================ giao diện vẽ được kiểu khối
-@pytest.mark.parametrize("kieu", ["ke_hoach", "sections"])
+# "table" vào danh sách từ M2-02: khối A2.2 dùng kiểu này, và một kiểu khối không có
+# nhánh case trong Swift thì tab hiện ô vàng "chưa biết vẽ" thay vì bảng.
+@pytest.mark.parametrize("kieu", ["ke_hoach", "sections", "table"])
 def test_giao_dien_biet_ve_kieu_khoi_moi(kieu):
     """Lõi sinh ra một `type` mà Swift không có nhánh `case` thì tab hiện ô vàng "chưa biết vẽ".
 
@@ -304,3 +306,76 @@ def test_giao_dien_biet_ve_kieu_khoi_moi(kieu):
     sw = pathlib.Path(__file__).resolve().parents[1] / (
         "ui/EIDEApp/Sources/EIDE/Views/SurfaceView.swift")
     assert f'case "{kieu}"' in sw.read_text("utf-8"), f"Swift chưa dựng được khối {kieu}"
+
+
+# ============================================== M2-02 — ma trận truy vết lên tab A2
+def _req(ma: str, text: str) -> dict[str, Any]:
+    return _hv(ma, "req", {"loai": ma.split("-")[0], "text": text,
+                           "criteria": "", "source_quote": f"anh nói: {text}"})
+
+
+def test_A2_2_ma_tran_hien_REQ_chua_kiem():
+    """TC-M2-02-01 — REQ nào chưa ai đo thì phải đọc được trên tab, không phải đoán.
+
+    Trước đây tab A2 có bảng REQ, bảng phương án, bảng ADR — ba cái nhìn theo HIỆN VẬT.
+    Không có cái nhìn nào theo YÊU CẦU, nên câu hỏi "yêu cầu nào chưa ai làm" chỉ trả lời
+    được bằng cách tự đối chiếu ba bảng bằng mắt.
+
+    Mã khối là **A2.2**, không phải A2.5 như kế hoạch nhiệm vụ ghi: A2.5 đã là khối Kế
+    hoạch chia việc từ trước. A2.2 còn trống, và nó nằm đúng chỗ — ngay sau bảng REQ.
+    """
+    kho = KhoGia(
+        req=[_req("FR-01", "đèn nháy 1 Hz"), _req("FR-02", "nút bấm đổi chế độ")],
+        option=[_hv("PA-A", "option", {"ten": "timer", "kien_truc": "timer",
+                                       "dap_ung_req": ["FR-01"]})],
+        code=[_hv("blink.c", "code", {"path": "blink.c"},
+                  deps={"upstream": ["FR-01"]})],
+        criteria=[_hv("criteria:sim-01", "criteria", {
+            "ma": "sim-01", "ten": "đo nháy",
+            "assert": [{"ma": "A1", "mo_ta": "chu kỳ", "do_req": "FR-01"}]})])
+
+    kq = S.requirements(kho, None)
+    a22 = next((b for b in kq["blocks"] if b["code"] == "A2.2"), None)
+    assert a22 is not None, [b["code"] for b in kq["blocks"]]
+    assert a22["type"] == "table"
+
+    dong = {r[0]: r for r in a22["rows"]}
+    assert set(dong) == {"FR-01", "FR-02"}, sorted(dong)
+    assert "đủ" in dong["FR-01"][-1].lower(), dong["FR-01"]
+    assert "chưa thiết kế" in dong["FR-02"][-1].lower(), dong["FR-02"]
+    assert "1/2" in a22["summary"], a22["summary"]
+    # Khối chỉ TRÌNH BÀY: không nút bấm, không ô sửa (§E2 — người sửa ở bảng REQ gốc).
+    assert not a22.get("buttons") and not a22.get("cot_sua")
+
+
+def test_mat_tran_noi_ro_tung_chang_con_thieu():
+    """Ba chặng thiếu khác nhau phải ra ba chữ khác nhau — không gộp thành "chưa xong"."""
+    def mot(co_option: bool, co_code: bool, co_tc: bool) -> str:
+        kho = KhoGia(
+            req=[_req("FR-01", "đèn nháy")],
+            option=([_hv("PA-A", "option", {"ten": "t", "kien_truc": "t",
+                                            "dap_ung_req": ["FR-01"]})] if co_option else []),
+            code=([_hv("b.c", "code", {"path": "b.c"}, deps={"upstream": ["FR-01"]})]
+                  if co_code else []),
+            criteria=([_hv("criteria:s1", "criteria", {
+                "ma": "s1", "assert": [{"ma": "A1", "do_req": "FR-01"}]})] if co_tc else []))
+        kq = S.requirements(kho, None)
+        a22 = next(b for b in kq["blocks"] if b["code"] == "A2.2")
+        return a22["rows"][0][-1]
+
+    chu = [mot(False, False, False), mot(True, False, False),
+           mot(True, True, False), mot(True, True, True)]
+    assert len(set(chu)) == 4, chu
+    assert "thiết kế" in chu[0] and "hiện thực" in chu[1] and "kiểm" in chu[2]
+    assert "đủ" in chu[3]
+
+
+def test_khong_co_REQ_thi_khong_co_A2_2():
+    """TC-M2-02-02 — ca âm: kho rỗng thì KHÔNG dựng một bảng rỗng.
+
+    Một khối rỗng trông như một khối đã làm xong việc của nó. Chống đúng chuyện ấy: tab A2
+    đã có khối `empty` nói "chưa có yêu cầu nào" và vì sao — thêm một bảng trắng cạnh nó
+    chỉ làm loãng câu trả lời ấy.
+    """
+    kq = S.requirements(KhoGia(), None)
+    assert "A2.2" not in [b["code"] for b in kq["blocks"]]

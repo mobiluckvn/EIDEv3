@@ -317,6 +317,10 @@ class Features:
     # tep nay hien thuc REQ nao. Doi luoc do cong cu la doi hanh vi tac tu (N-4) — phan
     # nen (ghi va doc `deps.upstream`) chay ca khi co TAT.
     truy_vet: bool = False
+    # M2-02 — hook Stop nhac khi con YEU CAU chua co phep do nao. Chen loi nhac vao
+    # transcript la doi thu mo hinh doc moi luot (N-4). Khoi A2.2 tren tab A2 thi KHONG
+    # phu thuoc co: no chi trinh bay thu da co trong kho.
+    req_phu: bool = False
 
     @classmethod
     def load(cls) -> "Features":
@@ -340,7 +344,7 @@ class Features:
 
     @staticmethod
     def ten_co() -> tuple[str, ...]:
-        return ("schematic", "gon_cong_cu", "truy_vet")
+        return ("schematic", "gon_cong_cu", "truy_vet", "req_phu")
 
     def bat(self, ten: str) -> bool:
         return bool(getattr(self, ten, False))

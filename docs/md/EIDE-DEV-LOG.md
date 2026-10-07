@@ -7139,3 +7139,82 @@ lại thì không trả lời được câu hỏi nào.
 Cờ `truy_vet` vẫn TẮT: nó thêm một trường vào lược đồ của `fs.write` và `fs.edit` — hai công
 cụ dùng nhiều nhất — nên đó là đổi thứ mô hình nhìn thấy mỗi lượt. Phần nền (ghi và đọc
 `deps.upstream`, ma trận, `option_create`, `sim.criteria` tự khai nguồn) chạy **cả khi cờ tắt**.
+
+---
+
+## [DEV-334] [M2-02] Ma trận truy vết lên tab A2, và một con số 5/37 phải đọc cho đúng
+
+Nhiệm vụ #5, dựng trên `deps.ma_tran_truy_vet` của M2-01. Khối giao diện là **trình bày
+thuần** (không cờ); hook Stop nằm sau cờ `EIDE_FEATURE_REQ_PHU`, mặc định TẮT.
+
+### Khối A2.2, không phải A2.5
+
+Kế hoạch nhiệm vụ ghi *"thêm khối `block(\"A2.5\", ...)`"*. **A2.5 đã có chủ** từ trước: đó là
+khối "Kế hoạch chia việc" (`surfaces.py:_khoi_ke_hoach`, còn sinh cả `A2.5.1`, `A2.5.2`… cho
+các bản kế hoạch cũ). Phần "Hiện trạng" của nhiệm vụ không thấy chỗ này.
+
+Ca âm `test_khong_co_REQ_thi_khong_co_A2_5` bắt được ngay: nó **đỏ trên mã cũ** vì A2.5 đã tồn
+tại — một ca âm lẽ ra phải xanh trước khi sửa. Đó là tín hiệu, không phải nhiễu.
+
+Dùng **A2.2**: trống trong cả mã lẫn 18 tệp tài liệu, và nằm đúng chỗ — ngay sau bảng REQ, vì
+đây là cái nhìn **theo yêu cầu** chứ không theo hiện vật. Ba bảng cũ của tab A2 (REQ, phương
+án, ADR) đều nhìn theo hiện vật, nên câu hỏi *"yêu cầu nào chưa ai làm"* chỉ trả lời được bằng
+cách đối chiếu ba bảng bằng mắt — và một câu hỏi phải đối chiếu bằng mắt là câu hỏi không ai hỏi.
+
+Bốn tình trạng, **bốn chữ khác nhau** cho chặng đầu tiên còn thiếu: `chưa thiết kế` →
+`chưa hiện thực` → `chưa kiểm` → `đủ`. Có một ca kiểm riêng khẳng định bốn chữ ấy khác nhau
+từng đôi một; gộp chúng thành "chưa xong" thì người đọc vẫn phải tự đi tìm thiếu ở đâu.
+
+Kiểu khối là `table` — Swift đã dựng được từ trước, nên **không sửa gì ở `ui/`**. `swift test`
+vẫn 43 ca, 0 đỏ. Tôi thêm `"table"` vào `test_giao_dien_biet_ve_kieu_khoi_moi` theo đúng
+"Tiêu chí xong", để kiểu khối của A2.2 cũng được canh bằng số.
+
+### Con số trên kho thật, và cách đọc nó cho đúng
+
+Chạy ma trận trên **63 kho `store.sqlite`** của các dự án đã làm:
+
+```
+37 REQ trong 22 kho có yêu cầu
+  5/37 REQ có ít nhất một phép đo
+  tình trạng: chưa thiết kế 27 · chưa hiện thực 10 · chưa kiểm 0 · đủ 0
+```
+
+**Con số này KHÔNG phải một lời phán về chất lượng sản phẩm, và tôi không ghi nó như thế.**
+Bảng đọc theo **lời khai**: `option.dap_ung_req`, `criteria.assert[*].do_req`, và
+`deps.upstream`. Cột "Mã nguồn" dựa vào `hien_thuc_req` — trường vừa mới tồn tại ở M2-01 (và
+còn sau cờ TẮT), nên **chưa một tệp nào trên đĩa từng khai nó**. Vì vậy cột ấy trống ở mọi dự
+án, và 10 REQ mang chữ "chưa hiện thực" thật ra nghĩa là *"không tệp nào KHAI rằng nó làm yêu
+cầu này"* — chứ không phải *"chưa ai viết mã"*. Robot hai bánh có mã chạy được trên bo thật và
+vẫn nằm trong 10 ấy.
+
+Hai câu đó khác nhau, và gộp chúng lại đúng là cách một bảng bắt đầu nói quá. Nên `summary`
+của khối nói thẳng nó đọc gì: *"đọc theo lời khai: dap_ung_req · hien_thuc_req · do_req"*.
+
+Phần đọc được NGAY từ con số này: `chưa kiểm 0` và `đủ 0` — tức **không REQ nào** đi hết chuỗi,
+và 27 REQ chưa có một phương án nào nhận. Hai điều đó dựa trên dữ liệu đã có từ lâu
+(`dap_ung_req` tồn tại từ trước M2-01), nên chúng là phép đo thật.
+
+### Hook `req_chua_phu`
+
+Nó hỏi một câu **khác** `kiem_viec_chua_ai_kiem`: không phải *"việc đã ghi có ai kiểm chưa"*
+mà *"yêu cầu nào chưa ai đo tới"*. Verifier không trả lời được câu sau — nó có
+`doc_duoc_viec=False`, cố ý không biết đề bài, nên không đếm được phủ yêu cầu.
+
+Bốn cửa im lặng, mỗi cửa một lý do, và mỗi cửa một ca kiểm: cờ TẮT · lượt chưa ghi gì · đang
+giữa một kế hoạch đã duyệt (cùng lý lẽ với hook trên: kế hoạch bảy bước mà mỗi bước bị nhắc
+một vòng thì thành mười bốn lượt) · đã nhắc trong lượt này rồi.
+
+Lời nhắc cho **hai** lối và nói rõ lối thứ hai là hợp lệ: viết phép đo, hoặc nói thẳng REQ ấy
+ngoài phạm vi lượt này. Thiếu cửa thoát thì lời nhắc thành áp lực đẻ ra tiêu chí cho có — và
+một tiêu chí không đo gì làm hỏng đúng cái bảng nó vừa làm sáng.
+
+### Số đo
+
+Bộ kiểm 1637 → **1646 xanh, 0 đỏ** (+9 ca). `swift test` 43 ca, 0 đỏ, không đổi.
+"Phá lại thì đỏ" riêng cho **cả sáu** chỗ sửa. Không ca cũ nào phải sửa.
+
+### Chưa làm
+
+Cờ `req_phu` vẫn TẮT: "Tiêu chí xong" đòi chạy lại bộ 76 ca với cờ bật để so pass-rate, và bộ
+ấy tốn tiền mô hình nên §3.0 bắt hỏi người dùng trước. Lời nhắc này chèn chữ vào transcript
+mỗi lượt có ghi, nên nó đổi hành vi theo cách chỉ eval đo được.
