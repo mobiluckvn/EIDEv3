@@ -608,9 +608,14 @@ def _khoi_mo_phong_hdl(store: Any) -> list[dict[str, Any]]:
     # Dòng quan trọng nhất của khối. Đặt ngay sau kết luận.
     if nhay.get("tong"):
         bat, tong = nhay.get("bat", 0), nhay["tong"]
+        # M3-13 — NÓI RA con số ấy đo bằng gì. "Đo bằng mã" và "tác tử tự khai" đáng tin
+        # khác nhau, và trước đây khối này hiện chúng giống hệt nhau — một con số tự khai
+        # trông y như một con số đã đo, ngay ở dòng quan trọng nhất của khối.
+        bang_ma = (nhay.get("do_bang") == "ma")
         hang.insert(1, [
             "Độ nhạy bộ kiểm",
             f"bắt {bat}/{tong} phép phá mã"
+            + (" (đo bằng mã)" if bang_ma else " — **tác tử tự khai**, chưa ai đo lại")
             + ("" if bat == tong
                else f" — còn {tong - bat} phép LỌT, nên có chỗ bộ kiểm không canh")])
     else:

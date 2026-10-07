@@ -52,6 +52,25 @@ _PHEP: tuple[tuple[str, str, str], ...] = (
     (r"(?<![-+=<>!*/%&|^])(\+)(?![+=])", "-", "đổi cộng thành trừ"),
 )
 
+# M3-13 — phép đột biến cho VERILOG. Bảng kiểu C không dùng được: `==` còn khớp, nhưng
+# `posedge` (sườn lên), `&` trên bus, và hằng `4'd10` thì không phép nào chạm tới — mà đó
+# đúng là những chỗ một testbench nông sẽ không canh.
+#
+# Mỗi phép đổi HÀNH VI của phần cứng, không chỉ đổi văn bản:
+#   đảo `if`        — nhánh điều khiển chạy ngược
+#   `&` → `|`       — phép logic trên bus ra kết quả khác
+#   hằng `'d`       — ngưỡng đếm/so sánh lệch một
+#   `posedge`→`negedge` — chốt ở sườn kia của xung nhịp, đúng loại lỗi khó thấy nhất
+#   `==` → `!=`     — điều kiện so sánh đảo
+PHEP_VERILOG: tuple[tuple[str, Any, str], ...] = (
+    (r"\bif\s*\(([^()]*)\)", r"if (!(\1))", "đảo điều kiện if"),
+    (r"(?<![&|])\s&\s(?![&|])", " | ", "đổi AND bit thành OR bit"),
+    (r"\b(\d+)'([dD])(\d+)\b", lambda m: f"{m.group(1)}'{m.group(2)}{int(m.group(3)) + 1}",
+     "đổi hằng số thập phân (+1)"),
+    (r"\bposedge\b", "negedge", "đổi sườn lên thành sườn xuống"),
+    (r"([^<>=!])(==)([^=])", r"\1!=\3", "đảo phép so sánh bằng"),
+)
+
 # Vùng KHÔNG đột biến: chuỗi ký tự, chú thích, và dòng `#include`. Thay trong đó là đổi văn
 # bản chứ không đổi hành vi.
 _BO_QUA = re.compile(r'"(?:[^"\\]|\\.)*"' r"|'(?:[^'\\]|\\.)*'"
@@ -59,9 +78,15 @@ _BO_QUA = re.compile(r'"(?:[^"\\]|\\.)*"' r"|'(?:[^'\\]|\\.)*'"
                      re.S | re.M)
 
 
-def dot_bien_van_ban(ma: str, phep: int = 0) -> tuple[str, str, int]:
-    """Áp một phép đột biến lên mã nguồn. Trả `(mã mới, mô tả, số chỗ đổi)`."""
-    mau, thay, mo_ta = _PHEP[phep % len(_PHEP)]
+def dot_bien_van_ban(ma: str, phep: int = 0,
+                     bang: tuple[tuple[str, Any, str], ...] = _PHEP
+                     ) -> tuple[str, str, int]:
+    """Áp một phép đột biến lên mã nguồn. Trả `(mã mới, mô tả, số chỗ đổi)`.
+
+    `bang` mặc định là bảng kiểu C — `test.sensitivity` cho firmware đang dùng nó và không
+    được đổi một ly. Truyền `PHEP_VERILOG` để đo testbench HDL.
+    """
+    mau, thay, mo_ta = bang[phep % len(bang)]
     giu: list[str] = []
 
     def _cat(m: re.Match[str]) -> str:
@@ -75,7 +100,8 @@ def dot_bien_van_ban(ma: str, phep: int = 0) -> tuple[str, str, int]:
 
 
 def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]],
-               toi_da_phep: int = 3) -> dict[str, Any]:
+               toi_da_phep: int = 3,
+               bang: tuple[tuple[str, Any, str], ...] = _PHEP) -> dict[str, Any]:
     """Với từng tệp nguồn: nạp nó vào bộ kiểm, phá nó, xem có ca nào đỏ không.
 
     `chay(p)` do tầng trên đưa vào: `chay(None)` chạy bộ kiểm như tác tử vẫn chạy nó;
@@ -138,8 +164,8 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
 
         thay_doi = False
         ghi_chu = "không có chỗ nào để đột biến"
-        for i in range(min(toi_da_phep, len(_PHEP))):
-            moi_ma, mo_ta, n = dot_bien_van_ban(goc, i)
+        for i in range(min(toi_da_phep, len(bang))):
+            moi_ma, mo_ta, n = dot_bien_van_ban(goc, i, bang=bang)
             if n == 0 or moi_ma == goc:
                 continue
             try:

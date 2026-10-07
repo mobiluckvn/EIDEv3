@@ -149,3 +149,92 @@ def test_cong_cu_test_sensitivity_co_mat_va_khong_khoa():
     assert "test.run" in t.summary_vi, "phải chỉ rõ gọi nó SAU test.run, nếu không nó vô nghĩa"
     from eide.ke_hoach import cong_cu_bi_khoa
     assert not cong_cu_bi_khoa(t)
+
+
+# ---------------------------------------------------------------- M3-13: phép cho Verilog
+#
+# Phép đột biến kiểu C không dùng được cho Verilog: `==` → `!=` thì còn khớp, nhưng `posedge`
+# sườn lên, toán tử `&` trên bus, và hằng `4'd10` thì không có phép nào chạm tới. Mà đó đúng
+# là những chỗ một testbench nông sẽ không canh.
+def test_phep_verilog_dao_if_khong_dung_display():
+    """TC-M3-13-01 — đảo điều kiện `if`, nhưng KHÔNG đụng chuỗi trong `$display`.
+
+    `$display("if (x)")` có đúng hình dạng một điều kiện. Đổi chữ trong đó thì hành vi không
+    đổi, và một đột biến không đổi hành vi mà bộ kiểm "không bắt được" là một cáo buộc sai.
+    """
+    ma = 'always @(posedge clk) begin\n  if (a) $display("if (x)");\nend\n'
+    moi, mo_ta, n = DB.dot_bien_van_ban(ma, 0, bang=DB.PHEP_VERILOG)
+    assert n == 1, (n, moi)
+    assert "if (!(a))" in moi, moi
+    assert '$display("if (x)")' in moi, "đã đụng vào chuỗi trong $display"
+
+
+def test_phep_verilog_du_nam_phep():
+    """Năm phép, mỗi phép chạm một loại lỗi khác nhau của mã RTL."""
+    cap = [
+        ('if (a) b <= 1;', "if (!(a))"),
+        ('assign y = a & b;', " | "),
+        ("localparam N = 4'd10;", "4'd11"),
+        ('always @(posedge clk) x <= 1;', "negedge"),
+        ('if (dem == 5) y <= 1;', "!="),
+    ]
+    for ma, dau in cap:
+        thay = False
+        for i in range(len(DB.PHEP_VERILOG)):
+            moi, _, n = DB.dot_bien_van_ban(ma, i, bang=DB.PHEP_VERILOG)
+            if n and dau in moi:
+                thay = True
+                break
+        assert thay, f"không phép nào đổi được {ma!r} thành có {dau!r}"
+
+
+def test_bang_mac_dinh_y_nhu_cu():
+    """TC-M3-13-02 — ca âm: không truyền bảng thì kết quả y hệt trước khi sửa.
+
+    `test.sensitivity` cho firmware C đang dùng bảng mặc định, và nó không được đổi một ly.
+    """
+    ma = "int f(void){ int i=0; if (i == 480) i = i + 1; return i; }\n"
+    for i in range(4):
+        a_moi, a_mo_ta, a_n = DB.dot_bien_van_ban(ma, i)
+        b_moi, b_mo_ta, b_n = DB.dot_bien_van_ban(ma, i, bang=DB._PHEP)
+        assert (a_moi, a_mo_ta, a_n) == (b_moi, b_mo_ta, b_n)
+
+
+def test_do_do_nhay_nhan_bang_phep_rieng(tmp_path):
+    """`do_do_nhay` phải truyền bảng xuống, không chỉ nhận cho có."""
+    v = tmp_path / "dem.v"
+    v.write_text("module dem; always @(posedge clk) x <= 1; endmodule\n", "utf-8")
+    thay: list[str] = []
+
+    def chay(p):
+        thay.append(v.read_text("utf-8"))
+        return (True, "KET QUA: PASS") if p is None else (True, "KET QUA: PASS")
+
+    DB.do_do_nhay([v], chay, toi_da_phep=len(DB.PHEP_VERILOG),
+                  bang=DB.PHEP_VERILOG)
+    assert any("negedge" in t for t in thay), "không phép Verilog nào được áp"
+
+
+def test_tra_tep_ve_nguyen_ven_khi_chay_nem_loi(tmp_path):
+    """TC-M3-13-06 — `chay` ném lỗi thì tệp `.v` vẫn phải nguyên như ban đầu.
+
+    Để lại một tệp RTL ở trạng thái đột biến là hỏng theo kiểu tệ nhất: lần dựng sau dùng
+    nó, mọi phép đo sau đó nói về một mạch không ai cố ý viết.
+    """
+    v = tmp_path / "dem.v"
+    goc = "module dem; always @(posedge clk) x <= 1; endmodule\n"
+    v.write_text(goc, "utf-8")
+    lan = {"n": 0}
+
+    def chay(p):
+        lan["n"] += 1
+        if lan["n"] > 2:                      # lần đầu: chạy gốc; lần hai: nạp tệp
+            raise RuntimeError("iverilog chết")
+        return True, "KET QUA: PASS"
+
+    try:
+        DB.do_do_nhay([v], chay, toi_da_phep=len(DB.PHEP_VERILOG),
+                      bang=DB.PHEP_VERILOG)
+    except RuntimeError:
+        pass
+    assert v.read_text("utf-8") == goc, "tệp RTL bị bỏ lại ở trạng thái đột biến"

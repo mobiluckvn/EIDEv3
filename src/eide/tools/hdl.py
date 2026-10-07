@@ -150,8 +150,11 @@ def register(r: Registry) -> None:
         #
         # Một phép đo không vào kho thì lượt sau không ai biết nó từng xảy ra.
         if do_nhay and do_nhay.get("tong"):
+            # M3-13 — ĐÁNH DẤU là lời khai. Không cấm: có lúc tác tử thật sự đã phá mã bằng
+            # tay. Nhưng kho phải phân biệt được "đo bằng mã" với "khai bằng lời", vì hai
+            # thứ ấy đáng tin khác nhau và khối A8.0 trước đây hiện chúng giống hệt nhau.
             kq.do_nhay = {"bat": int(do_nhay.get("bat") or 0),
-                          "tong": int(do_nhay["tong"])}
+                          "tong": int(do_nhay["tong"]), "do_bang": "tu_khai"}
         _ghi_kho(ctx, explain, kq, "sim")
         if not kq.dat:
             return _loi_chang(kq, (
@@ -160,6 +163,66 @@ def register(r: Registry) -> None:
                 "nhớ `$finish`. Nếu in FAIL: đọc dòng ngay trước nó để biết ca nào trượt."))
         return {**kq.to_dict(),
                 "note_vi": f"Testbench in PASS sau {kq.giay:.1f} s bằng {kq.cong_cu}."}
+
+    @r.tool("hdl.sensitivity", "Mô phỏng",
+            "ĐO độ nhạy testbench Verilog: phá mã RTL thật (đảo if, & thành |, hằng +1, "
+            "posedge thành negedge, == thành !=) rồi chạy lại. Testbench in PASS vô điều "
+            "kiện sẽ lộ ra — phá gì nó cũng xanh. Ghi số đo vào kho, thay con số tự khai.",
+            {"type": "object",
+             "properties": {
+                 "nguon": {"type": "string", "description": "thư mục chứa rtl + testbench"},
+                 "nguon_rtl": {"type": "array", "items": {"type": "string"},
+                               "description": "các tệp .v SẢN PHẨM sẽ bị phá (không phải tb)"},
+                 "dinh": {"type": "string", "description": "tên mô-đun testbench"},
+                 "bo_may": {"type": "string", "enum": ["iverilog", "verilator"]},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["nguon", "nguon_rtl", "explain"]},
+            risk="R1", core=False, needs_explain=True, writes_artefact=True,
+            keywords=["độ nhạy", "sensitivity", "đột biến", "mutation", "testbench",
+                      "verilog", "phá mã"])
+    def hdl_sensitivity(ctx: Any, explain: dict[str, Any], nguon: str,
+                        nguon_rtl: list[str], dinh: str = "", bo_may: str = "iverilog"):
+        from ..build import hdl as H
+
+        goc = _goc(ctx)
+        rtl = [goc / x for x in nguon_rtl]
+        thieu = [str(p) for p in rtl if not p.is_file()]
+        if thieu:
+            return ToolResult(False, error=EideError(
+                "E1002", "Không có tệp RTL: " + ", ".join(thieu),
+                hint_for_agent="Nêu đường dẫn tương đối từ gốc dự án, ví dụ `rtl/dem.v`.",
+                blame="agent"))
+
+        r_do = H.do_do_nhay_hdl(goc=goc, rtl=rtl, nguon=goc / nguon, dinh=dinh,
+                                bo_may=bo_may)
+        if not r_do.get("bo_kiem_xanh_luc_dau"):
+            return ToolResult(False, error=EideError(
+                "E4030", r_do.get("vi_sao_khong_do_duoc") or "Không đo được độ nhạy.",
+                hint_for_agent=("Bộ kiểm phải XANH trước khi đo độ nhạy — không thì không "
+                                "phân biệt được ca đỏ vì đột biến với ca đỏ từ trước."),
+                blame="agent"))
+
+        bat = int(r_do["so_thay"])
+        tong = bat + int(r_do["so_khong_thay"])
+        # Ghi ĐÈ con số tự khai (nếu có) bằng con số đo được: một phép đo thắng một lời khai.
+        cu = ctx.store.get(f"{MA_HDL}:sim")
+        can = dict((cu or {}).get("canonical") or {})
+        can["do_nhay"] = {"bat": bat, "tong": tong, "do_bang": "ma",
+                          "chi_tiet": r_do["tep"]}
+        ctx.store.apply(
+            artefact_id=f"{MA_HDL}:sim", type="build",
+            op="update" if cu else "create", author=f"agent:{ctx.run_id}",
+            explain=explain, canonical=can)
+        return {
+            "bat": bat, "tong": tong, "tep": r_do["tep"],
+            "so_chua_do": r_do["so_chua_do"], "so_khong_nap": r_do["so_khong_nap"],
+            "note_vi": (
+                f"Độ nhạy ĐO ĐƯỢC: bắt {bat}/{tong} phép phá mã."
+                + ("" if bat == tong else
+                   f" Còn {tong - bat} tệp bị phá mà testbench **vẫn xanh** — nghĩa là "
+                   "testbench không canh phần ấy, và chữ PASS của nó không nói gì về chúng.")
+                + (f" {r_do['so_chua_do']} tệp chưa đo được."
+                   if r_do["so_chua_do"] else ""))}
 
     # ============================================================== tổng hợp
     @r.tool("hdl.synth", "Mạch thật",

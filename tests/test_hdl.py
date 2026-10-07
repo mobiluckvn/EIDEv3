@@ -1117,9 +1117,11 @@ def test_do_nhay_di_theo_hien_vat_khong_chi_tra_cho_mo_hinh(tmp_path):
     sim.fn(ctx, explain={"summary": "đo", "why": "ca kiểm"},
            nguon="rtl", dinh="tb", do_nhay={"bat": 6, "tong": 7})
 
-    assert ghi.get("canonical", {}).get("do_nhay") == {"bat": 6, "tong": 7}, (
-        f"độ nhạy không vào kho — lượt sau không ai biết nó từng được đo. Đã ghi: "
-        f"{ghi.get('canonical', {}).get('do_nhay')}")
+    dn = ghi.get("canonical", {}).get("do_nhay") or {}
+    # M3-13 thêm khoá `do_bang` vào cùng dict này, nên ca kiểm không chốt cứng cả dict nữa
+    # — điều nó canh là `bat`/`tong` CÓ VÀO KHO, không phải dict ấy gồm đúng mấy khoá.
+    assert (dn.get("bat"), dn.get("tong")) == (6, 7), (
+        f"độ nhạy không vào kho — lượt sau không ai biết nó từng được đo. Đã ghi: {dn}")
 
 
 def test_A8_di_qua_BO_DUNG_TAB_that_khong_chi_goi_ham():
@@ -1330,3 +1332,126 @@ def test_doc_ket_qua_tb_cau_ke_co_chu_pass_khong_tinh():
     # Và chuỗi con vẫn không tính, dù có dấu hai chấm ở đâu đó trên dòng.
     assert H.doc_ket_qua_tb("note: bypass mode on\n", 0)["so_pass"] == 0
     assert H.doc_ket_qua_tb("warning: pass_through.v:3: unused\n", 0)["so_pass"] == 0
+
+
+# =============================================================== M3-13 độ nhạy testbench HDL
+#
+# `hdl.sim` nhận `do_nhay` do **tác tử tự điền**. Mô tả tham số đã dặn "chỉ điền khi đã thật
+# sự làm", nhưng một lời dặn không phải một phép đo — và con số ấy đi thẳng vào kho rồi lên
+# khối A8.0 như thể nó đã được đo.
+#
+# Lỗ hổng cùng hình dạng với DEV-288 (`test.sensitivity` cho C): ô xanh của bộ kiểm chưa nói
+# gì tới khi biết **cơ chế nào** làm nó xanh. Ở đây còn thêm một tầng: cả con số NÓI VỀ ô
+# xanh ấy cũng chỉ là lời khai.
+def test_do_nhay_tu_khai_duoc_danh_dau(tmp_path):
+    """TC-M3-13-05 — con số tác tử tự điền phải mang nhãn `do_bang="tu_khai"`.
+
+    Không cấm tự khai — có lúc tác tử thật sự đã phá mã bằng tay. Nhưng kho phải phân biệt
+    được "đo bằng mã" với "khai bằng lời", vì hai thứ ấy đáng tin khác nhau, và khối A8.0
+    hiện chúng giống hệt nhau.
+    """
+    from types import SimpleNamespace
+
+    from eide.tools import build_registry
+
+    goc = _du_an(tmp_path)
+    (goc / "rtl" / "tb.v").write_text(
+        'module tb; initial begin $display("PASS"); $finish; end endmodule\n', "utf-8")
+    ghi: dict = {}
+    ctx = SimpleNamespace(
+        config=SimpleNamespace(paths=SimpleNamespace(project_root=goc)),
+        run_id="test",
+        store=SimpleNamespace(get=lambda _m: None, apply=lambda **k: ghi.update(k)))
+    sim = next(t for t in build_registry().all() if t.name == "hdl.sim")
+    sim.fn(ctx, explain={"summary": "đo", "why": "ca kiểm"},
+           nguon="rtl", dinh="tb", do_nhay={"bat": 6, "tong": 7})
+
+    dn = ghi.get("canonical", {}).get("do_nhay") or {}
+    assert dn.get("bat") == 6 and dn.get("tong") == 7, dn
+    assert dn.get("do_bang") == "tu_khai", dn
+
+
+def test_A8_noi_ro_do_nhay_la_TU_KHAI():
+    """Khối A8.0 phải NÓI RA rằng con số ấy do tác tử khai, không phải do mã đo."""
+    from eide import surfaces as S
+
+    class _Kho:
+        def get(self, ma):
+            if ma != "build:hdl:sim":
+                return None
+            return {"id": ma, "type": "build", "version": 1, "author": "agent:run-1",
+                    "canonical": {"dat": True, "pass_fail": "PASS", "cong_cu": "vvp",
+                                  "giay": 1.0,
+                                  "do_nhay": {"bat": 6, "tong": 7, "do_bang": "tu_khai"}},
+                    "explain": {"summary": ""}, "stale": False, "stale_reason": None}
+
+    kh = S._khoi_a8_0(_Kho()) if hasattr(S, "_khoi_a8_0") else None
+    if kh is None:
+        import inspect
+        ten = [n for n, f in inspect.getmembers(S, inspect.isfunction)
+               if "A8.0" in (inspect.getsource(f) if f.__module__ == S.__name__ else "")]
+        kh = getattr(S, ten[0])(_Kho())
+    chu = str(kh)
+    assert "6/7" in chu, chu[:300]
+    assert "tự khai" in chu, "không nói ra rằng con số do tác tử khai"
+
+
+@can_iv
+def test_hdl_sensitivity_bo_kiem_that_bat_duoc(tmp_path):
+    """TC-M3-13-03 — testbench kiểm giá trị cụ thể thì phá RTL phải làm nó ĐỎ."""
+    from eide.build import hdl as H2
+
+    goc = tmp_path
+    rtl = goc / "rtl"
+    rtl.mkdir()
+    (rtl / "dem.v").write_text(
+        "module dem(input clk, output reg [3:0] q);\n"
+        "  initial q = 0;\n"
+        "  always @(posedge clk) q <= q + 1;\n"
+        "endmodule\n", "utf-8")
+    (rtl / "tb.v").write_text(
+        "module tb;\n"
+        "  reg clk = 0; wire [3:0] q;\n"
+        "  dem u(.clk(clk), .q(q));\n"
+        "  integer i;\n"
+        "  initial begin\n"
+        "    for (i = 0; i < 5; i = i + 1) begin #1 clk = 1; #1 clk = 0; end\n"
+        "    if (q == 4'd5) $display(\"KET QUA: PASS\");\n"
+        "    else $display(\"KET QUA: FAIL q=%0d\", q);\n"
+        "    $finish;\n"
+        "  end\n"
+        "endmodule\n", "utf-8")
+
+    r = H2.do_do_nhay_hdl(goc=goc, rtl=[rtl / "dem.v"], nguon=rtl, dinh="tb")
+    assert r["bo_kiem_xanh_luc_dau"], r.get("vi_sao_khong_do_duoc") or r
+    assert r["so_thay"] == 1, r["tep"]
+
+
+@can_iv
+def test_hdl_sensitivity_tb_chi_in_PASS_thi_khong_thay(tmp_path):
+    """TC-M3-13-04 — testbench in PASS vô điều kiện: phá gì nó cũng xanh.
+
+    Đây là ca đắt nhất của cả nhiệm vụ. Một testbench như thế cho ra đúng chữ "PASS" mà
+    `hdl.sim` đọc được, và không ai phân biệt được nó với một testbench thật — trừ phép đo
+    này.
+    """
+    from eide.build import hdl as H2
+
+    goc = tmp_path
+    rtl = goc / "rtl"
+    rtl.mkdir()
+    (rtl / "dem.v").write_text(
+        "module dem(input clk, output reg [3:0] q);\n"
+        "  initial q = 0;\n"
+        "  always @(posedge clk) q <= q + 1;\n"
+        "endmodule\n", "utf-8")
+    (rtl / "tb.v").write_text(
+        "module tb;\n"
+        "  reg clk = 0; wire [3:0] q;\n"
+        "  dem u(.clk(clk), .q(q));\n"
+        "  initial begin #10 $display(\"KET QUA: PASS\"); $finish; end\n"
+        "endmodule\n", "utf-8")
+
+    r = H2.do_do_nhay_hdl(goc=goc, rtl=[rtl / "dem.v"], nguon=rtl, dinh="tb")
+    assert r["bo_kiem_xanh_luc_dau"], r
+    assert r["so_khong_thay"] == 1, r["tep"]

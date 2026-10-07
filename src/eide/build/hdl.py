@@ -578,6 +578,31 @@ def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
     return kq
 
 
+def do_do_nhay_hdl(*, goc: Path, rtl: list[Path], nguon: Path, dinh: str = "",
+                   bo_may: str = "iverilog") -> dict[str, Any]:
+    """M3-13 — đo độ nhạy của testbench Verilog bằng ĐỘT BIẾN THẬT trên mã RTL.
+
+    `hdl.sim` nhận `do_nhay` do **tác tử tự điền**. Mô tả tham số đã dặn *"chỉ điền khi đã
+    thật sự làm"*, nhưng một lời dặn không phải một phép đo — và con số ấy đi thẳng vào kho
+    rồi lên khối A8.0 như thể nó đã được đo.
+
+    Hàm này phá mã RTL thật rồi chạy lại testbench. Testbench in `PASS` vô điều kiện sẽ lộ
+    ra ngay: phá gì nó cũng xanh. Đó là ca đắt nhất, vì một testbench như thế cho ra đúng
+    chữ PASS mà `hdl.sim` đọc được, và không ai phân biệt được nó với testbench thật — trừ
+    phép đo này.
+
+    Dùng lại `dot_bien.do_do_nhay`, chỉ đưa vào bảng phép Verilog và một hàm `chay`. Phần
+    "trả tệp về nguyên vẹn trong `finally`" là của `do_do_nhay`, không viết lại ở đây.
+    """
+    from .dot_bien import PHEP_VERILOG, do_do_nhay
+
+    def chay(_p: Path | None) -> tuple[bool, str]:
+        kq = mo_phong(goc=goc, nguon=nguon, dinh=dinh, bo_may=bo_may)
+        return bool(kq.dat), kq.nguyen_van
+
+    return do_do_nhay(list(rtl), chay, toi_da_phep=len(PHEP_VERILOG), bang=PHEP_VERILOG)
+
+
 def tong_hop(*, goc: Path, nguon: Path, dinh: str, bo_kit: str = "tangnano20k",
              ra: Path | None = None) -> KetQuaHdl:
     """Yosys `synth_gowin` → tệp JSON mạng cổng, kèm bảng đếm ô."""
