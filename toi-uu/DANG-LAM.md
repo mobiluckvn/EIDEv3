@@ -11,7 +11,7 @@
 | | |
 |---|---|
 | **Xong** | **23/106** — việc #1 → #23 của Giai đoạn 1. Việc #22 và #23 mỗi cái còn **một tiêu chí chưa đạt** (xem dưới) |
-| **Đang dở** | **không có.** `main` = `XXXXXXX`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
+| **Đang dở** | **không có.** `main` = `3edbab5`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
 | Ca kiểm | 1 610 → **1 896** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
 | Nhật ký | DEV-330 → **DEV-352** trong `docs/md/EIDE-DEV-LOG.md` |
 | Công cụ | 127 → **130** (`hdl.sensitivity`, `hdl.constraints_check`, `test.criteria`) |
