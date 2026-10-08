@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from dataclasses import fields as dc_fields
 from pathlib import Path
 
 
@@ -353,6 +354,18 @@ class Features:
     # thuan — mot phep do khong vao kho thi bang chua do, va mot con so da loi thoi ma khong
     # ai danh dau thi te hon khong co con so.
     test_harden: bool = False
+    # M4-07 — tren duong `task.run(subagent="verifier")` ma TAC TU CHINH tu goi, dau vao cua
+    # verifier do MA dung tu so cai, khong phai de bai tac tu chinh tu viet.
+    #
+    # Vi sao can co: `DinhNghia.doc_duoc_viec=False` co trong ma tu G6 va khong dong nao doc
+    # no — `SA.chay` nhan `viec` roi gui nguyen van. Nen o duong tay, verifier doc dung thu
+    # tac tu chinh muon no doc, ke ca lap luan ("chac chan PID dung"). Duong TU DONG
+    # (SubagentStop → `viec_cho_verifier`) thi da sach tu dau.
+    #
+    # Sau co vi no DOI THU MOT TAC TU DOC (N-4): mot verifier chi thay du kien co the ket
+    # luan `chua_du_du_kien` o nhung luot truoc day no noi `dat`. Mac dinh TAT cho toi khi bo
+    # ca gai loi (M4-22) do duoc ti le bac dung khong giam.
+    verifier_goi_bang_chung: bool = False
 
     @classmethod
     def load(cls) -> "Features":
@@ -376,9 +389,15 @@ class Features:
 
     @staticmethod
     def ten_co() -> tuple[str, ...]:
-        return ("schematic", "gon_cong_cu", "truy_vet", "req_phu", "req_chat_luong",
-                "ke_hoach_cong_kiem", "erc_tu_dong", "sim_runner_gioi_han",
-                "test_harden")
+        """Ten moi co, lay tu CHINH dataclass nay.
+
+        Truoc M4-07 day la mot danh sach go tay, va nghia la: them mot truong co vao lop nay
+        thi `load()` KHONG doc bien moi truong cua no, `to_dict()` khong bao no, va
+        `tools/kiem_tai_lieu.py` khong bat no len. Do duoc ngay o M4-07 — co
+        `verifier_goi_bang_chung` khai dung cho, `Features.load()` tra ve False, va ca kiem
+        do ma khong chi ra duoc vi sao.
+        """
+        return tuple(f.name for f in dc_fields(Features))
 
     def bat(self, ten: str) -> bool:
         return bool(getattr(self, ten, False))

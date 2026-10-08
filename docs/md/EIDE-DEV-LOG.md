@@ -8853,3 +8853,104 @@ hai đo được:
 
 Nên cờ `TEST_HARDEN` giữ **TẮT**, và tiêu chí ấy để mở trong kế hoạch. Bật mặc định còn cần bộ
 76 ca chạy hai chế độ — cũng phải hỏi trước.
+
+---
+
+## [DEV-352] [M4-07] Verifier nhận gói bằng chứng do MÃ dựng — và một cờ thứ mười vô hình
+
+Nhiệm vụ #23. **Đổi hành vi**, sau cờ `VERIFIER_GOI_BANG_CHUNG` (mặc định TẮT) — trừ một phần
+sửa lỗi thuần luôn chạy (`Features.ten_co()`). Không tiền đề.
+
+### Chỗ hổng: một trường trong hợp đồng mà không dòng nào đọc
+
+`DinhNghia.doc_duoc_viec: bool = True` có trong `subagent.py` từ G6, và `verifier` khai
+`doc_duoc_viec=False` kèm một đoạn docstring nói rõ vì sao: *"Cho nó đọc đề bài là mời nó suy
+ra kết luận mong đợi rồi đi tìm cách biện minh"*. Trường ấy **chưa bao giờ được đọc**. `SA.chay`
+nhận `viec` rồi gửi nguyên văn, nên trên đường `task.run(subagent="verifier")` — đường mà tác tử
+chính tự gọi — verifier đọc đúng thứ tác tử chính muốn nó đọc.
+
+Đây lần thứ bảy đúng một hình dạng trong đợt này: **cơ chế có sẵn, đường dẫn tới nó đứt.**
+
+Đo trên sổ cái 42 dự án thật: **327 lời gọi `task.run` có `viec`, 323 trong số đó là verifier.**
+Không phải một đường lý thuyết — nó là đường chính của cả lớp kiểm chứng. Và **209/323 đề bài
+dài hơn 300 ký tự**, nhiều đề bài nói sẵn đáp án: *"hiện vật build:firmware … kết quả
+'dat: false'"*, *"đối chiếu với hdl.bitstream (dat=true, chip GW2A)"*.
+
+### Hai nửa, và chỉ một nửa làm việc
+
+`goi_bang_chung_tu_so_cai(ledger, store, history)` dựng đầu vào từ sổ cái và kho, ba khối:
+
+* **A** — changeset kể từ lần verifier gần nhất, dùng **đúng mốc** mà
+  `kiem_chung.co_viec_chua_kiem` dùng. Lệch mốc thì hook nói "còn việc chưa kiểm" trong khi gói
+  lại kể một đợt việc khác.
+* **B** — hiện vật bị chạm, **đọc lại từ kho**: phiên bản, cờ STALE, và `dat` nếu có.
+* **C** — kết quả `build`/`sim_result`/`target` gần nhất. Lấy theo **loại**, không theo tên, nên
+  một công cụ đo thêm sau này tự có mặt.
+
+Dựng được trên **29/42 dự án thật**, 0 lần đổ. Trong đó `du-lieu/robot-canbang` đụng **đúng trần
+6 000 ký tự** — trần ấy không phải một con số phòng xa, nó nổ trên dữ liệu có thật. Và tham số
+`history` không trang trí: ở `rtos-sinhvien` nó biến `firmware/control_rtos.c` thành
+`firmware/control_rtos.c (update→v24)` — phiên bản **tại lúc đổi**, số mà sổ cái một mình không
+ghi, và số duy nhất nói được *"sau changeset ấy có ai đổi thêm nữa không"*.
+
+### Nửa `loc_claim`, và con số nói nó yếu
+
+Kế hoạch nêu năm dấu hiệu của một câu lập luận: `vì`, `nên`, `chắc chắn`, `đã kiểm`,
+`đã xác nhận`. Đem đo trên 323 đề bài thật: nó bỏ được **11 trong 1 706 câu** — chạm 11/323 đề
+bài. Chỗ rò thật không phải chữ "vì"; tác tử chính **trích sẵn phán quyết** cho verifier đọc.
+
+Nên có dấu hiệu thứ sáu, thêm vì phép đo chứ không vì kế hoạch nói: `dat:` / `dat=` /
+`pass_fail` / `chay_duoc=` / `không đạt` / `đã đạt`. Số mới: **95/1 706 câu, chạm 88/323 đề bài,
+và 0/323 đề bài bị lọc thành trắng.** Thử thêm `thành công` nữa thì lên 123 câu, nhưng *"lệnh
+chạy thành công, mã thoát 0"* là một **quan sát** — bỏ quan sát đi là lấy mất dữ kiện của
+verifier, không lấy mất lập luận. Nên không nhận.
+
+Và phải nói thẳng mức độ của nửa này: **`loc_claim` là một phép lọc văn xuôi, nó leaky và nó
+biết thế.** Một câu lập luận không mang chữ nào trong sáu dấu hiệu vẫn đi qua. Hàng rào là nửa
+kia — gói bằng chứng do mã dựng, thứ tác tử chính không soạn được.
+
+### Cờ thứ mười vô hình, và một ca kiểm đúng đề nhưng kiểm một tên gõ sẵn
+
+`verifier_goi_bang_chung` khai đúng trường trong `Features`, mà `Features.load()` vẫn trả
+`False` khi `EIDE_FEATURE_VERIFIER_GOI_BANG_CHUNG=1`. Lý do: `ten_co()` là một **danh sách gõ
+tay**, và `load()`/`to_dict()`/`tools/kiem_tai_lieu.py` đều vòng qua nó. Một cờ không có tên
+trong danh sách ấy thì không bật được, không hiện trên tab cờ, và `kiem_tai_lieu` không bật nó
+lên để đếm công cụ.
+
+Có một ca kiểm nêu đúng bất biến này — `test_co_moi_co_trong_ten_co_va_to_dict` — và nó **xanh
+suốt**, vì nó kiểm một tên gõ sẵn (`sim_runner_gioi_han`) thay vì so hai danh sách. Nay
+`ten_co()` lấy từ `dataclasses.fields(Features)`, và ca kiểm mới so **tập hợp với tập hợp** rồi
+bật mọi cờ qua biến môi trường để chắc đường nạp thật sự chạy.
+
+Đây là biến thể của bài học DEV-344: một ca kiểm nói đúng điều cần canh mà không chạm tới thứ
+nó nói nó canh.
+
+### Giới hạn phạm vi, và những gì KHÔNG đổi
+
+Đường **tự động** của SubagentStop vẫn dùng `viec_cho_verifier(bc)` — nó vốn đã sạch từ G6,
+verifier ở đó chỉ thấy báo cáo. Có một ca kiểm canh đúng chuyện ấy: cờ bật thì đường tự động
+**vẫn** gửi `BÁO CÁO (dữ liệu…)`, không gửi `BẰNG CHỨNG (dữ liệu)`. Lược đồ `TRUONG_BAO_CAO`
+không đổi.
+
+Điều kiện chuyển chế độ lấy từ **hợp đồng** (`dn.doc_duoc_viec`), không từ một danh sách tên:
+thêm một verifier thứ hai sau này thì nó tự được bảo vệ.
+
+### Tiêu chí còn mở
+
+Kế hoạch đòi *"trên bộ ca gài lỗi (M4-22), tỉ lệ verifier bác đúng không giảm khi bật cờ"*.
+M4-22 **chưa làm** (nó ở nhiệm vụ sau), và phép đo ấy cần lời gọi mô hình thật — §3.0 bắt hỏi
+người dùng trước. Nên cờ giữ **TẮT**, và tiêu chí để mở, giống tiêu chí còn mở của M4-06.
+
+Ba con số đã đo được thì đo bằng dữ liệu thật, không bằng mô hình: 323 đề bài verifier thật,
+95/1 706 câu bị lọc, 29/42 dự án dựng được gói.
+
+### Phá lại thì đỏ: 34/36 ở lượt đầu
+
+Hai chỗ LỌT cùng một hình dạng, và là hình dạng của DEV-344: **một ca kiểm xanh vì MỘT DÒNG
+KHÁC.** Bỏ hẳn khối B khỏi gói mà bộ kiểm vẫn xanh — vì ca kiểm của khối A đã thấy `a.c` qua
+dòng changeset rồi. Hai khối ấy nói hai câu khác nhau: A nói *"cs-3 chạm a.c"* (chuyện đã xảy
+ra), B nói *"a.c trong kho hiện là v1 và đang STALE"* (chuyện ĐANG đúng) — và chỉ câu thứ hai
+trả lời được *"bằng chứng này còn giá trị không"*. Chỗ thứ hai: nhánh *"không có changeset nào"*
+bị làm cho im lặng cũng xanh, mà im lặng và "không có gì để kiểm" khác hẳn nhau với người đọc.
+
+Sau khi thêm hai ca đọc riêng từng khối: **36/36**. Bộ kiểm 1 878 → **1 896 xanh**, 0 đỏ.

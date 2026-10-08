@@ -155,7 +155,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 20 | [M4-19](#m4-19) | Đột biến trên bản sao, không ghi đè tệp sản phẩm của người dùng | P2 | S | — | — | xong 08/10/2026 · DEV-349 · 1835→1846 ca · phá lại 13/13 (lượt đầu 7/13) · đo trên 3 dự án thật TẠI CHỖ: 50/50 tệp firmware giữ nguyên sha256 VÀ mtime, kết luận giống hệt lượt đột biến tại chỗ của M4-05 | ☑ |
 | 21 | [M4-04](#m4-04) | Đột biến chi tiết từng vị trí + điểm đột biến (mutation score) | P1 | M | M4-05, M4-19 | — | xong 09/10/2026 · DEV-350 · 1846→1862 ca · phá lại 22/22 (lượt đầu 15/22) · TÁI HIỆN được ca DANH-GIA §2.2 bằng máy (0xFFFFFFFD dòng 147 → mutant SỐNG) · phép đo mới TREO 10 phút trên tệp thật đầu tiên, đã sửa | ☑ |
 | 22 | [M4-06](#m4-06) | Vòng tự nâng test khi đột biến sống (Evaluator–Optimizer) | P0 | M | M4-04, M4-05 | TEST_HARDEN — TẮT | xong 09/10/2026 · DEV-351 · 1862→1878 ca · phá lại 22/22 (lượt đầu 18/22) · **một tiêu chí CHƯA đạt**: "mutation score tăng sau harden" cần lời gọi mô hình (§3.0 bắt hỏi trước), và dự án mẫu không có chỗ để đo | ☑ |
-| 23 | [M4-07](#m4-07) | Verifier nhận gói bằng chứng do EIDE dựng từ sổ cái, không nhận đề bài tác tử chính tự viết | P0 | M | — | VERIFIER_GOI_BANG_CHUNG |  | ☐ |
+| 23 | [M4-07](#m4-07) | Verifier nhận gói bằng chứng do EIDE dựng từ sổ cái, không nhận đề bài tác tử chính tự viết | P0 | M | — | VERIFIER_GOI_BANG_CHUNG | DEV-352 · một tiêu chí còn mở (cần M4-22) | ☑ |
 | 24 | [M4-09](#m4-09) | Stop hook không được coi `task.run` với subagent khác là "đã kiểm chứng" | P0 | S | — | — |  | ☐ |
 | 25 | [M4-11](#m4-11) | Hồi quy tự động sau khi sửa mã + STALE chính xác theo tệp | P0 | M | M2-01 | HOI_QUY_NEN |  | ☐ |
 | 26 | [M2-09](#m2-09) | Phân tích tĩnh chiều sâu: call graph, ngăn xếp, luật ngữ cảnh ISR (`code.static`) | P1 | L | M2-08 | — | kéo lên từ GĐ3 vì là tiền đề của M4-13 | ☐ |
@@ -1733,11 +1733,70 @@ ra hai ràng buộc thật — xem DEV-351; tất cả trong `tests/test_test_ha
 - `.venv/bin/python -m pytest -q tests/test_subagent.py tests/test_tu_phat_hien_sai.py`
 - test_verifier_KHONG_thay_de_bai_chi_thay_bao_cao, test_task_run_tu_goi_verifier_khi_firmware_tuyen_dat giữ nguyên.
 
+**Ca kiểm THÊM (ngoài bảng trên) — đã viết và đã đỏ trước khi sửa:**
+| Mã TC | Tệp test | Nó canh gì |
+|---|---|---|
+| TC-M4-07-06 | …::test_loc_claim_bo_dung_nam_dau_hieu | năm dấu hiệu, mỗi dấu hiệu một câu; câu dữ kiện phải còn |
+| TC-M4-07-07 | …::test_loc_claim_khong_con_cau_nao_thi_noi_RO | lọc sạch thì nói ra, đừng gửi chuỗi trắng |
+| TC-M4-07-08 | …::test_goi_bang_chung_noi_version_va_STALE_cua_hien_vat | gói nói phiên bản và cờ STALE, không chỉ nói tên |
+| TC-M4-07-09 | …::test_goi_bang_chung_DUNG_o_lan_verifier_gan_nhat | gói dừng ở ĐÚNG mốc mà `co_viec_chua_kiem` dùng |
+| TC-M4-07-10 | …::test_goi_bang_chung_co_tran_ky_tu | 200 changeset không được thành 200 KB |
+| TC-M4-07-11 | …::test_goi_bang_chung_noi_ket_qua_build_test_sim_gan_nhat | khối C có `dat` của build và của test |
+| TC-M4-07-12 | …::test_so_cai_ghi_lai_che_do_dau_vao_cua_subagent | sổ cái ghi `subagent_input`, và `so_ky_tu` đếm chuỗi THẬT gửi đi |
+| TC-M4-07-13 | …::test_duong_TU_DONG_khong_bi_doi | giới hạn phạm vi: đường SubagentStop vẫn gửi `BÁO CÁO`, không gửi `BẰNG CHỨNG` |
+| TC-M4-07-14 | …::test_MOI_co_khai_trong_dataclass_deu_co_trong_ten_co | `ten_co()` so TẬP HỢP với `dataclasses.fields`, và mọi cờ nạp được qua biến môi trường |
+| TC-M4-07-15 | …::test_loc_claim_bo_PHAN_QUYET_trich_san | dấu hiệu thứ sáu (phán quyết trích sẵn), và một quan sát thì KHÔNG bị bỏ |
+| TC-M4-07-16 | …::test_goi_bang_chung_noi_PHIEN_BAN_TAI_LUC_DOI_khi_co_so_changeset | tham số `history` cho `(create→v1)`, không trang trí |
+| TC-M4-07-17 | …::test_goi_bang_chung_co_KHOI_B_doc_lai_hien_vat_bi_cham | khối B đọc lại từ KHO (v, STALE), khác khối A nhắc lại lời sổ cái |
+| TC-M4-07-18 | …::test_goi_bang_chung_NOI_RA_khi_khong_co_changeset_nao | không có changeset thì NÓI RA, đừng im |
+
+**Phá lại thì đỏ:** 36 phép phá dựng từ `git diff`, **34/36 ở lượt đầu**. Hai chỗ LỌT đều ở
+cùng một hình dạng DEV-344 — *ca kiểm xanh vì MỘT DÒNG KHÁC*:
+
+* **khối B biến mất mà bộ kiểm vẫn xanh**, vì ca kiểm của khối A đã thấy `a.c` qua dòng
+  changeset. Hai khối nói hai câu khác nhau: A nói *"cs-3 chạm a.c"* (chuyện đã xảy ra), B nói
+  *"a.c trong kho hiện là v1 và đang STALE"* (chuyện ĐANG đúng) — và chỉ câu thứ hai trả lời
+  được "bằng chứng này còn giá trị không". Nay có ca đọc riêng khối B và chắc `c.c` KHÔNG nằm
+  trong khối C.
+* **nhánh "không có changeset nào" im lặng cũng xanh.** Im và "không có gì để kiểm" trông
+  giống nhau với người đọc, mà hai điều ấy khác hẳn.
+
+Sau khi thêm hai ca: **36/36**.
+
+**Lệch khỏi kế hoạch:**
+1. **Thêm dấu hiệu thứ SÁU vào `loc_claim`,** vì một phép đo. Năm dấu hiệu kế hoạch nêu chỉ bỏ
+   được **11/1 706 câu** trên **323 đề bài verifier THẬT** trong sổ cái 42 dự án. Chỗ rò thật
+   không phải chữ "vì" — tác tử chính **trích sẵn phán quyết**: `kết quả 'dat: false'`,
+   `(dat=true, chip GW2A)`. Thêm `dat:`/`dat=`/`pass_fail`/`chay_duoc=`/`không đạt`/`đã đạt`:
+   **95/1 706 câu, chạm 88/323 đề bài, 0/323 bị lọc thành trắng**. KHÔNG nhận `thành công` (lên
+   123 câu) vì *"lệnh chạy thành công, mã thoát 0"* là một quan sát — bỏ nó là lấy mất dữ kiện.
+2. **Sửa `Features.ten_co()`** — không có trong "tệp chạm tới" của kế hoạch ngoài `config.py`.
+   Cờ `verifier_goi_bang_chung` khai đúng trường mà `Features.load()` vẫn trả `False`:
+   `ten_co()` là danh sách gõ tay, và `load()`/`to_dict()`/`kiem_tai_lieu.py` đều vòng qua nó.
+   Nay lấy từ `dataclasses.fields(Features)`. Đây là sửa lỗi thuần, **không sau cờ**.
+3. **`history` và `registry` là tham số tuỳ chọn** (kế hoạch ghi `history` bắt buộc). Gói dựng
+   được mà không có chúng — đo trên 5 bản xuất `docs/*/ho-so-tac-tu` vốn không có tệp kho.
+4. **Ranh giới từ của `vì`/`nên` không đo được chênh lệch nào**: trên 1 706 câu thật, phép
+   `\bvì\b` và phép chuỗi con `"vì" in` kết luận **giống nhau 1 706/1 706**. Giữ dạng ranh giới
+   từ (rẻ, và an toàn hơn khi thêm dấu hiệu sau), nhưng **không có ca kiểm nào tuyên nó quan
+   trọng** — vì số đo nói nó không.
+
+**Đo trên dữ liệu thật (không phải trên ca kiểm):**
+- Sổ cái 42 dự án: **327 lời gọi `task.run` có `viec`**, **323** trong đó là `verifier` —
+  đường này là đường chính của cả lớp kiểm chứng, không phải một đường lý thuyết.
+- **209/323** đề bài dài hơn trần 300 ký tự.
+- `goi_bang_chung_tu_so_cai` dựng được gói **CÓ NỘI DUNG trên 29/42 dự án**, **0 lần đổ**.
+  `du-lieu/robot-canbang` đụng **đúng trần 6 000 ký tự** — trần nổ trên dữ liệu có thật.
+- Tham số `history` làm gói `rtos-sinhvien` dài **2 142 → 2 322 ký tự**, mỗi dòng thêm
+  `(update→v24)`: phiên bản **tại lúc đổi**, số mà sổ cái một mình không ghi.
+
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Chỉ số: trên bộ ca gài lỗi (M4-22), tỉ lệ verifier bác đúng không giảm khi bật cờ.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
+- [x] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa (1 878 → 1 896).
+- [ ] **CHƯA ĐẠT** — Chỉ số: trên bộ ca gài lỗi (M4-22), tỉ lệ verifier bác đúng không giảm
+      khi bật cờ. **M4-22 chưa làm** (nó ở nhiệm vụ sau), và phép đo ấy cần lời gọi mô hình
+      thật — §3.0 bắt hỏi người dùng trước. Nên cờ `VERIFIER_GOI_BANG_CHUNG` giữ **TẮT**.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md (DEV-352).
 
 **Hoàn tác:** tắt cờ.
 

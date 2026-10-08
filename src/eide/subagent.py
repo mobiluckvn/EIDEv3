@@ -25,8 +25,11 @@ cách biện minh, thay vì đọc bằng chứng rồi mới kết luận.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
+
+from . import kiem_chung as KC
 
 # Sáu trường bắt buộc của một báo cáo. Thiếu trường nào thì SubagentStop trả lại — một báo
 # cáo không có `bang_chung` là một lời khai, và "đã kiểm rồi" không phải bằng chứng.
@@ -269,6 +272,189 @@ def viec_cho_verifier(bc: BaoCao) -> str:
                       "bang_chung": bc.bang_chung, "chua_lam": bc.chua_lam,
                       "ket_luan": bc.ket_luan, "do_tin": bc.do_tin},
                      ensure_ascii=False, indent=1))
+
+
+# ================================================= M4-07 gói bằng chứng do MÃ dựng
+# Năm dấu hiệu của một câu lập luận, lấy nguyên từ kế hoạch M4-07. Hai dấu hiệu đầu khớp
+# theo RANH GIỚI TỪ, ba dấu hiệu sau khớp theo chuỗi con — "vì" là một từ, còn "đã kiểm"
+# là một cụm.
+_TU_LAP_LUAN = ("vì", "nên")
+_CUM_LAP_LUAN = ("chắc chắn", "đã kiểm", "đã xác nhận")
+# Dấu hiệu thứ sáu, KHÔNG có trong kế hoạch M4-07 — nó được thêm vì một phép đo.
+#
+# Trên 323 đề bài verifier THẬT trong sổ cái các phiên cũ, năm dấu hiệu của kế hoạch chỉ bỏ
+# được **11/1706 câu** (chạm 11/323 đề bài). Chỗ rò thật không phải chữ "vì": tác tử chính
+# **trích sẵn phán quyết** cho verifier đọc — `kết quả 'dat: false'`, `(dat=true, chip GW…)`.
+# Thêm dấu hiệu ấy: 95/1706 câu, chạm 88/323 đề bài, và 0/323 đề bài bị lọc thành trắng.
+#
+# Không nhận "thành công" vào đây dù nó thêm 28 câu nữa: "lệnh chạy thành công, mã thoát 0"
+# là một quan sát, và bỏ quan sát đi thì verifier mất dữ kiện chứ không mất lập luận.
+_PHAN_QUYET = re.compile(r"\bdat\s*[:=]|pass_fail|\bchay_duoc\s*[:=]|không đạt|đã đạt")
+_TACH_CAU = re.compile(r"(?<=[.!?;\n])\s+")
+# Lọc sạch thành chuỗi trắng là một cái bẫy: verifier nhận một dòng trống thì nó không biết
+# đó là "không có claim" hay "đường dẫn đứt", và nó sẽ kết luận `chua_du_du_kien` mà không
+# nói được chỗ thiếu. Nên nói ra.
+KHONG_CON_CAU = "(claim không còn câu dữ kiện nào sau khi lọc — toàn kết luận và lập luận)"
+
+
+def co_lap_luan(cau: str) -> bool:
+    """Câu này là một kết luận đã gói sẵn, hay một dữ kiện mở ra kiểm được?
+
+    Phép lọc này **leaky và nó biết thế**: một câu lập luận không chứa chữ nào trong sáu dấu
+    hiệu vẫn đi qua được. Nó không phải hàng rào. Hàng rào là nửa kia của M4-07 — gói bằng
+    chứng do MÃ dựng từ sổ cái, thứ tác tử chính không soạn được. Lọc claim chỉ hạ bớt phần
+    rõ ràng nhất, để verifier không mở việc bằng một câu "chắc chắn đạt".
+
+    Con số đo được nói đúng mức độ leaky ấy: trên 323 đề bài verifier thật, nó bỏ 95 trong
+    1 706 câu. Phần lớn đề bài đi qua gần như nguyên vẹn — và đó là lý do nửa gói bằng chứng
+    mới là phần làm việc, không phải phần lọc này.
+    """
+    thap = (cau or "").lower()
+    if any(c in thap for c in _CUM_LAP_LUAN) or _PHAN_QUYET.search(thap):
+        return True
+    return any(re.search(rf"\b{t}\b", thap) for t in _TU_LAP_LUAN)
+
+
+def loc_claim(viec: str, *, toi_da: int = 300) -> str:
+    """Giữ lại phần claim còn **đo được**: ≤300 ký tự, bỏ câu mang lập luận."""
+    cau = [c.strip() for c in _TACH_CAU.split(viec or "") if c.strip()]
+    giu = [c for c in cau if not co_lap_luan(c)]
+    if not giu:
+        return KHONG_CON_CAU
+    ra = " ".join(giu)
+    return ra if len(ra) <= toi_da else ra[: toi_da - 1].rstrip() + "…"
+
+
+def _doi_moc_verifier(ds: list[Any]) -> list[Any]:
+    """Phần sổ cái KỂ TỪ lần `task.run(subagent="verifier")` gần nhất.
+
+    Cùng một mốc mà `kiem_chung.co_viec_chua_kiem` dùng, và cố ý cùng: hai bên phải trả lời
+    về **một** khoảng thời gian. Lệch mốc thì hook nói "còn việc chưa kiểm" trong khi gói
+    bằng chứng lại kể một đợt việc khác.
+    """
+    cat = 0
+    for i in range(len(ds) - 1, -1, -1):
+        ev = ds[i]
+        d = ev.data or {}
+        if (ev.kind == "tool_use" and d.get("tool") == "task.run"
+                and (d.get("args") or {}).get("subagent") == "verifier"):
+            cat = i + 1
+            break
+    return ds[cat:]
+
+
+def _mo_ta_hien_vat(hv: dict[str, Any]) -> str:
+    """Một dòng cho một hiện vật: nó là gì, bản mấy, có lỗi thời không, và `dat` nếu có."""
+    phan = [str(hv.get("id") or ""), str(hv.get("type") or ""), f"v{hv.get('version')}"]
+    if hv.get("stale"):
+        phan.append("STALE: " + str(hv.get("stale_reason") or "")[:80])
+    canon = hv.get("canonical") or {}
+    for k in ("dat", "pass_fail", "so_ca", "so_hong", "diem"):
+        if k in canon:
+            phan.append(f"{k}={canon[k]}")
+    return " · ".join(phan)
+
+
+def goi_bang_chung_tu_so_cai(ledger: Any, store: Any, history: Any = None, *,
+                             toi_da_ky_tu: int = 6000, registry: Any = None) -> str:
+    """Dựng đầu vào của verifier từ SỔ CÁI và KHO, không từ lời tác tử chính.
+
+    Vì sao đây là chỗ then chốt của cả lớp kiểm chứng: một verifier đọc đề bài do tác tử
+    chính viết thì nó kiểm **mô tả của việc**, không kiểm việc. Nó không có cách nào biết
+    tác tử chính đã bỏ qua điều gì — mà phần bị bỏ qua mới là phần cần kiểm.
+
+    Ba khối, theo đúng thứ tự verifier cần:
+
+    * **A** — changeset kể từ lần kiểm chứng gần nhất: mã nào, tệp nào, bản mấy.
+    * **B** — hiện vật trong kho sau các thay đổi ấy, kèm cờ STALE.
+    * **C** — kết quả `build`/`sim_result`/`target` gần nhất, kèm `dat`.
+
+    `history` dùng để tra sổ changeset lấy **phiên bản tại lúc đổi** (`to_version`): con số ấy
+    đứng cạnh phiên bản hiện tại trong kho sẽ nói ngay có ai đổi thêm sau đó hay không.
+    """
+    khoi: list[str] = []
+    cs: list[dict[str, Any]] = []
+    da_ghi: list[str] = []
+    if ledger is not None:
+        try:
+            ds = list(ledger.read())[-KC.TRAN_DOC_NGUOC:]
+        except Exception:                                        # noqa: BLE001
+            ds = []
+        for ev in _doi_moc_verifier(ds):
+            d = ev.data or {}
+            if ev.kind == "changeset":
+                cs.append(d)
+            elif ev.kind == "tool_use" and KC._la_ghi(str(d.get("tool") or ""), registry):
+                da_ghi.append(str(d.get("tool")))
+
+    ban_cs = _ban_changeset(history, [str(c.get("id") or "") for c in cs])
+    if cs:
+        dong = [f"A. {len(cs)} changeset kể từ lần kiểm chứng gần nhất"
+                + (f" (lời gọi GHI: {' → '.join(da_ghi[-8:])})" if da_ghi else "")]
+        for c in cs:
+            ten = _tep_cua_changeset(c, ban_cs.get(str(c.get("id") or "")))
+            dong.append(f"   {c.get('id')} · {ten} · “{str(c.get('summary') or '')[:120]}”")
+        khoi.append("\n".join(dong))
+    else:
+        khoi.append("A. Không có changeset nào kể từ lần kiểm chứng gần nhất.")
+
+    if store is not None:
+        ids: list[str] = []
+        for c in cs:
+            for t in c.get("touches") or []:
+                if t not in ids:
+                    ids.append(t)
+        hv = [h for h in (store.get(i) for i in ids) if h]
+        if hv:
+            khoi.append("B. Hiện vật bị chạm, đọc lại từ kho\n"
+                        + "\n".join("   " + _mo_ta_hien_vat(h) for h in hv))
+        do = _ket_qua_do_gan_nhat(store)
+        if do:
+            khoi.append("C. Kết quả đo gần nhất trong kho\n"
+                        + "\n".join("   " + _mo_ta_hien_vat(h) for h in do))
+        else:
+            khoi.append("C. Trong kho KHÔNG có kết quả build/test/sim nào.")
+
+    chu = "\n\n".join(khoi)
+    if len(chu) <= toi_da_ky_tu:
+        return chu
+    ghi_chu = f"\n… (cắt: gói dài {len(chu)} ký tự, trần {toi_da_ky_tu})"
+    return chu[: max(0, toi_da_ky_tu - len(ghi_chu))].rstrip() + ghi_chu
+
+
+def _ban_changeset(history: Any, ids: list[str]) -> dict[str, Any]:
+    """Tra sổ changeset một lượt cho cả danh sách. Không có sổ thì trả rỗng, không nổ."""
+    log = getattr(history, "log", None)
+    if log is None or not ids:
+        return {}
+    can = set(ids)
+    try:
+        return {c.id: c for c in log.read() if c.id in can}
+    except Exception:                                            # noqa: BLE001
+        return {}
+
+
+def _tep_cua_changeset(d: dict[str, Any], ban: Any) -> str:
+    """Tệp nào bị chạm, và bản mấy — lấy từ sổ changeset khi có, không thì từ sổ cái."""
+    touches = list(getattr(ban, "touches", None) or [])
+    if touches:
+        return ", ".join(f"{t.artefact_id} ({t.op}→v{t.to_version})" for t in touches[:8])
+    return ", ".join(str(x) for x in (d.get("touches") or [])[:8]) or "—"
+
+
+# Ba loại hiện vật trả lời câu "thứ đó đã chạy chưa". Lấy theo LOẠI, không theo tên: một công
+# cụ đo mới thêm vào mà ghi `type="sim_result"` thì tự có mặt, không phải nhớ cập nhật ở đây.
+LOAI_KET_QUA_DO = ("build", "sim_result", "target")
+
+
+def _ket_qua_do_gan_nhat(store: Any, *, moi_loai: int = 4) -> list[dict[str, Any]]:
+    ra: list[dict[str, Any]] = []
+    for loai in LOAI_KET_QUA_DO:
+        try:
+            ra += store.list(loai, limit=moi_loai)
+        except Exception:                                        # noqa: BLE001
+            continue
+    return ra
 
 
 def gop_kiem_chung(bc: BaoCao, kc: BaoCao) -> BaoCao:

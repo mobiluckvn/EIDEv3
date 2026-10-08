@@ -1,8 +1,8 @@
-# ĐANG LÀM — chỗ dừng tối 09/10/2026
+# ĐANG LÀM — chỗ dừng khuya 09/10/2026
 
 > Tệp này trả lời đúng một câu cho phiên sau: **mở ra là làm tiếp được từ đâu.**
 > Trạng thái đầy đủ của 106 việc nằm ở `EIDE_Toi_uu_Agent_2026-10-06.xlsx`,
-> sheet **“Tiến độ 09-10-2026 (toi)”** (cột Q, T–Y của sheet “Danh mục tối ưu” là bằng
+> sheet **“Tiến độ 09-10-2026 (khuya)”** (cột Q, T–Y của sheet “Danh mục tối ưu” là bằng
 > chứng từng việc). Các sheet “Tiến độ 08-10-2026” + ba biến thể, và “Tiến độ 09-10-2026”,
 > là ảnh chụp các mốc trước, giữ lại để so.
 
@@ -10,46 +10,64 @@
 
 | | |
 |---|---|
-| **Xong** | **22/106** — việc #1 → #22 của Giai đoạn 1. Việc #22 còn **một tiêu chí chưa đạt** (xem dưới) |
-| **Đang dở** | **không có.** `main` = `f829ddb`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
-| Ca kiểm | 1 610 → **1 878** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
-| Nhật ký | DEV-330 → **DEV-351** trong `docs/md/EIDE-DEV-LOG.md` |
+| **Xong** | **23/106** — việc #1 → #23 của Giai đoạn 1. Việc #22 và #23 mỗi cái còn **một tiêu chí chưa đạt** (xem dưới) |
+| **Đang dở** | **không có.** `main` = `XXXXXXX`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
+| Ca kiểm | 1 610 → **1 896** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
+| Nhật ký | DEV-330 → **DEV-352** trong `docs/md/EIDE-DEV-LOG.md` |
 | Công cụ | 127 → **130** (`hdl.sensitivity`, `hdl.constraints_check`, `test.criteria`) |
-| Cờ | 7 → **9** (thêm `SIM_RUNNER_GIOI_HAN`, `TEST_HARDEN` — mặc định TẮT như các cờ kia) |
+| Cờ | 7 → **10** (thêm `SIM_RUNNER_GIOI_HAN`, `TEST_HARDEN`, `VERIFIER_GOI_BANG_CHUNG` — mặc định TẮT như các cờ kia) |
 
-## Việc đầu tiên của phiên sau: #23 M4-07
+## Việc đầu tiên của phiên sau: #24 M4-09
 
-Verifier nhận **gói bằng chứng do EIDE dựng từ sổ cái**, không nhận đề bài tác tử chính tự
-viết — P0 · M, **có cờ** `VERIFIER_GOI_BANG_CHUNG`, không tiền đề. Mở
-`KE-HOACH-SUA-VA-KIEM-THU.md`, mục `[M4-07]`, làm đúng quy trình §3.1:
+Stop hook **không được coi `task.run` với subagent khác là "đã kiểm chứng"** — P0 · S, **không
+cờ**, không tiền đề. Mở `KE-HOACH-SUA-VA-KIEM-THU.md`, mục `[M4-09]`, làm đúng quy trình §3.1:
 
 ```bash
-git switch -c toi-uu/M4-07        # ĐỪNG quên bước này — xem ghi chú dưới
+git switch -c toi-uu/M4-09        # ĐỪNG quên bước này — xem ghi chú dưới
 # viết TC TRƯỚC, xem chúng ĐỎ trên mã hiện tại
 find src tests -name __pycache__ -type d -exec rm -rf {} +      # bắt buộc, xem DEV-335
-.venv/bin/python -m pytest -q -rf            # mốc: 1878, không ca cũ nào đỏ
+.venv/bin/python -m pytest -q -rf            # mốc: 1896, không ca cũ nào đỏ
 .venv/bin/python tools/kiem_tai_lieu.py      # phải 0 chỗ LỆCH CHẮC CHẮN
 ```
 
+M4-09 đứng ngay cạnh M4-07 vừa xong và **cùng chạm một chỗ**: `loop.py` tắt `ghi_chua_kiem`
+khi thấy `task.run` với `subagent == "verifier"` (đọc tham số, không đọc tên công cụ — chỗ ấy
+đã đúng), còn `kiem_chung.co_viec_chua_kiem` lùi sổ cái tới đúng mốc ấy. Hai chỗ phải đọc
+trước khi gõ:
+
+* **Mốc dùng chung.** `subagent.goi_bang_chung_tu_so_cai` nay cũng lùi tới **đúng cái mốc ấy**
+  (`_doi_moc_verifier`). Ba chỗ phải chung một mốc; lệch một chỗ là hook nói "còn việc chưa
+  kiểm" trong khi gói bằng chứng kể một đợt việc khác.
+* **Số đo của đường này.** Sổ cái 42 dự án có **327 lời gọi `task.run` có `viec`, 323 là
+  verifier** — nên mọi phép siết ở đây chạm vào đường chính, không chạm một ngóc ngách.
+
 > **Tôi quên `git switch -c` ở M4-06** và commit thẳng lên `main`; nội dung đúng, quy trình thì
-> không. Đã dựng lại con trỏ `toi-uu/M4-06` tại đúng commit `f829ddb`. Gõ lệnh mở nhánh **trước
-> khi** viết dòng mã đầu tiên, đừng để nó là bước nhớ sau.
+> không. Gõ lệnh mở nhánh **trước khi** viết dòng mã đầu tiên, đừng để nó là bước nhớ sau.
 
-## Việc còn NỢ của #22 M4-06 — một tiêu chí chưa đạt
+## Hai tiêu chí còn NỢ — cả hai cần anh Công quyết
 
-`[M4-06]` đã ☑ nhưng **một tiêu chí xong còn để mở**, và nó cần anh Công quyết:
+Hai việc đã ☑ nhưng mỗi việc còn **một tiêu chí xong để mở**, và cả hai mắc ở cùng một chỗ:
+phép đo cần **lời gọi mô hình thật**, mà §3.0 bắt hỏi người dùng trước.
 
-* Tiêu chí: *"mutation score trên dự án mẫu **tăng** sau harden"*.
+**#22 M4-06** — *"mutation score trên dự án mẫu tăng sau harden"*:
+
 * Đã có phần **trước**: `du-lieu/rtos-sinhvien`, `logo_ptit.c` → điểm **0,0** · 30 mutant ·
   20 sống · 18 s.
-* Phần **sau** chưa đo, hai lý do: chạy `test.harden` thật cần **lời gọi mô hình** và §3.0 bắt
-  hỏi người dùng trước; và dự án ấy **không có chỗ để đo** — tệp duy nhất đáng nâng
+* Phần **sau** chưa đo, và dự án ấy **không có chỗ để đo**: tệp duy nhất đáng nâng
   (`control_rtos.c`) là `khong_nap_duoc` vì tệp test `#include` chính tệp `.c` đó, còn sáu tệp
-  kia là bitmap (không ca kiểm nào giết được một đột biến một byte trong logo).
-* Nên cờ `TEST_HARDEN` giữ **TẮT**. Muốn đóng tiêu chí này thì cần một dự án mẫu có bộ kiểm
-  **đo được** — hoặc sửa chỗ hẹp `chay(None)` nói ở phần việc còn mở.
+  kia là bitmap. Muốn đóng tiêu chí này thì cần một dự án mẫu **đo được** — hoặc sửa chỗ hẹp
+  `chay(None)` nói ở phần việc còn mở.
+* Cờ `TEST_HARDEN` giữ **TẮT**.
 
-## Mười hai thứ phải đọc trước khi gõ dòng đầu tiên
+**#23 M4-07** — *"trên bộ ca gài lỗi (M4-22), tỉ lệ verifier bác đúng không giảm khi bật cờ"*:
+
+* **M4-22 chưa làm** — nó nằm ở nhiệm vụ sau trong kế hoạch, nên tiêu chí này chưa có bộ dữ
+  liệu để chạy. Đây là một tiêu chí **viết lệch thứ tự**, không phải một phép đo bị bỏ.
+* Ba con số đã đo được thì đo bằng **dữ liệu thật, không bằng mô hình**: 323 đề bài verifier
+  thật, 95/1 706 câu bị `loc_claim` lọc, 29/42 dự án dựng được gói bằng chứng (0 lần đổ).
+* Cờ `VERIFIER_GOI_BANG_CHUNG` giữ **TẮT**.
+
+## Mười ba thứ phải đọc trước khi gõ dòng đầu tiên
 
 1. **Xoá `__pycache__` trước mỗi phép “phá lại thì đỏ”.** Một phép phá dài **đúng bằng** mã
    gốc (`0.6` → `0.0`) làm Python coi `.pyc` cũ là còn hợp lệ, và phép đo chạy **mã khác với
@@ -57,7 +75,7 @@ find src tests -name __pycache__ -type d -exec rm -rf {} +      # bắt buộc, 
 2. **“Phá lại thì đỏ N/N” nói được điều gì chỉ khi tập phép phá không do người đang mong nó
    đẹp chọn ra.** M3-13 khai 6/6; phá bằng tập rộng hơn ra **7/9**. M3-18 ra **18/20** và
    M4-01 ra **17/24**, M4-02 ra **22/27**, M4-05 ra **15/20**, M4-19 ra **7/13**, M4-04 ra
-   **15/22**, M4-06 ra **18/22** ở lượt đầu. Cách dựng tập: đọc `git diff`, không
+   **15/22**, M4-06 ra **18/22**, M4-07 ra **34/36** ở lượt đầu. Cách dựng tập: đọc `git diff`, không
    đọc ký ức — đi theo
    *chỗ mã tháo được*, không theo *chỗ mình biết đã có ca canh*. Và mỗi nhánh `if` của một hàm
    là **một** chỗ, không phải cả hàm là một chỗ.
@@ -118,6 +136,13 @@ find src tests -name __pycache__ -type d -exec rm -rf {} +      # bắt buộc, 
    kèm **số phiên bản** của thứ kia (`version_test`), rồi so con số. Một số phiên bản là dữ
    kiện chính xác; một cái đồng hồ thì không.
 
+13. **Một ca kiểm nêu đúng bất biến mà kiểm MỘT TÊN GÕ SẴN thì nó xanh suốt.**
+   `test_co_moi_co_trong_ten_co_va_to_dict` canh đúng điều cần canh — *"cờ nào không có trong
+   `ten_co()` thì không bật được"* — bằng cách kiểm **một** tên cờ. Nên cờ thứ mười vô hình,
+   `Features.load()` trả `False` cả khi biến môi trường đã đặt, và ca kiểm im. Bất biến dạng
+   *"mọi X đều phải có trong Y"* phải viết thành **phép so hai tập hợp**, không viết thành một
+   phép kiểm tư cách thành viên.
+
 ## Việc còn MỞ, không thuộc nhiệm vụ nào trong 106
 
 * **Bảy cờ mới đều còn TẮT** — `GON_CONG_CU` · `TRUY_VET` · `REQ_PHU` · `REQ_CHAT_LUONG` ·
@@ -170,3 +195,10 @@ find src tests -name __pycache__ -type d -exec rm -rf {} +      # bắt buộc, 
   vừa mới tồn tại nên chưa dự án nào có.
 * **`req-critic`** (bước 4 của M2-03) — kế hoạch ghi “tuỳ chọn, gộp M2-13”. Chưa làm, đúng
   theo kế hoạch.
+* **Gói bằng chứng chưa lần nào tới một MÔ HÌNH thật.** Nó dựng được trên 29/42 dự án và đọc
+  rất rõ với người, nhưng *"verifier đọc gói này có bác đúng hơn không"* là một câu hỏi về
+  **hành vi mô hình**, và nó chưa được đo. Cần M4-22 (bộ ca gài lỗi) rồi hỏi anh Công.
+* **`loc_claim` là một phép lọc văn xuôi, và nó leaky có số đo.** 95 trong 1 706 câu của 323
+  đề bài thật. Một câu lập luận không mang chữ nào trong sáu dấu hiệu vẫn đi qua. Đừng nhầm
+  nó với hàng rào — hàng rào là gói bằng chứng do mã dựng.
+

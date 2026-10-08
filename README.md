@@ -339,7 +339,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **1 878 ca Python + 43 ca giao diện**
+### Mức 1 — Ca đơn vị: **1 896 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -458,7 +458,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **1 878** | `pytest -q` |
+| Ca đơn vị Python | **1 896** | `pytest -q` |
 | Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -488,14 +488,14 @@ Một công cụ không bao giờ được dùng thì bằng không có nó.
 ### Đợt rà lại chính Agent, từ 06/10/2026
 
 Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Kế hoạch
-có 106 việc; **22 việc đầu đã xong** (DEV-330 → DEV-351). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
+có 106 việc; **23 việc đầu đã xong** (DEV-330 → DEV-352). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
 không nhìn tới, và mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca
-kiểm. Bộ kiểm 1 610 → **1 878 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
+kiểm. Bộ kiểm 1 610 → **1 896 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
 
 Và một con số nữa về chính đợt này: với mỗi việc, phép **"phá lại thì đỏ"** được dựng từ
-`git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Tám việc gần nhất bắt
-**9/9 · 20/20 · 24/24 · 27/27 · 22/22 · 13/13 · 22/22 · 22/22** — nhưng *lượt đầu* của chúng là
-7/9, 18/20, 17/24, 22/27, 15/20, 7/13, 15/22, 18/22. Một tỉ lệ 100 % chỉ nói được điều gì khi tập phép phá
+`git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Chín việc gần nhất bắt
+**9/9 · 20/20 · 24/24 · 27/27 · 22/22 · 13/13 · 22/22 · 22/22 · 36/36** — nhưng *lượt đầu* của
+chúng là 7/9, 18/20, 17/24, 22/27, 15/20, 7/13, 15/22, 18/22, 34/36. Một tỉ lệ 100 % chỉ nói được điều gì khi tập phép phá
 không do người đang mong nó đẹp chọn ra; khuôn script giữ ở
 [`toi-uu/pha_lai-khuon.py`](toi-uu/pha_lai-khuon.py).
 
@@ -523,6 +523,7 @@ không do người đang mong nó đẹp chọn ra; khuôn script giữ ở
 | Phép đo ghi vào chính tệp sản phẩm | `finally` trả tệp về, nên nó chỉ an toàn với ngoại lệ Python — một `Ctrl-C` để lại mã đã bị phá trong dự án | chạy **tại chỗ** trên 3 dự án thật: kết luận giống hệt lượt cũ, và **50/50** tệp firmware giữ nguyên cả `sha256` lẫn `mtime` |
 | Một câu trả lời nhị phân cho cả một tệp | `re.subn` đổi mọi chỗ khớp cùng lúc, nên canh được **một** trong mười chỗ `==` là đủ để cả tệp thành "bộ kiểm bắt được" | tái hiện được ca người từng kiểm tay: `control_rtos.c` thật, dòng **147**, `0xFFFFFFFD` → `0x0` ⇒ mutant **SỐNG**. Bảng phép cũ có **0** đột biến cho hằng hex |
 | Bộ kiểm xanh mà chưa ai đo nó bắt được gì | nâng bộ kiểm sau một phép đo độ nhạy là việc **không ai nhắc**, nên con số 0,0 nằm đó không ai đụng | vòng tự nâng chạy thật trên `du-lieu/rtos-sinhvien`: `logo_ptit.c` → điểm **0,0** · 30 mutant · **20 sống** · 18 s. Và tiêu chí *"điểm tăng sau harden"* **chưa đạt**: tệp duy nhất đáng nâng không dịch nổi, sáu tệp kia là bitmap |
+| Verifier đọc đề bài do tác tử chính tự viết | `DinhNghia.doc_duoc_viec=False` có trong mã từ G6 kèm một đoạn giải thích rõ vì sao — và **không dòng nào đọc nó** | sổ cái 42 dự án: **327 lời gọi `task.run`, 323 là verifier**, và **209/323** đề bài dài hơn trần 300 ký tự. Gói bằng chứng do mã dựng chạy được trên **29/42 dự án**, 0 lần đổ |
 
 Chỗ đáng nói nhất không phải ba lỗi, mà là **cả ba đều có cơ chế sẵn và đường dẫn tới nó đứt** —
 đúng hình dạng đã lặp lại suốt dự án này. Cái trần token tồn tại nhưng không ai nối dây tới nó.
@@ -550,17 +551,25 @@ sửa mã, rồi **hoàn nguyên từng chỗ sửa một** để chắc đúng 
   hai lần ghi trong cùng một giây *bằng nhau* và phép so "mới hơn" im lặng sai — nay hiện vật
   độ nhạy ghi kèm **số phiên bản** của bộ kiểm nó đã đo.
 
-Và hai lần nữa cùng một hình dạng với mục thứ hai: một ca kiểm **xanh vì nó không chạm tới
+Và bốn lần nữa cùng một hình dạng với mục thứ hai: một ca kiểm **xanh vì nó không chạm tới
 thứ nó nói nó canh** — một lần vì dàn dựng của nó không có net đất nào để mà kiểm, một lần vì
-nhánh mã nó định canh chưa bao giờ chạy. Cả hai chỉ lộ ra ở bước *hoàn nguyên từng chỗ sửa*,
-và lần sau thì nó còn chỉ ra **thiết kế** sai chứ không chỉ ca kiểm yếu: tôi đã miễn net đất
-cho cả ba luật ERC mới, trong khi một net đất nối đúng một chân là lỗi thật.
+nhánh mã nó định canh chưa bao giờ chạy, và hai lần ở M4-07: xoá hẳn một khối của gói bằng
+chứng mà bộ kiểm vẫn xanh, vì một ca khác đã thấy đúng tên tệp ấy qua **một dòng khác**. Cả
+bốn chỉ lộ ra ở bước *hoàn nguyên từng chỗ sửa*, và một lần nó còn chỉ ra **thiết kế** sai chứ
+không chỉ ca kiểm yếu: tôi đã miễn net đất cho cả ba luật ERC mới, trong khi một net đất nối
+đúng một chân là lỗi thật.
+
+Biến thể thứ tư của chính nó, lần này là một ca kiểm nêu **đúng** bất biến cần canh mà kiểm nó
+trên một tên gõ sẵn: `test_co_moi_co_trong_ten_co_va_to_dict` canh "mọi cờ phải có trong
+`ten_co()`" bằng cách kiểm **một** tên cờ, nên nó xanh suốt trong khi cờ thứ mười vô hình —
+`Features.load()` trả `False` cả khi biến môi trường đã đặt. Phép so đúng là so hai **tập
+hợp**.
 
 Cả năm đều chỉ lộ ra vì một con số trông lạ. Đó là lý do mỗi việc trong nhật ký đều ghi con số,
 không chỉ ghi "đã xong".
 
 Kế hoạch đầy đủ 106 việc nằm ở [`toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md`](toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md);
-nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-351).
+nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-352).
 
 ---
 

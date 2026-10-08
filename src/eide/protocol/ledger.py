@@ -50,6 +50,10 @@ EVENT_KINDS = {
     # gi" va "AI da lam viec do". Mot bao cao "dat" cua subagent phai tra ve duoc cho toi
     # so cai — neu khong thi lop kiem chung doc lap khong kiem lai duoc.
     "subagent_tool", "subagent_stop",
+    # M4-07: luot ay tac tu con doc CAI GI — de bai tac tu chinh viet, hay goi bang chung do
+    # ma dung tu so cai. Khong ghi lai thi hai che do dau vao trong giong het nhau trong so,
+    # va cau hoi "ti le verifier bac dung co giam khi doi dau vao khong" khong do duoc.
+    "subagent_input",
     "note",
 }
 
