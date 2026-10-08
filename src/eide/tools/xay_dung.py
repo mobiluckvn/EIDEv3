@@ -31,6 +31,48 @@ def _ma_tc(ma: str) -> str:
     return f"criteria:{ma or 'sim-01'}"
 
 
+def _ma_tc_unit(ma: str) -> str:
+    """M4-01 — khoá hiện vật của tiêu chí UNIT TEST, luôn có tiền tố `unit-`.
+
+    Tiêu chí mô phỏng và tiêu chí unit test dùng chung không gian khoá `criteria:*`. Nếu `ma`
+    đi thẳng vào khoá thì một lần gọi `test.criteria(ma="sim-01")` **xoá sổ** tiêu chí mô
+    phỏng mà người dùng đã xác nhận, và `sim.run` sau đó phán theo ngưỡng của unit test. Nên
+    tiền tố ép ở đây, không nhờ tác tử gõ đúng.
+    """
+    ten = (str(ma or "").strip() or "unit-01")
+    return f"criteria:{ten if ten.startswith('unit-') else f'unit-{ten}'}"
+
+
+def _kiem_assert(ds: list[dict[str, Any]]) -> "ToolResult | None":
+    """Phần kiểm assert dùng chung cho `sim.criteria` và `test.criteria`.
+
+    Một bản sao thứ hai của phép kiểm này sẽ lệch — và lúc lệch, hai loại tiêu chí nhận những
+    thứ khác nhau mà không ai nói ra.
+    """
+    from ..build import tieu_chi as TC
+
+    thieu = [f"assert #{i + 1}" for i, a in enumerate(ds)
+             if not a.get("ma") or not a.get("mo_ta")]
+    if not ds or thieu:
+        return ToolResult(False, error=EideError(
+            "E4007",
+            "Tiêu chí phải có ít nhất một assert, và mỗi assert phải có `ma` và `mo_ta`."
+            + (" Thiếu: " + ", ".join(thieu) if thieu else ""),
+            hint_for_agent=("`ma` là thứ số đo của chương trình trỏ tới (ví dụ A1 cho mô "
+                            "phỏng, T1 cho unit test); `mo_ta` là câu người đọc hiểu. Thiếu "
+                            "một trong hai thì kết quả sau này không ai đọc được."),
+            blame="agent"))
+
+    xau = [a for a in ds if str(a.get("phep_so") or "<=") not in TC.PHEP_SO]
+    if xau:
+        return ToolResult(False, error=EideError(
+            "E4007", "Phép so không hợp lệ: "
+                     + ", ".join(str(a.get("phep_so")) for a in xau),
+            hint_for_agent="Chỉ nhận: " + ", ".join(TC.PHEP_SO),
+            blame="agent"))
+    return None
+
+
 def _bay_gio() -> str:
     from datetime import datetime, timezone
 
@@ -533,26 +575,8 @@ def dang_ky(r: Registry) -> None:
         from ..build import tieu_chi as TC
 
         ds = kw.get("assert") or []
-        thieu = [f"assert #{i + 1}" for i, a in enumerate(ds)
-                 if not a.get("ma") or not a.get("mo_ta")]
-        if not ds or thieu:
-            return ToolResult(False, error=EideError(
-                "E4007",
-                "Tiêu chí phải có ít nhất một assert, và mỗi assert phải có `ma` và `mo_ta`."
-                + (" Thiếu: " + ", ".join(thieu) if thieu else ""),
-                hint_for_agent=("`ma` là thứ số đo của chương trình mô phỏng trỏ tới (ví dụ "
-                                "A1); `mo_ta` là câu người đọc hiểu. Thiếu một trong hai thì "
-                                "kết quả sau này không ai đọc được."),
-                blame="agent"))
-
-        xau = [a for a in ds
-               if str(a.get("phep_so") or "<=") not in TC.PHEP_SO]
-        if xau:
-            return ToolResult(False, error=EideError(
-                "E4007", "Phép so không hợp lệ: "
-                         + ", ".join(str(a.get("phep_so")) for a in xau),
-                hint_for_agent="Chỉ nhận: " + ", ".join(TC.PHEP_SO),
-                blame="agent"))
+        if (xau := _kiem_assert(ds)) is not None:
+            return xau
 
         khong_nguon = [str(a.get("ma")) for a in ds if not str(a.get("nguon_nguong") or "")]
         moi = TC.TieuChi.from_dict({**kw, "assert": ds})
@@ -802,28 +826,165 @@ def dang_ky(r: Registry) -> None:
                "lẫn tệp test cùng dịch tệp ấy. Đừng chép logic sang tệp test — một bộ kiểm "
                "tự định nghĩa lại thứ nó đang kiểm thì xanh mãi mãi." if xau else "")}
 
+    # ======================================= M4-01: tiêu chí cho unit test, nêu TRƯỚC khi chạy
+    @r.tool("test.criteria", "Mô phỏng",
+            "Nêu TIÊU CHÍ trước khi chạy unit test: từng assert đo gì, ngưỡng bao nhiêu, "
+            "ngưỡng lấy từ đâu, đo YÊU CẦU nào. Người dùng xác nhận rồi thì `test.run` phán "
+            "theo ngưỡng này — tệp test chỉ còn in SỐ ĐO, không tự in `dat:true`. Không có "
+            "tiêu chí thì test.run vẫn chạy, nhưng kết quả là lời TỰ KHAI của tệp test.",
+            {"type": "object",
+             "properties": {
+                 "ma": {"type": "string",
+                        "description": "unit-01 (luôn được ép tiền tố `unit-`)"},
+                 "ten": {"type": "string"},
+                 "assert": {
+                     "type": "array",
+                     "description": "từng điều kiện đo được",
+                     "items": {"type": "object", "properties": {
+                         "ma": {"type": "string",
+                                "description": "T1 — số đo của tệp test trỏ tới mã này"},
+                         "mo_ta": {"type": "string"},
+                         "phep_so": {"type": "string",
+                                     "enum": ["<=", ">=", "<", ">", "==", "trong_khoang"]},
+                         "nguong": {"type": "number"},
+                         "nguong_tren": {"type": "number"},
+                         "don_vi": {"type": "string"},
+                         "do_req": {"type": "string", "description": "assert này đo REQ nào"},
+                         "nguon_nguong": {"type": "string",
+                                          "description": "ngưỡng lấy từ Fact/tài liệu/lời ai"},
+                     }}},
+                 "khong_kiem_duoc": {
+                     "type": "array",
+                     "description": "phần unit test KHÔNG kiểm được: {gi, vi_sao, cach_bu}",
+                     "items": {"type": "object"}},
+                 "timeout_s": {"type": "number"},
+                 "trich_loi": {"type": "string",
+                               "description": "LỜI người dùng xác nhận tiêu chí này"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["assert", "explain"]},
+            risk="R2", core=False, writes_artefact=True, needs_explain=True,
+            produces=["criteria"],
+            keywords=["tiêu chí", "criteria", "assert", "ngưỡng", "unit test", "kiểm thử"])
+    def test_criteria(ctx: Any, explain: dict[str, Any], **kw: Any):
+        """Tiêu chí unit test — và tệp test là thứ TÁC TỬ TỰ VIẾT.
+
+        `sim.criteria` đã làm đúng việc này cho mô phỏng từ lâu. Chỗ unit test cần riêng một
+        công cụ vì cái vòng *"thứ bị kiểm tự chấm điểm mình"* ở đây khép kín hơn: tác tử viết
+        mã sản phẩm, viết tệp test cho nó, rồi đọc kết quả do chính tệp test ấy in ra. Ở mô
+        phỏng, ít nhất mô hình vật lý còn do người dựng.
+
+        Hai điều công cụ này không làm: **không tự xác nhận hộ người dùng** (`trich_loi` là
+        đường duy nhất), và **không ép** — `test.run` không nêu `ma_tieu_chi` thì vẫn chạy
+        theo đường cũ, chỉ dán nhãn tự khai. Ép sẽ phá tương thích ngược với mọi dự án đang
+        có, và một công cụ phá việc cũ thì bị gỡ chứ không được dùng.
+        """
+        from ..build import tieu_chi as TC
+
+        ds = kw.get("assert") or []
+        if (xau := _kiem_assert(ds)) is not None:
+            return xau
+
+        khong_nguon = [str(a.get("ma")) for a in ds if not str(a.get("nguon_nguong") or "")]
+        khoa = _ma_tc_unit(str(kw.get("ma") or ""))
+        moi = TC.TieuChi.from_dict({**kw, "assert": ds,
+                                    "ma": khoa.split(":", 1)[1],
+                                    # `TieuChi` gọi danh sách này là `khong_mo_phong_duoc`;
+                                    # ở đây lược đồ nói `khong_kiem_duoc` vì unit test không
+                                    # mô phỏng gì. Cùng một trường, hai tên theo ngữ cảnh.
+                                    "khong_mo_phong_duoc": (kw.get("khong_kiem_duoc")
+                                                            or kw.get("khong_mo_phong_duoc")
+                                                            or [])})
+        loi = str(kw.get("trich_loi") or "").strip()
+        if loi:
+            moi.xac_nhan_boi, moi.xac_nhan_luc, moi.trich_loi = "human", _bay_gio(), loi
+
+        cu = ctx.store.get(khoa)
+        mat_kkd = [x for x in ((cu or {}).get("canonical") or {}).get("khong_mo_phong_duoc")
+                   or [] if x not in moi.khong_mo_phong_duoc]
+        do_req = [x for x in dict.fromkeys(str(a.get("do_req") or "").strip() for a in ds) if x]
+        cs = ctx.history.ghi_kho(
+            author=f"agent:{ctx.run_id}", artefact_id=khoa, type="criteria",
+            op="update" if cu else "create", canonical=moi.to_dict(), explain=explain,
+            run_id=ctx.run_id, deps={"upstream": do_req} if do_req else None)
+        return {
+            **moi.to_dict(), "changeset": cs.id, "hien_vat": khoa,
+            "thieu_nguon_nguong": khong_nguon, "mat_khong_kiem_duoc": mat_kkd,
+            "note_vi": (
+                (f"CẢNH BÁO: lần ghi này BỎ MẤT {len(mat_kkd)} phần từng khai là unit test "
+                 "không kiểm được (" + "; ".join(str(x.get("gi", "")) for x in mat_kkd[:3])
+                 + "). Khai lại nếu chúng vẫn chưa kiểm được. " if mat_kkd else "")
+                + f"Đã ghi {len(ds)} tiêu chí cho unit test {moi.ma}: "
+                + "; ".join(a.vi for a in moi.asserts[:4])
+                + (f" (còn {len(ds) - 4} tiêu chí nữa)" if len(ds) > 4 else "") + ". "
+                + ('Từ giờ tệp test in SỐ ĐO, không in kết luận — một dòng JSON cuối '
+                   '`{"do": {"' + (moi.asserts[0].ma if moi.asserts else "T1")
+                   + '": <số đo>}}`, khoá là mã assert. ')
+                + (f"Thiếu nguồn ngưỡng cho: {', '.join(khong_nguon)} — người rà soát sẽ hỏi "
+                   "con số đó ở đâu ra. " if khong_nguon else "")
+                + ("Người dùng đã xác nhận, nên `test.run(ma_tieu_chi=\"" + moi.ma
+                   + "\")` chạy được."
+                   if moi.da_xac_nhan else
+                   "CHƯA có xác nhận của người dùng: trình bảng này cho họ, và gọi lại với "
+                   "`trich_loi` là câu họ nói. `test.run` có nêu mã tiêu chí sẽ từ chối tới "
+                   "khi đó."))}
+
     @r.tool("test.run", "Mô phỏng",
             "Chạy unit test của firmware trên MÁY CHỦ (phần cứng thay bằng mock): bao nhiêu "
-            "ca đạt, ca nào hỏng và vì sao, và độ phủ nếu đo được.",
+            "ca đạt, ca nào hỏng và vì sao, và độ phủ nếu đo được. Nêu `ma_tieu_chi` thì "
+            "EIDE PHÁN theo ngưỡng đã xác nhận; không nêu thì kết quả là lời tự khai của "
+            "chính tệp test.",
             {"type": "object",
              "properties": {
                  "nguon": {"type": "array", "items": {"type": "string"},
                            "description": "tệp .c cần biên dịch cùng nhau; mặc định "
                                           "test/*.c + firmware/control*.c"},
+                 "ma_tieu_chi": {"type": "string",
+                                 "description": "mã tiêu chí của test.criteria, ví dụ "
+                                                "unit-01. Bỏ trống thì kết quả là lời tự "
+                                                "khai của tệp test"},
                  "explain": EXPLAIN_SCHEMA},
              "required": ["explain"]},
             risk="R2", core=False, needs_explain=True, writes_artefact=True,
             produces=["sim_result"],
             keywords=["test", "unit test", "kiểm thử", "độ phủ", "mock"])
-    def test_run(ctx: Any, explain: dict[str, Any], nguon: list[str] | None = None):
+    def test_run(ctx: Any, explain: dict[str, Any], nguon: list[str] | None = None,
+                 ma_tieu_chi: str = ""):
         """TC052 — *"Test chạy trên máy chủ, có báo cáo đạt/không đạt và độ phủ"*.
 
         Hai điều công cụ này từ chối làm: nhận một bản báo cáo bằng lời (không đếm được), và
         im lặng bỏ cột độ phủ khi không đo được (người đọc sẽ hiểu là không có gì để nói).
+
+        **M4-01 — `ma_tieu_chi` để trống là CÒN ĐƯỢC, không phải lỗi.** Mọi dự án đang có đi
+        đường ấy, và ép tiêu chí ngay sẽ phá chúng. Nhưng lượt tự khai phải **tự nói ra** là
+        tự khai: hai lượt khác chế độ mà đọc giống nhau thì con số "3/3 ca đạt" của một lượt
+        tệp-test-tự-chấm được đọc ngang một lượt đã phán — đúng lỗi khối A8.0 ở DEV-344.
         """
         from ..build import mo_phong as MP
+        from ..build import tieu_chi as TCM
 
         goc = ctx.config.paths.project_root
+        tc = None
+        if str(ma_tieu_chi or "").strip():
+            khoa = _ma_tc_unit(ma_tieu_chi)
+            a_tc = ctx.store.get(khoa)
+            # Dùng lại E4008/E4009 của `sim.run`: cùng một chuyện, cùng một mã. Một mã mới
+            # cho cùng một chuyện là bắt người đọc học hai lần.
+            if a_tc is None:
+                return ToolResult(False, error=EideError(
+                    "E4008", f"Chưa có tiêu chí `{khoa.split(':', 1)[1]}` nào cho unit test.",
+                    hint_for_agent=("Nêu tiêu chí TRƯỚC bằng `test.criteria`: mỗi assert đo "
+                                    "gì, ngưỡng bao nhiêu, lấy từ đâu, đo REQ nào. Rồi trình "
+                                    "cho người dùng xác nhận. Chạy trước rồi đặt tiêu chí "
+                                    "sau là cách đặt tiêu chí vừa khít với kết quả."),
+                    alternatives=["test.criteria"], blame="agent"))
+            tc = TCM.TieuChi.from_dict(a_tc["canonical"])
+            if not tc.da_xac_nhan:
+                return ToolResult(False, error=EideError(
+                    "E4009", f"Tiêu chí {tc.ma} chưa được người dùng xác nhận.",
+                    hint_for_agent=("Trình bảng tiêu chí cho người dùng, hỏi họ có đồng ý "
+                                    "không, rồi gọi lại `test.criteria` với `trich_loi` là "
+                                    "câu họ trả lời. Đừng tự xác nhận hộ."),
+                    alternatives=["test.criteria", "ask_user"], blame="agent"))
         # Tệp TEST phải có ít nhất một cái. Mã logic đi kèm để liên kết, nhưng một mình nó
         # không phải một bộ test — bản trước gom cả `control.c` vào rồi báo "không biên dịch
         # được" (đúng: nó không có main()), trong khi câu đúng là "chưa có test nào".
@@ -840,7 +1001,47 @@ def dang_ky(r: Registry) -> None:
                     "Chưa có test thì nói thẳng là chưa có, đừng coi im lặng là đạt."),
                 alternatives=["fs.write", "fs.glob"], blame="agent"))
 
-        kq = MP.chay_test(goc=goc, nguon=ds)
+        kq = MP.chay_test(goc=goc, nguon=ds, tieu_chi=tc)
+
+        # Đã có tiêu chí mà tệp test VẪN in `ca` tự khai: từ chối, và từ chối TRƯỚC khi ghi
+        # kho. Nhận im lặng thì tiêu chí thành một tờ giấy dán tường — nó có, đã được người
+        # dùng xác nhận, và không phán gì cả; mà hiện vật thì mang `che_do="eide_phan"`.
+        if tc is not None and kq.chay_duoc and kq.co_ca_tu_khai:
+            return ToolResult(False, error=EideError(
+                "E4024",
+                f"Tệp test in kết luận TỰ KHAI (`ca`) trong khi đã có tiêu chí {tc.ma}.",
+                hint_for_agent=(
+                    "Đã có tiêu chí thì tệp test chỉ ĐO, không phán. Bỏ mảng `ca` đi và in số "
+                    "đo:\n" + MP.KHUON_SO_DO + "\nMã assert tiêu chí này đòi: "
+                    + ", ".join(a.ma for a in tc.asserts[:10]) + "."),
+                details={"ma_tieu_chi": tc.ma,
+                         "assert_doi": [a.ma for a in tc.asserts],
+                         "so_do_nhan_duoc": sorted(kq.so_do),
+                         "nguyen_van": kq.nguyen_van[-600:]},
+                alternatives=["fs.edit", "test.criteria"], blame="agent"))
+
+        # DEV-336 / E4023 — số đo không chứa MỘT mã assert nào. Đây KHÔNG phải sản phẩm sai,
+        # mà là sai cặp tiêu chí/tệp test: hai chuyện ấy dẫn tới hai việc ngược nhau. Cùng
+        # cái bẫy đã bắt được ở `sim.run`, và ở đây nó dễ trúng hơn vì `nguon` bỏ trống thì
+        # lấy MỌI tệp `test/*.c`.
+        if tc is not None and kq.chay_duoc and tc.asserts and not (
+                set(kq.so_do) & {a.ma for a in tc.asserts}):
+            return ToolResult(False, error=EideError(
+                "E4023",
+                f"Số đo không chứa MỘT mã assert nào của tiêu chí {tc.ma}. "
+                f"Tiêu chí đòi {sorted(a.ma for a in tc.asserts)[:8]}, "
+                f"tệp test in ra {sorted(kq.so_do)[:8]}.",
+                hint_for_agent=(
+                    "Đây KHÔNG phải sản phẩm sai — là sai cặp tiêu chí/tệp test. Hai chỗ hay "
+                    "lệch: `ma_tieu_chi` trỏ sang bộ tiêu chí khác, và `nguon` bỏ trống thì "
+                    "lấy MỌI tệp `test/*.c` nên có hai bộ test là phải nêu đúng tệp. Nêu cả "
+                    "hai rồi gọi lại — đừng sửa mã sản phẩm vì con số này.\n" + MP.KHUON_SO_DO),
+                details={"ma_tieu_chi": tc.ma,
+                         "assert_doi": sorted(a.ma for a in tc.asserts),
+                         "so_do_nhan_duoc": sorted(kq.so_do),
+                         "tep_nguon": kq.tep_nguon},
+                alternatives=["test.criteria", "test.run"], blame="agent"))
+
         ctx.store.apply(
             artefact_id=MA_TEST, type="sim_result",
             op="update" if ctx.store.get(MA_TEST) else "create",
@@ -874,6 +1075,14 @@ def dang_ky(r: Registry) -> None:
                 f"{kq.so_dat}/{kq.so_ca} ca đạt"
                 + (f", {kq.so_hong} ca HỎNG: {kq.vi_sao_khong_dat}" if kq.so_hong else "")
                 + ". "
+                # M4-01 — chế độ đứng NGAY SAU con số, không nằm ở cuối. Con số là thứ được
+                # đọc; nếu độ tin của nó nằm cách đó bốn câu thì nó không đi cùng con số.
+                + (f"**EIDE phán** theo tiêu chí {tc.ma} ({len(tc.asserts)} assert, người "
+                   "dùng đã xác nhận) — tệp test chỉ in số đo. " if tc is not None else
+                   "Con số này là lời **TỰ KHAI** của chính tệp test: nó tự in `dat`, nên "
+                   "thứ đang bị kiểm cũng là thứ tuyên bố kết quả — độ tin ĐỎ cho một kết "
+                   "luận nghiệm thu. Muốn EIDE phán thì nêu tiêu chí bằng `test.criteria` "
+                   "rồi gọi lại với `ma_tieu_chi`. ")
                 + (f"Độ phủ dòng {phu.get('dong')}. " if phu.get("do_duoc") else
                    f"CHƯA đo được độ phủ — {phu.get('vi_sao', '')} ")
                 + _noi_da_dich(goc, ds, tep_test)

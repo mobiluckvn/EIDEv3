@@ -40,7 +40,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 
 ## 1 · Nhìn một lượt: EIDE làm được gì
 
-Agent có **129 công cụ** (120 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch bật bằng cờ), **7
+Agent có **130 công cụ** (121 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch bật bằng cờ), **7
 Agent con**, **8 bộ hướng dẫn nạp theo việc**, **11 cửa duyệt**, và **11 tab** để người xem
 việc đang tới đâu.
 
@@ -52,7 +52,7 @@ Bảng dưới xếp theo *việc người cần làm*, không theo cách chia m
 | **Đọc tài liệu** | 20 | nạp PDF, Word, Excel, slide, mã nguồn · đọc theo trang hoặc theo mục · rút hình kèm chữ trong hình · lấy con số **bằng mã**, không để mô hình đọc hộ |
 | **Viết tài liệu** | 1 | dựng ra Word · PowerPoint · Excel · PDF từ nguồn Markdown nằm trong kho |
 | **Thiết kế mạch** | 27 | bản đồ mạch · cây khối nhiều cấp · thư viện khối · sinh sơ đồ nguyên lý mở được bằng KiCad |
-| **Viết mã** | 8 | đọc hiểu mã cũ trước khi sửa · dịch mã · bản đồ bộ nhớ · chạy bộ kiểm · đo xem bộ kiểm có đo gì không |
+| **Viết mã** | 9 | đọc hiểu mã cũ trước khi sửa · dịch mã · bản đồ bộ nhớ · chạy bộ kiểm · **nêu ngưỡng trước rồi để EIDE phán, thay vì tin tệp test tự khai** · đo xem bộ kiểm có đo gì không |
 | **Chạy thử trên máy** | 2 | nêu mức đo trước, chạy, rồi đối chiếu |
 | **Làm việc với bo thật** | 6 | dò bo · nạp · đọc ngược để so từng byte · đọc log · tìm chỗ treo · đọc khung ảnh từ chip |
 | **Làm chip trên FPGA** | 7 | soát cú pháp Verilog · mô phỏng testbench · **phá mã RTL thật để xem testbench có canh không** · tổng hợp · **kiểm ràng buộc chân trước khi dựng** · đặt-đi dây và **đo Fmax thật** · đóng gói bitstream |
@@ -67,7 +67,7 @@ lời gọi, không nói về tệp nằm trên đĩa.
 
 **Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà trong kho chưa có
 công cụ nào làm được, nó tự viết một công cụ mới kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ
-đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 129 công cụ kể ở trên — nó sinh
+đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 130 công cụ kể ở trên — nó sinh
 ra lúc chạy, trong đúng dự án đang làm. Việc này đã chạy thật, không phải tính năng trên giấy.
 
 ---
@@ -443,8 +443,8 @@ nhau, nên gộp vào một cột là nói sai về sản phẩm.
 ### Một việc không thêm tính năng nào nhưng đáng kể
 
 Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào** (số
-đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 129). Bảy công cụ có đường dẫn tới chúng
-bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/129 đã được dùng
+đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 130). Bảy công cụ có đường dẫn tới chúng
+bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/130 đã được dùng
 thật**.
 
 Một công cụ không bao giờ được dùng thì bằng không có nó.
@@ -1038,12 +1038,12 @@ là chỗ hay đứt nhất. Nay mỗi khối có một ca đi qua đúng đư�
 
 Nói ra để người đọc không phải tự tìm:
 
-- **14 trong 129 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
-  bo, chưa viết xong. Và hai công cụ mới nhất — `hdl.sensitivity` (DEV-344) với
-  `hdl.constraints_check` (DEV-345): mã của cả hai đã chạy trên hiện vật thật của Bài 2 và
-  Bài 3, nhưng chưa lượt Agent nào *gọi công cụ* ấy, nên chúng vẫn tính là chưa dùng. "Mã đã
-  chạy" và "tác tử đã gọi" là hai chuyện, và gộp chúng lại là cách đếm ra một con số đẹp hơn
-  sự thật.
+- **15 trong 130 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
+  bo, chưa viết xong. Và ba công cụ mới nhất — `hdl.sensitivity` (DEV-344),
+  `hdl.constraints_check` (DEV-345) và `test.criteria` (DEV-346): mã của cả ba đã chạy trên
+  hiện vật thật, nhưng chưa lượt Agent nào *gọi công cụ* ấy, nên chúng vẫn tính là chưa dùng.
+  "Mã đã chạy" và "tác tử đã gọi" là hai chuyện, và gộp chúng lại là cách đếm ra một con số
+  đẹp hơn sự thật.
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
 - **Sáu ca kiểm cần người trực tiếp làm**, chưa tự động hoá được.
 - **Robot còn 23 trong 109 điều kiện chưa làm**, phần lớn là các điểm đo để cắm máy hiện sóng.
@@ -1188,7 +1188,7 @@ bản kể lại nào.
 ```
 src/eide/
 ├── loop.py            vòng lặp Agent
-├── tools/             129 công cụ, chia theo nhóm
+├── tools/             130 công cụ, chia theo nhóm
 ├── policy/            luật chặn và cửa duyệt
 ├── knowledge/         đọc tài liệu, rút con số, chữ trong hình
 ├── store/             kho dữ liệu dựa trên sổ ghi việc + git

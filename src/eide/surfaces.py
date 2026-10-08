@@ -1386,14 +1386,20 @@ def simulation(store: Any, inv: Any) -> dict[str, Any]:
         c = a.get("canonical") or {}
         ds_as = c.get("assert") or []
         xn = bool(c.get("xac_nhan_boi"))
+        # M4-01 — `test.criteria` ghi cùng loại hiện vật `criteria`, nên nó hiện ở đây. Gọi
+        # nó là "tiêu chí mô phỏng" và hứa "mô phỏng sẽ không chạy" là nói về một công cụ
+        # khác công cụ mà bảng này thật sự chặn.
+        la_unit = str(c.get("ma", "")).startswith("unit-")
+        viec = "unit test" if la_unit else "mô phỏng"
         khoi.append(khoi_hien_vat(
-            a["id"], f"Tiêu chí mô phỏng — {c.get('ma', '')}", "table", a,
+            a["id"], f"Tiêu chí {viec} — {c.get('ma', '')}", "table", a,
             summary=(f"{len(ds_as)} tiêu chí · "
                      + ("anh đã xác nhận: “" + str(c.get("trich_loi", ""))[:70] + "”"
                         if xn else
-                        "CHƯA xác nhận — mô phỏng sẽ không chạy tới khi anh duyệt bảng này")
-                     + (f" · {len(c.get('khong_mo_phong_duoc') or [])} phần KHÔNG mô phỏng "
-                        "được" if c.get("khong_mo_phong_duoc") else "")),
+                        f"CHƯA xác nhận — {viec} sẽ không chạy tới khi anh duyệt bảng này")
+                     + (f" · {len(c.get('khong_mo_phong_duoc') or [])} phần KHÔNG "
+                        + ("kiểm" if la_unit else "mô phỏng") + " được"
+                        if c.get("khong_mo_phong_duoc") else "")),
             columns=["Mã", "Đo gì", "Phép so", "Ngưỡng", "Đơn vị", "Đo yêu cầu nào",
                      "Ngưỡng lấy từ đâu"],
             cot_sua={"Ngưỡng": "nguong"},
@@ -1443,14 +1449,37 @@ def simulation(store: Any, inv: Any) -> dict[str, Any]:
                                                             str(d.get("ket_luan"))),
                        d.get("vi", ""), d.get("do_req", "")]
                       for d in c["xet"]["dong"]]))
+        # M4-01 — AI đã phán con số này, nói ngay cạnh nó.
+        #
+        # `test.run` ghi vào cùng loại hiện vật `sim_result`, nên nó hiện ở đúng khối này. Và
+        # trước M4-01 dòng "Kết luận" của khối nói **một câu duy nhất** cho mọi lượt: *"ĐẠT —
+        # theo đúng tiêu chí mà chương trình mô phỏng tự kiểm"*. Với một lượt `test.run` tự
+        # khai, câu ấy sai hai lần: nó không phải mô phỏng, và "tự kiểm" chính là chỗ đáng
+        # không tin — mà câu lại đọc như một lời bảo đảm. Cùng cái lỗi khối A8.0 ở DEV-344.
+        che_do = str(c.get("che_do") or "")
+        them: list[list[str]] = []
+        if che_do == "eide_phan":
+            ket = ("ĐẠT — **EIDE phán** bằng cách so số đo với ngưỡng trong tiêu chí "
+                   + str(c.get("ma_tieu_chi") or "") + " mà anh đã xác nhận")
+        elif che_do == "tu_khai":
+            ket = "ĐẠT — nhưng đây là lời **TỰ KHAI** của chính tệp test"
+            them = [["Độ tin của con số này",
+                     "ĐỎ cho một kết luận nghiệm thu: tệp test tự in `dat`, nên thứ đang bị "
+                     "kiểm cũng là thứ tuyên bố kết quả — và tệp test ấy do tác tử tự viết. "
+                     "Muốn EIDE phán thì nêu tiêu chí bằng `test.criteria` rồi chạy lại "
+                     "`test.run` với `ma_tieu_chi`."]]
+        else:
+            ket = "ĐẠT — theo đúng tiêu chí mà chương trình mô phỏng tự kiểm"
         khoi.append(khoi_hien_vat(
             a["id"], f"Kết quả mô phỏng — {a['id'].split(':')[-1]}", "kv", a,
-            summary=(("ĐẠT" if dat else "CHƯA ĐẠT") + " · "
-                     + (str(c.get("vi_sao_khong_dat")) if not dat else "")
+            summary=(("ĐẠT" if dat else "CHƯA ĐẠT")
+                     + {"eide_phan": " (EIDE phán)",
+                        "tu_khai": " — tệp test TỰ KHAI, chưa ai phán lại"}.get(che_do, "")
+                     + " · " + (str(c.get("vi_sao_khong_dat")) if not dat else "")
                      + f" · chạy trên {len(c.get('tep_nguon') or [])} tệp nguồn"),
-            pairs=[["Kết luận", ("ĐẠT — theo đúng tiêu chí mà chương trình mô phỏng tự kiểm"
-                                if dat else
-                                f"CHƯA ĐẠT — {c.get('vi_sao_khong_dat', '')}")],
+            pairs=[["Kết luận",
+                    ket if dat else f"CHƯA ĐẠT — {c.get('vi_sao_khong_dat', '')}"],
+                   *them,
                    *[[str(k), _loi_nguoi(v)] for k, v in sorted(kq.items()) if k != "dat"],
                    ["Chạy trên mã nào", ", ".join(c.get("tep_nguon") or []) or "—"],
                    ["Giới hạn",

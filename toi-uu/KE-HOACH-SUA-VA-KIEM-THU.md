@@ -149,7 +149,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 14 | [M3-12](#m3-12) | Mô phỏng HDL: đọc PASS/FAIL chặt, chỉ từ log chạy, tính cả mã thoát và `$fatal` | P0 | S | — | — | xong 07/10/2026 · DEV-343 · regex kế hoạch từ chối oan 588/846, đã nới | ☑ |
 | 15 | [M3-13](#m3-13) | `hdl.sensitivity`: đo độ nhạy testbench Verilog bằng đột biến thật | P0 | M | M3-12 | — | xong 08/10/2026 · DEV-344 · 1732→1744 ca · đo thật: `tb_pcpi_dot4` 1/1, `tb_pcpi_mac` 1/1, `tb_pcpi_vmini` không dịch nổi từ 02/10 | ☑ |
 | 16 | [M3-18](#m3-18) | Kiểm ràng buộc chân FPGA (`.cst`) với cổng mô-đun đỉnh và chân của kit | P0 | M | — | — | xong 08/10/2026 · DEV-345 · 1744→1773 ca · trên 6 cặp thật: 1 chỗ CHẶN (`blinky` của riscv-tn20k-b dựng bitstream với chân đồng hồ nextpnr tự chọn) | ☑ |
-| 17 | [M4-01](#m4-01) | Máy chấm unit test do EIDE phán (`test.criteria`) | P0 | M | — | — |  | ☐ |
+| 17 | [M4-01](#m4-01) | Máy chấm unit test do EIDE phán (`test.criteria`) | P0 | M | — | — | xong 08/10/2026 · DEV-346 · 1773→1791 ca · phá lại 24/24 (lượt đầu 17/24) · thêm E4023 cho đường unit test, và chế độ phải hiện ở tab A8 chứ không chỉ ở note_vi | ☑ |
 | 18 | [M4-02](#m4-02) | Cổng G-QUAL khi sửa/xoá tệp test sau kết quả đỏ + sửa `criteria.has_result` | P0 | M | — | SIM_RUNNER_GIOI_HAN |  | ☐ |
 | 19 | [M4-05](#m4-05) | Đột biến không biên dịch được không được tính là "bắt được" | P1 | S | — | — | kéo lên từ GĐ2 vì là tiền đề của M4-06 | ☐ |
 | 20 | [M4-19](#m4-19) | Đột biến trên bản sao, không ghi đè tệp sản phẩm của người dùng | P2 | S | — | — | kéo lên từ GĐ4 vì là tiền đề của M4-04 | ☐ |
@@ -1265,14 +1265,46 @@ hiện vật thật" không có trong bảng kế hoạch — xem DEV-345):
 | TC-M4-01-04 | Ca âm "không kêu nhầm" | …::test_khong_neu_tieu_chi_thi_hanh_vi_y_cu | Không có tiêu chí; test in `ca` dat true → ok, so_dat==1, che_do=="tu_khai" |
 | TC-M4-01-05 | Lược đồ | …::test_test_criteria_dang_ky_core_false_mo_ta_ngan | build_registry().get("test.criteria") → core False, len(summary_vi)≤400 |
 
+**Mười ba TC thêm khi làm** (phép phá dựng từ `git diff` tìm ra bảy chỗ không ai canh — xem
+DEV-346; tất cả nằm trong `tests/test_test_tieu_chi.py`):
+
+| Mã TC | Loại | Tên ca | Cho trước → Khi → Thì |
+|---|---|---|---|
+| TC-M4-01-06 | Ca biên | test_tieu_chi_KHONG_CO_ASSERT_nao_thi_noi_ra_chu_khong_bao_0_ca | tiêu chí rỗng assert → nói "chưa có assert nào", KHÔNG báo "0 ca" |
+| TC-M4-01-07 | Ca âm | test_co_tieu_chi_ma_test_khong_in_so_do_thi_CHUA_DO_DUOC | có tiêu chí, `do` rỗng → chưa-đo-được, KHÔNG lùi về đếm `ca` |
+| TC-M4-01-08 | Sở cứ | test_hien_vat_mang_theo_MA_TIEU_CHI_da_phan | hiện vật mang `ma_tieu_chi` + `so_do`, không chỉ mang chữ "đã phán" |
+| TC-M4-01-09 | Sở cứ | test_E4024_tu_choi_TRUOC_khi_ghi_kho | từ chối E4024 → `sim_result:unit-test` KHÔNG tồn tại |
+| TC-M4-01-10 | Ca âm | test_so_do_khong_khop_MOT_ma_assert_nao_thi_tu_choi_E4023 | tiêu chí đòi T1, test đo X9 → E4023 "KHÔNG phải sản phẩm sai" |
+| TC-M4-01-11 | Đơn vị | test_assert_thieu_mo_ta_thi_tu_choi_E4007 | thiếu `ma` hoặc `mo_ta` → E4007; canh hộ cả `sim.criteria` (helper dùng chung) |
+| TC-M4-01-12 | **Bề mặt** | test_tab_A8_dong_KET_LUAN_noi_ra_con_so_la_TU_KHAI | dòng *Kết luận* của khối A8.1 nói "TỰ KHAI", và có dòng "Độ tin … ĐỎ" |
+| TC-M4-01-13 | **Bề mặt** | test_tab_A8_dong_KET_LUAN_noi_ra_con_so_do_EIDE_phan | dòng *Kết luận* nói "EIDE phán" + mã tiêu chí; KHÔNG dán cảnh báo độ tin |
+| TC-M4-01-14 | **Bề mặt** | test_tab_A8_tieu_chi_unit_khong_bi_goi_la_tieu_chi_mo_phong | `criteria:unit-01` hiện là "Tiêu chí unit test", không hứa chặn mô phỏng |
+| TC-M4-01-15 | Tương thích | test_test_run_khong_neu_tieu_chi_thi_note_noi_la_TU_KHAI | không nêu mã → vẫn chạy, `note_vi` nói "TỰ KHAI" |
+| TC-M4-01-16 | Tích hợp | test_test_run_co_tieu_chi_thi_EIDE_phan_va_note_noi_ro_che_do | đường đầy đủ qua công cụ → `che_do="eide_phan"`, note nêu mã tiêu chí |
+| TC-M4-01-17 | Ca âm | test_neu_ma_tieu_chi_chua_he_co_thi_tu_choi_E4008 | mã chưa tồn tại → E4008, `alternatives` có `test.criteria` |
+| TC-M4-01-18 | An toàn kho | test_test_criteria_khong_the_de_len_tieu_chi_cua_sim | `test.criteria(ma="sim-01")` KHÔNG ghi đè `criteria:sim-01` |
+
 **Bảo vệ hồi quy (phải vẫn XANH):**
 - `.venv/bin/python -m pytest -q tests/test_xay_dung.py tests/test_dot_bien.py tests/test_policy_tools.py`
 - test_test_run_dem_duoc_CA_DAT_va_CA_HONG, test_test_run_KHONG_in_JSON_thi_khong_ket_luan (E4014) giữ nguyên.
+  **Đã kiểm: không ca cũ nào phải nới.** Sáu ca `test.run` cũ đi đường không-tiêu-chí.
+
+**Lệch khỏi kế hoạch (đo rồi mới thấy):**
+- Thêm cổng **E4023** cho đường unit test (kế hoạch chỉ nêu E4008/E4009/E4024). Cùng cái bẫy
+  DEV-336 ở `sim.run`, và ở đây dễ trúng hơn vì `nguon` bỏ trống lấy MỌI tệp `test/*.c`.
+- E4024 phải từ chối **trước** khi ghi kho, không thì hiện vật giữ `che_do="eide_phan"` cho
+  một lượt tự khai.
+- Phải sửa cả `surfaces.py` (ngoài danh sách "tệp chạm tới"): `test.run` ghi vào loại
+  `sim_result` nên nó hiện ở khối của `sim.run`, và dòng *Kết luận* ở đó nói "theo đúng tiêu
+  chí mà chương trình mô phỏng tự kiểm" cho **mọi** lượt. Chế độ chỉ nằm ở `note_vi` thì
+  không tới người đọc.
+- Phần kiểm assert tách thành `_kiem_assert` dùng chung với `sim.criteria` — một bản sao thứ
+  hai sẽ lệch.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC. — 24 chỗ phá, **24/24 đỏ** (lượt đầu 17/24)
+- [x] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc. — 1773 → **1791 xanh, 0 đỏ**
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md. — **DEV-346**
 
 **Hoàn tác:** revert commit (công cụ mới core=False, không ai gọi tới khi tool.search).
 

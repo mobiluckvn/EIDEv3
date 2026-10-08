@@ -8169,3 +8169,113 @@ hai lần, cái sai nằm ở phạm vi phép đo chứ không ở kết luận 
 README: 128 → **129 công cụ** (120 bật mặc định, nhóm FPGA 6 → 7), §8 thêm mục về bitstream
 `blinky` nói trên, và `hdl.constraints_check` đếm vào phần **chưa được Agent gọi lần nào** —
 như `hdl.sensitivity` ở DEV-344, mã đã chạy trên hiện vật thật nhưng chưa lượt tác tử nào gọi.
+
+---
+
+## [DEV-346] [M4-01] `test.criteria` — tệp test do tác tử tự viết, và nó đang tự chấm điểm mình
+
+Nhiệm vụ #17. **Công cụ mới** (`test.criteria`, R2, `core=False`), không cờ.
+
+### Chỗ hổng: `test.run` đếm cái `dat` mà chính tệp test in ra
+
+```python
+kq.so_dat = sum(1 for x in kq.ca if x.get("dat") is True)
+```
+
+`sim.run` đã đi qua chỗ này từ lâu, và `build/tieu_chi.py` ghi sẵn lý do ở ngay dòng đầu:
+*"Chương trình mô phỏng ĐO, EIDE PHÁN"*. Đường unit test thì chưa — nên **thứ đang bị kiểm
+cũng là thứ tuyên bố kết quả**, và một dòng sửa trong `test/test_pid.c` đủ để mọi ca "đạt".
+
+Và ở đây cái vòng ấy khép kín hơn ở mô phỏng: **tệp test là thứ tác tử tự viết.** Tác tử viết
+mã sản phẩm, viết tệp test cho nó, rồi đọc kết quả do chính tệp test ấy in ra. Ở mô phỏng ít
+nhất mô hình vật lý còn do người dựng.
+
+### Ba chỗ sửa
+
+**`chay_test(..., tieu_chi=None)`** — không có tiêu chí thì y như cũ, chỉ dán nhãn
+`che_do="tu_khai"`. Có tiêu chí thì tệp test chỉ còn in **số đo** `{"do": {"T1": 300}}`, và
+`_phan_theo_tieu_chi` gọi `tieu_chi.xet_ket_qua` **nguyên vẹn** — không viết lại phép so.
+Nhờ thế một ngưỡng đọc ở tab mô phỏng và cùng ngưỡng ấy ở tab test luôn phán giống nhau; hai
+bản sao của cùng một phép so thì sớm muộn lệch.
+
+**Công cụ `test.criteria`** — lược đồ như `sim.criteria`, `trich_loi` là đường duy nhất để một
+tiêu chí được coi là đã xác nhận. Phần kiểm assert tách thành `_kiem_assert` **dùng chung** với
+`sim.criteria`, vì một bản sao thứ hai sẽ lệch, và lúc lệch thì hai loại tiêu chí nhận những
+thứ khác nhau mà không ai nói ra.
+
+**`test.run(..., ma_tieu_chi="")`** — bỏ trống là **còn được**, không phải lỗi. Mọi dự án đang
+có đi đường ấy và ép tiêu chí ngay sẽ phá chúng; một công cụ phá việc cũ thì bị gỡ chứ không
+được dùng. Nhưng lượt tự khai phải **tự nói ra** là tự khai.
+
+### `ma` đi thẳng vào khoá hiện vật thì `test.criteria` xoá sổ tiêu chí của `sim.run`
+
+Hai loại tiêu chí dùng chung không gian `criteria:*`. Kế hoạch ghi *"ghi hiện vật
+`criteria:unit-<ma>`"*, và chỗ đáng nói là **vì sao** phải ép tiền tố thay vì nhờ tác tử gõ
+đúng: một lần gọi `test.criteria(ma="sim-01")` sẽ ghi đè bảng tiêu chí mô phỏng mà người dùng
+đã xác nhận, và `sim.run` sau đó phán theo ngưỡng của unit test — không lỗi nào kêu lên.
+`_ma_tc_unit` ép tiền tố, và có một ca kiểm đi đúng đường ấy
+(`test_test_criteria_khong_the_de_len_tieu_chi_cua_sim`).
+
+### Bốn chỗ kế hoạch không nêu mà mã vẫn cần
+
+* **E4023 cho đường unit test.** Kế hoạch chỉ nêu E4008/E4009/E4024. Nhưng cái bẫy DEV-336 đã
+  bắt ở `sim.run` — *số đo không chứa MỘT mã assert nào của tiêu chí* — ở đây **dễ trúng hơn**:
+  `nguon` bỏ trống thì lấy MỌI tệp `test/*.c`, nên thêm một bộ test thứ hai là lượt sau đem số
+  đo của nó so với tiêu chí của bộ trước. Dùng lại đúng mã `E4023`: cùng một chuyện thì cùng
+  một mã, một mã mới cho cùng một chuyện là bắt người đọc học hai lần.
+* **E4024 phải từ chối TRƯỚC khi ghi kho.** Ghi rồi mới từ chối thì kho giữ lại một mục
+  `che_do="eide_phan"` cho một lượt mà thật ra là tệp test tự khai. Lời từ chối đi tới tác tử
+  và tắt theo lượt; **hiện vật thì ở lại**, và nó là thứ người đọc sở cứ sau này tin.
+* **Thiếu số đo không được lùi về đếm `ca`.** Nếu lùi, chỉ cần bỏ khoá `do` đi là về lại chế độ
+  tự chấm điểm — tiêu chí thành một tờ giấy dán tường: nó có, đã được xác nhận, và không phán
+  gì cả. Mỗi assert không có số đo là một dòng *chưa đo được*, và cả lượt không đạt.
+* **Tiêu chí 0 assert phải nói ra.** `xet_ket_qua` đã gọi đó là không đạt, nhưng ở đường unit
+  test nó hiện ra y như *"test chạy xong, 0 ca"* — một kết quả rỗng vô hại.
+
+### Chỗ NGƯỜI đọc con số, không phải chỗ tác tử đọc nó
+
+`note_vi` đi tới tác tử; người dùng đọc **tab A8**. Và `test.run` ghi vào cùng loại hiện vật
+`sim_result`, nên nó hiện ở đúng khối của `sim.run` — khối mà dòng "Kết luận" trước đây nói
+**một câu duy nhất** cho mọi lượt:
+
+> ĐẠT — theo đúng tiêu chí mà chương trình mô phỏng tự kiểm
+
+Với một lượt `test.run` tự khai, câu ấy sai hai lần: nó không phải mô phỏng, và *"tự kiểm"*
+chính là chỗ đáng không tin — mà câu lại đọc như một lời bảo đảm. Nay dòng ấy đi theo `che_do`,
+và lượt tự khai có thêm một dòng **"Độ tin của con số này"** nói thẳng là ĐỎ cho một kết luận
+nghiệm thu. Bảng tiêu chí cũng vậy: `criteria:unit-01` từng được gọi là *"Tiêu chí mô phỏng"*
+và hứa *"mô phỏng sẽ không chạy tới khi anh duyệt bảng này"* — nói về một công cụ khác công cụ
+mà bảng ấy thật sự chặn.
+
+Đây đúng chỗ DEV-344 vừa sửa ở khối A8.0, lần này ở khối A8.1. Chế độ nằm ở `note_vi` thôi thì
+chưa tới người đọc.
+
+### Phép phá: 17/24 ở lượt đầu
+
+Tập 24 phép phá dựng **từ `git diff`**, không từ ký ức. Bảy chỗ LỌT, và chúng gom lại thành
+hai bài học:
+
+* **Năm chỗ là những câu "nói ra" mà tôi viết rồi không canh:** `ma_tieu_chi` vào hiện vật,
+  tiêu chí 0 assert, cổng E4023, E4024-ghi-kho-trước, và `_kiem_assert` bị nới. Mỗi cái là một
+  dòng tôi viết *vì* nó quan trọng, rồi không viết ca cho nó — "quan trọng" không tự thành
+  "được canh".
+* **Hai chỗ là ca kiểm của tôi xanh nhờ một dòng KHÁC.** `test_tab_A8_noi_ra_con_so_la_TU_KHAI`
+  kiểm `"TỰ KHAI" in str(kh)`, và nó vẫn xanh khi tôi phá chữ ấy ở dòng *Kết luận* — vì
+  `summary` của khối cũng chứa nó. Phép phá bắt được, ca kiểm thì không. Siết lại thành
+  `_cap(kh, "Kết luận")`: soi đúng một dòng, không soi cả khối.
+
+Và một phép phá của tôi **vô hiệu**: `them = [] or [[…]]` — `[]` là giả nên biểu thức trả về
+chính danh sách cũ, tức là không phá gì. Nó báo LỌT và tôi suýt đi viết một ca kiểm cho một
+chỗ vốn đã được canh. Một phép phá không đổi hành vi thì nói sai y như một ca kiểm không đo gì.
+Sửa thành `them = []` rồi mới đo lại được.
+
+Bù bảy ca, phá lại: **24/24**.
+
+### Số đo
+
+Bộ kiểm 1773 → **1791 xanh, 0 đỏ** (+18 ca, `tests/test_test_tieu_chi.py` mới). Không ca cũ
+nào phải nới: sáu ca `test.run` trong `test_xay_dung.py` đi đường không-tiêu-chí và giữ nguyên
+hành vi. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. **Phá lại thì đỏ: 24/24.**
+
+README: 129 → **130 công cụ** (121 bật mặc định, nhóm "Viết mã" 8 → 9), và `test.criteria` đếm
+vào phần **chưa được Agent gọi lần nào** — như hai công cụ của DEV-344/345.
