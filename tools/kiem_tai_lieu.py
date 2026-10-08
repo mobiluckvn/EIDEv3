@@ -88,21 +88,31 @@ def _tat_ca_cong_cu() -> list:
     `sch.*` chỉ được đăng ký khi `EIDE_FEATURE_SCHEMATIC=1`. Dò bằng kho đăng ký mặc định
     thì chín công cụ sơ đồ bị báo là "không tồn tại" — một báo động sai, và một bảng đầy báo
     động sai thì không ai đọc tới dòng thứ ba.
+
+    M4-06 — bật **MỌI** cờ, lấy danh sách từ `Features.ten_co()`. Bản cũ bật đúng một cờ theo
+    TÊN, trong khi docstring của nó đã tự khai là "kể cả công cụ nằm sau cờ tính năng": thêm
+    `test.harden` (cờ `test_harden`) là nó lại báo một công cụ có thật thành "không tồn tại".
+    Đúng cái mẫu *"một danh sách tên phải nhớ cập nhật, và cái quên cập nhật sẽ là cái lọt
+    qua"* mà `cong_cu_bi_khoa` đã chọn tránh.
     """
     import os
 
+    from eide.config import Features
     from eide.tools import build_registry
 
-    cu = os.environ.get("EIDE_FEATURE_SCHEMATIC")
-    os.environ["EIDE_FEATURE_SCHEMATIC"] = "1"
+    ten = Features.ten_co()
+    cu = {t: os.environ.get(f"EIDE_FEATURE_{t.upper()}") for t in ten}
+    for t in ten:
+        os.environ[f"EIDE_FEATURE_{t.upper()}"] = "1"
     try:
         r = build_registry()
         return list(r.all() if hasattr(r, "all") else r.tools.values())
     finally:
-        if cu is None:
-            os.environ.pop("EIDE_FEATURE_SCHEMATIC", None)
-        else:
-            os.environ["EIDE_FEATURE_SCHEMATIC"] = cu
+        for t, v in cu.items():
+            if v is None:
+                os.environ.pop(f"EIDE_FEATURE_{t.upper()}", None)
+            else:
+                os.environ[f"EIDE_FEATURE_{t.upper()}"] = v
 
 
 def _cong_cu_that() -> set[str]:

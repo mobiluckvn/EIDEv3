@@ -85,8 +85,11 @@ def test_co_tat_thi_luoc_do_tool_khong_tang_mot_token_nao():
     bat = build_registry(Features(schematic=True))
 
     assert [t.name for t in tat.all() if t.name.startswith("sch.")] == []
-    assert sorted(tat.bo_qua_vi_co) == sorted(t.name for t in bat.all()
-                                              if t.name.startswith("sch."))
+    # Mọi tool `sch.*` phải nằm trong danh sách bị bỏ — nhưng KHÔNG đòi danh sách ấy chỉ có
+    # `sch.*`. Từ M4-06 (DEV-351) `schematic` không còn là cờ duy nhất gate tool: `test.harden`
+    # mang `feature="test_harden"`, nên nó cũng vào `bo_qua_vi_co`. Phép so bằng cũ nói đúng
+    # điều cần nói *khi chỉ có một cờ*, và nói quá điều ấy khi có hai.
+    assert set(t.name for t in bat.all() if t.name.startswith("sch.")) <= set(tat.bo_qua_vi_co)
 
     # Khai báo của tool CŨ phải y nguyên — bật một tính năng không được sửa lời mô tả của
     # thứ khác, vì đó là thứ mô hình đọc để quyết định gọi gì.

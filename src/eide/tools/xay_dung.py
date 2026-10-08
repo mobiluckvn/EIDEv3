@@ -892,7 +892,19 @@ def dang_ky(r: Registry) -> None:
             op="update" if ctx.store.get(MA_DO_NHAY) else "create",
             author=f"agent:{ctx.run_id}", explain=explain,
             canonical={**{k: v for k, v in d.items() if k != "song"},
-                       "muc": muc, "song": (d.get("song") or [])[:20]},
+                       "muc": muc, "song": (d.get("song") or [])[:20],
+                       # M4-06 — PHIÊN BẢN của `sim_result:unit-test` lúc đo. Hook Stop so
+                       # con số này, KHÔNG so mốc thời gian: `updated_at` có độ phân giải
+                       # thô, nên hai lần ghi trong cùng một giây bằng nhau và phép so
+                       # "mới hơn" im lặng sai. Một số phiên bản là dữ kiện chính xác; một
+                       # cái đồng hồ thì không.
+                       "version_test": ((ctx.store.get(MA_TEST) or {}).get("version"))},
+            # M4-06 — KHAI `deps.upstream`: con số này nói về một cặp *(tệp test, tệp sản
+            # phẩm)* cụ thể. Thiếu khai thì sửa một trong hai rồi con số cũ **nằm đó như còn
+            # đúng** — và một con số đã lỗi thời mà không ai đánh dấu thì tệ hơn không có con
+            # số: nó dừng việc đo lại.
+            deps={"upstream": [str(x.relative_to(goc)) if x.is_relative_to(goc) else str(x)
+                               for x in list(tep_test) + list(sp)]},
             view_hint={"kind": "table", "path": "do-nhay"})
 
         return {
@@ -902,6 +914,180 @@ def dang_ky(r: Registry) -> None:
                "toạ độ) ra một tệp .c KHÔNG `#include` header của bo, rồi cho cả firmware "
                "lẫn tệp test cùng dịch tệp ấy. Đừng chép logic sang tệp test — một bộ kiểm "
                "tự định nghĩa lại thứ nó đang kiểm thì xanh mãi mãi." if xau else "")}
+
+    # ========================================= M4-06: vòng tự nâng bộ kiểm, SAU CỜ và CÓ TRẦN
+    @r.tool("test.harden", "Mô phỏng",
+            "NÂNG bộ kiểm: với mỗi đột biến còn SỐNG (bộ kiểm không bắt được), gọi một tác tử "
+            "con viết thêm một ca. EIDE tự chạy ca mới HAI lần — phải XANH trên mã thật và ĐỎ "
+            "trên mã đã phá — ca nào không giết được mutant thì BỊ LOẠI. Có trần vòng và trần "
+            "lời gọi; chạy sau khi test.sensitivity đã chỉ ra chỗ không canh.",
+            {"type": "object",
+             "properties": {
+                 "nguon": {"type": "array", "items": {"type": "string"},
+                           "description": "tệp mã SẢN PHẨM cần nâng độ nhạy cho"},
+                 "test": {"type": "array", "items": {"type": "string"},
+                          "description": "tệp test hiện có; bỏ trống thì lấy test/*.c"},
+                 "max_vong": {"type": "integer",
+                              "description": "trần số mutant đem đi nhờ viết ca, mặc định 3"},
+                 "toi_da_goi": {"type": "integer",
+                                "description": "trần lời gọi mô hình, mặc định 15"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["explain"]},
+            risk="R2", core=False, feature="test_harden", needs_explain=True,
+            keywords=["nâng bộ kiểm", "harden", "thêm ca kiểm", "giết mutant",
+                      "đột biến còn sống", "tự nâng test"])
+    def test_harden(ctx: Any, explain: dict[str, Any], nguon: list[str] | None = None,
+                    test: list[str] | None = None, max_vong: int = 3,
+                    toi_da_goi: int = 15):
+        """Evaluator–Optimizer, và phần *Evaluator* do MÃ làm chứ không do mô hình làm.
+
+        Vòng tự nâng nào nhận mọi ca do mô hình viết cũng sẽ sinh ra đúng thứ cả mảng này đi
+        chữa: **ca xanh mãi mãi**. Mô hình có động cơ rõ ràng để viết một ca như thế — việc nó
+        được giao là "làm cho mutant chết", và chép giá trị trong mã sản phẩm sang ca kiểm là
+        đường ngắn nhất tới một ô xanh. Nên phép nhận ca KHÔNG hỏi mô hình: EIDE chạy bộ kiểm
+        **hai lần** — một lần trên mã thật, một lần trên mã đã phá — và chỉ nhận ca khi lượt
+        đầu XANH và lượt sau ĐỎ.
+
+        Trần cứng ở cả hai phía. `muc="chi_tiet"` mất 0,6 s mỗi lượt biên dịch + chạy
+        (DEV-350), và mỗi mutant đem đi nhờ viết ca còn tốn một lượt mô hình — nên một vòng
+        không trần là một vòng tiêu tới khi hết hạn mức.
+        """
+        from .. import subagent as SA
+        from ..build import dot_bien as DB
+        from ..build import mo_phong as MP
+
+        goc = ctx.config.paths.project_root
+        tep_test = ([(goc / x) for x in test] if test else
+                    sorted((goc / "test").glob("*.c")) + sorted((goc / "tests").glob("*.c")))
+        tep_test = [x for x in tep_test if x.exists()]
+        sp = [(goc / x) for x in (nguon or [])]
+        sp = [x for x in sp if x.exists()] or [
+            x for x in sorted((goc / "firmware").glob("*.c"))
+            if x.name not in ("startup.c", "libc_stub.c")][:4]
+        if not tep_test or not sp:
+            return ToolResult(False, error=EideError(
+                "E4011", "Cần ít nhất một tệp test và một tệp mã sản phẩm.",
+                hint_for_agent="Nêu `nguon` là tệp .c của sản phẩm, `test` là tệp kiểm.",
+                blame="agent"))
+
+        co_include = [f"-iquote{d}" for d in dict.fromkeys(str(x.parent) for x in sp)]
+
+        def _chay(ds: list[Any]) -> bool:
+            """Bộ kiểm (gồm cả ca mới nếu có) có XANH hay không."""
+            kq = MP.chay_test(goc=goc, nguon=ds, them_co=co_include)
+            return bool(kq.chay_duoc and kq.so_ca > 0 and kq.so_hong == 0)
+
+        # Tìm mutant còn SỐNG. Đo trên bản sao, không chạm tệp của người dùng (M4-19).
+        tam = goc / ".eide" / "harden" / str(ctx.run_id)
+
+        def _do(ds_test: list[Any]) -> dict[str, Any]:
+            def chay(them: Any = None) -> tuple[bool, str]:
+                kq = MP.chay_test(goc=goc, nguon=ds_test + ([them] if them else []),
+                                  them_co=co_include)
+                if not kq.chay_duoc:
+                    return DB.ket_qua_chay(dat=False,
+                                           loi_bien_dich=kq.loi_bien_dich[-800:],
+                                           log=(kq.vi_sao_khong_dat or "")[-800:])
+                return DB.ket_qua_chay(dat=kq.so_hong == 0, log=kq.vi_sao_khong_dat or "")
+
+            return DB.do_do_nhay(sp, chay, thu_muc_tam=tam, muc="chi_tiet",
+                                 toi_da_moi_tep=max(max_vong * 2, 6))
+
+        d0 = _do(tep_test)
+        song = list(d0.get("song") or [])[:max_vong]
+
+        nhan: list[dict[str, Any]] = []
+        loai: list[dict[str, Any]] = []
+        so_goi = 0
+        for i, m in enumerate(song):
+            if so_goi >= toi_da_goi:
+                break
+            ten_test = ", ".join(f"`{x.relative_to(goc)}`" for x in tep_test)
+            viec = (f"Đột biến còn SỐNG trong `{m['tep']}` dòng {m['dong']} "
+                    f"({m['phep']}):\n\n  trước: {m['truoc']}\n  sau  : {m['sau']}\n\n"
+                    f"Bộ kiểm hiện tại ({ten_test}) vẫn XANH khi dòng ấy bị sửa như trên.\n\n"
+                    "Thêm MỘT ca kiểm đọc được hành vi mà dòng ấy quyết định, **vào chính "
+                    f"tệp test đang có** ({ten_test}): đọc nó ra, thêm ca vào mảng `ca` của "
+                    "dòng JSON nó in, rồi ghi lại. ĐỪNG tạo tệp test mới — mọi tệp trong "
+                    "`test/` được dịch CÙNG NHAU, nên một tệp thứ hai có `main()` làm trình "
+                    "liên kết báo trùng ký hiệu và cả bộ kiểm không dịch được.\n\n"
+                    "`fs.write` lên một tệp đang có sẽ bị từ chối (E4020) nếu lượt này bạn "
+                    "chưa `fs.read` trọn tệp ấy — đọc trước, rồi ghi lại cả tệp.")
+            # Ảnh chụp NỘI DUNG, không chỉ danh sách tệp: ca mới phải vào tệp test đang có
+            # (xem `viec` ở trên), nên "có ca mới" là *nội dung đổi*, không phải *có tệp mới*.
+            truoc_anh = {x: x.read_text("utf-8")
+                         for x in sorted((goc / "test").glob("*.c"))} \
+                if (goc / "test").is_dir() else {}
+            bc = SA.chay(llm=ctx.agent.llm if getattr(ctx, "agent", None) else None,
+                         registry=ctx.registry, ctx=ctx, ma="test-writer", viec=viec)
+            so_goi += max(int(getattr(bc, "so_goi", 0) or 0), 1)
+            sau_anh = {x: x.read_text("utf-8")
+                       for x in sorted((goc / "test").glob("*.c"))} \
+                if (goc / "test").is_dir() else {}
+            da_doi = [x for x, v in sau_anh.items() if truoc_anh.get(x) != v]
+            if not da_doi:
+                loai.append({**m, "vi_sao": "tác tử con không ghi ca nào"})
+                continue
+            ca_moi = [x for x in da_doi if x not in truoc_anh]   # tệp mới (nếu có)
+
+            # ===== PHÉP NHẬN: mã làm, không hỏi mô hình. Hai lượt chạy, hai kết luận khác
+            # nhau — thiếu một trong hai là loại.
+            tep_sp = next((x for x in sp if x.name == m["tep"]), None)
+            if tep_sp is None:
+                loai.append({**m, "vi_sao": "không tìm lại được tệp sản phẩm"})
+                continue
+            van = tep_sp.read_text("utf-8")
+            db = next((x for x in DB.liet_ke_dot_bien(van)
+                       if x.dong == m["dong"] and x.mo_ta == m["phep"]), None)
+            if db is None:
+                loai.append({**m, "vi_sao": "không dựng lại được đột biến ấy"})
+                continue
+
+            ds_moi = sorted(set(tep_test) | set(sau_anh))
+            xanh_that = _chay(ds_moi + [tep_sp])
+            try:
+                tep_sp.write_text(DB.ap_mot(van, db), "utf-8")
+                do_mutant = not _chay(ds_moi + [tep_sp])
+            finally:
+                tep_sp.write_text(van, "utf-8")
+
+            ten_ca = [str(x.relative_to(goc)) for x in da_doi]
+            if xanh_that and do_mutant:
+                nhan.append({**m, "ca": ten_ca})
+                tep_test = ds_moi      # ca đã nhận thì lượt sau đo cùng nó
+            else:
+                # TRẢ LẠI bộ kiểm như trước: một ca bị loại mà vẫn nằm trong `test/` là một
+                # ca xanh mãi mãi ở lại trong dự án — đúng thứ cả mảng này đi chữa.
+                for x, v in truoc_anh.items():
+                    x.write_text(v, "utf-8")
+                for x in ca_moi:
+                    x.unlink(missing_ok=True)
+                loai.append({
+                    **m, "ca": ten_ca,
+                    "vi_sao": ("ca mới làm bộ kiểm ĐỎ ngay trên mã thật" if not xanh_that
+                               else "ca mới không giết được mutant — nó xanh cả khi mã đã phá")})
+
+        import shutil as _sh
+        _sh.rmtree(tam, ignore_errors=True)
+        try:
+            tam.parent.rmdir()
+        except OSError:
+            pass
+
+        return {
+            "diem_truoc": d0.get("diem"), "so_mutant_song": len(d0.get("song") or []),
+            "so_vong": len(song), "so_goi": so_goi,
+            "so_ca_nhan": len(nhan), "so_ca_loai": len(loai),
+            "nhan": nhan, "loai": loai,
+            "note_vi": (
+                f"{len(song)} đột biến sống đem đi nhờ viết ca (trần {max_vong}); "
+                f"NHẬN {len(nhan)}, LOẠI {len(loai)}."
+                + ("".join(f" · {x['tep']}:{x['dong']} — {x['vi_sao']}" for x in loai[:4]))
+                + (" Ca bị loại đã bị xoá: một ca xanh mãi mãi làm con số độ nhạy đẹp lên mà "
+                   "bộ kiểm không khá hơn." if loai else "")
+                + " Chạy lại `test.sensitivity` để lấy con số sau khi nâng."
+                if song else
+                "Không đột biến nào còn sống trong phạm vi đã đo — không có gì để nâng.")}
 
     # ======================================= M4-01: tiêu chí cho unit test, nêu TRƯỚC khi chạy
     @r.tool("test.criteria", "Mô phỏng",

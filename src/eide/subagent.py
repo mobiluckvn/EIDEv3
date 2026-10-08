@@ -110,6 +110,28 @@ SUBAGENT: dict[str, DinhNghia] = {
             "Tiêu chí nêu TRƯỚC khi chạy. Chương trình mô phỏng chỉ in SỐ ĐO; đạt hay không "
             "là do so với ngưỡng. Không sửa ngưỡng để một phép thử thành đạt — nếu ngưỡng "
             "sai thì nói ra là nó sai và vì sao, rồi để người dùng quyết.")),
+    "test-writer": DinhNghia(
+        ma="test-writer", ten="Viết thêm ca kiểm",
+        muc_dich="Viết ca kiểm GIẾT được một đột biến cụ thể còn sống",
+        # Chỉ ĐỌC và ghi tệp test. KHÔNG `fs.edit`, KHÔNG `build.compile`, KHÔNG công cụ nào
+        # chạm bo: việc của nó là làm cho một mutant chết, nên nếu nó sửa được mã sản phẩm thì
+        # nó có đường ngắn hơn và đường ấy phá đúng thứ đang đo. Tệ hơn `sim-runner` ở M4-02
+        # một bậc, vì ở đây động cơ rõ ràng chứ không chỉ là khả năng.
+        cong_cu=("fs.read", "fs.glob", "fs.grep", "fs.write", "test.run", "store.get"),
+        toi_da_goi=8,
+        system=_CHUNG + (
+            "\nViệc của bạn: viết THÊM một ca kiểm, và chỉ thế.\n\n"
+            "Bạn được đưa một ĐỘT BIẾN CÒN SỐNG: một dòng mã sản phẩm bị sửa mà bộ kiểm hiện "
+            "tại vẫn xanh. Viết một ca đọc được HÀNH VI mà dòng ấy quyết định, sao cho ca ấy "
+            "XANH với mã thật và ĐỎ với mã đã sửa.\n\n"
+            "Luật cứng:\n"
+            "- Chỉ ghi trong `test/`. Bạn KHÔNG sửa mã sản phẩm — nếu ca không viết được mà "
+            "không sửa sản phẩm thì ghi vào `chua_lam` kèm lý do, và đó là một câu trả lời "
+            "hợp lệ.\n"
+            "- ĐỪNG chép giá trị trong mã sản phẩm sang ca kiểm rồi so nó với chính nó. Một "
+            "ca như thế xanh mãi mãi, và EIDE sẽ chạy nó hai lần để loại nó ra.\n"
+            "- Ca phải đọc được hành vi qua đường mà sản phẩm thật chạy, không qua một bản "
+            "sao logic viết trong tệp kiểm.")),
     "hardware": DinhNghia(
         ma="hardware", ten="Mạch thật",
         muc_dich="Việc chạm bo thật: dò bo, nạp, đọc log (bước G7)",

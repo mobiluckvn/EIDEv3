@@ -8749,3 +8749,107 @@ nhảy ngược xuôi), nên thêm một phép kiểm thứ tự.
 Bộ kiểm 1846 → **1862 xanh, 0 đỏ** (+16 ca). `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. **Phá lại
 thì đỏ: 22/22.** Không công cụ mới, không cờ mới: **130 công cụ**, **8 cờ**. Hiện vật mới:
 `sim_result:test-sensitivity`.
+
+---
+
+## [DEV-351] [M4-06] Vòng tự nâng bộ kiểm — và phần *Evaluator* do MÃ làm, không do mô hình
+
+Nhiệm vụ #22. **Đổi hành vi**, sau cờ `TEST_HARDEN` (mặc định TẮT) — trừ một phần sửa lỗi
+thuần luôn chạy. Tiền đề M4-04 và M4-05 đã xong.
+
+### Chỗ hổng: một lời dặn trong mô tả công cụ không phải một cơ chế
+
+Mô tả `test.sensitivity` dặn *"Gọi nó SAU khi test.run xanh, trước khi nói với người dùng rằng
+đã kiểm xong"*. Câu ấy đúng, và không ai ép: `grep sensitivity` trong `hooks/` và `loop.py` ra
+**rỗng**. Nên suốt bao nhiêu phiên, `test.run` xanh rồi tác tử báo "đã kiểm xong", và không
+lượt nào đi đo xem bộ kiểm ấy canh được gì.
+
+**Phần luôn chạy, không cần cờ:** hiện vật đo nay khai `deps.upstream` gồm tệp test **và** tệp
+sản phẩm. Thiếu nó thì sửa một trong hai rồi con số cũ **nằm đó như còn đúng** — và một con số
+đã lỗi thời mà không ai đánh dấu thì tệ hơn không có con số: nó dừng việc đo lại.
+
+**Phần sau cờ:** Stop hook `test_xanh_chua_do_nhay` nhắc khi test xanh mà chưa ai đo, **và mở
+khoá** `test.sensitivity` — nửa thứ hai bắt buộc, vì công cụ ấy là `core=False` nên tác tử chỉ
+thấy nó sau `tool.search`. Đo được ở hook `kiem_viec_chua_ai_kiem` trên phiên FreeRTOS: hook nổ
+hai lượt liền và tác tử **không gọi lần nào**. Bảo ai đó dùng một thứ họ không nhìn thấy thì
+không phải là bảo.
+
+### So PHIÊN BẢN, không so đồng hồ
+
+Bản đầu của hook so `updated_at` giữa hiện vật test và hiện vật đo. Ca kiểm đầu tiên của chính
+hook ấy đỏ ngay: `updated_at` có độ phân giải thô, nên hai lần ghi trong cùng một giây **bằng
+nhau**, và phép so "mới hơn" im lặng sai.
+
+Nay `test.sensitivity` ghi kèm `version_test` — số phiên bản của `sim_result:unit-test` tại lúc
+đo — và hook so con số ấy. Một số phiên bản là dữ kiện chính xác; một cái đồng hồ thì không.
+Nhờ thế hook cũng trả lời đúng câu *"test đã chạy lại sau lần đo chưa"*, thay vì chỉ trả lời
+được *"đã có hiện vật đo chưa"* — mà câu sau thì một lần đo duy nhất ở đầu dự án khoá hook im
+mãi mãi.
+
+### `test.harden`: phần Evaluator do MÃ làm
+
+Vòng tự nâng nào nhận mọi ca do mô hình viết cũng sẽ sinh ra đúng thứ cả mảng này đi chữa: **ca
+xanh mãi mãi**. Và ở đây mô hình có động cơ rõ ràng — việc nó được giao là *"làm cho mutant
+chết"*, mà chép giá trị trong mã sản phẩm sang ca kiểm là đường ngắn nhất tới một ô xanh.
+
+Nên phép nhận ca **không hỏi mô hình**: EIDE chạy bộ kiểm **hai lần** — XANH trên mã thật, ĐỎ
+trên mutant — và chỉ nhận khi cả hai đúng. Thiếu một chiều là loại, và **ca bị loại được trả
+lại**: một ca xanh mãi mãi ở lại trong `test/` còn tệ hơn không thêm gì.
+
+Đòi cả hai chiều chứ không chỉ chiều "đỏ trên mutant": chỉ đòi chiều ấy là nhận cả những ca đỏ
+sẵn, bộ kiểm thành đỏ vĩnh viễn, và lượt sau `do_do_nhay` trả ngay *"bộ kiểm đang ĐỎ từ trước
+khi đột biến"* — vòng tự nâng **tự khoá chính nó** bằng một ca nó vừa nhận.
+
+Hai trần, độc lập nhau: `max_vong` chặn theo số mutant, `toi_da_goi` chặn theo **tiền mô hình**.
+Cần cả hai vì một mutant có thể tốn nhiều lượt gọi (tác tử con có `toi_da_goi=8` riêng), nên ba
+mutant "trong trần vòng" vẫn có thể là hai mươi lượt mô hình.
+
+Tác tử con `test-writer` chỉ có `fs.read`/`fs.glob`/`fs.grep`/`fs.write`/`test.run`/`store.get`
+— **không** `fs.edit`, **không** `build.compile`, **không** công cụ chạm bo. Tệ hơn `sim-runner`
+ở M4-02 một bậc nếu cho nó quyền sửa mã sản phẩm: ở đó mới là *khả năng*, ở đây là *động cơ*.
+
+### Hai ràng buộc thật mà hai hàng rào có sẵn chỉ ra
+
+**Một dự án chỉ có MỘT tệp test.** Bản đầu bảo `test-writer` ghi `test/t_harden_0.c`, và ca mới
+bị loại với lý do *"ĐỎ ngay trên mã thật"* — vì `chay_test` dịch **mọi** tệp trong `test/` cùng
+nhau, nên một tệp thứ hai có `main()` làm trình liên kết báo trùng ký hiệu. Kiểm lại trên dữ
+liệu thật: cả bốn dự án có `test/` đều đúng **một** tệp. Nay lời giao việc bảo thêm ca **vào
+chính tệp đang có**, và phép dò "có ca mới chưa" đọc **nội dung** chứ không đọc danh sách tệp.
+
+**`fs.write` không ghi đè tệp chưa đọc (E4020).** Kịch bản đầu của tôi cho `test-writer` gọi
+thẳng `fs.write`, và nó bị từ chối — đúng luật, có từ 30/09/2026. Lời giao việc nay nói ra hợp
+đồng ấy, và ca kiểm đi đúng đường thật: `fs.read` rồi mới `fs.write`.
+
+### Bộ dò tài liệu tự khai một việc nó không làm
+
+`_tat_ca_cong_cu` có docstring *"Kể cả công cụ nằm sau CỜ TÍNH NĂNG"*, nhưng nó bật đúng **một**
+cờ theo tên: `EIDE_FEATURE_SCHEMATIC`. Thêm `test.harden` là nó báo một công cụ **có thật**
+thành "không tồn tại" — đúng cái báo động sai mà docstring ấy nói là phải tránh. Nay nó lấy
+danh sách từ `Features.ten_co()` và bật hết, đúng mẫu `cong_cu_bi_khoa` đã chọn: lấy từ hợp
+đồng, không từ một tên gõ cứng.
+
+Hai ca kiểm `sch` cũng phải siết: chúng đòi `bo_qua_vi_co` **chỉ** chứa `sch.*`, đúng khi
+`schematic` là cờ duy nhất gate công cụ và nói quá khi có hai. Nay chúng đòi *mọi `sch.*` nằm
+trong danh sách bị bỏ*, không đòi ngược lại.
+
+### Số đo, và một tiêu chí CHƯA đạt
+
+Bộ kiểm 1862 → **1878 xanh, 0 đỏ** (+16 ca). `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. **Phá lại
+thì đỏ: 22/22** (lượt đầu 18/22). Cờ 8 → **9** · tác tử con 7 → **8** · công cụ **131** khi bật
+hết cờ (121 bật mặc định; mặc định không đổi).
+
+Đo "trước" trên dự án thật `du-lieu/rtos-sinhvien`, tệp `logo_ptit.c`: **điểm 0,0** · 30 mutant
+· 20 sống · 18 s.
+
+**Tiêu chí *"mutation score tăng sau harden"* CHƯA đạt, và tôi không nhận nó.** Hai lý do, cả
+hai đo được:
+
+* Chạy `test.harden` thật cần **lời gọi mô hình**, và §3.0 của kế hoạch bắt hỏi người dùng
+  trước khi tiêu tiền mô hình. Tôi chưa hỏi.
+* Kể cả có hỏi, dự án ấy **không có chỗ để đo**: tệp duy nhất đáng nâng là `control_rtos.c`, và
+  nó là `khong_nap_duoc` vì tệp test `#include` chính tệp `.c` đó (DEV-350). Sáu tệp còn lại là
+  bitmap — không ca kiểm nào "giết" được một đột biến một byte trong logo, và đem chúng đi nhờ
+  viết ca là tiêu tiền mô hình để lấy về số không.
+
+Nên cờ `TEST_HARDEN` giữ **TẮT**, và tiêu chí ấy để mở trong kế hoạch. Bật mặc định còn cần bộ
+76 ca chạy hai chế độ — cũng phải hỏi trước.

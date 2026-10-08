@@ -154,7 +154,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 19 | [M4-05](#m4-05) | Đột biến không biên dịch được không được tính là "bắt được" | P1 | S | — | — | xong 08/10/2026 · DEV-348 · 1816→1835 ca · phá lại 22/22 (lượt đầu 15/20) · tìm thêm BA lỗi thật trên cùng đường đo: test.sensitivity ĐỔ trên mọi tệp firmware thật (≥10 chú thích), mo_phong chạy lại sim.vvp cũ khi biên dịch đổ, và loi_nguoi_doc khen khi chưa đo được gì | ☑ |
 | 20 | [M4-19](#m4-19) | Đột biến trên bản sao, không ghi đè tệp sản phẩm của người dùng | P2 | S | — | — | xong 08/10/2026 · DEV-349 · 1835→1846 ca · phá lại 13/13 (lượt đầu 7/13) · đo trên 3 dự án thật TẠI CHỖ: 50/50 tệp firmware giữ nguyên sha256 VÀ mtime, kết luận giống hệt lượt đột biến tại chỗ của M4-05 | ☑ |
 | 21 | [M4-04](#m4-04) | Đột biến chi tiết từng vị trí + điểm đột biến (mutation score) | P1 | M | M4-05, M4-19 | — | xong 09/10/2026 · DEV-350 · 1846→1862 ca · phá lại 22/22 (lượt đầu 15/22) · TÁI HIỆN được ca DANH-GIA §2.2 bằng máy (0xFFFFFFFD dòng 147 → mutant SỐNG) · phép đo mới TREO 10 phút trên tệp thật đầu tiên, đã sửa | ☑ |
-| 22 | [M4-06](#m4-06) | Vòng tự nâng test khi đột biến sống (Evaluator–Optimizer) | P0 | M | M4-04, M4-05 | TEST_HARDEN |  | ☐ |
+| 22 | [M4-06](#m4-06) | Vòng tự nâng test khi đột biến sống (Evaluator–Optimizer) | P0 | M | M4-04, M4-05 | TEST_HARDEN — TẮT | xong 09/10/2026 · DEV-351 · 1862→1878 ca · phá lại 22/22 (lượt đầu 18/22) · **một tiêu chí CHƯA đạt**: "mutation score tăng sau harden" cần lời gọi mô hình (§3.0 bắt hỏi trước), và dự án mẫu không có chỗ để đo | ☑ |
 | 23 | [M4-07](#m4-07) | Verifier nhận gói bằng chứng do EIDE dựng từ sổ cái, không nhận đề bài tác tử chính tự viết | P0 | M | — | VERIFIER_GOI_BANG_CHUNG |  | ☐ |
 | 24 | [M4-09](#m4-09) | Stop hook không được coi `task.run` với subagent khác là "đã kiểm chứng" | P0 | S | — | — |  | ☐ |
 | 25 | [M4-11](#m4-11) | Hồi quy tự động sau khi sửa mã + STALE chính xác theo tệp | P0 | M | M2-01 | HOI_QUY_NEN |  | ☐ |
@@ -1647,14 +1647,51 @@ phá tìm ra năm chỗ không ai canh — xem DEV-348; tất cả trong `tests/
 | TC-M4-06-04 | Tích hợp (ScriptedGateway) | …::test_harden_loai_ca_khong_do_tren_mutant | test-writer viết ca luôn xanh → ca bị loại, báo "không giết được mutant" |
 | TC-M4-06-05 | Ca biên | …::test_harden_dung_o_tran_vong | 5 mutant, max_vong=1 → chỉ 1 vòng, ScriptedGateway không bị gọi quá số kịch bản (không có E6004) |
 
+**Mười một TC thêm khi làm** (phép phá tìm ra bốn chỗ không ai canh, và hai hàng rào có sẵn chỉ
+ra hai ràng buộc thật — xem DEV-351; tất cả trong `tests/test_test_harden.py`):
+
+| Mã TC | Loại | Tên ca | Cho trước → Khi → Thì |
+|---|---|---|---|
+| TC-M4-06-06 | Lỗi thời | test_hien_vat_do_nhay_co_DEPS_UPSTREAM | hiện vật khai `deps.upstream` gồm tệp test VÀ tệp sản phẩm |
+| TC-M4-06-07 | **Mốc** | test_hien_vat_do_nhay_mang_PHIEN_BAN_cua_hien_vat_test | ghi `version_test`, KHÔNG dựa vào `updated_at` |
+| TC-M4-06-08 | Hook | test_hook_IM_khi_da_do_nhay_SAU_khi_test_xanh | đã đo rồi thì im |
+| TC-M4-06-09 | Hook | test_hook_NHAC_LAI_khi_test_chay_lai_sau_lan_do | test chạy lại sau lần đo → nhắc lại |
+| TC-M4-06-10 | Hook | test_hook_IM_khi_test_DO | test còn ĐỎ thì không nhắc đo độ nhạy |
+| TC-M4-06-11 | Hook | test_hook_moi_luot_chi_nhac_MOT_lan | nhắc hai lượt liền là cách một lời nhắc thành tiếng ồn |
+| TC-M4-06-12 | Cờ | test_cong_cu_harden_chi_co_khi_CO_BAT | cờ TẮT → KHÔNG đăng ký, không chỉ bị giấu |
+| TC-M4-06-13 | An toàn | test_subagent_test_writer_KHONG_ghi_duoc_ngoai_test | không `fs.edit`, không `build.compile`, không chạm bo |
+| TC-M4-06-14 | **Phép nhận** | test_harden_loai_ca_DO_NGAY_tren_ma_that | ca ĐỎ sẵn trên mã thật cũng bị LOẠI, và bộ kiểm được TRẢ LẠI |
+| TC-M4-06-15 | Trần | test_harden_dung_o_TRAN_LOI_GOI_du_con_mutant | `toi_da_goi` là trần thứ hai, độc lập với `max_vong` |
+| TC-M4-06-16 | **Bộ dò** | test_bo_do_tai_lieu_dem_ca_cong_cu_sau_CO_KHAC_schematic | `kiem_tai_lieu` đếm công cụ sau MỌI cờ, không chỉ `schematic` |
+
 **Bảo vệ hồi quy (phải vẫn XANH):**
 - `.venv/bin/python -m pytest -q tests/test_dot_bien.py tests/test_tu_phat_hien_sai.py tests/test_subagent.py tests/test_loop.py`
+  **Hai ca `sch` phải siết** (không phải nới): chúng đòi `bo_qua_vi_co` **chỉ** chứa `sch.*`,
+  đúng khi `schematic` là cờ duy nhất gate công cụ và nói quá khi có hai.
+
+**Lệch khỏi kế hoạch (đo rồi mới thấy):**
+- Phải sửa cả `tools/kiem_tai_lieu.py` (ngoài danh sách "tệp chạm tới"): `_tat_ca_cong_cu` tự
+  khai *"kể cả công cụ nằm sau cờ tính năng"* mà chỉ bật một cờ theo TÊN, nên `test.harden` bị
+  báo thành "không tồn tại". Nay lấy danh sách từ `Features.ten_co()`.
+- Hook so **phiên bản**, không so `updated_at`: độ phân giải thô làm hai lần ghi trong cùng một
+  giây bằng nhau, và phép so "mới hơn" im lặng sai. Nên `test.sensitivity` ghi kèm `version_test`.
+- Ca mới phải thêm **vào tệp test đang có**, không tạo tệp mới: `chay_test` dịch mọi tệp trong
+  `test/` cùng nhau, nên tệp thứ hai có `main()` làm trùng ký hiệu. Kiểm trên dữ liệu thật: cả
+  bốn dự án có `test/` đều đúng một tệp.
+- Lời giao việc phải nói ra hợp đồng của `fs.write`: nó không ghi đè tệp mà lượt này chưa đọc
+  (E4020, có từ 30/09/2026).
+- Ca bị loại phải được **trả lại**: một ca xanh mãi mãi ở lại trong `test/` còn tệ hơn không
+  thêm gì.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Chỉ số: mutation score trên dự án FreeRTOS mẫu tăng sau harden; bật cờ mặc định chỉ khi bộ 76 ca / phát lại không tụt.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC. — 22 chỗ phá, **22/22 đỏ** (lượt đầu 18/22)
+- [x] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc. — 1862 → **1878 xanh, 0 đỏ**
+- [ ] **CHƯA ĐẠT** — Chỉ số: mutation score trên dự án mẫu tăng sau harden. Đo "trước" đã có
+  (`du-lieu/rtos-sinhvien`, `logo_ptit.c`: điểm **0,0** · 30 mutant · 20 sống · 18 s), nhưng
+  phần "sau" cần **lời gọi mô hình** và §3.0 bắt hỏi người dùng trước. Và kể cả có hỏi, dự án
+  ấy **không có chỗ để đo**: tệp duy nhất đáng nâng (`control_rtos.c`) là `khong_nap_duoc` vì
+  tệp test `#include` chính tệp `.c` đó; sáu tệp còn lại là bitmap. Cờ giữ **TẮT**.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md. — **DEV-351**
 
 **Hoàn tác:** tắt cờ; revert commit cho phần ghi hiện vật.
 

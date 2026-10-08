@@ -335,7 +335,10 @@ def test_SCH16_co_TAT_thi_sch_khong_duoc_DANG_KY():
 
     tat = build_registry(Features(schematic=False))
     assert [t for t in tat.all() if t.name.startswith("sch.")] == []
-    assert all(n.startswith("sch.") for n in tat.bo_qua_vi_co), tat.bo_qua_vi_co
+    # Mọi tool `sch.*` phải nằm trong danh sách bị bỏ. KHÔNG đòi ngược lại: từ M4-06
+    # (DEV-351) `test.harden` cũng mang cờ riêng nên cũng vào danh sách ấy.
+    assert set(t.name for t in build_registry(Features(schematic=True)).all()
+               if t.name.startswith("sch.")) <= set(tat.bo_qua_vi_co), tat.bo_qua_vi_co
     bat = build_registry(Features(schematic=True))
     sch_bat = [t.name for t in bat.all() if t.name.startswith("sch.")]
     # KHÔNG chốt cứng con số: SCH-B/C/D còn thêm tool, và một ca đo đỏ vì lý do bình thường

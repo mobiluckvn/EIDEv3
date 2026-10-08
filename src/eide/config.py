@@ -343,6 +343,16 @@ class Features:
     # eval noi nguoc lai. Hang rao chinh (POL-N6-sua-test) thi KHONG sau co — no chan ca
     # tac tu chinh lan tac tu con, bang mot phep do dem duoc.
     sim_runner_gioi_han: bool = False
+    # M4-06 — EIDE tu DO do nhay sau khi test xanh, va tu NANG bo kiem.
+    #
+    # Hai thu sau co, va deu la N-4: mot Stop hook chen loi nhac vao transcript moi luot (doi
+    # thu mo hinh doc), va cong cu `test.harden` goi mot tac tu con viet them ca kiem (doi
+    # viec tac tu lam duoc, va tieu tien mo hinh).
+    #
+    # Phan KHONG sau co: `test.sensitivity` ghi hien vat kem `deps.upstream`. Do la sua loi
+    # thuan — mot phep do khong vao kho thi bang chua do, va mot con so da loi thoi ma khong
+    # ai danh dau thi te hon khong co con so.
+    test_harden: bool = False
 
     @classmethod
     def load(cls) -> "Features":
@@ -367,7 +377,8 @@ class Features:
     @staticmethod
     def ten_co() -> tuple[str, ...]:
         return ("schematic", "gon_cong_cu", "truy_vet", "req_phu", "req_chat_luong",
-                "ke_hoach_cong_kiem", "erc_tu_dong", "sim_runner_gioi_han")
+                "ke_hoach_cong_kiem", "erc_tu_dong", "sim_runner_gioi_han",
+                "test_harden")
 
     def bat(self, ten: str) -> bool:
         return bool(getattr(self, ten, False))

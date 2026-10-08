@@ -728,6 +728,66 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
         return c if c.get("trang_thai") == "da_duyet" else None
 
     @bus.on_stop
+    def test_xanh_chua_do_nhay(ctx: Any) -> StopResult:
+        """M4-06 — `test.run` XANH mà chưa ai đo độ nhạy thì nhắc, và MỞ KHOÁ công cụ đo.
+
+        Mô tả `test.sensitivity` dặn *"Gọi nó SAU khi test.run xanh"*. Câu ấy đúng và không ai
+        ép: `grep sensitivity` trong `hooks/` và `loop.py` ra rỗng. Nên suốt bao nhiêu phiên,
+        test xanh rồi tác tử báo "đã kiểm xong", và không lượt nào đi đo xem bộ kiểm ấy canh
+        được gì. Một lời dặn trong mô tả công cụ không phải một cơ chế.
+
+        **So MỐC THỜI GIAN, không chỉ hỏi "đã có hiện vật chưa".** Hỏi kiểu sau thì một lần
+        đo duy nhất ở đầu dự án khoá hook im mãi mãi — trong khi mỗi lần `test.run` chạy lại
+        là con số độ nhạy cũ không còn nói về bộ kiểm hiện tại.
+
+        **Mở khoá là nửa thứ hai và nó bắt buộc.** `test.sensitivity` là `core=False`, tức
+        tác tử chỉ thấy nó sau `tool.search`. Đo được ở hook `kiem_viec_chua_ai_kiem` trên
+        phiên FreeRTOS: hook nổ hai lượt liền, `another_round=True` cả hai, và tác tử **không
+        gọi lần nào** — vì công cụ ấy không có trong danh sách nó nhìn thấy.
+
+        Sau cờ `TEST_HARDEN` vì nó chèn chữ vào transcript mỗi lượt (N-4).
+        """
+        try:
+            if not ctx.config.features.bat("test_harden"):
+                return StopResult()
+        except Exception:                                    # noqa: BLE001
+            return StopResult()
+        if getattr(ctx, "da_nhac_do_nhay", False):
+            return StopResult()
+        try:
+            a_test = ctx.store.get("sim_result:unit-test")
+            a_nhay = ctx.store.get("sim_result:test-sensitivity")
+        except Exception:                                    # noqa: BLE001
+            return StopResult()
+        # Test còn ĐỎ thì việc cần làm là sửa cho nó xanh. Nhắc đo độ nhạy lúc ấy là nhắc một
+        # việc không làm được: `do_do_nhay` trả ngay "bộ kiểm đang ĐỎ từ trước khi đột biến".
+        if not (a_test and (a_test.get("canonical") or {}).get("dat") is True):
+            return StopResult()
+        # So PHIÊN BẢN, không so mốc thời gian. `updated_at` có độ phân giải thô, nên hai
+        # lần ghi trong cùng một giây bằng nhau và phép so "mới hơn" im lặng sai — trúng ngay
+        # ở ca kiểm đầu tiên của chính hook này.
+        if a_nhay is not None and (
+                (a_nhay.get("canonical") or {}).get("version_test") == a_test.get("version")):
+            return StopResult()
+
+        r_ = getattr(ctx, "registry", None)
+        if r_ is not None and hasattr(r_, "_unlocked"):
+            r_._unlocked.add("test.sensitivity")
+        ctx.da_nhac_do_nhay = True
+        cu_hon = (" (phép đo cũ đã lỗi thời: `test.run` đã chạy lại sau lần đo)"
+                  if a_nhay is not None else "")
+        return StopResult(
+            another_round=True, reason_vi="test xanh mà chưa ai đo độ nhạy bộ kiểm",
+            fired=["test_xanh_chua_do_nhay"],
+            injection=("<system-reminder>\n`test.run` đang XANH, nhưng **chưa ai đo độ nhạy "
+                       "của bộ kiểm ấy**" + cu_hon + ".\n\n"
+                       "Một bộ kiểm xanh chưa nói nó đo gì: đã đo được trên phiên thật một "
+                       "tệp test tự định nghĩa lại hàm sản phẩm rồi xanh mãi mãi. Gọi "
+                       "`test.sensitivity` (đã mở khoá) trước khi nói với người dùng rằng đã "
+                       "kiểm xong. Mức `chi_tiet` cho thêm danh sách DÒNG bộ kiểm không canh, "
+                       "nhưng chậm hơn nhiều — xem DEV-350.\n</system-reminder>"))
+
+    @bus.on_stop
     def kiem_viec_chua_ai_kiem(ctx: Any) -> StopResult:
         if getattr(ctx, "da_tu_kiem", False):
             return StopResult()
