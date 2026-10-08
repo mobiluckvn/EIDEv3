@@ -25,6 +25,7 @@ Ba điều tệp này cố ý làm, và cả ba đều học từ những chỗ 
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -633,8 +634,41 @@ def tong_hop(*, goc: Path, nguon: Path, dinh: str, bo_kit: str = "tangnano20k",
     return kq
 
 
+def kiem_rang_buoc_chan(*, json_mang: Path, cst: Path, dinh: str = "",
+                        fact_chan_kit: dict[str, dict[str, str]] | None = None
+                        ) -> dict[str, Any]:
+    """M3-18 — đọc `.cst` và mạng cổng, trả `{phat_hien, blocker, cong, loi_cu_phap}`.
+
+    Tách khỏi `dat_di_day` để công cụ `hdl.constraints_check` chạy được phần kiểm **mà không**
+    phải chạy nextpnr: người ta cần biết chân có đúng không trước khi bỏ ra ba phút đặt-đi dây.
+
+    `dinh` rỗng thì suy từ tên tệp mạng cổng (`blinky.json` → `blinky`), đúng quy ước
+    `tong_hop` đặt ra khi ghi tệp ấy.
+    """
+    from ..knowledge import cst as C
+
+    ten_dinh = dinh or json_mang.stem
+    try:
+        j = json.loads(json_mang.read_text("utf-8"))
+    except (OSError, ValueError) as e:
+        return {"doc_duoc": False,
+                "vi_sao": f"không đọc được mạng cổng `{json_mang.name}`: {e}"}
+    try:
+        cong = C.cong_tu_json(j, ten_dinh)
+    except KeyError as e:
+        return {"doc_duoc": False, "vi_sao": str(e.args[0] if e.args else e)}
+
+    d = C.doc_cst(cst.read_text("utf-8"))
+    pt = C.kiem(d, cong, fact_chan_kit or {})
+    return {"doc_duoc": True, "dinh": ten_dinh, "cong": cong,
+            "loi_cu_phap": d["loi_cu_phap"], "phat_hien": pt,
+            "blocker": [p for p in pt if p["muc"] == "blocker"]}
+
+
 def dat_di_day(*, goc: Path, json_mang: Path, cst: Path, bo_kit: str = "tangnano20k",
-               tan_so_mhz: float = 27.0, ra: Path | None = None) -> KetQuaHdl:
+               tan_so_mhz: float = 27.0, ra: Path | None = None,
+               bo_qua_kiem_cst: bool = False,
+               fact_chan_kit: dict[str, dict[str, str]] | None = None) -> KetQuaHdl:
     """nextpnr-himbaechel → tệp bố trí, kèm Fmax và mức dùng tài nguyên thật."""
     goc = goc.resolve()
     kq = KetQuaHdl(chang="dat_di_day", cong_cu="nextpnr-himbaechel")
@@ -655,6 +689,39 @@ def dat_di_day(*, goc: Path, json_mang: Path, cst: Path, bo_kit: str = "tangnano
             "và bitstream dựng ra sẽ nối tín hiệu vào những chân không ai định — nạp lên bo "
             "thì không chạy, mà mọi chặng đều báo xong.")
         return kq
+
+    # M3-18 — phép kiểm `.cst` đứng ở ĐÂY, trước lệnh nextpnr, vì sau nó thì không còn gì để
+    # chặn: chân đã được chọn, và một chân chọn sai cũng là lựa chọn hợp lệ với công cụ.
+    #
+    # `bo_qua_kiem_cst` có vì một phép kiểm chặn đường dựng mà không tắt được sẽ bị người
+    # dùng gỡ khỏi mã chứ không được dùng đúng. Nhưng mặc định là `False`: cửa thoát phải
+    # được mở có chủ ý, từng lượt.
+    if not bo_qua_kiem_cst:
+        r_cst = kiem_rang_buoc_chan(json_mang=json_mang, cst=cst,
+                                    fact_chan_kit=fact_chan_kit)
+        if not r_cst.get("doc_duoc"):
+            kq.vi_sao_khong_dat = (
+                f"Không kiểm được ràng buộc chân: {r_cst.get('vi_sao')}. Không đi tiếp — "
+                "đặt-đi dây mà chưa biết chân có đúng không thì con số Fmax ở cuối nói về một "
+                "mạch chưa ai xác nhận.")
+            return kq
+        for p in r_cst["loi_cu_phap"]:
+            kq.canh_bao.append({
+                "tep": str(cst), "dong": p["dong"], "cot": 0, "ma": "CST_KHONG_DOC_DUOC",
+                "thong_diep": f"{p['vi_sao']}: {p['noi_dung']}"})
+        for p in r_cst["phat_hien"]:
+            if p["muc"] != "blocker":
+                kq.canh_bao.append({
+                    "tep": str(cst), "dong": 0, "cot": 0,
+                    "ma": "CST_" + p["loai"].upper(), "thong_diep": p["thong_diep"]})
+        if r_cst["blocker"]:
+            kq.dat = False
+            kq.vi_sao_khong_dat = (
+                f"Ràng buộc chân không dùng được — {len(r_cst['blocker'])} chỗ phải sửa trước "
+                "khi đặt-đi dây:\n"
+                + "\n".join(f"  · {p['thong_diep']}" for p in r_cst["blocker"]))
+            return kq
+
     build = ra or (goc / ".eide" / "hdl")
     build.mkdir(parents=True, exist_ok=True)
     pnr_ra = build / (json_mang.stem + "_pnr.json")

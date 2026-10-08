@@ -148,7 +148,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 13 | [M3-10](#m3-10) | Vòng sinh → ERC → sửa có trần cho bản đồ mạch (hook `erc_delta`) | P0 | M | M3-03, M3-04, M3-07 | ERC_TU_DONG | xong 07/10/2026 · DEV-342 · ERC 7,6 ms trên mạch 187 nút | ☑ |
 | 14 | [M3-12](#m3-12) | Mô phỏng HDL: đọc PASS/FAIL chặt, chỉ từ log chạy, tính cả mã thoát và `$fatal` | P0 | S | — | — | xong 07/10/2026 · DEV-343 · regex kế hoạch từ chối oan 588/846, đã nới | ☑ |
 | 15 | [M3-13](#m3-13) | `hdl.sensitivity`: đo độ nhạy testbench Verilog bằng đột biến thật | P0 | M | M3-12 | — | xong 08/10/2026 · DEV-344 · 1732→1744 ca · đo thật: `tb_pcpi_dot4` 1/1, `tb_pcpi_mac` 1/1, `tb_pcpi_vmini` không dịch nổi từ 02/10 | ☑ |
-| 16 | [M3-18](#m3-18) | Kiểm ràng buộc chân FPGA (`.cst`) với cổng mô-đun đỉnh và chân của kit | P0 | M | — | — |  | ☐ |
+| 16 | [M3-18](#m3-18) | Kiểm ràng buộc chân FPGA (`.cst`) với cổng mô-đun đỉnh và chân của kit | P0 | M | — | — | xong 08/10/2026 · DEV-345 · 1744→1773 ca · trên 6 cặp thật: 1 chỗ CHẶN (`blinky` của riscv-tn20k-b dựng bitstream với chân đồng hồ nextpnr tự chọn) | ☑ |
 | 17 | [M4-01](#m4-01) | Máy chấm unit test do EIDE phán (`test.criteria`) | P0 | M | — | — |  | ☐ |
 | 18 | [M4-02](#m4-02) | Cổng G-QUAL khi sửa/xoá tệp test sau kết quả đỏ + sửa `criteria.has_result` | P0 | M | — | SIM_RUNNER_GIOI_HAN |  | ☐ |
 | 19 | [M4-05](#m4-05) | Đột biến không biên dịch được không được tính là "bắt được" | P1 | S | — | — | kéo lên từ GĐ2 vì là tiền đề của M4-06 | ☐ |
@@ -1193,14 +1193,40 @@ DEV-344; TC-06 cũng nằm ở tệp khác tên khác so với bảng trên, vì
 | TC-M3-18-04 | Ca âm | tests/test_cst.py::test_cst_khop_khong_bao | cổng đúng như CST mẫu, không có Fact kit → không có blocker |
 | TC-M3-18-05 | Tích hợp | tests/test_hdl.py::test_pnr_tu_choi_khi_cst_thieu_cong | JSON giả có cổng `uart_tx`, `_tim_lenh` giả → `dat_di_day` không đạt trước khi gọi nextpnr; lý do nêu `uart_tx` |
 
+**Mười một TC thêm khi làm** (phép phá rộng tìm ra hai chỗ không ai canh; và phần "chạy trên
+hiện vật thật" không có trong bảng kế hoạch — xem DEV-345):
+
+| Mã TC | Loại | Tệp test | Cho trước → Khi → Thì |
+|---|---|---|---|
+| TC-M3-18-06 | Đơn vị | tests/test_cst.py::test_rang_buoc_thua_bi_bao_major | ràng buộc cho tên không phải cổng → `major`, KHÔNG chặn |
+| TC-M3-18-07 | Đơn vị | tests/test_cst.py::test_cong_tu_json_tach_bus | JSON có `led` 6 bit → `led[0]`…`led[5]` |
+| TC-M3-18-08 | Ca biên | tests/test_cst.py::test_cong_tu_json_khong_co_mo_dun_dinh | thiếu mô-đun đỉnh → ném `KeyError`, KHÔNG trả rỗng |
+| TC-M3-18-09 | Đơn vị | tests/test_cst.py::test_doc_cst_noi_ra_dong_khong_doc_duoc | 2 dòng sai cú pháp → cả 2 vào `loi_cu_phap` |
+| TC-M3-18-10 | Đơn vị | tests/test_cst.py::test_doc_cst_bo_qua_chu_thich | `IO_LOC` nằm sau `//` không được tính là còn hiệu lực |
+| TC-M3-18-11 | Đơn vị | tests/test_cst.py::test_chan_lech_kit_bao_major_kem_trich_dan + `test_chan_khop_fact_kit_thi_im` | Fact nói chân 15 là LED0 mà gán `clk` → `chan_lech_kit` kèm Fact |
+| TC-M3-18-12 | Đơn vị | tests/test_cst.py::test_io_type_lech_bank_bi_chan + `test_io_type_khop_bank_thi_im` | `LVCMOS18` trên bank 3,3 V → blocker |
+| TC-M3-18-13 | **Hiện vật thật** | tests/test_cst.py::test_doc_duoc_moi_cst_that_trong_repo | cả 7 tệp `.cst` thật trong repo → đọc hết, 0 dòng sai cú pháp (bản đầu của phép quét chỉ thu 4/7 — xem DEV-345) |
+| TC-M3-18-14 | **Hiện vật thật** | tests/test_cst.py::test_cst_that_khop_cong_cua_soc_top_that | `soc_top` thật + `.cst` thật → 0 blocker, đúng 2 ràng buộc thừa |
+| TC-M3-18-15 | Ca biên | tests/test_hdl.py::test_pnr_tu_choi_khi_mang_cong_khong_doc_duoc | JSON hỏng → không đạt, KHÔNG gọi nextpnr |
+| TC-M3-18-16 | Ca biên | tests/test_hdl.py::test_pnr_tu_choi_khi_mang_cong_khong_co_mo_dun_dinh | mạng cổng có mô-đun KHÁC → không đạt, nêu cả tên đang có |
+| TC-M3-18-17 | Tích hợp | tests/test_hdl.py::test_constraints_check_* (4 ca) | công cụ qua sổ: báo cổng thiếu · từ chối `E4033` · ca âm nói ra đã bỏ phần kit · **Fact trong kho tới được luật** |
+| TC-M3-18-18 | Cửa thoát | tests/test_hdl.py::test_pnr_bo_qua_kiem_cst_khi_duoc_yeu_cau | `bo_qua_kiem_cst=True` → có gọi nextpnr; mặc định vẫn `False` |
+
 **Bảo vệ hồi quy (phải vẫn XANH):**
 - `.venv/bin/python -m pytest -q tests/test_hdl.py tests/test_cst.py`
-- `test_pnr_bao_fmax_va_muc_dung_that` và `test_duong_fpga_di_het_voi_tep_that` (cổng `blinky` khớp CST mẫu) giữ nguyên.
+- `test_pnr_bao_fmax_va_muc_dung_that` và `test_duong_fpga_di_het_voi_tep_that` (cổng `blinky` khớp CST mẫu) giữ nguyên. **Đã kiểm: cả hai vẫn xanh, không phải nới gì.**
+
+**Lệch khỏi kế hoạch (đo rồi mới thấy):**
+- Mã lỗi `E4033`, **không** `E4031`: `loop.py:1085` đã dùng `E4031` cho "chưa chạy, vì chờ cổng".
+- Khoá Fact chân kit: kế hoạch ghi `chuc_nang`, mã đang ghi `ten`/`net`/`af`. Nhận cả ba.
+- `chan_lech_kit` và `io_type_lech_bank` **chưa có dữ liệu để nổ**: không kho nào trong repo có
+  Fact `pin:tangnano20k.*` hay khoá `vccio`. Có ca kiểm, có đường dẫn đã đo — nhưng hôm nay
+  chỉ 3 trong 5 luật kết luận được gì trên dữ liệu thật.
 
 **Tiêu chí xong:**
-- [ ] TC xanh, phá lại thì đỏ.
-- [ ] `pytest -q` xanh, ≥ mốc.
-- [ ] Ghi DEV-LOG.
+- [x] TC xanh, phá lại thì đỏ. — 20 chỗ phá, **20/20 đỏ** (lượt đầu 18/20, xem DEV-345)
+- [x] `pytest -q` xanh, ≥ mốc. — 1744 → **1773 xanh, 0 đỏ** (+29 ca)
+- [x] Ghi DEV-LOG. — **DEV-345**
 
 **Hoàn tác:** revert; hoặc `bo_qua_kiem_cst=True`.
 

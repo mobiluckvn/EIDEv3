@@ -230,6 +230,228 @@ def test_thieu_tep_rang_buoc_chan_thi_KHONG_chay(tmp_path):
     assert not kq.dat and "ràng buộc chân" in kq.vi_sao_khong_dat
 
 
+# ============================== M3-18: `.cst` CÓ mặt nhưng thiếu ràng buộc cho một cổng
+#
+# Ca trên canh chuyện tệp `.cst` không có. Chuyện tệ hơn là tệp **có** mà thiếu `IO_LOC` cho
+# một cổng: nextpnr không đổ, nó tự chọn một chân còn trống. Mọi chặng báo đạt và mạch nối
+# sai chân — không có dấu hiệu nào trên màn hình.
+
+def test_pnr_tu_choi_khi_cst_thieu_cong(tmp_path, monkeypatch):
+    """TC-M3-18-05 — thiếu `IO_LOC` cho một cổng thì từ chối TRƯỚC khi gọi nextpnr.
+
+    Không cần máy có nextpnr: phép kiểm phải xảy ra trước lúc chạy lệnh, nên ca này giả
+    `_tim_lenh` và cài một `_chay` nổ ngay — nếu nó nổ, phép kiểm đã đứng sai chỗ.
+    """
+    import json
+
+    goc = _du_an(tmp_path)
+    build = goc / ".eide" / "hdl"
+    build.mkdir(parents=True, exist_ok=True)
+    # Mạng cổng giả: mô-đun đỉnh có thêm `uart_tx`, mà CST mẫu không khai chân cho nó.
+    (build / "blinky.json").write_text(json.dumps({"modules": {"blinky": {"ports": {
+        "clk": {"direction": "input", "bits": [2]},
+        "led": {"direction": "output", "bits": [3, 4, 5, 6, 7, 8]},
+        "uart_tx": {"direction": "output", "bits": [9]}}}}}), "utf-8")
+
+    monkeypatch.setattr(H, "_tim_lenh", lambda ten: f"/gia/{ten}")
+
+    def _no(*a, **k):
+        raise AssertionError("đã gọi nextpnr: phép kiểm `.cst` đứng SAU lúc chạy lệnh")
+    monkeypatch.setattr(H, "_chay", _no)
+
+    kq = H.dat_di_day(goc=goc, json_mang=build / "blinky.json",
+                      cst=goc / "constraints/tangnano20k.cst")
+    assert not kq.dat, "thiếu ràng buộc cho `uart_tx` mà vẫn đi tiếp"
+    assert "uart_tx" in kq.vi_sao_khong_dat, kq.vi_sao_khong_dat
+
+
+def test_pnr_bo_qua_kiem_cst_khi_duoc_yeu_cau(tmp_path, monkeypatch):
+    """Cửa thoát `bo_qua_kiem_cst=True` phải thật sự bỏ phép kiểm — và chỉ nó.
+
+    Có cửa thoát vì một phép kiểm chặn đường dựng mà không tắt được sẽ bị người dùng gỡ khỏi
+    mã, chứ không được dùng đúng. Nhưng cửa thoát KHÔNG được mở sẵn: mặc định là `False`.
+    """
+    import json
+
+    goc = _du_an(tmp_path)
+    build = goc / ".eide" / "hdl"
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "blinky.json").write_text(json.dumps({"modules": {"blinky": {"ports": {
+        "uart_tx": {"direction": "output", "bits": [9]}}}}}), "utf-8")
+
+    monkeypatch.setattr(H, "_tim_lenh", lambda ten: f"/gia/{ten}")
+    da_goi = {"n": 0}
+
+    def _gia(kq, lenh, **k):
+        da_goi["n"] += 1
+        kq.lenh = list(lenh)
+        kq.dat = True
+        kq.ma_thoat = 0
+        kq.nguyen_van = "Info: Max frequency for clock '$glbnet$clk': 99.00 MHz (PASS)"
+        (build / "blinky_pnr.json").write_text("{}", "utf-8")
+    monkeypatch.setattr(H, "_chay", _gia)
+
+    kq = H.dat_di_day(goc=goc, json_mang=build / "blinky.json",
+                      cst=goc / "constraints/tangnano20k.cst", bo_qua_kiem_cst=True)
+    assert da_goi["n"] == 1, "bỏ phép kiểm rồi mà vẫn không gọi nextpnr"
+    assert kq.dat, kq.vi_sao_khong_dat
+
+
+def test_pnr_tu_choi_khi_mang_cong_khong_doc_duoc(tmp_path, monkeypatch):
+    """Mạng cổng hỏng thì KHÔNG đi tiếp — chứ không coi như "kiểm xong, không sao cả".
+
+    Chỗ này lọt ở lượt phá đầu tiên của M3-18: nhánh "không đọc được" đổi thành "đọc được,
+    0 cổng, 0 phát hiện" mà bộ kiểm vẫn xanh. Mà 0 cổng thì **mọi** luật đều xanh — một ô
+    xanh giả hoàn hảo, ngay trong công cụ đi tìm ô xanh giả.
+    """
+    goc = _du_an(tmp_path)
+    build = goc / ".eide" / "hdl"
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "blinky.json").write_text("{ đây không phải JSON", "utf-8")
+
+    monkeypatch.setattr(H, "_tim_lenh", lambda ten: f"/gia/{ten}")
+
+    def _no(*a, **k):
+        raise AssertionError("đã gọi nextpnr với một mạng cổng không đọc được")
+    monkeypatch.setattr(H, "_chay", _no)
+
+    kq = H.dat_di_day(goc=goc, json_mang=build / "blinky.json",
+                      cst=goc / "constraints/tangnano20k.cst")
+    assert not kq.dat, "mạng cổng hỏng mà vẫn đi đặt-đi dây"
+    assert "ràng buộc chân" in kq.vi_sao_khong_dat, kq.vi_sao_khong_dat
+
+
+def test_pnr_tu_choi_khi_mang_cong_khong_co_mo_dun_dinh(tmp_path, monkeypatch):
+    """Mạng cổng có thật nhưng KHÔNG chứa mô-đun đỉnh → cũng phải từ chối.
+
+    Hai nhánh, không một: "tệp không đọc được" và "tệp đọc được mà không có mô-đun đỉnh" là
+    hai chuyện khác nhau, và nhánh thứ hai dễ bỏ sót hơn — nó không có ngoại lệ nào để ai
+    nhìn thấy. Nếu nó được xử thành "0 cổng, 0 phát hiện" thì **mọi** luật đều xanh.
+    """
+    import json
+
+    goc = _du_an(tmp_path)
+    build = goc / ".eide" / "hdl"
+    build.mkdir(parents=True, exist_ok=True)
+    # Tổng hợp xong một mô-đun KHÁC — chuyện có thật khi tên đỉnh gõ sai hoặc đổi tên RTL.
+    (build / "blinky.json").write_text(json.dumps({"modules": {"blinky_cu": {"ports": {
+        "clk": {"direction": "input", "bits": [2]}}}}}), "utf-8")
+
+    monkeypatch.setattr(H, "_tim_lenh", lambda ten: f"/gia/{ten}")
+
+    def _no(*a, **k):
+        raise AssertionError("đã gọi nextpnr khi mạng cổng không có mô-đun đỉnh")
+    monkeypatch.setattr(H, "_chay", _no)
+
+    kq = H.dat_di_day(goc=goc, json_mang=build / "blinky.json",
+                      cst=goc / "constraints/tangnano20k.cst")
+    assert not kq.dat, "không có mô-đun đỉnh mà vẫn đi đặt-đi dây"
+    assert "blinky" in kq.vi_sao_khong_dat, kq.vi_sao_khong_dat
+    assert "blinky_cu" in kq.vi_sao_khong_dat, (
+        "không nói ra mạng cổng ĐANG có mô-đun nào — người đọc phải tự đi mở tệp JSON "
+        f"4 MB ra đếm: {kq.vi_sao_khong_dat}")
+
+
+def _ctx_hdl(goc, facts=()):
+    """ctx tối thiểu cho công cụ nhóm `hdl`: gốc dự án, kho rỗng, và Fact tra được."""
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        config=SimpleNamespace(paths=SimpleNamespace(project_root=goc)),
+        run_id="test",
+        store=SimpleNamespace(get=lambda _m: None, apply=lambda **_k: None,
+                              query_facts=lambda **_k: list(facts)))
+
+
+def test_constraints_check_bao_cong_thieu_rang_buoc(tmp_path):
+    """Công cụ `hdl.constraints_check` chạy được qua sổ công cụ và chỉ ra đúng cổng thiếu."""
+    import json
+
+    from eide.tools import build_registry
+
+    goc = _du_an(tmp_path)
+    build = goc / ".eide" / "hdl"
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "blinky.json").write_text(json.dumps({"modules": {"blinky": {"ports": {
+        "clk": {"direction": "input", "bits": [2]},
+        "led": {"direction": "output", "bits": [3, 4, 5, 6, 7, 8]},
+        "uart_tx": {"direction": "output", "bits": [9]}}}}}), "utf-8")
+
+    cc = next(t for t in build_registry().all() if t.name == "hdl.constraints_check")
+    kq = cc.fn(_ctx_hdl(goc), explain={"summary": "kiểm", "why": "ca kiểm"},
+               dinh="blinky", cst="constraints/tangnano20k.cst")
+    d = kq if isinstance(kq, dict) else getattr(kq, "data", {}) or {}
+    assert d.get("dat") is False, d
+    assert "uart_tx" in d["note_vi"], d["note_vi"]
+    assert d["so_theo_loai"].get("thieu_rang_buoc") == 1, d["so_theo_loai"]
+
+
+def test_constraints_check_tu_choi_E4033_khi_chua_tong_hop(tmp_path):
+    """Chưa có mạng cổng thì từ chối bằng E4033 — KHÔNG phải E4031.
+
+    `loop.py` đã dùng E4031 cho "chưa chạy, vì chờ cổng". Hai chuyện khác nhau mang cùng một
+    mã là một lời nói sai ở chỗ người đọc không kiểm lại được; đã trúng một lần ở M2-06.
+    """
+    from eide.tools import build_registry
+
+    goc = _du_an(tmp_path)
+    cc = next(t for t in build_registry().all() if t.name == "hdl.constraints_check")
+    kq = cc.fn(_ctx_hdl(goc), explain={"summary": "kiểm", "why": "ca kiểm"},
+               dinh="blinky", cst="constraints/tangnano20k.cst")
+    assert getattr(kq, "ok", True) is False, kq
+    assert kq.error.code == "E4033", kq.error.code
+
+
+def test_constraints_check_khop_thi_dat_va_noi_ra_da_bo_phan_kit(tmp_path):
+    """Ca âm: cổng khớp đúng `.cst`, không Fact kit → đạt, nhưng NÓI RA là đã bỏ phần kit."""
+    import json
+
+    from eide.tools import build_registry
+
+    goc = _du_an(tmp_path)
+    build = goc / ".eide" / "hdl"
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "blinky.json").write_text(json.dumps({"modules": {"blinky": {"ports": {
+        "clk": {"direction": "input", "bits": [2]},
+        "led": {"direction": "output", "bits": [3, 4, 5, 6, 7, 8]}}}}}), "utf-8")
+
+    cc = next(t for t in build_registry().all() if t.name == "hdl.constraints_check")
+    kq = cc.fn(_ctx_hdl(goc), explain={"summary": "kiểm", "why": "ca kiểm"},
+               dinh="blinky", cst="constraints/tangnano20k.cst")
+    d = kq if isinstance(kq, dict) else getattr(kq, "data", {}) or {}
+    assert d.get("dat") is True, d
+    assert any(p["loai"] == "chua_co_fact_chan_kit" for p in d["phat_hien"]), d["phat_hien"]
+
+
+def test_constraints_check_doc_Fact_chan_kit_tu_kho(tmp_path):
+    """Đường dẫn Fact → phép kiểm phải THÔNG: Fact `pin:<kit>.<số>` trong kho tới được luật.
+
+    Cơ chế có sẵn mà đường dẫn tới nó đứt là lỗi hay gặp nhất của dự án này. Ca này đi qua
+    đúng đường tác tử đi: Fact nằm trong kho, công cụ tự tra, luật tự nổ.
+    """
+    import json
+
+    from eide.tools import build_registry
+
+    goc = _du_an(tmp_path)
+    build = goc / ".eide" / "hdl"
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "blinky.json").write_text(json.dumps({"modules": {"blinky": {"ports": {
+        "clk": {"direction": "input", "bits": [2]},
+        "led": {"direction": "output", "bits": [3, 4, 5, 6, 7, 8]}}}}}), "utf-8")
+
+    # Fact nói chân 4 là LED0 — mà `.cst` gán `clk` vào đó. Luật `chan_lech_kit` phải nổ.
+    facts = [{"subject": "pin:tangnano20k.4", "key": "chuc_nang", "value": "LED0"}]
+    cc = next(t for t in build_registry().all() if t.name == "hdl.constraints_check")
+    kq = cc.fn(_ctx_hdl(goc, facts), explain={"summary": "kiểm", "why": "ca kiểm"},
+               dinh="blinky", cst="constraints/tangnano20k.cst")
+    d = kq if isinstance(kq, dict) else getattr(kq, "data", {}) or {}
+    lech = [p for p in d["phat_hien"] if p["loai"] == "chan_lech_kit"]
+    assert len(lech) == 1, d["phat_hien"]
+    assert lech[0]["ten"] == "clk" and lech[0]["chuc_nang_kit"] == "LED0", lech[0]
+    assert not [p for p in d["phat_hien"] if p["loai"] == "chua_co_fact_chan_kit"], (
+        "có Fact rồi mà vẫn khai là đã bỏ phần đối chiếu kit")
+
+
 @can_yosys
 @can_pnr
 @can_pack

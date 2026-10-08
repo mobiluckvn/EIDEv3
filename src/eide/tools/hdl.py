@@ -60,6 +60,32 @@ def _lenh_mo_rong_cua_firmware(ctx: Any) -> dict[str, int]:
     return ra if isinstance(ra, dict) else {}
 
 
+def _fact_chan_kit(ctx: Any, bo_kit: str) -> dict[str, dict[str, str]]:
+    """M3-18 — bản đồ chân của kit, đọc từ Fact `pin:<kit>.<số chân>`.
+
+    Khoá trả về là **số chân** dạng chuỗi, vì `.cst` nói bằng số chân (`IO_LOC "led[0]" 15;`)
+    chứ không nói bằng tên chức năng. Khớp hai bên qua số chân là chỗ duy nhất hai tài liệu
+    chắc chắn dùng cùng một từ vựng.
+
+    Không có Fact nào thì trả `{}`, và `cst.kiem` sẽ **khai ra** là đã bỏ phần đối chiếu kit
+    thay vì im lặng — một phép kiểm im lặng khi thiếu dữ liệu sẽ được đọc thành "đã kiểm, không
+    sao cả". Đo ngày 08/10/2026: **không kho nào** trong `du-lieu/` có Fact `pin:tangnano20k.*`,
+    nên hôm nay hai luật ấy chưa nổ được trên dữ liệu thật — xem DEV-345.
+    """
+    try:
+        ds = ctx.store.query_facts(subject=f"pin:{bo_kit}.", limit=400) or []
+    except Exception:
+        return {}
+    ra: dict[str, dict[str, str]] = {}
+    for f in ds:
+        chu_de = str(f.get("subject") or "")
+        so = chu_de.rsplit(".", 1)[-1].strip()
+        if not so:
+            continue
+        ra.setdefault(so, {})[str(f.get("key") or "")] = str(f.get("value") or "")
+    return ra
+
+
 def _ghi_kho(ctx: Any, explain: dict[str, Any], kq: Any, ten: str) -> None:
     """Ghi kết quả một chặng thành một mục trong kho, để tab và lịch sử thấy được."""
     ma = f"{MA_HDL}:{ten}"
@@ -262,6 +288,66 @@ def register(r: Registry) -> None:
                     + ". Đây là số ô SAU khi ánh xạ về chip, nhưng **chưa phải** số thật dùng "
                       "trên silicon — con số ấy do `hdl.pnr` báo, và nó thường khác.")}
 
+    # ============================================== M3-18: kiểm ràng buộc chân trước khi dựng
+    @r.tool("hdl.constraints_check", "Mạch thật",
+            "KIỂM tệp ràng buộc chân `.cst` với cổng mô-đun đỉnh: cổng nào thiếu `IO_LOC`, "
+            "ràng buộc nào thừa, hai cổng nào trùng chân, và chân nào lệch Fact của kit. "
+            "Thiếu `IO_LOC` thì nextpnr TỰ CHỌN chân — bitstream dựng xong, mọi chặng báo "
+            "đạt, và mạch nối sai chân. Chạy trước `hdl.pnr` để biết trước khi tốn 3 phút.",
+            {"type": "object",
+             "properties": {
+                 "dinh": {"type": "string", "description": "tên mô-đun đỉnh (đã tổng hợp)"},
+                 "cst": {"type": "string",
+                         "description": "tệp ràng buộc chân, ví dụ constraints/tangnano20k.cst"},
+                 "bo_kit": {"type": "string"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["dinh", "cst", "explain"]},
+            risk="R1", core=False, needs_explain=True,
+            keywords=["ràng buộc chân", "cst", "io_loc", "gán chân", "pinout fpga",
+                      "constraints"])
+    def hdl_constraints_check(ctx: Any, explain: dict[str, Any], dinh: str, cst: str,
+                              bo_kit: str = "tangnano20k"):
+        from ..build import hdl as H
+
+        goc = _goc(ctx)
+        tep_cst = goc / cst
+        if not tep_cst.is_file():
+            return ToolResult(False, error=EideError(
+                "E1002", f"Không có tệp ràng buộc chân `{cst}`.",
+                hint_for_agent="Nêu đường dẫn tương đối từ gốc dự án.", blame="agent"))
+
+        r_do = H.kiem_rang_buoc_chan(json_mang=_thu_muc_hdl(ctx) / f"{dinh}.json",
+                                     cst=tep_cst, dinh=dinh,
+                                     fact_chan_kit=_fact_chan_kit(ctx, bo_kit))
+        if not r_do.get("doc_duoc"):
+            return ToolResult(False, error=EideError(
+                # E4033, không phải E4031: `loop.py` đã dùng E4031 cho "chưa chạy, vì chờ
+                # cổng". Hai chuyện khác nhau mang cùng một mã là một lời nói sai ở chỗ người
+                # đọc không kiểm lại được. Đã trúng một lần ở M2-06 (E6010).
+                "E4033", r_do.get("vi_sao") or "Không kiểm được ràng buộc chân.",
+                hint_for_agent=("Cần tệp mạng cổng của `hdl.synth` để biết mô-đun đỉnh có "
+                                "những cổng nào. Chạy `hdl.synth` trước."),
+                blame="agent"))
+
+        pt = r_do["phat_hien"]
+        chan = r_do["blocker"]
+        dem: dict[str, int] = {}
+        for p in pt:
+            dem[p["loai"]] = dem.get(p["loai"], 0) + 1
+        return {
+            "dat": not chan, "dinh": r_do["dinh"], "so_cong": len(r_do["cong"]),
+            "phat_hien": pt, "so_theo_loai": dem, "loi_cu_phap": r_do["loi_cu_phap"],
+            "note_vi": (
+                (f"{len(chan)} chỗ CHẶN đường dựng: "
+                 + "; ".join(p["thong_diep"] for p in chan)
+                 if chan else
+                 f"Không chỗ nào chặn. {len(r_do['cong'])} cổng của `{r_do['dinh']}` đều có "
+                 "`IO_LOC`.")
+                + (f" Còn {len(pt) - len(chan)} chỗ phải đọc (không chặn)."
+                   if len(pt) > len(chan) else "")
+                + (f" {len(r_do['loi_cu_phap'])} dòng `.cst` không đọc được."
+                   if r_do["loi_cu_phap"] else ""))}
+
     # ============================================================== đặt-đi dây
     @r.tool("hdl.pnr", "Mạch thật",
             "Đặt-đi dây mạng cổng lên chip thật (nextpnr-himbaechel) và báo **Fmax thật đo "
@@ -287,13 +373,15 @@ def register(r: Registry) -> None:
         goc = _goc(ctx)
         kq = H.dat_di_day(goc=goc, json_mang=_thu_muc_hdl(ctx) / f"{dinh}.json",
                           cst=goc / cst, bo_kit=bo_kit, tan_so_mhz=tan_so_mhz,
-                          ra=_thu_muc_hdl(ctx))
+                          ra=_thu_muc_hdl(ctx),
+                          fact_chan_kit=_fact_chan_kit(ctx, bo_kit))
         _ghi_kho(ctx, explain, kq, "pnr")
         if not kq.dat:
             return _loi_chang(kq, (
-                "Nếu thiếu tệp mạng cổng: chạy `hdl.synth` trước. Nếu không đạt định thời: "
-                "đường tổ hợp dài nhất quá dài — chia nó bằng thanh ghi, hoặc hạ tần số và "
-                "NÓI RA rằng đã hạ."))
+                "Nếu thiếu tệp mạng cổng: chạy `hdl.synth` trước. Nếu ràng buộc chân bị chặn: "
+                "sửa tệp `.cst` cho đủ `IO_LOC`, và chạy `hdl.constraints_check` để xem lại "
+                "trước khi tốn một lượt đặt-đi dây. Nếu không đạt định thời: đường tổ hợp dài "
+                "nhất quá dài — chia nó bằng thanh ghi, hoặc hạ tần số và NÓI RA rằng đã hạ."))
         return {**kq.to_dict(),
                 "note_vi": (f"Fmax {kq.fmax_mhz} MHz ≥ {tan_so_mhz} MHz cần chạy. Số tài "
                             "nguyên trong `tai_nguyen.dung` là số THẬT trên silicon, dùng nó "

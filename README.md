@@ -40,7 +40,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 
 ## 1 · Nhìn một lượt: EIDE làm được gì
 
-Agent có **128 công cụ** (119 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch bật bằng cờ), **7
+Agent có **129 công cụ** (120 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch bật bằng cờ), **7
 Agent con**, **8 bộ hướng dẫn nạp theo việc**, **11 cửa duyệt**, và **11 tab** để người xem
 việc đang tới đâu.
 
@@ -55,7 +55,7 @@ Bảng dưới xếp theo *việc người cần làm*, không theo cách chia m
 | **Viết mã** | 8 | đọc hiểu mã cũ trước khi sửa · dịch mã · bản đồ bộ nhớ · chạy bộ kiểm · đo xem bộ kiểm có đo gì không |
 | **Chạy thử trên máy** | 2 | nêu mức đo trước, chạy, rồi đối chiếu |
 | **Làm việc với bo thật** | 6 | dò bo · nạp · đọc ngược để so từng byte · đọc log · tìm chỗ treo · đọc khung ảnh từ chip |
-| **Làm chip trên FPGA** | 6 | soát cú pháp Verilog · mô phỏng testbench · **phá mã RTL thật để xem testbench có canh không** · tổng hợp · đặt-đi dây và **đo Fmax thật** · đóng gói bitstream |
+| **Làm chip trên FPGA** | 7 | soát cú pháp Verilog · mô phỏng testbench · **phá mã RTL thật để xem testbench có canh không** · tổng hợp · **kiểm ràng buộc chân trước khi dựng** · đặt-đi dây và **đo Fmax thật** · đóng gói bitstream |
 | **Nhớ và quản việc** | 28 | kho dữ liệu · sổ ghi việc · gỡ lại · bản chốt · nhánh · chia việc nhiều chặng |
 | **Tự lo cho mình** | 4 | tìm công cụ · **tự viết công cụ mới** rồi tự kiểm trước khi dùng |
 
@@ -67,7 +67,7 @@ lời gọi, không nói về tệp nằm trên đĩa.
 
 **Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà trong kho chưa có
 công cụ nào làm được, nó tự viết một công cụ mới kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ
-đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 128 công cụ kể ở trên — nó sinh
+đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 129 công cụ kể ở trên — nó sinh
 ra lúc chạy, trong đúng dự án đang làm. Việc này đã chạy thật, không phải tính năng trên giấy.
 
 ---
@@ -443,8 +443,8 @@ nhau, nên gộp vào một cột là nói sai về sản phẩm.
 ### Một việc không thêm tính năng nào nhưng đáng kể
 
 Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào** (số
-đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 128). Bảy công cụ có đường dẫn tới chúng
-bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/128 đã được dùng
+đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 129). Bảy công cụ có đường dẫn tới chúng
+bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/129 đã được dùng
 thật**.
 
 Một công cụ không bao giờ được dùng thì bằng không có nó.
@@ -1038,9 +1038,12 @@ là chỗ hay đứt nhất. Nay mỗi khối có một ca đi qua đúng đư�
 
 Nói ra để người đọc không phải tự tìm:
 
-- **13 trong 128 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
-  bo, chưa viết xong. Và `hdl.sensitivity`: mã của nó đã chạy trên testbench thật của Bài 3
-  (xem DEV-344), nhưng chưa lượt Agent nào *gọi công cụ* ấy — nên nó vẫn tính là chưa dùng.
+- **14 trong 129 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
+  bo, chưa viết xong. Và hai công cụ mới nhất — `hdl.sensitivity` (DEV-344) với
+  `hdl.constraints_check` (DEV-345): mã của cả hai đã chạy trên hiện vật thật của Bài 2 và
+  Bài 3, nhưng chưa lượt Agent nào *gọi công cụ* ấy, nên chúng vẫn tính là chưa dùng. "Mã đã
+  chạy" và "tác tử đã gọi" là hai chuyện, và gộp chúng lại là cách đếm ra một con số đẹp hơn
+  sự thật.
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
 - **Sáu ca kiểm cần người trực tiếp làm**, chưa tự động hoá được.
 - **Robot còn 23 trong 109 điều kiện chưa làm**, phần lớn là các điểm đo để cắm máy hiện sóng.
@@ -1048,6 +1051,13 @@ Nói ra để người đọc không phải tự tìm:
   ghi đường dẫn `include` tính từ gốc dự án, nên `make bitstream-h1` đứng trong `bai2/` thì đổ.
   Nghĩa là tài liệu đang mô tả một đường dựng mà người khác gõ lại sẽ không ra — 96 ô đo được
   là thật, nhưng chưa dựng lại được bằng lệnh tay.
+- **Một bitstream đã dựng xong với chân đồng hồ do công cụ tự chọn.** `hdl.constraints_check`
+  (mới, DEV-345) chạy trên hiện vật cũ thì thấy: `blinky.v` của `du-lieu/riscv-tn20k-b` khai
+  cổng `sys_clk`, mà tệp `.cst` chỉ khai `clk_27m` — không dòng `IO_LOC` nào cho `sys_clk`.
+  nextpnr **không báo lỗi**, nó tự chọn, và `blinky.fs` 4,6 MB vẫn dựng ra ngày 01/10/2026.
+  Nó rơi đúng vào `X0Y6/IOBA` — cùng ô mà `clk_27m` (chân 4) của `soc_top` được gán — nên
+  bitstream ấy *có thể* đã chạy đúng trên bo. Bằng may, không bằng ràng buộc. Từ nay phép
+  kiểm chặn trước nextpnr; hiện vật cũ thì để nguyên, không sửa lại `.cst` của dữ liệu đo.
 - **Agent không có công cụ chạy `make`.** Nó sửa được Makefile và mã C, nhưng phải nhờ người gõ
   `make` rồi báo lại. Trong việc FPGA chỗ này chặn hai lần, và cả hai lần Agent **hỏi** chứ
   không giả định là đã chạy — đúng việc, nhưng vẫn là một chặng phải có người.
@@ -1178,7 +1188,7 @@ bản kể lại nào.
 ```
 src/eide/
 ├── loop.py            vòng lặp Agent
-├── tools/             128 công cụ, chia theo nhóm
+├── tools/             129 công cụ, chia theo nhóm
 ├── policy/            luật chặn và cửa duyệt
 ├── knowledge/         đọc tài liệu, rút con số, chữ trong hình
 ├── store/             kho dữ liệu dựa trên sổ ghi việc + git

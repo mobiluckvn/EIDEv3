@@ -8033,3 +8033,139 @@ Bộ kiểm 1732 → **1744 xanh, 0 đỏ** (+12 ca). `kiem_tai_lieu` 0 chỗ L�
 Công cụ thứ 128 này **chưa lượt Agent nào gọi** — mã của nó đã chạy trên hiện vật thật, nhưng
 đó là tôi gọi hàm, không phải tác tử gọi công cụ. README §8 đếm nó vào phần chưa dùng thật,
 vì đúng cái phân biệt ấy là nội dung của nhiệm vụ này.
+
+---
+
+## [DEV-345] [M3-18] Ràng buộc chân FPGA — và một bitstream đã dựng với chân đồng hồ tự chọn
+
+Nhiệm vụ #16. **Sửa lỗi thuần** (bitstream "đạt" mà chân do công cụ chọn) + **công cụ mới**
+(`hdl.constraints_check`, R1, `core=False`), không cờ.
+
+### Chỗ hổng: `dat_di_day` chỉ hỏi "tệp `.cst` có tồn tại không"
+
+Câu ấy không đủ, và chỗ nó không đủ là chỗ tốn nhất của cả đường FPGA. Nếu một cổng của mô-đun
+đỉnh **không có `IO_LOC`**, nextpnr không báo lỗi — nó tự chọn một chân còn trống. Tổng hợp đạt,
+đặt-đi dây đạt, bitstream dựng xong, Fmax đẹp. Rồi nạp lên bo thì đèn không sáng, và không một
+dòng nào trên màn hình nói vì sao: người ta sẽ đi tìm lỗi trong RTL, vì mọi chặng đều xanh.
+
+Phép kiểm phải đứng **trước** nextpnr. Sau nó thì không còn gì để chặn: chân đã được chọn, và
+một chân chọn sai cũng là lựa chọn hợp lệ với công cụ.
+
+### Chuyện ấy đã xảy ra rồi, trên hiện vật trong repo
+
+Chạy phép kiểm trên **sáu cặp (mạng cổng, `.cst`) thật** trong `du-lieu/`:
+
+| mô-đun đỉnh | dự án | chặn | phải đọc |
+|---|---|---|---|
+| `blinky` | `fpga-sinhvien` | 0 | 1 |
+| `soc_top` | `fpga-sinhvien` | 0 | 0 |
+| `blinky` | `riscv-tn20k` | 0 | 4 |
+| **`blinky`** | **`riscv-tn20k-b`** | **1** | 5 |
+| `soc_top` | `riscv-tn20k-b` | 0 | 2 |
+| `picorv32` | `fpga-sinhvien` | *(408 — xem dưới)* | 8 |
+
+Dòng in đậm là một lỗi có thật, và nó đã đi tới bitstream:
+
+* `blinky.v` khai cổng đỉnh **`sys_clk`**; tệp `.cst` khai **`clk_27m`**. Không dòng `IO_LOC`
+  nào cho `sys_clk` — `grep` cả bảy tệp `.cst` trong repo cũng không ra.
+* nextpnr vẫn chạy. `blinky_pnr.json` và **`blinky.fs` 4,6 MB** có mốc 01/10/2026 21:22.
+* Trong tệp bố trí, `sys_clk_IBUF_I` nằm ở `NEXTPNR_BEL = X0Y6/IOBA`. Và `clk_27m` của
+  `soc_top` — cổng **có** `IO_LOC "clk_27m" 4;` — cũng nằm ở `X0Y6/IOBA`.
+
+Nghĩa là nextpnr đặt cái đồng hồ không ràng buộc ấy vào **đúng chân 4**, chân dao động 27 MHz
+thật của bo. Bitstream ấy có thể đã chạy đúng. **Bằng may, không bằng ràng buộc** — ô vào đó
+là ô vào được mạng đồng hồ, nên xác suất rơi đúng rất cao, và chính vì nó rơi đúng mà không ai
+phát hiện ra suốt bảy ngày. Đây là hình dạng tệ nhất của một lỗi: nó không gây hậu quả lần này.
+
+Không sửa `.cst` của hiện vật cũ — đó là dữ liệu của những lượt đo đã chốt. Ghi vào README §8.
+
+### 408 "lỗi" của `picorv32` là lỗi của phép đo, không của sản phẩm
+
+Bản dàn dựng đầu tiên của tôi ghép **mọi** tệp mạng cổng với **mọi** `.cst` của dự án, nên nó
+ghép cả `picorv32.json` — mạng cổng của *lõi CPU tổng hợp riêng* để đếm ô, không bao giờ đem
+đặt-đi dây (không có `picorv32_pnr.json`, không có `.fs`). 409 cổng của một lõi CPU thì tất
+nhiên không cổng nào có `IO_LOC`, và tổng "409 blocker" của lượt chạy đầu **gần như toàn bộ**
+đến từ một cặp vô nghĩa.
+
+Tôi suýt ghi con số 409 ấy vào đây. Con số thật là **1** — đúng một chỗ, trên đúng một cặp mà
+công cụ sẽ thật sự được gọi với. Cùng cái bẫy của DEV-344 (dàn dựng sai sinh ra kết luận sai
+về sản phẩm) và của "lọc sai ra số đẹp": một phép lọc trả về số **hợp lý** thì tốn nhiều lượt
+hơn một phép lọc trả về rỗng.
+
+### Hai trong năm luật chưa có dữ liệu để nổ
+
+Kế hoạch đòi năm loại phát hiện. Ba cái đầu — `thieu_rang_buoc` (blocker), `rang_buoc_thua`
+(major), `trung_chan` (blocker) — chỉ cần `.cst` và mạng cổng, và cả ba đã nổ trên dữ liệu thật.
+
+Hai cái sau cần Fact chân của kit. Tra lại **mọi** kho trong `du-lieu/` và `docs/`:
+
+* **không kho nào** có Fact `pin:tangnano20k.*` (các Fact `pin:` đang có đều của
+  `ATmega328P`, `AMS1117`…);
+* **không kho nào** có khoá `vccio` hay chủ đề `bank.*`.
+
+Nên `chan_lech_kit` và `io_type_lech_bank` **hôm nay chưa kết luận được gì trên dữ liệu thật**.
+Chúng có ca kiểm, có đường dẫn Fact → luật đã nối và đã đo (`test_constraints_check_doc_Fact_chan_kit_tu_kho`),
+nhưng dữ liệu để chúng nổ thì chưa ai nạp. Đúng hình dạng việc còn mở "luật ERC quá áp chưa nổ
+trên dữ liệu thật". Ghi ra chứ không để một luật im lặng được đọc thành một luật đã kiểm.
+
+Và vì thế `cst.kiem` trả thêm một phát hiện mức `info`: **`chua_co_fact_chan_kit`**. Không có
+Fact thì nó **khai là đã bỏ** phần đối chiếu kit. Im lặng ở đó sẽ được đọc thành "đã kiểm chân,
+không sao cả" — mà kết luận thật chỉ là "`.cst` khớp với cổng thiết kế", không nói chân 15 có
+thật là LED0 trên bo hay không.
+
+### Hai chỗ kế hoạch ghi mà mã không nhận
+
+* **Mã lỗi.** Kế hoạch không ghi mã, tôi chọn `E4031` — rồi `grep` thấy `loop.py:1085` đã dùng
+  `E4031` cho *"chưa chạy, vì chờ cổng"*. Hai chuyện khác nhau mang cùng một mã là một lời nói
+  sai ở chỗ người đọc không kiểm lại được. Đổi sang **`E4033`** (E4030–E4032 đã có chủ). Đúng
+  cái bẫy đã trúng ở M2-06 với `E6010`.
+* **Khoá Fact.** Kế hoạch ghi Fact chân kit có khoá `chuc_nang`; mã đang ghi Fact chân bằng
+  `ten`/`net`/`af` (xem `tools/knowledge.py`). Nhận cả ba, ưu tiên `chuc_nang` — vì một phép
+  kiểm chỉ đọc đúng một tên khoá sẽ im lặng trên mọi Fact mà hệ thống này thật sự sinh ra.
+
+### Phép so tên cố ý LỎNG
+
+`led[0]` ↔ `LED0` phải khớp. Tên cổng do người viết RTL đặt, tên chức năng do tài liệu kit đặt,
+và đòi hai bên giống hệt nhau là đòi một quy ước chưa ai thoả thuận. Nên `_cung_mot_ten` rút cả
+hai về chữ–số rồi so chứa-nhau. Một phép so chặt sẽ báo lệch cho **mọi** thiết kế, và một cảnh
+báo luôn luôn nổ thì bằng không có cảnh báo nào.
+
+### `rang_buoc_thua` là `major`, không phải blocker
+
+Đo trên `riscv-tn20k-b`: `.cst` của kit khai 11 chân, `soc_top` dùng 4 cổng (9 bit) — nên
+`btn_s2` và `uart_rx` là ràng buộc thừa. Đó là hình dạng bình thường của *một tệp `.cst` cho cả
+kit, dùng cho nhiều thiết kế*, và chặn nó lại là chặn sai. Nhưng cũng không im: một tên thừa
+cũng có thể là **tên cổng viết sai chính tả**, và lúc ấy nó đi cặp với một `thieu_rang_buoc` —
+đúng cặp `clk_27m` (thừa) + `sys_clk` (thiếu) của `blinky` ở trên.
+
+### Phép phá: 18/20 ở lượt đầu
+
+Tập 20 phép phá chọn theo *chỗ mã tháo được*, không theo *chỗ tôi biết đã có ca canh* — bài học
+DEV-344. Hai chỗ LỌT, và cả hai cùng một hình dạng: nhánh **"không kiểm được"** của
+`kiem_rang_buoc_chan` đổi thành "kiểm được, 0 cổng, 0 phát hiện" mà bộ kiểm vẫn xanh. Mà 0 cổng
+thì **mọi** luật đều xanh — một ô xanh giả hoàn hảo, ngay trong công cụ đi tìm ô xanh giả.
+
+Hai nhánh ấy nói hai chuyện khác nhau và phải có hai ca: *tệp không đọc được* (JSON hỏng) và
+*tệp đọc được mà không có mô-đun đỉnh* (tên đỉnh gõ sai, hoặc RTL đã đổi tên). Cái thứ hai dễ
+bỏ sót hơn vì nó không ném ngoại lệ nào cho ai nhìn thấy. Bù hai ca, phá lại: **20/20**.
+
+Một lỗi nhỏ của chính phép đo, đáng ghi: ca đầu tôi viết dùng JSON hỏng, mà phép phá tôi viết
+lại nhắm nhánh *thiếu mô-đun đỉnh* — hai cái không gặp nhau, nên ca mới xanh và phép phá vẫn
+LỌT. Mất một lượt mới thấy. Một ca kiểm và một phép phá không trỏ vào cùng một dòng thì con số
+"phá lại thì đỏ" nói về chỗ khác với chỗ người ta tưởng.
+
+### Số đo
+
+Bộ kiểm 1744 → **1773 xanh, 0 đỏ** (+29 ca: 21 trong `tests/test_cst.py` mới, 8 trong
+`tests/test_hdl.py`). Trong đó **8 ca chạy trên hiện vật thật** — cả **7** tệp `.cst` trong repo
+đọc hết, 0 dòng sai cú pháp. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. **Phá lại thì đỏ: 20/20.**
+
+Phép quét tệp `.cst` thật cũng phải sửa một lần: bản đầu chỉ quét `du-lieu/*/constraints/` và
+`docs/*/constraints/`, và thu **4 trong 7** tệp — ba tệp còn lại nằm sâu hơn một bậc hoặc nằm
+cạnh RTL. Ca kiểm vẫn xanh với 4 tệp, và câu "mọi tệp `.cst` thật đều đọc được" lúc ấy nói về
+phần phép quét chạm tới, không về repo. Cùng hình dạng với chuyện "408 lỗi của `picorv32`": cả
+hai lần, cái sai nằm ở phạm vi phép đo chứ không ở kết luận nó rút ra.
+
+README: 128 → **129 công cụ** (120 bật mặc định, nhóm FPGA 6 → 7), §8 thêm mục về bitstream
+`blinky` nói trên, và `hdl.constraints_check` đếm vào phần **chưa được Agent gọi lần nào** —
+như `hdl.sensitivity` ở DEV-344, mã đã chạy trên hiện vật thật nhưng chưa lượt tác tử nào gọi.
