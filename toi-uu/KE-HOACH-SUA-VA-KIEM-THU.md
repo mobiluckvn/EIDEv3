@@ -151,7 +151,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 16 | [M3-18](#m3-18) | Kiểm ràng buộc chân FPGA (`.cst`) với cổng mô-đun đỉnh và chân của kit | P0 | M | — | — | xong 08/10/2026 · DEV-345 · 1744→1773 ca · trên 6 cặp thật: 1 chỗ CHẶN (`blinky` của riscv-tn20k-b dựng bitstream với chân đồng hồ nextpnr tự chọn) | ☑ |
 | 17 | [M4-01](#m4-01) | Máy chấm unit test do EIDE phán (`test.criteria`) | P0 | M | — | — | xong 08/10/2026 · DEV-346 · 1773→1791 ca · phá lại 24/24 (lượt đầu 17/24) · thêm E4023 cho đường unit test, và chế độ phải hiện ở tab A8 chứ không chỉ ở note_vi | ☑ |
 | 18 | [M4-02](#m4-02) | Cổng G-QUAL khi sửa/xoá tệp test sau kết quả đỏ + sửa `criteria.has_result` | P0 | M | — | SIM_RUNNER_GIOI_HAN — TẮT | xong 08/10/2026 · DEV-347 · 1791→1816 ca · phá lại 27/27 (lượt đầu 22/27) · phát hiện: một luật trỏ tới nhóm dữ kiện chưa khai thì DỪNG CẢ LƯỢT, và `criteria` cũng chưa bao giờ có trong danh sách ấy | ☑ |
-| 19 | [M4-05](#m4-05) | Đột biến không biên dịch được không được tính là "bắt được" | P1 | S | — | — | kéo lên từ GĐ2 vì là tiền đề của M4-06 | ☐ |
+| 19 | [M4-05](#m4-05) | Đột biến không biên dịch được không được tính là "bắt được" | P1 | S | — | — | xong 08/10/2026 · DEV-348 · 1816→1835 ca · phá lại 22/22 (lượt đầu 15/20) · tìm thêm BA lỗi thật trên cùng đường đo: test.sensitivity ĐỔ trên mọi tệp firmware thật (≥10 chú thích), mo_phong chạy lại sim.vvp cũ khi biên dịch đổ, và loi_nguoi_doc khen khi chưa đo được gì | ☑ |
 | 20 | [M4-19](#m4-19) | Đột biến trên bản sao, không ghi đè tệp sản phẩm của người dùng | P2 | S | — | — | kéo lên từ GĐ4 vì là tiền đề của M4-04 | ☐ |
 | 21 | [M4-04](#m4-04) | Đột biến chi tiết từng vị trí + điểm đột biến (mutation score) | P1 | M | M4-05, M4-19 | — | kéo lên từ GĐ3 vì là tiền đề của M4-06 | ☐ |
 | 22 | [M4-06](#m4-06) | Vòng tự nâng test khi đột biến sống (Evaluator–Optimizer) | P0 | M | M4-04, M4-05 | TEST_HARDEN |  | ☐ |
@@ -1418,14 +1418,48 @@ DEV-347; tất cả nằm trong `tests/test_test_bi_sua_yeu.py`):
 | TC-M4-05-03 | Ca biên | …::test_moi_phep_deu_stillborn_thi_chua_do_duoc | mọi mutant trả lỗi biên dịch → "chua_do_duoc" |
 | TC-M4-05-04 | Hồi quy | …::test_bo_kiem_that_thi_ra_thay (có sẵn) | giữ xanh |
 
+**Mười lăm TC thêm khi làm** (ba lỗi nữa chỉ lộ ra khi CHẠY phép đo trên dữ liệu thật, và phép
+phá tìm ra năm chỗ không ai canh — xem DEV-348; tất cả trong `tests/test_dot_bien.py`):
+
+| Mã TC | Loại | Tên ca | Cho trước → Khi → Thì |
+|---|---|---|---|
+| TC-M4-05-05 | Ca biên | test_tien_to_BIEN_DICH_khong_doi_phan_loai_o_buoc_NAP | bước nạp giữ nguyên `khong_nap_duoc`, chưa đếm mutant |
+| TC-M4-05-06 | Lược đồ | test_so_mutant_khong_hop_le_co_mat_ca_khi_bang_khong | khoá luôn có trong kết quả, kể cả khi 0 |
+| TC-M4-05-07 | Người đọc | test_loi_nguoi_doc_NOI_RA_co_mutant_stillborn | đoạn cho người nói ra số mutant bị bỏ |
+| TC-M4-05-08 | **Lỗi 4** | test_loi_nguoi_doc_khong_khen_khi_chua_do_duoc_tep_nao | `so_thay == 0` → "CHƯA ĐO ĐƯỢC", không "phá tệp nào cũng có ca đỏ" |
+| TC-M4-05-09 | **Lỗi 2** | test_tep_co_HON_MUOI_chu_thich_van_dot_bien_duoc | tệp ≥10 chú thích → không `IndexError`, chú thích về nguyên vẹn |
+| TC-M4-05-10 | Ca âm | test_chu_thich_khong_bi_dot_bien_ke_ca_khi_co_so_dai | số trong chú thích vẫn không bị đổi |
+| TC-M4-05-11 | Đơn vị | test_ma_cho_giu_di_va_ve_khong_lech | `_ma_cho`/`_so_cho` song ánh trên 2000 giá trị |
+| TC-M4-05-12 | **Lỗi 3** | test_mo_phong_KHONG_chay_lai_tep_sim_cu_khi_bien_dich_do | dịch đổ → `dat=False`, `pass_fail=""`, không đọc PASS của lượt trước |
+| TC-M4-05-13 | Luật chung | test_ket_qua_chay_gan_tien_to_khi_co_loi_bien_dich | có `loi_bien_dich` → có tiền tố |
+| TC-M4-05-14 | Luật chung | test_ket_qua_chay_KHONG_gan_tien_to_khi_QUA_HAN | quá hạn → KHÔNG tiền tố (mutant treo ≠ mutant không dịch được) |
+| TC-M4-05-15 | Luật chung | test_ket_qua_chay_dat_thi_khong_bao_gio_gan_tien_to | đạt → không tiền tố |
+| TC-M4-05-16 | **Đường thật** | test_test_sensitivity_dem_duoc_mutant_stillborn | công cụ THẬT trên `cc` thật → `so_mutant_khong_hop_le ≥ 1` |
+| TC-M4-05-17 | **Đường thật** | test_do_do_nhay_hdl_dem_stillborn_tren_duong_THAT | `do_do_nhay_hdl` thật + bảng bơm vào → stillborn 1, `so_thay` 0 |
+| TC-M4-05-18 | **Đường thật** | test_hdl_do_do_nhay_dem_duoc_mutant_stillborn | mutant DỊCH ĐƯỢC thì KHÔNG bị đếm là stillborn |
+| TC-M4-05-19 | Báo lại | test_cong_cu_hdl_sensitivity_MANG_THEO_so_mutant_stillborn | công cụ mang con số ra cả ba chỗ: kết quả · kho · `note_vi` |
+
 **Bảo vệ hồi quy (phải vẫn XANH):**
 - `.venv/bin/python -m pytest -q tests/test_dot_bien.py`
-- Bốn trạng thái cũ và ca "trả tệp về nguyên vẹn" giữ nguyên.
+- Bốn trạng thái cũ và ca "trả tệp về nguyên vẹn" giữ nguyên. **Đã kiểm: không phải nới ca nào.**
+
+**Lệch khỏi kế hoạch (đo rồi mới thấy):**
+- Phải sửa cả `src/eide/build/hdl.py`, `src/eide/tools/xay_dung.py`, `src/eide/tools/hdl.py`
+  (kế hoạch chỉ ghi `dot_bien.py` + tests). Lý do: luật "khai lỗi biên dịch" phải do hàm
+  `chay` phát ra, nên hai đường đo thật đều phải sửa — thiếu chúng thì cơ chế có sẵn mà không
+  lượt đo nào đi qua nó.
+- `mo_phong` phải gọi `_don_tep_ra(anh)` — không thì mutant hỏng cú pháp ở đường HDL **không
+  bao giờ** trả `False` để mà phân loại. Tức Lỗi 3 là **tiền đề** của chính nhiệm vụ này.
+- Mã chỗ giữ của `dot_bien_van_ban` phải đổi từ chữ số sang chữ hoa, không thì phép đo ĐỔ trên
+  mọi tệp firmware thật.
+- `do_do_nhay_hdl` nhận thêm tham số `bang` — năm phép `PHEP_VERILOG` đều hợp lệ về cú pháp
+  nên không dựng nổi ca kiểm cho nhánh stillborn của đường HDL qua bảng mặc định.
+- Luật gắn tiền tố gom về `dot_bien.ket_qua_chay` thay vì viết hai lần trong hai closure.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC. — 22 chỗ phá, **22/22 đỏ** (lượt đầu 15/20)
+- [x] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc. — 1816 → **1835 xanh, 0 đỏ**
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md. — **DEV-348**
 
 **Hoàn tác:** revert commit.
 

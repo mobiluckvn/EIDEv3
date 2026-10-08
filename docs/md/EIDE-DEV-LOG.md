@@ -8392,3 +8392,133 @@ Bộ kiểm 1791 → **1816 xanh, 0 đỏ** (+25 ca, `tests/test_test_bi_sua_yeu
 CHẮC CHẮN. **Phá lại thì đỏ: 27/27.**
 
 Cờ tính năng 7 → **8**, cờ mới mặc định TẮT. Không công cụ mới, nên số công cụ giữ **130**.
+
+---
+
+## [DEV-348] [M4-05] Mutant không dịch được — và ba lỗi nữa trên cùng đường đo độ nhạy
+
+Nhiệm vụ #19. **Sửa lỗi thuần** (ô xanh giả trong phép đo), không cờ. Nhiệm vụ nhỏ nhất của
+đợt (P1 · S) và là nhiệm vụ tìm ra nhiều lỗi thật nhất — cả bốn chỉ lộ ra khi **chạy phép đo
+trên dữ liệu thật**, không lộ ra khi đọc mã.
+
+### Lỗi 1 — thứ nhiệm vụ này được giao: `False` có hai nghĩa
+
+Vòng đột biến cũ kết luận bằng đúng một câu hỏi: *"phá rồi thì `chay` có trả `False` không?"*
+
+```python
+dat, _ = chay(p)
+if not dat:
+    thay_doi = True          # ⇐ "bộ kiểm BẮT ĐƯỢC"
+```
+
+Nhưng `False` nói hai chuyện khác hẳn nhau: **bộ kiểm chạy rồi có ca đỏ** (nó CÓ canh chỗ ấy),
+hoặc **mã không dịch nổi** (chưa phép kiểm nào chạy). Gộp lại thì con số độ nhạy đẹp lên một
+cách giả — và đẹp theo hướng tệ nhất: những phép phá **thô** nhất, loại làm hỏng cú pháp, là
+loại dễ được tính là "bắt được" nhất, trong khi chúng không nói gì về việc bộ kiểm có đọc một
+giá trị nào của tệp hay không.
+
+Nay mutant không dịch được vào `so_mutant_khong_hop_le` và vòng đo **đi tiếp** sang phép sau
+(`continue`, không `break`): một phép phá không dịch được chưa trả lời câu hỏi nào. Mọi phép
+đều stillborn thì cả tệp là `chua_do_duoc` — không phải `khong_thay`, vì `khong_thay` là một
+**cáo buộc** ("bộ kiểm không nhìn tệp này").
+
+Dấu hiệu **không** được đọc từ nội dung log. `_DAU_HIEU_KHAC` có `"error:"`, và
+`vi_sao_khong_dat` của một ca test hỏng thật rất dễ chứa chữ ấy — `"TC-01: error: mong 1 nhan
+0"`. Một phép dò theo nội dung sẽ gọi mọi ca test hỏng như thế là "mutant không dịch được",
+tức biến một phép đo *bắt được* thành *chưa đo được*: con số độ nhạy **tụt** xuống vì một lý
+do sai. Nên hàm `chay` phải **khai** ra, bằng tiền tố `[BIEN_DICH] `.
+
+### Lỗi 2 — `test.sensitivity` chưa bao giờ chạy nổi trên một tệp firmware THẬT
+
+Chạy phép đo trên ba dự án firmware thật trong `du-lieu/` thì nó **đổ**:
+
+```
+IndexError: list index out of range     (dot_bien.py:98)
+```
+
+Chỗ giữ chuỗi/chú thích là `\x00{i}\x00` với `i` là số thứ tự. Phép đột biến đầu của bảng C là
+`(?<![\w.])(\d{2,})(?![\w.])` → `99999`, và `\x00` **không** nằm trong `[\w.]` — nên từ chỗ giữ
+thứ 11 (`\x0010\x00`) trở đi, chính con số của chỗ giữ bị đột biến thành `99999`, và bước phục
+hồi `giu[99999]` ném `IndexError`.
+
+Mọi tệp firmware thật đều có hơn 10 chú thích. Nghĩa là **đường đo độ nhạy cho C chưa bao giờ
+chạy được trên một tệp thật**; mọi con số cũ đều đến từ tệp nhỏ do ca kiểm tự dựng. Một công
+cụ đi vạch mặt ô xanh giả, và nó không chạy nổi trên sản phẩm. Mã chỗ giữ nay viết bằng **chữ
+hoa** (`\x00AB\x00`) — không bảng phép nào chạm tới `[A-Z]+`.
+
+### Lỗi 3 — `mo_phong` chạy lại tệp mô phỏng CŨ khi biên dịch đổ
+
+Đo ngày 08/10/2026: sửa `dem.v` thành `q <= q + ;` (sai cú pháp) rồi gọi `mo_phong`:
+
+```
+dat = True · pass_fail = 'PASS' · ma_thoat = 0 · len(loi) = 1
+```
+
+`mo_phong` dựng `sim.vvp` rồi chạy nó, và nó chỉ hỏi `anh.exists()`. Tệp của lượt trước còn
+nằm đó, nên lượt dịch **đổ** vẫn thấy "có tệp" và `vvp` chạy **bản cũ** — in ra `PASS` của một
+mã khác mã trên đĩa.
+
+Trên đường đo độ nhạy nó tệ hơn một bậc: mutant hỏng cú pháp được đọc thành *"testbench vẫn
+xanh"*, tức **"bộ kiểm không canh chỗ này"** — một cáo buộc sai về sản phẩm, sinh ra từ một tệp
+sót lại. Và tức là Lỗi 1 **không sửa được** nếu không sửa chỗ này trước: mutant stillborn ở
+đường HDL không bao giờ trả `False` để mà phân loại.
+
+`_don_tep_ra` đã có từ 01/10/2026 cho **đúng chuyện này** ở `nextpnr`, và docstring của nó ghi
+sẵn bài học. `tong_hop`, `dat_di_day`, `dong_goi` đều gọi nó. Chỉ `mo_phong` là không — cơ chế
+có sẵn, đường dẫn tới nó đứt ở đúng một chặng.
+
+### Lỗi 4 — `loi_nguoi_doc` khen một chỗ trống
+
+Nhánh cuối của `loi_nguoi_doc` chạy cho cả trường hợp `so_thay == 0`, nên nó in:
+
+> Bộ kiểm nhìn thấy cả **0/1** tệp — phá tệp nào cũng có ca đỏ.
+
+Một câu đọc như lời bảo đảm, cho một lượt đo chưa kết luận được gì. Nay `so_thay == 0` ra
+**"CHƯA ĐO ĐƯỢC"** kèm lý do từng tệp, và nói thẳng *"con số độ nhạy ở đây KHÔNG phải 0 — nó
+là chưa biết"*.
+
+### Đo trên dữ liệu thật: một ô xanh giả, đã sửa
+
+`du-lieu/rtos-sinhvien` (12 tệp sản phẩm, 1 tệp test), chạy **cả hai hành vi** trên cùng dữ
+liệu:
+
+| | `so_thay` | `logo_ptit.c` |
+|---|---|---|
+| **cũ** | **1** | `thay` — *"đổi mọi hằng số từ hai chữ số (1 chỗ) → bộ kiểm ĐỎ"* |
+| **mới** | **0** | `chua_do_duoc` — *"mọi đột biến đều làm hỏng biên dịch (1 phép)"* |
+
+Con số cũ là **1/5 bắt được**; sự thật là **0 tệp đo được**. Phần còn lại của dự án ấy cũng
+đáng ghi: 4 tệp font `khong_thay`, `control_rtos.c` trùng ký hiệu (tệp test tự định nghĩa lại
+hàm sản phẩm), `main.c` không dịch được trên máy chủ. Hai dự án firmware thật còn lại
+(`stm32f469-freertos`, `thu-nghiem-g6`) có **bộ kiểm đỏ sẵn**, nên không đo được gì.
+
+Và **kiểm lại DEV-344**: đo lại bài 3 sau khi sửa cả bốn lỗi — `tb_pcpi_dot4` **1/1**,
+`tb_pcpi_mac` **1/1**, `stillborn = 0`. Con số của DEV-344 **đứng**: phép *"đảo điều kiện if"*
+dịch được, và testbench đỏ vì hành vi đổi, không vì mã hỏng. Nó đứng do may: Lỗi 3 chỉ nổ khi
+mutant làm hỏng cú pháp, mà năm phép của `PHEP_VERILOG` cố ý đều hợp lệ về cú pháp.
+
+### Phép phá: 15/20, và luật nằm trong hai closure không ai gọi tới được
+
+Năm chỗ LỌT, và bốn trong số đó cùng một hình dạng: **luật đúng, nằm ở chỗ ca kiểm không với
+tới**.
+
+* Luật *"chỉ gắn tiền tố khi có lỗi biên dịch"* nằm trong **hai closure** — `_chay` của
+  `test.sensitivity` và `chay` của `hdl.sensitivity`. Hai phép phá nhắm đúng chỗ ấy đều LỌT.
+  Gom về `dot_bien.ket_qua_chay`: một chỗ quyết định, và đo được — kể cả ca *"quá hạn thì
+  KHÔNG phải stillborn"*, thứ không ca nào với tới khi nó còn nằm trong closure.
+* Nhánh gắn tiền tố của `do_do_nhay_hdl` **không dựng nổi ca kiểm qua bảng mặc định**: năm
+  phép `PHEP_VERILOG` cố ý đều hợp lệ về cú pháp. Mở tham số `bang` để ca kiểm bơm một bảng
+  một phép làm hỏng cú pháp vào **đúng đường thật** — cùng hàm, cùng `mo_phong`, cùng `chay`;
+  chỉ cái bảng là của ca kiểm.
+* Ba chỗ báo lại của công cụ `hdl.sensitivity` (kết quả · kho · `note_vi`) LỌT vì **mọi ca
+  kiểm cũ của nó đều đi qua một lượt đo có `stillborn == 0`**. Đây là tầng báo lại, và nó hỏng
+  theo kiểu riêng: phép đo đúng, con số đúng, rồi con số không đi tới đâu.
+
+Bù tám ca, phá lại: **22/22**. Và tập phép phá lần này **tự kiểm**: script so byte trước–sau
+mỗi phép và in `[VÔ HIỆU]` nếu không đổi gì — sau ba phép vô hiệu báo LỌT oan ở M4-01/M4-02.
+
+### Số đo
+
+Bộ kiểm 1816 → **1835 xanh, 0 đỏ** (+19 ca trong `tests/test_dot_bien.py`). `kiem_tai_lieu` 0
+chỗ LỆCH CHẮC CHẮN. **Phá lại thì đỏ: 22/22.** Không công cụ mới, không cờ mới: **130 công
+cụ**, **8 cờ**.

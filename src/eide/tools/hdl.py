@@ -233,8 +233,12 @@ def register(r: Registry) -> None:
         # Ghi ĐÈ con số tự khai (nếu có) bằng con số đo được: một phép đo thắng một lời khai.
         cu = ctx.store.get(f"{MA_HDL}:sim")
         can = dict((cu or {}).get("canonical") or {})
+        # M4-05 — số mutant bị BỎ vì không dịch được, đi cùng con số độ nhạy ở mọi chỗ. Một
+        # "1/1" sau khi hai phép phá bị bỏ là câu đúng về mẫu số của nó và sai về điều người
+        # đọc hiểu — cùng cái lỗi DEV-344 vừa sửa ở nhãn đơn vị.
+        sb = int(r_do.get("so_mutant_khong_hop_le") or 0)
         can["do_nhay"] = {"bat": bat, "tong": tong, "do_bang": "ma",
-                          "chi_tiet": r_do["tep"]}
+                          "so_mutant_khong_hop_le": sb, "chi_tiet": r_do["tep"]}
         ctx.store.apply(
             artefact_id=f"{MA_HDL}:sim", type="build",
             op="update" if cu else "create", author=f"agent:{ctx.run_id}",
@@ -242,6 +246,7 @@ def register(r: Registry) -> None:
         return {
             "bat": bat, "tong": tong, "tep": r_do["tep"],
             "so_chua_do": r_do["so_chua_do"], "so_khong_nap": r_do["so_khong_nap"],
+            "so_mutant_khong_hop_le": sb,
             "note_vi": (
                 # Nói ra mẫu số là TỆP. Vòng đo dừng ở phép phá đầu tiên làm bộ kiểm đỏ,
                 # nên "1/1" nghĩa là "1 trong 1 tệp RTL", KHÔNG phải "1 trong 1 phép phá"
@@ -250,8 +255,9 @@ def register(r: Registry) -> None:
                 + ("" if bat == tong else
                    f" Còn {tong - bat} tệp bị phá mà testbench **vẫn xanh** — nghĩa là "
                    "testbench không canh phần ấy, và chữ PASS của nó không nói gì về chúng.")
-                + (f" {r_do['so_chua_do']} tệp chưa đo được."
-                   if r_do["so_chua_do"] else ""))}
+                + (f" {r_do['so_chua_do']} tệp chưa đo được." if r_do["so_chua_do"] else "")
+                + (f" {sb} phép phá bị BỎ vì mutant không dịch được — chúng KHÔNG nằm trong "
+                   "con số trên, và cũng không nói gì về testbench." if sb else ""))}
 
     # ============================================================== tổng hợp
     @r.tool("hdl.synth", "Mạch thật",

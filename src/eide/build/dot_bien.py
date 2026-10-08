@@ -91,12 +91,42 @@ def dot_bien_van_ban(ma: str, phep: int = 0,
 
     def _cat(m: re.Match[str]) -> str:
         giu.append(m.group(0))
-        return f"\x00{len(giu) - 1}\x00"
+        return f"\x00{_ma_cho(len(giu) - 1)}\x00"
 
     than = _BO_QUA.sub(_cat, ma)
     moi, n = re.subn(mau, thay, than)
-    moi = re.sub(r"\x00(\d+)\x00", lambda m: giu[int(m.group(1))], moi)
+    moi = re.sub(r"\x00([A-Z]+)\x00", lambda m: giu[_so_cho(m.group(1))], moi)
     return moi, mo_ta, n
+
+
+# M4-05 — mã chỗ giữ viết bằng CHỮ HOA, không bằng chữ số.
+#
+# Bản cũ dùng `\x00{i}\x00` với `i` là số thứ tự. Phép đột biến đầu của bảng C là
+# `(?<![\w.])(\d{2,})(?![\w.])` → `99999`, và `\x00` không nằm trong `[\w.]` — nên khi một tệp
+# có **từ 10 chuỗi/chú thích trở lên**, chính con số của chỗ giữ bị đột biến thành `99999`, và
+# bước phục hồi `giu[99999]` ném `IndexError`.
+#
+# Đo được ngày 08/10/2026: `test.sensitivity` **đổ** trên cả ba dự án firmware thật trong
+# `du-lieu/` (rtos-sinhvien, stm32f469-freertos, thu-nghiem-g6) — mọi tệp firmware thật đều có
+# hơn 10 chú thích. Nghĩa là đường đo độ nhạy cho C chưa bao giờ chạy nổi trên một tệp thật;
+# các con số cũ đều đến từ tệp nhỏ do ca kiểm tự dựng.
+#
+# Chữ hoa an toàn với cả hai bảng: bảng C chỉ khớp số, `==`, `<`, `+`; bảng Verilog khớp `if`,
+# `&`, hằng `'d`, `posedge`, `==` — không phép nào chạm tới `[A-Z]+`.
+def _ma_cho(i: int) -> str:
+    ra = ""
+    i += 1
+    while i:
+        i, du = divmod(i - 1, 26)
+        ra = chr(ord("A") + du) + ra
+    return ra
+
+
+def _so_cho(s: str) -> int:
+    n = 0
+    for c in s:
+        n = n * 26 + (ord(c) - ord("A") + 1)
+    return n - 1
 
 
 def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]],
@@ -122,7 +152,12 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
       sự là "chưa biết", và gộp nó vào "không thấy" là một cáo buộc sai.
     """
     ra: dict[str, Any] = {"tep": [], "so_thay": 0, "so_khong_thay": 0,
-                          "so_khong_nap": 0, "so_chua_do": 0}
+                          "so_khong_nap": 0, "so_chua_do": 0,
+                          # M4-05 — số mutant bị BỎ vì không dịch được (stillborn). Luôn có
+                          # trong kết quả, kể cả khi bằng 0: một khoá chỉ xuất hiện khi khác 0
+                          # buộc bên đọc phải `.get(...)` kèm một mặc định, và mặc định ấy sớm
+                          # muộn sai ở một chỗ nào đó.
+                          "so_mutant_khong_hop_le": 0}
     dat_goc, log_goc = chay(None)
     ra["bo_kiem_xanh_luc_dau"] = dat_goc
     if not dat_goc:
@@ -164,15 +199,34 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
 
         thay_doi = False
         ghi_chu = "không có chỗ nào để đột biến"
+        # M4-05 — đếm riêng mutant STILLBORN của tệp này. Nếu MỌI phép đều stillborn thì cả
+        # tệp là "chưa đo được", không phải "không thấy": chưa phép kiểm nào chạy để mà thấy.
+        stillborn = 0
         for i in range(min(toi_da_phep, len(bang))):
             moi_ma, mo_ta, n = dot_bien_van_ban(goc, i, bang=bang)
             if n == 0 or moi_ma == goc:
                 continue
             try:
                 p.write_text(moi_ma, "utf-8")
-                dat, _ = chay(p)
+                dat, log = chay(p)
             finally:
                 p.write_text(goc, "utf-8")
+            # M4-05 — "mã không DỊCH nổi" không phải "bộ kiểm bắt được".
+            #
+            # Bản cũ chỉ hỏi `not dat`, và `False` có hai nghĩa khác hẳn nhau: bộ kiểm chạy
+            # rồi có ca đỏ (nó CÓ canh chỗ ấy), hoặc mutant không dịch được (chưa phép kiểm
+            # nào chạy). Gộp lại thì con số độ nhạy đẹp lên một cách giả, và đẹp theo hướng
+            # tệ nhất: những phép phá THÔ nhất — loại làm hỏng cú pháp — là loại dễ được tính
+            # là "bắt được" nhất, trong khi chúng không nói gì về việc bộ kiểm có đọc giá trị
+            # nào của tệp hay không.
+            #
+            # KHÔNG `break` ở đây: một phép phá không dịch được chưa trả lời câu hỏi nào, nên
+            # câu trả lời phải đi tìm ở phép kế tiếp.
+            if not dat and _la_loi_bien_dich(log):
+                stillborn += 1
+                ra["so_mutant_khong_hop_le"] += 1
+                ghi_chu = f"{mo_ta} ({n} chỗ) → mutant không dịch được (bỏ qua)"
+                continue
             if not dat:
                 thay_doi = True
                 ghi_chu = f"{mo_ta} ({n} chỗ) → bộ kiểm ĐỎ"
@@ -183,6 +237,14 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
             ra["so_thay"] += 1
         elif "không có chỗ nào" in ghi_chu:
             ra["tep"].append({"tep": p.name, "trang_thai": "chua_do_duoc", "vi_sao": ghi_chu})
+            ra["so_chua_do"] += 1
+        elif stillborn and "không dịch được" in ghi_chu:
+            # Mọi phép phá được đều stillborn — phép phá cuối cùng cũng vậy, nên `ghi_chu`
+            # còn mang chữ ấy. Chưa có một lượt chạy nào nói được gì về bộ kiểm.
+            ra["tep"].append({
+                "tep": p.name, "trang_thai": "chua_do_duoc",
+                "vi_sao": (f"mọi đột biến đều làm hỏng biên dịch ({stillborn} phép), nên chưa "
+                           "có lượt chạy nào nói được bộ kiểm có canh tệp này hay không")})
             ra["so_chua_do"] += 1
         else:
             ra["tep"].append({"tep": p.name, "trang_thai": "khong_thay", "vi_sao": ghi_chu})
@@ -200,6 +262,42 @@ _DAU_HIEU_KHAC = ("undefined symbol", "undefined reference", "error:", "ld: ")
 def _khong_dich_duoc(log: str) -> bool:
     l = log.lower()
     return any(x in l for x in _DAU_HIEU_TRUNG + _DAU_HIEU_THIEU + _DAU_HIEU_KHAC)
+
+
+# M4-05 — tiền tố mà hàm `chay` dùng để KHAI "lượt này không dịch được", thay vì để mô-đun
+# này đoán từ nội dung log.
+#
+# Vì sao không dùng `_khong_dich_duoc` ở trong vòng đột biến: `_DAU_HIEU_KHAC` có `"error:"`,
+# và `vi_sao_khong_dat` của một ca test hỏng THẬT rất dễ chứa chữ ấy — `"TC-01: error: mong 1
+# nhan 0"`. Một phép dò theo nội dung sẽ gọi mọi ca test hỏng như thế là "mutant không dịch
+# được", tức biến một phép đo *bắt được* thành *chưa đo được*, và con số độ nhạy TỤT xuống vì
+# một lý do sai. Ở bước nạp mã gốc thì `_khong_dich_duoc` vẫn đúng và vẫn dùng: ở đó log là
+# đầu ra của trình biên dịch, không trộn với lời của bộ kiểm.
+TIEN_TO_BIEN_DICH = "[BIEN_DICH] "
+
+
+def _la_loi_bien_dich(log: Any) -> bool:
+    return isinstance(log, str) and log.lstrip().startswith(TIEN_TO_BIEN_DICH)
+
+
+def ket_qua_chay(*, dat: bool, loi_bien_dich: str = "", log: str = "") -> tuple[bool, str]:
+    """Dựng giá trị trả về của một hàm `chay` — MỘT chỗ quyết định có gắn tiền tố hay không.
+
+    Hai đường đo (C qua `test.sensitivity`, Verilog qua `hdl.sensitivity`) đều cần đúng một
+    luật: **chỉ gắn tiền tố khi có lỗi biên dịch.** Viết luật ấy hai lần là mời chúng lệch
+    nhau, và lúc lệch thì một đường tính stillborn còn đường kia thì không — mà không ai nói
+    ra. Đo được ở lượt phá đầu của M4-05: hai phép phá nhắm đúng chỗ này đều LỌT, vì luật nằm
+    trong hai closure không ca kiểm nào gọi tới được.
+
+    `dat=False` **không** đủ để gắn: quá hạn cũng là không đạt, và một mutant làm bộ kiểm
+    **treo** thì không phải mutant không dịch được — nó là một mutant mà phép đo không kết
+    luận được, và gọi nó là stillborn là nói sai về nguyên nhân.
+    """
+    if dat:
+        return True, log
+    if loi_bien_dich:
+        return False, TIEN_TO_BIEN_DICH + loi_bien_dich
+    return False, log
 
 
 def _vi_sao_khong_nap(log: str) -> str:
@@ -226,6 +324,11 @@ def loi_nguoi_doc(d: dict[str, Any]) -> str:
     mu = [x for x in d["tep"] if x["trang_thai"] == "khong_thay"]
     ngoai = [x for x in d["tep"] if x["trang_thai"] == "khong_nap_duoc"]
     tong = len(d["tep"])
+    # M4-05 — nói ra số mutant bị BỎ. "Bắt 1/1" sau khi một phép phá bị bỏ vì không dịch được
+    # là một câu đúng về mẫu số của nó và sai về điều người đọc hiểu.
+    sb = int(d.get("so_mutant_khong_hop_le") or 0)
+    them_sb = (f" {sb} phép phá bị BỎ vì mutant không dịch được — chúng không nằm trong con "
+               "số trên, và cũng không nói gì về bộ kiểm." if sb else "")
     if ngoai or mu:
         dong = [f"**Bộ kiểm không chạm tới {len(ngoai) + len(mu)}/{tong} tệp mã sản phẩm.**"]
         for x in ngoai:
@@ -238,7 +341,17 @@ def loi_nguoi_doc(d: dict[str, Any]) -> str:
                     "không có bộ kiểm nào.")
         if d["so_thay"]:
             dong.append(f"Đo được {d['so_thay']}/{tong} tệp thì bộ kiểm CÓ nhìn thấy.")
+        if them_sb:
+            dong.append(them_sb.strip())
         return "\n".join(dong)
+    # M4-05 — không phá được tệp nào thì KHÔNG nói "bộ kiểm nhìn thấy cả 0/N tệp — phá tệp
+    # nào cũng có ca đỏ". Câu ấy đọc như một lời khen trong khi chưa lượt chạy nào nói được gì.
+    if not d["so_thay"]:
+        return ("**CHƯA ĐO ĐƯỢC** độ nhạy của tệp nào: "
+                + "; ".join(f"`{x['tep']}` — {x['vi_sao']}" for x in d["tep"][:4])
+                + "." + them_sb
+                + " Con số độ nhạy ở đây KHÔNG phải 0 — nó là “chưa biết”.")
     return (f"Bộ kiểm nhìn thấy cả {d['so_thay']}/{tong} tệp — phá tệp nào cũng có ca đỏ."
             + (f" ({d['so_chua_do']} tệp chưa đo được.)" if d["so_chua_do"] else "")
+            + them_sb
             + " Phép này chỉ chứng minh bộ kiểm KHÔNG RỖNG, không nói nó sâu tới đâu.")

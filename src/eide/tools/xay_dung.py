@@ -809,11 +809,21 @@ def dang_ky(r: Registry) -> None:
 
         def _chay(them: Any = None) -> tuple[bool, str]:
             """`them=None`: chạy bộ kiểm y như tác tử vẫn chạy. `them=p`: nạp thêm tệp sản
-            phẩm `p`. Hai lần chạy này phải khác nhau, nếu không phép đo vô nghĩa."""
+            phẩm `p`. Hai lần chạy này phải khác nhau, nếu không phép đo vô nghĩa.
+
+            M4-05 — KHAI ra khi lượt này **không dịch được**, bằng tiền tố `[BIEN_DICH] `.
+            `dot_bien` không được tự đoán từ nội dung log: `vi_sao_khong_dat` của một ca test
+            hỏng thật rất dễ chứa chữ `error:`, và lúc ấy một phép đo *bắt được* bị đọc thành
+            *chưa đo được*.
+
+            Chỉ gắn khi có `loi_bien_dich`. `chay_duoc=False` còn có nghĩa khác — quá hạn
+            chẳng hạn — và một mutant làm bộ kiểm treo thì KHÔNG phải mutant không dịch được.
+            """
             kq = MP.chay_test(goc=goc, nguon=tep_test + ([them] if them else []))
             if not kq.chay_duoc:
-                return False, (kq.loi_bien_dich or kq.vi_sao_khong_dat or "")[-800:]
-            return kq.so_hong == 0, kq.vi_sao_khong_dat or ""
+                return DB.ket_qua_chay(dat=False, loi_bien_dich=kq.loi_bien_dich[-800:],
+                                       log=(kq.vi_sao_khong_dat or "")[-800:])
+            return DB.ket_qua_chay(dat=kq.so_hong == 0, log=kq.vi_sao_khong_dat or "")
 
         d = DB.do_do_nhay(sp, _chay)
         xau = [x for x in d.get("tep", [])

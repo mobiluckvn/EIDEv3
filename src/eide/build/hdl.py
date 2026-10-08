@@ -527,6 +527,20 @@ def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
             lenh += [f"-D{k}={val}" if val != "" else f"-D{k}"]
         if dinh:
             lenh += ["-s", dinh]
+        # M4-05 — XOÁ tệp mô phỏng cũ trước khi dịch. Thiếu dòng này thì một lượt dịch ĐỔ vẫn
+        # báo ĐẠT, vì `anh.exists()` còn đúng nhờ tệp của lượt trước — và `vvp` chạy **bản
+        # cũ**, in ra `PASS` của một mã khác mã trên đĩa.
+        #
+        # Đo được ngày 08/10/2026: `dem.v` sửa thành `q <= q + ;` (sai cú pháp) cho
+        # `dat = True`, `pass_fail = "PASS"`, `ma_thoat = 0` — kèm `len(loi) == 1` là dấu duy
+        # nhất còn lại. Đây là ô xanh giả nằm trên CHÍNH ĐƯỜNG ĐO độ nhạy: một mutant hỏng cú
+        # pháp được đọc thành "testbench vẫn xanh", tức "bộ kiểm không canh chỗ này" — một
+        # cáo buộc sai về sản phẩm, sinh ra từ một tệp sót lại.
+        #
+        # `_don_tep_ra` đã có từ 01/10/2026 cho đúng chuyện này ở `nextpnr`, và `tong_hop`,
+        # `dat_di_day`, `dong_goi` đều gọi nó. Chỉ `mo_phong` là không — cơ chế có sẵn, đường
+        # dẫn tới nó đứt ở đúng một chặng.
+        _don_tep_ra(anh)
         _chay(kq, lenh + ds, cwd=goc, han=HAN_GIAY["sim"], goc=goc)
         if kq.vi_sao_khong_dat or not anh.exists():
             if not kq.vi_sao_khong_dat:
@@ -580,7 +594,8 @@ def mo_phong(*, goc: Path, nguon: Path, dinh: str = "", ra: Path | None = None,
 
 
 def do_do_nhay_hdl(*, goc: Path, rtl: list[Path], nguon: Path, dinh: str = "",
-                   bo_may: str = "iverilog") -> dict[str, Any]:
+                   bo_may: str = "iverilog",
+                   bang: tuple[tuple[str, Any, str], ...] | None = None) -> dict[str, Any]:
     """M3-13 — đo độ nhạy của testbench Verilog bằng ĐỘT BIẾN THẬT trên mã RTL.
 
     `hdl.sim` nhận `do_nhay` do **tác tử tự điền**. Mô tả tham số đã dặn *"chỉ điền khi đã
@@ -595,13 +610,28 @@ def do_do_nhay_hdl(*, goc: Path, rtl: list[Path], nguon: Path, dinh: str = "",
     Dùng lại `dot_bien.do_do_nhay`, chỉ đưa vào bảng phép Verilog và một hàm `chay`. Phần
     "trả tệp về nguyên vẹn trong `finally`" là của `do_do_nhay`, không viết lại ở đây.
     """
-    from .dot_bien import PHEP_VERILOG, do_do_nhay
+    from .dot_bien import PHEP_VERILOG, do_do_nhay, ket_qua_chay
 
     def chay(_p: Path | None) -> tuple[bool, str]:
         kq = mo_phong(goc=goc, nguon=nguon, dinh=dinh, bo_may=bo_may)
-        return bool(kq.dat), kq.nguyen_van
+        # M4-05 — KHAI ra khi lượt này không DỊCH được, để `do_do_nhay` không tính một mutant
+        # hỏng cú pháp là "bộ kiểm bắt được". Dấu hiệu là `kq.loi` — danh sách lỗi mà
+        # `phan_tich_loi` rút từ đầu ra trình biên dịch. Đo trên iverilog ngày 08/10/2026:
+        # Verilog sai cú pháp cho `len(loi) == 1`, còn testbench in `FAIL` thật cho
+        # `len(loi) == 0` kèm `so_ca_fail == 1`. Không dùng `not kq.dat` để suy, vì không đạt
+        # còn có nghĩa khác (testbench đỏ, quá hạn) — và một mutant làm testbench treo thì
+        # KHÔNG phải mutant không dịch được.
+        return ket_qua_chay(dat=bool(kq.dat),
+                            loi_bien_dich=kq.nguyen_van if (not kq.dat and kq.loi) else "",
+                            log=kq.nguyen_van)
 
-    return do_do_nhay(list(rtl), chay, toi_da_phep=len(PHEP_VERILOG), bang=PHEP_VERILOG)
+    # `bang` mở ra để ca kiểm bơm được một bảng phép LÀM HỎNG CÚ PHÁP vào đúng đường thật.
+    # Năm phép của `PHEP_VERILOG` cố ý đều hợp lệ về cú pháp — mỗi phép đổi HÀNH VI chứ không
+    # đổi văn bản — nên qua bảng mặc định thì không dựng nổi một mutant stillborn để đo, và
+    # nhánh gắn tiền tố ở trên không ca nào chạm tới được. Đo được ở lượt phá đầu của M4-05:
+    # tháo hẳn nhánh ấy mà bộ kiểm vẫn xanh.
+    bang_dung = bang or PHEP_VERILOG
+    return do_do_nhay(list(rtl), chay, toi_da_phep=len(bang_dung), bang=bang_dung)
 
 
 def tong_hop(*, goc: Path, nguon: Path, dinh: str, bo_kit: str = "tangnano20k",
