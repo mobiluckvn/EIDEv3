@@ -101,7 +101,7 @@ lên nói rõ **sẽ làm gì, lên cái gì, hậu quả là gì**:
 | `G-FLASH` | nạp vào chip — nói rõ nạp gì, vào đâu, đã có bản lùi chưa |
 | `G-HIST` | gỡ lại, đổi nhánh, khôi phục bản cũ |
 | `G-OPS` | chạy lệnh hệ thống |
-| `G-QUAL` | đổi mức đo sau khi đã có kết quả |
+| `G-QUAL` | đổi mức đo sau khi đã có kết quả — **hoặc làm yếu tệp đo** (xoá bớt ca test, bỏ dòng in `FAIL`) sau khi đã có kết quả đỏ |
 | `G-SAFE` | việc có thể làm hỏng thiết bị |
 | `G-SCOPE` | bắt đầu một việc lớn nhiều chặng |
 | `G-SNAP` | ghi đè một bản chốt |
@@ -325,7 +325,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **1 695 ca Python + 43 ca giao diện**
+### Mức 1 — Ca đơn vị: **1 835 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -414,6 +414,16 @@ vừa sửa, và cả ba lần bộ kiểm chỉ chép lại logic sang tệp ki
 xanh bất kể mã sản phẩm đúng hay sai. Lần cuối, sau khi bị bắt viết lại cho bộ kiểm **dùng
 thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc phải đỏ.
 
+**Một mutant không dịch được thì KHÔNG tính là "bộ kiểm bắt được"** (DEV-348). Phá mã rồi bộ
+kiểm đỏ có hai nghĩa khác hẳn nhau: bộ kiểm chạy và có ca đỏ, hoặc mã không dịch nổi — chưa
+phép kiểm nào chạy. Gộp lại thì con số độ nhạy đẹp lên theo hướng tệ nhất, vì những phép phá
+*thô* nhất là loại dễ được tính là "bắt được" nhất. Nay chúng vào `so_mutant_khong_hop_le`, đi
+kèm con số ở mọi chỗ nó hiện ra, và vòng đo đi tiếp sang phép sau thay vì dừng lại.
+
+Phép đo này cũng tự đo lại được: chạy **cả hai hành vi** trên cùng dữ liệu `du-lieu/rtos-sinhvien`
+cho `so_thay` **1 → 0** — `logo_ptit.c` từng được báo là "bộ kiểm ĐỎ", sự thật là mọi đột biến
+của nó đều làm hỏng biên dịch.
+
 ---
 
 ## 6 · Kết quả thử đến nay
@@ -422,7 +432,7 @@ thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc ph
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **1 695** | `pytest -q` |
+| Ca đơn vị Python | **1 835** | `pytest -q` |
 | Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -431,7 +441,7 @@ thẳng mã sản phẩm**, sáu phép phá đều chuyển đỏ đúng lúc ph
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 18 tệp | `tools/kiem_tai_lieu.py` |
 | Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/`](docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/) |
-| Công cụ đã được dùng thật | **115/127** | rà toàn bộ sổ ghi việc |
+| Công cụ đã được dùng thật | **115/130** | rà toàn bộ sổ ghi việc |
 
 Mỗi ca kiểm có một tệp log riêng, trong đó có **bảng từng lời gọi công cụ kèm tham số đầy đủ
 và mã lỗi**: [`ket-qua-chay-lai/nhat-ky/`](docs/review-v3/test/ket-qua-chay-lai/nhat-ky/).
@@ -452,8 +462,15 @@ Một công cụ không bao giờ được dùng thì bằng không có nó.
 ### Đợt rà lại chính Agent, từ 06/10/2026
 
 Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Kế hoạch
-có 106 việc; **10 việc đầu đã xong**. Mỗi việc tìm ra một chỗ mà bộ kiểm cũ không nhìn tới, và
-mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca kiểm.
+có 106 việc; **19 việc đầu đã xong** (DEV-330 → DEV-348). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
+không nhìn tới, và mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca
+kiểm. Bộ kiểm 1 610 → **1 835 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
+
+Và một con số nữa về chính đợt này: với mỗi việc, phép **"phá lại thì đỏ"** được dựng từ
+`git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Năm việc gần nhất bắt
+**9/9 · 20/20 · 24/24 · 27/27 · 22/22** — nhưng *lượt đầu* của chúng là 7/9, 18/20, 17/24,
+22/27, 15/20. Một tỉ lệ 100 % chỉ nói được điều gì khi tập phép phá không do người đang mong
+nó đẹp chọn ra; khuôn script giữ ở [`toi-uu/pha_lai-khuon.py`](toi-uu/pha_lai-khuon.py).
 
 | Việc | Chỗ hỏng | Đo trên dữ liệu thật |
 |---|---|---|
@@ -467,6 +484,15 @@ mỗi việc đều đo lại được trên dữ liệu phiên đã chạy ch�
 | Tài liệu phân tích mã bỏ sót hàm | `ISR(...)` của AVR không khớp mẫu nào, và một regex tham lam nuốt luôn hàm kế tiếp | trên 185 tệp `.c` thật: **+28 hàm** trước đây vô hình (8 ngắt · 20 bị nuốt) |
 | Luật ERC "quá áp" không ai gọi | phép so, câu chữ, mức blocker đều đã viết sẵn — nhưng `erc()` chỉ gọi bốn luật, nên phải **tự nhớ** gọi mới thấy | chưa nổ được trên dữ liệu thật: Fact dùng chủ thể `chip:X` mà ERC không tra tiền tố ấy |
 | Bốn lỗi mạch mà KiCad bắt, ở đây không ai bắt | máy không cài KiCad, và EIDE không có ma trận kiểu chân nội bộ | **8 phát hiện** trên 5 mô hình mạch thật — trong đó net clock I2C nối đúng một chân |
+| Tranh chấp nguồn và ngắn mạch rail–GND | hai luật ERC chưa có; một net nối hai chân nguồn khác mức là chuyện cháy linh kiện | **0 phát hiện** trên 5 mạch thật — và đây là con số ĐÚNG, không phải luật không chạy |
+| Fact datasheet không tới được ERC | ERC tra chủ thể `pin:X` mà Fact ghi `chip:X` — một tiền tố làm đứt cả đường | Fact tới được ERC: **5 → 17** |
+| ERC chỉ chạy khi có ai nhớ gọi | sinh mạch xong không ai kiểm; vòng *sinh → ERC → sửa* không tồn tại | chi phí đo thật: mạch lớn nhất trong kho **187 nút → 7,6 ms** |
+| `PASS` giả của mô phỏng HDL | đọc chuỗi con trên log **biên dịch cộng log chạy**, không xét mã thoát — `bypass mode on` chứa `PASS` | **846 bản ghi** mô phỏng thật; regex mà kế hoạch ghi sẵn từ chối oan **588** trong số đó |
+| Độ nhạy testbench Verilog do tác tử **tự khai** | `hdl.sim` nhận `do_nhay` do mô hình tự điền, và khối A8.0 hiện con số tự khai **giống hệt** con số đã đo | testbench thật của Bài 3: `tb_pcpi_dot4` **1/1**, `tb_pcpi_mac` **1/1**; `tb_pcpi_vmini` **không dịch nổi** từ 02/10/2026 mà tài liệu vẫn ghi "độ nhạy 7/7" |
+| Ràng buộc chân FPGA không ai kiểm | thiếu `IO_LOC` cho một cổng thì nextpnr **tự chọn** chân, mọi chặng báo đạt, mạch nối sai chân | 6 cặp *(mạng cổng, `.cst`)* thật → **1 chỗ chặn**, và nó đã đi tới một bitstream 4,6 MB |
+| Unit test tự in `dat:true` | thứ bị kiểm cũng là thứ tuyên bố kết quả — và tệp test là thứ **tác tử tự viết** | 18 ca, phần đo chạy `cc` thật: tệp test in số đo `{"T1": 300}` với ngưỡng `<= 255` → EIDE phán **1 ca hỏng**, tệp test không nói một chữ nào về đạt |
+| Xoá bớt ca test sau một kết quả đỏ | `POL-N6-doi-tieu-chi` chặn đường *đổi ngưỡng*; đường *xoá ca test* rộng hơn và không luật nào thấy | và `criteria.has_result` tra **cứng** `sim_result:can-bang`, nên cổng N6 **chưa bao giờ nổ** ngoài `sim-01` |
+| Mutant không dịch được tính là "bắt được" | `False` của một lượt chạy có hai nghĩa, và vòng đột biến gộp chúng lại | `du-lieu/rtos-sinhvien`, chạy cả hai hành vi: `so_thay` **1 → 0**. Và phép đo **đổ** `IndexError` trên mọi tệp firmware thật — nó chưa bao giờ chạy nổi trên một tệp thật |
 
 Chỗ đáng nói nhất không phải ba lỗi, mà là **cả ba đều có cơ chế sẵn và đường dẫn tới nó đứt** —
 đúng hình dạng đã lặp lại suốt dự án này. Cái trần token tồn tại nhưng không ai nối dây tới nó.
@@ -1044,6 +1070,16 @@ Nói ra để người đọc không phải tự tìm:
   hiện vật thật, nhưng chưa lượt Agent nào *gọi công cụ* ấy, nên chúng vẫn tính là chưa dùng.
   "Mã đã chạy" và "tác tử đã gọi" là hai chuyện, và gộp chúng lại là cách đếm ra một con số
   đẹp hơn sự thật.
+- **Chưa dự án firmware nào trong repo có một con số độ nhạy đáng tin.** Đo 08/10/2026 trên cả
+  ba dự án có cả `test/` lẫn `firmware/`: `rtos-sinhvien` **0 trong 12 tệp** đo được (4 tệp
+  font bộ kiểm không chạm tới, `control_rtos.c` trùng ký hiệu vì tệp test tự định nghĩa lại
+  hàm sản phẩm, `main.c` không dịch được trên máy chủ, `logo_ptit.c` mọi đột biến đều làm hỏng
+  biên dịch); `stm32f469-freertos` và `thu-nghiem-g6` có bộ kiểm **đỏ sẵn**, nên không đo được
+  gì. Đây là trạng thái của dữ liệu đo, không phải lỗi sản phẩm — nhưng nó nghĩa là phép đo độ
+  nhạy chưa từng cho một con số nào về một bộ kiểm firmware thật. DEV-348.
+- **Cửa `G-QUAL` khi tệp đo bị làm yếu chưa nổ trên một phiên thật nào.** Hook của nó cấp dữ
+  kiện cho lời gọi **sắp** xảy ra, nên khác mọi phép đo khác của đợt rà lại: nó không soát lại
+  được phiên đã lưu. Có 25 ca kiểm và phá lại 27/27, nhưng chưa lượt Agent thật nào chạm vào.
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
 - **Sáu ca kiểm cần người trực tiếp làm**, chưa tự động hoá được.
 - **Robot còn 23 trong 109 điều kiện chưa làm**, phần lớn là các điểm đo để cắm máy hiện sóng.
