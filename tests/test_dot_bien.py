@@ -751,3 +751,326 @@ def test_cong_cu_hdl_sensitivity_MANG_THEO_so_mutant_stillborn(tmp_path, monkeyp
 
 _EX_DN = {"summary": "s", "why": "w", "sources": [], "diff_prev": "—", "next": "—",
           "confidence": "VANG"}
+
+
+# ====== M4-19: đột biến trên BẢN SAO, không ghi đè tệp sản phẩm của người dùng
+#
+# `do_do_nhay` ghi mã đã phá vào **chính tệp của dự án**, rồi trả lại trong `finally`. Nó chỉ
+# an toàn với ngoại lệ Python. Một `Ctrl-C`, một lần máy hết pin, một `kill -9` giữa vòng đo —
+# và tệp sản phẩm nằm lại ở trạng thái đã bị phá, trong một dự án mà người dùng tưởng là
+# nguyên vẹn. Phép đo tự tay làm hỏng thứ nó đi đo: tệ hơn nhiều so với không đo.
+#
+# Suốt M4-05 tôi phải sao `du-lieu/` ra scratchpad trước mỗi lượt đo thật, chỉ vì chuyện này.
+
+def test_tep_goc_KHONG_bi_ghi_trong_luc_do(tmp_path):
+    """TC-M4-19-01 — tệp gốc phải nguyên vẹn ở **mọi** lần `chay` được gọi, không chỉ lúc cuối.
+
+    Kiểm "sau khi xong thì tệp nguyên vẹn" là chưa đủ: `finally` đã bảo đảm điều ấy từ trước.
+    Câu cần hỏi là *trong lúc đo* tệp gốc có bị đổi lần nào không — vì đó là khoảng thời gian
+    mà một lần ngắt sẽ bắt gặp.
+    """
+    goc_van = "int f(int x){ if (x == 1) return 480; return 0; }\n"
+    p = _tep(tmp_path, "sp.c", goc_van)
+    tam = tmp_path / "tam"
+    sai: list[str] = []
+
+    def chay(them):
+        if p.read_text("utf-8") != goc_van:
+            sai.append(f"tệp gốc đã bị đổi khi chay({them})")
+        return (True, "") if them is None else (False, "TC-01 do")
+
+    DB.do_do_nhay([p], chay, thu_muc_tam=tam)
+    assert not sai, sai
+    assert p.read_text("utf-8") == goc_van
+
+
+def test_chay_nhan_ban_sao_khong_phai_tep_goc(tmp_path):
+    """TC-M4-19-02 — mọi đường dẫn đưa cho `chay` phải nằm DƯỚI `thu_muc_tam`.
+
+    Kể cả lượt "nạp mã gốc": nếu lượt ấy đưa tệp thật mà vòng đột biến đưa bản sao, thì hai
+    lượt chạy khác nhau ở một chỗ không ai khai ra — và chênh lệch giữa chúng bị đọc thành
+    kết luận về bộ kiểm.
+    """
+    goc_van = "int f(void){ return 480; }\n"
+    p = _tep(tmp_path, "sp.c", goc_van)
+    tam = tmp_path / "tam"
+    thay: list = []
+
+    def chay(them):
+        thay.append(them)
+        if them is None:
+            return True, ""
+        return (True, "") if them.read_text("utf-8") == goc_van else (False, "TC-01 do")
+
+    DB.do_do_nhay([p], chay, thu_muc_tam=tam)
+    duong = [x for x in thay if x is not None]
+    assert duong, "không lần nào `chay` nhận tệp sản phẩm"
+    assert all(tam in x.parents for x in duong), [str(x) for x in duong]
+    assert all(x.name == "sp.c" for x in duong), [str(x) for x in duong]
+
+
+def test_khong_co_thu_muc_tam_thi_duong_cu_giu_nguyen(tmp_path):
+    """Ca âm tương thích: không nêu `thu_muc_tam` thì vẫn đột biến tại chỗ như trước.
+
+    Ca `test_tra_tep_ve_nguyen_ven_ke_ca_khi_chay_no` và mọi ca cũ đi đường ấy. Đổi hành vi
+    mặc định là phá tương thích ngược, và một hàm đổi ngầm thì bên gọi không biết để sửa.
+    """
+    goc_van = "int f(void){ return 480; }\n"
+    p = _tep(tmp_path, "sp.c", goc_van)
+    thay: list = []
+
+    def chay(them):
+        thay.append(them)
+        if them is None:
+            return True, ""
+        # Bước NẠP đưa tệp nguyên bản — phải xanh, không thì vòng đo dừng ở đó và ca này
+        # xanh mà chưa chạm tới vòng đột biến.
+        return (True, "") if them.read_text("utf-8") == goc_van else (False, "TC-01 do")
+
+    DB.do_do_nhay([p], chay)
+    assert [x for x in thay if x is not None] == [p, p], [str(x) for x in thay]
+
+
+def test_ban_sao_bi_DON_sau_khi_do(tmp_path):
+    """Bản sao là rác của phép đo — để lại thì lần dựng sau có thể ăn phải nó.
+
+    Cùng hình dạng với lỗi `sim.vvp` cũ ở DEV-348: một tệp sót lại từ lượt trước làm lượt
+    sau nói về một mã khác mã trên đĩa.
+    """
+    goc_van = "int f(void){ return 480; }\n"
+    p = _tep(tmp_path, "sp.c", goc_van)
+    tam = tmp_path / "tam"
+    DB.do_do_nhay([p], lambda them: (True, "") if them is None
+                  else ((True, "") if them.read_text("utf-8") == goc_van else (False, "do")),
+                  thu_muc_tam=tam)
+    assert not tam.exists(), (
+        "thư mục tạm còn nằm lại sau khi đo xong: "
+        + str(sorted(str(x.relative_to(tam)) for x in tam.rglob("*"))))
+
+
+@pytest.mark.skipif(not co_cc, reason="không có trình biên dịch C trên máy")
+def test_sensitivity_include_tuong_doi_van_dich_duoc(make_agent):
+    """TC-M4-19-03 — `#include "pid.h"` tương đối vẫn tìm thấy khi mã đã sang bản sao.
+
+    Đây là cái bẫy mà kế hoạch nêu sẵn, và nó biến một tiến bộ thành một lùi bước: sao tệp ra
+    thư mục tạm thì `#include "pid.h"` cạnh tệp gốc không còn cạnh bản sao, `cc` đổ, và phép
+    đo xếp tệp ấy là `khong_nap_duoc` — *"bộ kiểm chưa từng chạy một dòng nào của nó"*. Một
+    cáo buộc sai về sản phẩm, sinh ra từ chỗ đặt bản sao.
+
+    Tệp test ở đây **tự dịch được một mình**, vì `chay(None)` là mốc và nó chỉ dịch tệp test:
+    một tệp test gọi hàm sản phẩm sẽ làm mốc ĐỎ ở bước liên kết, và cả phép đo dừng trước khi
+    vào vòng đột biến. Đo được hai lần trong hai nhiệm vụ liền (M4-01, M4-19) — và nó cũng là
+    một việc còn mở đáng ghi, xem DEV-349.
+    """
+    agent = make_agent([])
+    goc = agent.config.paths.project_root
+    (goc / "firmware").mkdir(parents=True, exist_ok=True)
+    (goc / "test").mkdir(parents=True, exist_ok=True)
+    (goc / "firmware" / "pid.h").write_text("#define NGUONG 480\n", "utf-8")
+    (goc / "firmware" / "pid.c").write_text(
+        '#include "pid.h"\nint pid(void){ return NGUONG + 12; }\n', "utf-8")
+    (goc / "test" / "t.c").write_text(
+        '#include <stdio.h>\n'
+        'int main(void){ printf("{\\"ca\\": [{\\"ten\\":\\"a\\",\\"dat\\":true}]}'
+        '\\n"); return 0; }\n', "utf-8")
+
+    r = agent.registry.run("test.sensitivity", {"nguon": ["firmware/pid.c"],
+                                               "test": ["test/t.c"]}, _ctx_sp(agent))
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["tep"], f"mốc ĐỎ, chưa vào vòng đột biến: {r.data.get('note_vi', '')[:200]}"
+    tep = r.data["tep"][0]
+    assert tep["trang_thai"] != "khong_nap_duoc", (
+        "include tương đối đứt sau khi sang bản sao — phép đo cáo buộc sai: " + str(tep))
+
+
+@pytest.mark.skipif(not co_cc, reason="không có trình biên dịch C trên máy")
+def test_mtime_tep_goc_khong_doi(make_agent):
+    """TC-M4-19-04 — `test.sensitivity` không được CHẠM vào tệp sản phẩm, kể cả mtime.
+
+    mtime là thứ `make` và mọi hệ dựng khác đọc. Một phép đo ghi rồi ghi lại y nguyên nội
+    dung vẫn làm `make` dựng lại cả cây — và tệ hơn, nó làm mọi phép so "tệp có đổi không"
+    của chính EIDE nói sai.
+    """
+    agent = make_agent([])
+    goc = agent.config.paths.project_root
+    (goc / "firmware").mkdir(parents=True, exist_ok=True)
+    (goc / "test").mkdir(parents=True, exist_ok=True)
+    sp = goc / "firmware" / "pid.c"
+    sp.write_text("int pid(void){ return 480; }\n", "utf-8")
+    (goc / "test" / "t.c").write_text(
+        '#include <stdio.h>\n'
+        'int main(void){ printf("{\\"ca\\": [{\\"ten\\":\\"a\\",\\"dat\\":true}]}'
+        '\\n"); return 0; }\n', "utf-8")
+
+    truoc = (sp.stat().st_mtime_ns, sp.read_bytes())
+    r = agent.registry.run("test.sensitivity", {"nguon": ["firmware/pid.c"],
+                                               "test": ["test/t.c"]}, _ctx_sp(agent))
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["tep"], f"mốc ĐỎ, chưa vào vòng đột biến: {r.data.get('note_vi', '')[:200]}"
+    # Có đi qua vòng đột biến thật: phép phá 0 áp được vào `480`, nên trạng thái không thể là
+    # "không có chỗ nào để đột biến".
+    assert "không có chỗ nào" not in r.data["tep"][0]["vi_sao"], r.data["tep"]
+    assert (sp.stat().st_mtime_ns, sp.read_bytes()) == truoc, (
+        "tệp sản phẩm bị ghi lại — mtime hoặc nội dung đã đổi")
+    # Và không để lại vỏ rỗng: `.eide/mutate` tích thêm một thư mục mỗi `run_id` thì sau một
+    # trăm lượt đo nó là một trăm thư mục rác trong dự án của người dùng.
+    assert not (goc / ".eide" / "mutate").exists(), sorted(
+        str(x) for x in (goc / ".eide" / "mutate").rglob("*"))
+
+
+def test_buoc_NAP_dich_dung_noi_dung_tep_goc_tren_ban_sao(tmp_path):
+    """Bản sao phải mang ĐÚNG nội dung tệp gốc — không thì bước nạp hỏi một câu khác.
+
+    Bước nạp hỏi *"bộ kiểm có dịch nổi cùng tệp này không"*, và kết luận mạnh nhất của cả
+    phép đo nằm ở đó: `khong_nap_duoc` nghĩa là **bộ kiểm chưa từng chạy một dòng nào** của
+    tệp. Nếu bản sao rỗng thì lượt ấy dịch một tệp rỗng, luôn trót lọt, và kết luận ấy biến
+    mất — thay bằng một ô xanh.
+    """
+    goc_van = "int nguong(void){ return 480; }\n"
+    p = _tep(tmp_path, "sp.c", goc_van)
+    tam = tmp_path / "tam"
+
+    def chay(them):
+        if them is None:
+            return True, ""
+        # Bộ kiểm trùng ký hiệu — nhưng chỉ khi tệp sản phẩm THẬT SỰ định nghĩa `nguong`.
+        chu = them.read_text("utf-8")
+        if "nguong" in chu:
+            return False, "ld: duplicate symbol _nguong"
+        return True, ""
+
+    d = DB.do_do_nhay([p], chay, thu_muc_tam=tam)
+    assert d["tep"][0]["trang_thai"] == "khong_nap_duoc", d["tep"]
+    assert d["so_khong_nap"] == 1, d
+
+
+def test_hai_tep_CUNG_TEN_khac_thu_muc_khong_pha_ban_sao_cua_nhau(tmp_path):
+    """`bai1/dem.c` và `bai2/dem.c` phải có hai bản sao riêng.
+
+    Gộp chúng vào một chỗ thì lượt đo của tệp sau ghi lên bản sao của tệp trước — và vì vòng
+    đo trả tệp về trong `finally`, cái hỏng hiện ra thành một kết luận SAI về một trong hai
+    tệp, không thành một lỗi ai thấy.
+    """
+    (tmp_path / "bai1").mkdir()
+    (tmp_path / "bai2").mkdir()
+    a = tmp_path / "bai1" / "dem.c"
+    b = tmp_path / "bai2" / "dem.c"
+    a.write_text("int a(void){ return 480; }\n", "utf-8")
+    b.write_text("int b(void){ return 17; }\n", "utf-8")
+    tam = tmp_path / "tam"
+    thay: list = []
+
+    def chay(them):
+        if them is None:
+            return True, ""
+        chu = them.read_text("utf-8")
+        thay.append((them.parent.name, chu.strip()))
+        # Xanh khi nội dung còn nguyên; đỏ khi đã bị phá.
+        return ("99999" not in chu), ""
+
+    d = DB.do_do_nhay([a, b], chay, thu_muc_tam=tam)
+    assert [x["trang_thai"] for x in d["tep"]] == ["thay", "thay"], d["tep"]
+    # Mỗi tệp phải được dịch đúng NỘI DUNG của nó, không phải nội dung của tệp kia.
+    cua_a = [c for _, c in thay if "int a(" in c]
+    cua_b = [c for _, c in thay if "int b(" in c]
+    assert cua_a and cua_b, thay
+    assert len({t for t, _ in thay}) == 2, (
+        "hai tệp cùng tên dùng CHUNG một thư mục bản sao: " + str(thay))
+
+
+def test_ban_sao_cua_tep_TRUOC_da_bi_don_khi_do_tep_SAU(tmp_path):
+    """Dọn từng tệp, không chỉ dọn một lần ở cuối.
+
+    Một lượt đo 12 tệp firmware mà giữ cả 12 bản sao tới cuối là 12 lần dung lượng nằm trong
+    `.eide/` của người dùng — và nếu lượt đo bị ngắt, chúng nằm lại hết. Phép dọn ở cuối
+    không thay được phép dọn từng bước: cái ở cuối chỉ chạy khi có cái cuối.
+    """
+    (tmp_path / "d1").mkdir()
+    (tmp_path / "d2").mkdir()
+    a = tmp_path / "d1" / "a.c"
+    b = tmp_path / "d2" / "b.c"
+    a.write_text("int a(void){ return 480; }\n", "utf-8")
+    b.write_text("int b(void){ return 17; }\n", "utf-8")
+    tam = tmp_path / "tam"
+    con_lai: list[list[str]] = []
+
+    def chay(them):
+        if them is None:
+            return True, ""
+        con_lai.append(sorted(x.name for x in tam.rglob("*.c")))
+        return ("99999" not in them.read_text("utf-8")), ""
+
+    DB.do_do_nhay([a, b], chay, thu_muc_tam=tam)
+    assert con_lai, "không lần nào `chay` nhận tệp sản phẩm"
+    # Ở lượt đo tệp thứ hai, bản sao của tệp thứ nhất phải đã biến mất.
+    assert all("a.c" not in x for x in con_lai[2:]), con_lai
+    assert con_lai[-1] == ["b.c"], con_lai
+
+
+@pytest.mark.skipif(not co_cc, reason="không có trình biên dịch C trên máy")
+def test_duong_tim_header_khong_che_header_HE_THONG(make_agent):
+    """`-iquote`, không `-I`: thư mục firmware có `stdio.h` giả không được che bản hệ thống.
+
+    Đo được ngày 08/10/2026 trên `du-lieu/rtos-sinhvien`: `firmware/` của nó có `stdio.h`
+    riêng (chuyện thường của mã bare-metal), và `-I firmware` làm `#include <stdio.h>` của
+    tệp test khớp vào bản giả — `FILE` thành *"use of undeclared identifier"*, và **11 trong
+    12** tệp bị xếp là `khong_nap_duoc` (*"thiếu header của bo"*). Một cáo buộc sai với từng
+    tệp, do đúng cái cờ tôi thêm vào để tránh một cáo buộc sai khác.
+
+    `-iquote` chỉ đổi đường cho `#include "..."` — đúng và chỉ đúng phần mà bản sao làm đứt.
+    """
+    agent = make_agent([])
+    goc = agent.config.paths.project_root
+    (goc / "firmware").mkdir(parents=True, exist_ok=True)
+    (goc / "test").mkdir(parents=True, exist_ok=True)
+    # `stdio.h` giả của bo: có hàm in riêng, KHÔNG có FILE/fopen.
+    (goc / "firmware" / "stdio.h").write_text("void bo_print(const char *s);\n", "utf-8")
+    (goc / "firmware" / "pid.c").write_text(
+        '#include "nguong.h"\nint pid(void){ return NGUONG + 12; }\n', "utf-8")
+    (goc / "firmware" / "nguong.h").write_text("#define NGUONG 480\n", "utf-8")
+    (goc / "test" / "t.c").write_text(
+        '#include <stdio.h>\n'
+        'int main(void){ FILE *f = stdout; fprintf(f, "{\\"ca\\": '
+        '[{\\"ten\\":\\"a\\",\\"dat\\":true}]}\\n"); return 0; }\n', "utf-8")
+
+    r = agent.registry.run("test.sensitivity", {"nguon": ["firmware/pid.c"],
+                                               "test": ["test/t.c"]}, _ctx_sp(agent))
+    assert r.ok, getattr(r.error, "message_vi", "")
+    assert r.data["tep"], f"mốc ĐỎ: {r.data.get('note_vi', '')[:200]}"
+    tep = r.data["tep"][0]
+    assert tep["trang_thai"] != "khong_nap_duoc", (
+        "đường tìm header che mất header hệ thống — cáo buộc sai: " + str(tep))
+
+
+def test_thu_muc_tam_LONG_theo_run_id(tmp_path, monkeypatch):
+    """Thư mục bản sao phải lồng theo `run_id`.
+
+    Hai lượt đo chạy song song trên cùng dự án mà dùng chung `.eide/mutate/` sẽ ghi lên bản
+    sao của nhau ở `mutate/0/<tên>`. Vòng đo trả tệp về trong `finally`, nên cái hỏng không
+    hiện ra thành một lỗi — nó hiện ra thành một kết luận sai về một trong hai lượt.
+    """
+    from types import SimpleNamespace
+
+    from eide.build import dot_bien as DBm
+    from eide.tools import build_registry
+
+    (tmp_path / "firmware").mkdir()
+    (tmp_path / "test").mkdir()
+    (tmp_path / "firmware" / "sp.c").write_text("int f(void){ return 480; }\n", "utf-8")
+    (tmp_path / "test" / "t.c").write_text("int main(void){ return 0; }\n", "utf-8")
+
+    bat: dict = {}
+    monkeypatch.setattr(DBm, "do_do_nhay",
+                        lambda *a, **k: bat.update(k) or {
+                            "tep": [], "so_thay": 0, "so_khong_thay": 0, "so_khong_nap": 0,
+                            "so_chua_do": 0, "so_mutant_khong_hop_le": 0})
+    ctx = SimpleNamespace(
+        config=SimpleNamespace(paths=SimpleNamespace(project_root=tmp_path)),
+        run_id="run-abc")
+    sp = next(t for t in build_registry().all() if t.name == "test.sensitivity")
+    sp.fn(ctx, nguon=["firmware/sp.c"], test=["test/t.c"])
+
+    tam = bat.get("thu_muc_tam")
+    assert tam is not None, bat
+    assert tam.name == "run-abc", str(tam)
+    assert tam.parent.name == "mutate", str(tam)

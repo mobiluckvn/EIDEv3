@@ -163,7 +163,8 @@ class KetQuaTest:
 
 def chay_test(*, goc: Path, nguon: list[Path], thu_muc_build: Path | None = None,
               giay_toi_da: float = 120.0, do_phu: bool = True,
-              tieu_chi: Any = None) -> KetQuaTest:
+              tieu_chi: Any = None,
+              them_co: list[str] | None = None) -> KetQuaTest:
     """Chạy unit test của firmware trên MÁY CHỦ, với phần cứng được thay bằng mock.
 
     Quy ước đầu ra giống `chay_mo_phong`: chương trình test in **một dòng JSON**
@@ -203,7 +204,12 @@ def chay_test(*, goc: Path, nguon: list[Path], thu_muc_build: Path | None = None
     chay = build / "chay_test"
     co_phu = do_phu and "clang" in Path(cc).name.lower() or do_phu and cc.endswith("cc")
     co = ["-fprofile-instr-generate", "-fcoverage-mapping"] if co_phu else []
+    # M4-19 — `them_co` để bên gọi thêm cờ biên dịch. Chỗ dùng đầu tiên: `test.sensitivity`
+    # đột biến trên BẢN SAO, nên `#include "pid.h"` cạnh tệp gốc không còn cạnh bản sao và cần
+    # một `-I <thư mục gốc>`. Thiếu nó thì `cc` đổ và phép đo xếp tệp là `khong_nap_duoc` —
+    # một cáo buộc sai về sản phẩm, sinh ra từ chỗ đặt bản sao.
     kq.lenh_bien_dich = [cc, "-O0", "-g", "-std=c11", "-Wall", "-Wextra", "-DEIDE_TEST=1",
+                         *(them_co or []),
                          *co, "-o", str(chay), *[str(p) for p in nguon], "-lm"]
     r = subprocess.run(kq.lenh_bien_dich, capture_output=True, text=True, cwd=str(goc),
                        env={**os.environ, "LC_ALL": "C"})

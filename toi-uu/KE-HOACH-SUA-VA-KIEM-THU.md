@@ -152,7 +152,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 17 | [M4-01](#m4-01) | Máy chấm unit test do EIDE phán (`test.criteria`) | P0 | M | — | — | xong 08/10/2026 · DEV-346 · 1773→1791 ca · phá lại 24/24 (lượt đầu 17/24) · thêm E4023 cho đường unit test, và chế độ phải hiện ở tab A8 chứ không chỉ ở note_vi | ☑ |
 | 18 | [M4-02](#m4-02) | Cổng G-QUAL khi sửa/xoá tệp test sau kết quả đỏ + sửa `criteria.has_result` | P0 | M | — | SIM_RUNNER_GIOI_HAN — TẮT | xong 08/10/2026 · DEV-347 · 1791→1816 ca · phá lại 27/27 (lượt đầu 22/27) · phát hiện: một luật trỏ tới nhóm dữ kiện chưa khai thì DỪNG CẢ LƯỢT, và `criteria` cũng chưa bao giờ có trong danh sách ấy | ☑ |
 | 19 | [M4-05](#m4-05) | Đột biến không biên dịch được không được tính là "bắt được" | P1 | S | — | — | xong 08/10/2026 · DEV-348 · 1816→1835 ca · phá lại 22/22 (lượt đầu 15/20) · tìm thêm BA lỗi thật trên cùng đường đo: test.sensitivity ĐỔ trên mọi tệp firmware thật (≥10 chú thích), mo_phong chạy lại sim.vvp cũ khi biên dịch đổ, và loi_nguoi_doc khen khi chưa đo được gì | ☑ |
-| 20 | [M4-19](#m4-19) | Đột biến trên bản sao, không ghi đè tệp sản phẩm của người dùng | P2 | S | — | — | kéo lên từ GĐ4 vì là tiền đề của M4-04 | ☐ |
+| 20 | [M4-19](#m4-19) | Đột biến trên bản sao, không ghi đè tệp sản phẩm của người dùng | P2 | S | — | — | xong 08/10/2026 · DEV-349 · 1835→1846 ca · phá lại 13/13 (lượt đầu 7/13) · đo trên 3 dự án thật TẠI CHỖ: 50/50 tệp firmware giữ nguyên sha256 VÀ mtime, kết luận giống hệt lượt đột biến tại chỗ của M4-05 | ☑ |
 | 21 | [M4-04](#m4-04) | Đột biến chi tiết từng vị trí + điểm đột biến (mutation score) | P1 | M | M4-05, M4-19 | — | kéo lên từ GĐ3 vì là tiền đề của M4-06 | ☐ |
 | 22 | [M4-06](#m4-06) | Vòng tự nâng test khi đột biến sống (Evaluator–Optimizer) | P0 | M | M4-04, M4-05 | TEST_HARDEN |  | ☐ |
 | 23 | [M4-07](#m4-07) | Verifier nhận gói bằng chứng do EIDE dựng từ sổ cái, không nhận đề bài tác tử chính tự viết | P0 | M | — | VERIFIER_GOI_BANG_CHUNG |  | ☐ |
@@ -1496,13 +1496,41 @@ phá tìm ra năm chỗ không ai canh — xem DEV-348; tất cả trong `tests/
 | TC-M4-19-03 | Tích hợp (skipif không có cc) | …::test_sensitivity_include_tuong_doi_van_dich_duoc | firmware/pid.c `#include "pid.h"` + test → test.sensitivity không ra khong_nap_duoc vì thiếu header |
 | TC-M4-19-04 | Ca biên | …::test_mtime_tep_goc_khong_doi | mtime trước = sau khi test.sensitivity chạy |
 
+**Bảy TC thêm khi làm** (phép phá tìm ra năm chỗ không ai canh — xem DEV-349; tất cả trong
+`tests/test_dot_bien.py`):
+
+| Mã TC | Loại | Tên ca | Cho trước → Khi → Thì |
+|---|---|---|---|
+| TC-M4-19-05 | Tương thích | test_khong_co_thu_muc_tam_thi_duong_cu_giu_nguyen | không nêu `thu_muc_tam` → vẫn đột biến tại chỗ như trước |
+| TC-M4-19-06 | Dọn rác | test_ban_sao_bi_DON_sau_khi_do | hết lượt đo → thư mục tạm KHÔNG còn tồn tại |
+| TC-M4-19-07 | **Bước nạp** | test_buoc_NAP_dich_dung_noi_dung_tep_goc_tren_ban_sao | bản sao mang đúng nội dung gốc → `khong_nap_duoc` vẫn phát hiện được |
+| TC-M4-19-08 | **Đụng tên** | test_hai_tep_CUNG_TEN_khac_thu_muc_khong_pha_ban_sao_cua_nhau | `d1/dem.c` + `d2/dem.c` → hai bản sao riêng |
+| TC-M4-19-09 | Dọn rác | test_ban_sao_cua_tep_TRUOC_da_bi_don_khi_do_tep_SAU | đang đo tệp 2 thì bản sao tệp 1 đã biến mất |
+| TC-M4-19-10 | **Cờ dịch** | test_duong_tim_header_khong_che_header_HE_THONG | `firmware/stdio.h` giả → KHÔNG che `<stdio.h>` hệ thống |
+| TC-M4-19-11 | Song song | test_thu_muc_tam_LONG_theo_run_id | đường thư mục tạm có `run_id` trong đó |
+
 **Bảo vệ hồi quy (phải vẫn XANH):**
 - `.venv/bin/python -m pytest -q tests/test_dot_bien.py tests/test_xay_dung.py`
+  **Đã kiểm: không phải nới ca nào.** Ca `test_tra_tep_ve_nguyen_ven_ke_ca_khi_chay_no` đi
+  đường cũ (không `thu_muc_tam`) và giữ nguyên.
+
+**Lệch khỏi kế hoạch (đo rồi mới thấy):**
+- Cờ dịch là **`-iquote`**, không phải `-I` như bước 3 ghi. `-I` đổi đường tìm cho cả
+  `#include <...>`, nên `du-lieu/rtos-sinhvien/firmware/stdio.h` (header giả của bo) che bản
+  hệ thống và **11 trong 12** tệp bị xếp là `khong_nap_duoc`.
+- Đường tìm header gắn cho **cả hai** lượt, không chỉ lượt có tệp sản phẩm: với `-iquote` thì
+  nhánh ấy không đổi hành vi, và một nhánh `if` không đổi hành vi là một nhánh không ca kiểm
+  nào canh được.
+- `hdl.sensitivity` **không** dùng được `thu_muc_tam`: `chay` của nó bỏ qua đối số và dịch lại
+  cả thư mục nguồn, nên bật lên là phá bản sao mà biên dịch bản gốc — mọi tệp RTL bị kết luận
+  là *bộ kiểm không canh tới*. Điều kiện ấy ghi vào docstring của `do_do_nhay`.
+- Dọn thư mục tạm **hai bậc**: `do_do_nhay` dọn thư mục nó được giao, công cụ dọn vỏ
+  `.eide/mutate`. Thiếu bậc hai thì mỗi `run_id` để lại một thư mục rỗng.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC. — 13 chỗ phá, **13/13 đỏ** (lượt đầu 7/13)
+- [x] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc. — 1835 → **1846 xanh, 0 đỏ**
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md. — **DEV-349**
 
 **Hoàn tác:** revert commit.
 

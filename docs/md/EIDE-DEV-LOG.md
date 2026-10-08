@@ -8522,3 +8522,112 @@ mỗi phép và in `[VÔ HIỆU]` nếu không đổi gì — sau ba phép vô h
 Bộ kiểm 1816 → **1835 xanh, 0 đỏ** (+19 ca trong `tests/test_dot_bien.py`). `kiem_tai_lieu` 0
 chỗ LỆCH CHẮC CHẮN. **Phá lại thì đỏ: 22/22.** Không công cụ mới, không cờ mới: **130 công
 cụ**, **8 cờ**.
+
+---
+
+## [DEV-349] [M4-19] Đột biến trên bản sao — và hai lần tôi tự tay làm phép đo cáo buộc sai
+
+Nhiệm vụ #20. **Sửa lỗi thuần** (nguy cơ mất/hỏng dữ liệu), không cờ. P2 · S.
+
+### Chỗ hổng: phép đo ghi vào chính tệp của dự án
+
+```python
+try:
+    p.write_text(moi_ma, "utf-8")      # ⇐ tệp SẢN PHẨM của người dùng
+    dat, log = chay(p)
+finally:
+    p.write_text(goc, "utf-8")
+```
+
+`finally` chỉ đỡ được ngoại lệ Python. Một `Ctrl-C`, một lần máy mất điện, một `kill -9` giữa
+vòng đo — và tệp sản phẩm nằm lại ở trạng thái **đã bị phá**, trong một dự án mà người dùng
+tưởng là nguyên vẹn. Phép đo tự tay làm hỏng thứ nó đi đo.
+
+Và nó không phải rủi ro trên giấy: suốt M4-05 tôi phải sao `du-lieu/` ra thư mục tạm **trước
+mỗi lượt đo thật**, chỉ vì chuyện này. Một phép đo mà người dùng nó phải tự phòng bị là một
+phép đo chưa xong.
+
+Nay `do_do_nhay(..., thu_muc_tam=…)` sao từng tệp ra `thu_muc_tam/<thứ tự>/<tên>`, đột biến
+**bản sao**, và tệp gốc chỉ được ĐỌC. Thư mục con theo thứ tự vì `bai1/dem.c` và `bai2/dem.c`
+cùng tên: gộp chúng một chỗ thì lượt đo của tệp sau ghi lên bản sao của tệp trước, và vì vòng
+đo trả tệp về trong `finally`, cái hỏng hiện ra thành một **kết luận sai** về một trong hai
+tệp, không thành một lỗi ai thấy.
+
+### Điều kiện dùng được, và vì sao `hdl.sensitivity` KHÔNG dùng
+
+`thu_muc_tam` chỉ đúng khi hàm `chay` **thật sự đọc đường dẫn nó nhận**. `chay` của
+`hdl.sensitivity` thì không: nó bỏ qua đối số và gọi `mo_phong` dịch lại **cả thư mục nguồn**.
+Bật `thu_muc_tam` ở đó là phá bản sao mà biên dịch bản gốc — mọi mutant đều "không đổi gì", và
+**mọi** tệp RTL bị kết luận là *bộ kiểm không canh tới*. Một cáo buộc sai với từng tệp, và lượt
+đo vẫn xanh trơn. Đường cũ giữ nguyên cho nó, và điều kiện ấy ghi thẳng vào docstring.
+
+### Hai lần tôi tự tay làm phép đo cáo buộc sai — cả hai lộ ra trên dữ liệu thật
+
+**Lần 1 — `-I` cho cả lượt mốc.** Bản đầu của tôi gắn đường tìm header cho mọi lượt chạy. Chạy
+trên ba dự án firmware thật thì **cả ba** thành *"không đo được"*: mốc của `rtos-sinhvien` đổi
+từ XANH sang ĐỎ. Lượt mốc phải chạy bộ kiểm **y như tác tử vẫn chạy nó**; thêm một cờ biên dịch
+vào đó là đổi chính cái mốc mà mọi so sánh sau này dựa vào.
+
+**Lần 2 — và đây là cái đắt hơn: `-I` thay vì `-iquote`.** Sửa xong lần 1, mốc xanh lại, nhưng
+**11 trong 12** tệp của `rtos-sinhvien` bị xếp là `khong_nap_duoc` — *"mã sản phẩm không dịch
+được trên máy chủ (thiếu header của bo)"*. Mở log biên dịch ra:
+
+```
+test_rtos.c:180:5: error: use of undeclared identifier 'FILE'
+    FILE *fbin = fopen(".eide/build/mach.bin", "rb");
+```
+
+`du-lieu/rtos-sinhvien/firmware/` có **`stdio.h` riêng** — chuyện thường của mã bare-metal. `-I`
+đổi đường tìm cho cả `#include <...>`, nên `#include <stdio.h>` của tệp test khớp vào bản giả
+của bo. Tôi thêm một cờ để tránh một cáo buộc sai, và nó sinh ra mười một cáo buộc sai khác.
+
+`-iquote` chỉ đổi đường cho `#include "..."` — đúng và chỉ đúng phần mà bản sao làm đứt. Và sau
+khi đổi sang nó, cái guard của lần 1 (*chỉ gắn cờ cho lượt có tệp sản phẩm*) trở thành **không
+đổi hành vi**: `-iquote` không chạm `<...>`, và thư mục của tệp đang dịch vẫn được tìm trước.
+Nên tôi **bỏ** nhánh ấy — một nhánh `if` không đổi hành vi là một nhánh không ca kiểm nào canh
+được, và phép phá đã chỉ ra đúng điều đó.
+
+### Đo trên dữ liệu thật: cùng kết luận, và không chạm một byte nào
+
+Chạy `test.sensitivity` **tại chỗ** trên ba dự án trong `du-lieu/` — không sao ra đâu cả, đó
+chính là điều cần chứng minh:
+
+| | M4-05 (đột biến tại chỗ) | M4-19 (trên bản sao) |
+|---|---|---|
+| `rtos-sinhvien` | thay 0 · không_thay 4 · không_nạp 3 · chưa_đo 5 · stillborn 1 | **giống hệt** |
+| `stm32f469-freertos` | mốc ĐỎ | mốc ĐỎ |
+| `thu-nghiem-g6` | mốc ĐỎ | mốc ĐỎ |
+
+Và phép đo quan trọng nhất của nhiệm vụ: **50 trong 50** tệp firmware thật của ba dự án có
+`sha256` **và** `st_mtime_ns` không đổi một byte nào sau lượt đo. mtime đáng kể riêng: nó là thứ
+`make` đọc, nên một phép đo ghi lại y nguyên nội dung vẫn làm cả cây dựng lại.
+
+Thư mục bản sao dọn hai bậc: `do_do_nhay` dọn thư mục nó được **giao**, còn vỏ `.eide/mutate`
+là của công cụ nên công cụ dọn. Thiếu bậc thứ hai thì mỗi `run_id` để lại một thư mục rỗng
+trong dự án của người dùng.
+
+### Phép phá: 7/13, và sáu chỗ LỌT nói sáu chuyện khác nhau
+
+Năm chỗ cần ca kiểm mới, và chúng chia đúng theo chỗ tôi đã nghĩ "cái này hiển nhiên":
+
+* bản sao mang **nội dung** tệp gốc — bản sao rỗng thì bước nạp dịch một tệp rỗng, luôn trót
+  lọt, và kết luận mạnh nhất của phép đo (`khong_nap_duoc`) biến mất;
+* hai tệp **cùng tên** khác thư mục có hai bản sao riêng;
+* bản sao của tệp **trước** đã bị dọn khi đang đo tệp **sau** — phép dọn ở cuối không thay được
+  phép dọn từng bước, vì cái ở cuối chỉ chạy khi có cái cuối;
+* `-iquote` **không che** header hệ thống — dựng lại đúng cảnh của `rtos-sinhvien`: một
+  `stdio.h` giả trong thư mục firmware;
+* thư mục tạm **lồng theo `run_id`** — kiểm ở tầng công cụ bằng cách bắt đối số, vì chuyện hai
+  lượt song song không dựng được trong một ca đơn vị.
+
+Chỗ thứ sáu không phải lỗ hổng mà là **nhánh đã thành vô nghĩa** sau khi đổi sang `-iquote` —
+đã bỏ nhánh, không viết ca cho nó.
+
+Một phép phá của tôi cũng viết sai: `[ ? ] KHÔNG tìm thấy chỗ phá` — tôi dán nguyên đoạn mã từ
+bản *trước* khi tách hàm `_do_mot_tep`, nên thụt lề lệch bốn dấu cách. Khuôn script in ra `[?]`
+thay vì im lặng bỏ qua, nên nó không lẫn vào đâu được. Bù năm ca, phá lại: **13/13**.
+
+### Số đo
+
+Bộ kiểm 1835 → **1846 xanh, 0 đỏ** (+11 ca). `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. **Phá lại
+thì đỏ: 13/13.** Không công cụ mới, không cờ mới: **130 công cụ**, **8 cờ**.

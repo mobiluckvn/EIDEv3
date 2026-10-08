@@ -819,13 +819,54 @@ def dang_ky(r: Registry) -> None:
             Chỉ gắn khi có `loi_bien_dich`. `chay_duoc=False` còn có nghĩa khác — quá hạn
             chẳng hạn — và một mutant làm bộ kiểm treo thì KHÔNG phải mutant không dịch được.
             """
-            kq = MP.chay_test(goc=goc, nguon=tep_test + ([them] if them else []))
+            # Đường tìm header gắn cho CẢ hai lượt, và đó là có chủ ý.
+            #
+            # Bản đầu của tôi gắn `-I` và chỉ gắn cho lượt có tệp sản phẩm, vì `-I` vào thư
+            # mục firmware làm `#include <stdio.h>` của tệp test khớp vào `stdio.h` giả của bo
+            # — mốc của `du-lieu/rtos-sinhvien` đổi từ XANH sang ĐỎ, và cả ba dự án thật thành
+            # "không đo được". Nhưng cái phải sửa là **loại cờ**, không phải chỗ gắn nó:
+            # `-iquote` chỉ đổi đường cho `#include "..."`, và kể cả thế thì thư mục của tệp
+            # đang dịch vẫn được tìm trước. Nên gắn nó cho lượt mốc không đổi gì — giữ một
+            # nhánh `if` không đổi hành vi chỉ là một nhánh không ca kiểm nào canh được.
+            kq = MP.chay_test(goc=goc, nguon=tep_test + ([them] if them else []),
+                              them_co=co_include)
             if not kq.chay_duoc:
                 return DB.ket_qua_chay(dat=False, loi_bien_dich=kq.loi_bien_dich[-800:],
                                        log=(kq.vi_sao_khong_dat or "")[-800:])
             return DB.ket_qua_chay(dat=kq.so_hong == 0, log=kq.vi_sao_khong_dat or "")
 
-        d = DB.do_do_nhay(sp, _chay)
+        # M4-19 — đột biến trên BẢN SAO, tệp sản phẩm của người dùng chỉ được ĐỌC.
+        #
+        # Đường cũ ghi mã đã phá vào chính tệp của dự án rồi trả lại trong `finally`: an toàn
+        # với ngoại lệ Python, KHÔNG an toàn với `Ctrl-C` hay mất điện. Suốt M4-05 tôi phải
+        # sao `du-lieu/` ra thư mục tạm trước mỗi lượt đo thật, chỉ vì chuyện này.
+        #
+        # Và cái bẫy đi kèm: bản sao không còn nằm cạnh header của nó, nên `#include "pid.h"`
+        # đứt, `cc` đổ, và phép đo xếp tệp ấy là `khong_nap_duoc` — *"bộ kiểm chưa từng chạy
+        # một dòng nào của nó"*. Một cáo buộc sai về sản phẩm, sinh ra từ chỗ đặt bản sao. Nên
+        # đường tìm header trỏ về **thư mục gốc của từng tệp sản phẩm**.
+        #
+        # `-iquote`, KHÔNG phải `-I`. `-I` đổi đường tìm cho cả `#include <...>`, nên một
+        # thư mục firmware có header giả của bo sẽ che header hệ thống. Đo được ngày
+        # 08/10/2026: `du-lieu/rtos-sinhvien/firmware/` có `stdio.h` riêng, và `-I` vào đó làm
+        # `#include <stdio.h>` của tệp test khớp vào bản giả — `FILE` thành chưa khai báo, và
+        # **11 trong 12** tệp bị xếp là `khong_nap_duoc` (*"thiếu header của bo"*). Một cáo
+        # buộc sai với từng tệp, do đúng cái cờ tôi thêm vào để tránh một cáo buộc sai khác.
+        #
+        # `-iquote` chỉ đổi đường cho `#include "..."` — đúng và chỉ đúng phần bị bản sao làm
+        # đứt.
+        co_include: list[str] = [
+            f"-iquote{d}" for d in dict.fromkeys(str(x.parent) for x in sp)]
+
+        tam = goc / ".eide" / "mutate" / str(ctx.run_id)
+        d = DB.do_do_nhay(sp, _chay, thu_muc_tam=tam)
+        # `do_do_nhay` dọn thư mục nó được GIAO; thư mục cha `.eide/mutate` là của công cụ
+        # này, nên công cụ này dọn. Lồng theo `run_id` để hai lượt chạy song song không phá
+        # bản sao của nhau — và vì thế phải có một bước dọn cái vỏ rỗng còn lại.
+        try:
+            tam.parent.rmdir()
+        except OSError:
+            pass                      # còn lượt khác đang dùng, hoặc chưa bao giờ được tạo
         xau = [x for x in d.get("tep", [])
                if x["trang_thai"] in ("khong_thay", "khong_nap_duoc")]
         return {

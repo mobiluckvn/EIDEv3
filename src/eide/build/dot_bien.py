@@ -34,6 +34,7 @@ Một bộ kiểm qua được phép này vẫn có thể rất nông; nó chỉ
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 from typing import Any, Callable
 
@@ -131,7 +132,8 @@ def _so_cho(s: str) -> int:
 
 def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]],
                toi_da_phep: int = 3,
-               bang: tuple[tuple[str, Any, str], ...] = _PHEP) -> dict[str, Any]:
+               bang: tuple[tuple[str, Any, str], ...] = _PHEP,
+               thu_muc_tam: Path | None = None) -> dict[str, Any]:
     """Với từng tệp nguồn: nạp nó vào bộ kiểm, phá nó, xem có ca nào đỏ không.
 
     `chay(p)` do tầng trên đưa vào: `chay(None)` chạy bộ kiểm như tác tử vẫn chạy nó;
@@ -150,6 +152,19 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
       không dịch được trên máy chủ. Cả hai đều có nghĩa **bộ kiểm chưa từng chạy mã ấy**.
     * `chua_do_duoc` — không có chỗ nào để phá, hoặc không đọc được tệp. Cái này mới thật
       sự là "chưa biết", và gộp nó vào "không thấy" là một cáo buộc sai.
+
+    **M4-19 — `thu_muc_tam`: đột biến trên BẢN SAO, tệp gốc chỉ được ĐỌC.**
+
+    Không có nó thì hàm này ghi mã đã phá vào **chính tệp của dự án**, rồi trả lại trong
+    `finally`. Thế chỉ an toàn với ngoại lệ Python. Một `Ctrl-C`, một lần máy mất điện, một
+    `kill -9` giữa vòng đo — và tệp sản phẩm nằm lại ở trạng thái đã bị phá, trong một dự án
+    mà người dùng tưởng là nguyên vẹn. Phép đo tự tay làm hỏng thứ nó đi đo.
+
+    **Điều kiện để dùng được:** hàm `chay` phải thật sự ĐỌC đường dẫn nó nhận. `chay` của
+    `hdl.sensitivity` thì **không** — nó bỏ qua đối số và dịch lại cả thư mục nguồn, nên bật
+    `thu_muc_tam` ở đó là phá bản sao mà biên dịch bản gốc: mọi mutant đều "không thay đổi
+    gì", và mọi tệp RTL bị kết luận là **bộ kiểm không canh tới**. Một cáo buộc sai với từng
+    tệp, và lượt đo vẫn xanh trơn. Đường cũ (không `thu_muc_tam`) giữ nguyên cho nó.
     """
     ra: dict[str, Any] = {"tep": [], "so_thay": 0, "so_khong_thay": 0,
                           "so_khong_nap": 0, "so_chua_do": 0,
@@ -169,7 +184,7 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
         ra["log"] = log_goc[-800:]
         return ra
 
-    for p in nguon:
+    for thu_tu, p in enumerate(nguon):
         try:
             goc = p.read_text("utf-8")
         except OSError as e:
@@ -178,78 +193,105 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
             ra["so_chua_do"] += 1
             continue
 
-        # Trước khi phá: bộ kiểm có nạp nổi tệp này không. Hỏi câu này trước vì câu trả lời
-        # "không" đã là kết luận, và nó rẻ hơn một vòng đột biến.
-        nap_duoc, log_nap = chay(p)
-        if _khong_dich_duoc(log_nap):
-            ra["tep"].append({"tep": p.name, "trang_thai": "khong_nap_duoc",
-                              "vi_sao": _vi_sao_khong_nap(log_nap),
-                              "log": log_nap[-500:]})
-            ra["so_khong_nap"] += 1
-            continue
-        if not nap_duoc:
-            # Dịch được nhưng đỏ ngay khi có mã thật: bộ kiểm và sản phẩm nói khác nhau.
-            ra["tep"].append({
-                "tep": p.name, "trang_thai": "chua_do_duoc",
-                "vi_sao": ("nạp mã thật vào thì bộ kiểm ĐỎ ngay khi chưa phá gì — bộ kiểm "
-                           "và sản phẩm đang bất đồng, xử chỗ đó trước rồi đo lại"),
-                "log": log_nap[-500:]})
-            ra["so_chua_do"] += 1
-            continue
-
-        thay_doi = False
-        ghi_chu = "không có chỗ nào để đột biến"
-        # M4-05 — đếm riêng mutant STILLBORN của tệp này. Nếu MỌI phép đều stillborn thì cả
-        # tệp là "chưa đo được", không phải "không thấy": chưa phép kiểm nào chạy để mà thấy.
-        stillborn = 0
-        for i in range(min(toi_da_phep, len(bang))):
-            moi_ma, mo_ta, n = dot_bien_van_ban(goc, i, bang=bang)
-            if n == 0 or moi_ma == goc:
-                continue
-            try:
-                p.write_text(moi_ma, "utf-8")
-                dat, log = chay(p)
-            finally:
-                p.write_text(goc, "utf-8")
-            # M4-05 — "mã không DỊCH nổi" không phải "bộ kiểm bắt được".
-            #
-            # Bản cũ chỉ hỏi `not dat`, và `False` có hai nghĩa khác hẳn nhau: bộ kiểm chạy
-            # rồi có ca đỏ (nó CÓ canh chỗ ấy), hoặc mutant không dịch được (chưa phép kiểm
-            # nào chạy). Gộp lại thì con số độ nhạy đẹp lên một cách giả, và đẹp theo hướng
-            # tệ nhất: những phép phá THÔ nhất — loại làm hỏng cú pháp — là loại dễ được tính
-            # là "bắt được" nhất, trong khi chúng không nói gì về việc bộ kiểm có đọc giá trị
-            # nào của tệp hay không.
-            #
-            # KHÔNG `break` ở đây: một phép phá không dịch được chưa trả lời câu hỏi nào, nên
-            # câu trả lời phải đi tìm ở phép kế tiếp.
-            if not dat and _la_loi_bien_dich(log):
-                stillborn += 1
-                ra["so_mutant_khong_hop_le"] += 1
-                ghi_chu = f"{mo_ta} ({n} chỗ) → mutant không dịch được (bỏ qua)"
-                continue
-            if not dat:
-                thay_doi = True
-                ghi_chu = f"{mo_ta} ({n} chỗ) → bộ kiểm ĐỎ"
-                break
-            ghi_chu = f"{mo_ta} ({n} chỗ) → bộ kiểm vẫn xanh"
-        if thay_doi:
-            ra["tep"].append({"tep": p.name, "trang_thai": "thay", "vi_sao": ghi_chu})
-            ra["so_thay"] += 1
-        elif "không có chỗ nào" in ghi_chu:
-            ra["tep"].append({"tep": p.name, "trang_thai": "chua_do_duoc", "vi_sao": ghi_chu})
-            ra["so_chua_do"] += 1
-        elif stillborn and "không dịch được" in ghi_chu:
-            # Mọi phép phá được đều stillborn — phép phá cuối cùng cũng vậy, nên `ghi_chu`
-            # còn mang chữ ấy. Chưa có một lượt chạy nào nói được gì về bộ kiểm.
-            ra["tep"].append({
-                "tep": p.name, "trang_thai": "chua_do_duoc",
-                "vi_sao": (f"mọi đột biến đều làm hỏng biên dịch ({stillborn} phép), nên chưa "
-                           "có lượt chạy nào nói được bộ kiểm có canh tệp này hay không")})
-            ra["so_chua_do"] += 1
-        else:
-            ra["tep"].append({"tep": p.name, "trang_thai": "khong_thay", "vi_sao": ghi_chu})
-            ra["so_khong_thay"] += 1
+        # M4-19 — `lam_viec` là tệp mà vòng đo được phép GHI. Có `thu_muc_tam` thì nó là một
+        # bản sao; không thì nó chính là tệp gốc (đường cũ, giữ cho tương thích).
+        #
+        # Thư mục con theo thứ tự: hai tệp sản phẩm khác thư mục có thể cùng tên
+        # (`bai1/dem.c` và `bai2/dem.c`), và gộp chúng vào một chỗ là lượt đo của tệp sau
+        # phá mất bản sao của tệp trước.
+        lam_viec = p
+        if thu_muc_tam is not None:
+            rieng = Path(thu_muc_tam) / str(thu_tu)
+            rieng.mkdir(parents=True, exist_ok=True)
+            lam_viec = rieng / p.name
+            lam_viec.write_text(goc, "utf-8")
+        try:
+            _do_mot_tep(ra, p, lam_viec, goc, chay, toi_da_phep, bang)
+        finally:
+            if thu_muc_tam is not None:
+                shutil.rmtree(lam_viec.parent, ignore_errors=True)
+    # Dọn cả thư mục tạm, không chỉ các thư mục con. Một thư mục rỗng sót lại trong `.eide/`
+    # là rác của phép đo nằm trong dự án của người dùng — nhỏ, nhưng nó tích lại mỗi `run_id`.
+    if thu_muc_tam is not None:
+        shutil.rmtree(thu_muc_tam, ignore_errors=True)
     return ra
+
+
+def _do_mot_tep(ra: dict[str, Any], p: Path, lam_viec: Path, goc: str,
+                chay: Callable[[Path | None], tuple[bool, str]], toi_da_phep: int,
+                bang: tuple[tuple[str, Any, str], ...]) -> None:
+    """Đo một tệp. `p` chỉ dùng để GỌI TÊN trong kết quả; `lam_viec` là tệp được phép ghi."""
+    # Trước khi phá: bộ kiểm có nạp nổi tệp này không. Hỏi câu này trước vì câu trả lời
+    # "không" đã là kết luận, và nó rẻ hơn một vòng đột biến.
+    nap_duoc, log_nap = chay(lam_viec)
+    if _khong_dich_duoc(log_nap):
+        ra["tep"].append({"tep": p.name, "trang_thai": "khong_nap_duoc",
+                          "vi_sao": _vi_sao_khong_nap(log_nap),
+                          "log": log_nap[-500:]})
+        ra["so_khong_nap"] += 1
+        return
+    if not nap_duoc:
+        # Dịch được nhưng đỏ ngay khi có mã thật: bộ kiểm và sản phẩm nói khác nhau.
+        ra["tep"].append({
+            "tep": p.name, "trang_thai": "chua_do_duoc",
+            "vi_sao": ("nạp mã thật vào thì bộ kiểm ĐỎ ngay khi chưa phá gì — bộ kiểm "
+                       "và sản phẩm đang bất đồng, xử chỗ đó trước rồi đo lại"),
+            "log": log_nap[-500:]})
+        ra["so_chua_do"] += 1
+        return
+
+    thay_doi = False
+    ghi_chu = "không có chỗ nào để đột biến"
+    # M4-05 — đếm riêng mutant STILLBORN của tệp này. Nếu MỌI phép đều stillborn thì cả
+    # tệp là "chưa đo được", không phải "không thấy": chưa phép kiểm nào chạy để mà thấy.
+    stillborn = 0
+    for i in range(min(toi_da_phep, len(bang))):
+        moi_ma, mo_ta, n = dot_bien_van_ban(goc, i, bang=bang)
+        if n == 0 or moi_ma == goc:
+            continue
+        try:
+            lam_viec.write_text(moi_ma, "utf-8")
+            dat, log = chay(lam_viec)
+        finally:
+            lam_viec.write_text(goc, "utf-8")
+        # M4-05 — "mã không DỊCH nổi" không phải "bộ kiểm bắt được".
+        #
+        # Bản cũ chỉ hỏi `not dat`, và `False` có hai nghĩa khác hẳn nhau: bộ kiểm chạy
+        # rồi có ca đỏ (nó CÓ canh chỗ ấy), hoặc mutant không dịch được (chưa phép kiểm
+        # nào chạy). Gộp lại thì con số độ nhạy đẹp lên một cách giả, và đẹp theo hướng
+        # tệ nhất: những phép phá THÔ nhất — loại làm hỏng cú pháp — là loại dễ được tính
+        # là "bắt được" nhất, trong khi chúng không nói gì về việc bộ kiểm có đọc giá trị
+        # nào của tệp hay không.
+        #
+        # KHÔNG `break` ở đây: một phép phá không dịch được chưa trả lời câu hỏi nào, nên
+        # câu trả lời phải đi tìm ở phép kế tiếp.
+        if not dat and _la_loi_bien_dich(log):
+            stillborn += 1
+            ra["so_mutant_khong_hop_le"] += 1
+            ghi_chu = f"{mo_ta} ({n} chỗ) → mutant không dịch được (bỏ qua)"
+            continue
+        if not dat:
+            thay_doi = True
+            ghi_chu = f"{mo_ta} ({n} chỗ) → bộ kiểm ĐỎ"
+            break
+        ghi_chu = f"{mo_ta} ({n} chỗ) → bộ kiểm vẫn xanh"
+    if thay_doi:
+        ra["tep"].append({"tep": p.name, "trang_thai": "thay", "vi_sao": ghi_chu})
+        ra["so_thay"] += 1
+    elif "không có chỗ nào" in ghi_chu:
+        ra["tep"].append({"tep": p.name, "trang_thai": "chua_do_duoc", "vi_sao": ghi_chu})
+        ra["so_chua_do"] += 1
+    elif stillborn and "không dịch được" in ghi_chu:
+        # Mọi phép phá được đều stillborn — phép phá cuối cùng cũng vậy, nên `ghi_chu`
+        # còn mang chữ ấy. Chưa có một lượt chạy nào nói được gì về bộ kiểm.
+        ra["tep"].append({
+            "tep": p.name, "trang_thai": "chua_do_duoc",
+            "vi_sao": (f"mọi đột biến đều làm hỏng biên dịch ({stillborn} phép), nên chưa "
+                       "có lượt chạy nào nói được bộ kiểm có canh tệp này hay không")})
+        ra["so_chua_do"] += 1
+    else:
+        ra["tep"].append({"tep": p.name, "trang_thai": "khong_thay", "vi_sao": ghi_chu})
+        ra["so_khong_thay"] += 1
 
 
 # Dấu hiệu "không dịch/liên kết được", tách khỏi "dịch được nhưng ca đỏ". Hai thứ này trông
