@@ -1,42 +1,47 @@
-# ĐANG LÀM — chỗ dừng ngày 09/10/2026
+# ĐANG LÀM — chỗ dừng chiều 09/10/2026
 
 > Tệp này trả lời đúng một câu cho phiên sau: **mở ra là làm tiếp được từ đâu.**
 > Trạng thái đầy đủ của 106 việc nằm ở `EIDE_Toi_uu_Agent_2026-10-06.xlsx`,
-> sheet **“Tiến độ 09-10-2026”** (cột Q, T–Y của sheet “Danh mục tối ưu” là bằng chứng từng
-> việc). Bốn sheet “Tiến độ 08-10-2026” và ba biến thể “(chiều)/(toi)/(khuya)” là ảnh chụp
-> của ngày 08/10, giữ lại để so.
+> sheet **“Tiến độ 09-10-2026 (chiều)”** (cột Q, T–Y của sheet “Danh mục tối ưu” là bằng
+> chứng từng việc). Các sheet “Tiến độ 08-10-2026” + ba biến thể, và “Tiến độ 09-10-2026”,
+> là ảnh chụp các mốc trước, giữ lại để so.
 
 ## Đang ở đâu
 
 | | |
 |---|---|
-| **Xong** | **20/106** — việc #1 → #20 của Giai đoạn 1, theo đúng thứ tự `#` của kế hoạch |
-| **Đang dở** | **không có.** `main` = `280b9a2`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
-| Ca kiểm | 1 610 → **1 846** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
-| Nhật ký | DEV-330 → **DEV-349** trong `docs/md/EIDE-DEV-LOG.md` |
+| **Xong** | **21/106** — việc #1 → #21 của Giai đoạn 1, theo đúng thứ tự `#` của kế hoạch |
+| **Đang dở** | **không có.** `main` = `2bc325f`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
+| Ca kiểm | 1 610 → **1 862** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
+| Nhật ký | DEV-330 → **DEV-350** trong `docs/md/EIDE-DEV-LOG.md` |
 | Công cụ | 127 → **130** (`hdl.sensitivity`, `hdl.constraints_check`, `test.criteria`) |
 | Cờ | 7 → **8** (thêm `SIM_RUNNER_GIOI_HAN`, mặc định TẮT như sáu cờ kia) |
 
-## Việc đầu tiên của phiên sau: #21 M4-04
+## Việc đầu tiên của phiên sau: #22 M4-06
 
-Đột biến chi tiết từng vị trí + **điểm đột biến** (mutation score) — P1 · M, không cờ. Tiền đề
-M4-05 và M4-19 **đã xong**. Mở `KE-HOACH-SUA-VA-KIEM-THU.md`, mục `[M4-04]`, làm đúng quy
-trình §3.1:
+Vòng **tự nâng test** khi đột biến còn sống (Evaluator–Optimizer) — P0 · M, **có cờ**
+`TEST_HARDEN`. Tiền đề M4-04 và M4-05 **đã xong**. Mở `KE-HOACH-SUA-VA-KIEM-THU.md`, mục
+`[M4-06]`, làm đúng quy trình §3.1:
 
 ```bash
-git switch -c toi-uu/M4-04
+git switch -c toi-uu/M4-06
 # viết TC TRƯỚC, xem chúng ĐỎ trên mã hiện tại
 find src tests -name __pycache__ -type d -exec rm -rf {} +      # bắt buộc, xem DEV-335
-.venv/bin/python -m pytest -q -rf            # mốc: 1846, không ca cũ nào đỏ
+.venv/bin/python -m pytest -q -rf            # mốc: 1862, không ca cũ nào đỏ
 .venv/bin/python tools/kiem_tai_lieu.py      # phải 0 chỗ LỆCH CHẮC CHẮN
 ```
 
-M4-04 là chỗ bốn nhiệm vụ vừa rồi dẫn tới: nay phép đo đã **không tính mutant hỏng biên dịch**
-(M4-05) và **không ghi vào tệp người dùng** (M4-19), nên mới dựng được một con số *mutation
-score* đáng tin. Đọc trước hai chỗ: mẫu số của con số hiện tại là **TỆP**, không phải phép phá
-(DEV-344) — M4-04 đổi đúng chỗ ấy, nên phải đổi cả nhãn ở khối A8.0 và `note_vi` cho khớp; và
-`so_mutant_khong_hop_le` phải nằm **ngoài** mẫu số, không thì điểm đột biến đếm cả những phép
-chưa bao giờ chạy.
+M4-06 đứng trên đúng thứ M4-04 vừa dựng: danh sách `song` (dòng bộ kiểm không canh) và hiện
+vật `sim_result:test-sensitivity`. Ba chỗ phải đọc trước khi gõ:
+
+* **Chi phí.** `muc="chi_tiet"` mất **110 s** cho 12 tệp thật (0,6 s mỗi lượt biên dịch + chạy).
+  Một vòng *đo → sửa test → đo lại* nhân con số ấy lên, nên trần vòng lặp phải tính bằng số đo
+  này, không tính bằng cảm giác.
+* **Điểm 0,0 là một con số đúng mà vô dụng** trên sáu tệp bitmap. Vòng tự nâng không được đi
+  viết test cho `font12.c`.
+* **Chỗ đáng nâng nhất lại không đo được**: `control_rtos.c` là `khong_nap_duoc` vì tệp test
+  `#include` chính tệp `.c` đó. Nếu M4-06 chỉ chạy trên thứ `test.sensitivity` đo được thì nó
+  sẽ không bao giờ chạm tới tệp duy nhất đáng nâng.
 
 Hết Giai đoạn 1 mới chạy **cổng cuối giai đoạn (§4.2)**, không phải sau mỗi việc.
 Nhớ: công cụ mới nào cũng làm README lệch số công cụ — sửa 4 chỗ (dòng ~43 tổng + số bật
@@ -117,16 +122,19 @@ thì README không đếm, nhưng Excel có ô "Cờ tính năng mới" phải s
   `hdl.constraints_check` · `test.criteria`. Mã của cả ba đã chạy trên hiện vật thật, nhưng đó
   là tôi gọi hàm, không phải tác tử gọi công cụ. README §8 đếm cả ba vào phần chưa dùng thật.
 * **Chưa dự án firmware nào trong repo có một con số độ nhạy đáng tin** — đo lại 09/10/2026
-  bằng đường bản sao, kết quả giống hệt lượt 08/10: `rtos-sinhvien` **0/12 tệp** đo được (4 tệp
+  bằng đường bản sao, và đo thêm bằng chế độ chi tiết (điểm **0,0** trên 180 mutant, 110 s): `rtos-sinhvien` **0/12 tệp** đo được (4 tệp
   font `khong_thay`, `control_rtos.c` trùng ký hiệu, `main.c` không dịch trên máy chủ,
   `logo_ptit.c` mọi mutant hỏng biên dịch); `stm32f469-freertos` và `thu-nghiem-g6` có bộ kiểm
   **ĐỎ SẴN**. Đây là trạng thái của dữ liệu đo, không phải lỗi sản phẩm. DEV-348 · DEV-349.
 * **`chay(None)` của `test.sensitivity` chỉ dịch tệp TEST, nên một tệp test gọi hàm sản phẩm
   làm mốc ĐỎ** và cả phép đo dừng trước khi vào vòng đột biến. Tức phép đo chỉ chạy được khi
   tệp test **tự dịch được một mình** — mà một tệp test tự định nghĩa lại hàm sản phẩm thì đúng
-  là cái ô xanh giả phép đo này đi tìm. Trúng hai lần trong hai nhiệm vụ liền (M4-01, M4-19)
-  khi dựng ca kiểm. Chưa sửa: nó là một quyết định thiết kế của `test.sensitivity`, không phải
-  một lỗi — nhưng nó giải thích vì sao hai trong ba dự án thật có "mốc ĐỎ".
+  là cái ô xanh giả phép đo này đi tìm. Trúng **ba** lần (M4-01, M4-19, M4-04) khi dựng ca
+  kiểm, và lần thứ ba nặng hơn: tệp duy nhất đáng đo của `rtos-sinhvien` —
+  `control_rtos.c` — là `khong_nap_duoc` vì tệp test `#include` chính tệp `.c` đó, nên phép đo
+  tái hiện DANH-GIA §2.2 phải đi **đường riêng**, không qua công cụ. Chưa sửa: nó là một
+  quyết định thiết kế của `test.sensitivity`, không phải một lỗi — nhưng nó là chỗ hẹp nhất
+  của cả mảng, và M4-06 sẽ đụng ngay vào nó.
 * **`POL-N6-sua-test` chưa nổ trên một phiên thật nào** — hook `sua_test_sau_do` cấp dữ kiện
   cho lời gọi **sắp** xảy ra, nên không soát lại được phiên đã lưu như mọi phép đo trước của
   đợt này. Nó có 25 ca kiểm và phá lại 27/27, nhưng chưa lượt tác tử thật nào chạm vào.
