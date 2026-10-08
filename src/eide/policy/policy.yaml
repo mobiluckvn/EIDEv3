@@ -151,7 +151,7 @@ rules:
     ca_do: [CX09]
 
   - id: POL-QUAL-criteria-change
-    tool: "sim.criteria"
+    tool: "sim.criteria|test.criteria"
     when: "args.exists && args.changed"
     action: ask
     gate: G-QUAL
@@ -196,8 +196,23 @@ rules:
     gate: G-SCOPE
     summary_vi: "Việc lớn — duyệt kế hoạch trước khi chạy"
 
+  # M4-02 — đường thứ HAI tới một "đạt" vô nghĩa, và là đường rộng hơn: không đổi ngưỡng,
+  # mà xoá bớt ca test. Tệp test ba ca, một ca đỏ; ghi lại tệp còn một ca là "1/1 đạt".
+  # `fs.write` là một lời gọi bình thường, nên trước luật này không hàng rào nào thấy gì.
+  - id: POL-N6-sua-test
+    tool: "fs.write|fs.edit"
+    when: "test.weakened"
+    action: ask
+    gate: G-QUAL
+    never_auto: true
+    summary_vi: >
+      Làm YẾU tệp đo sau khi đã có kết quả ĐỎ — phải do người quyết
+    require_fields: [tu, den, vi_sao]
+    principle: N6
+    ca_do: [TC022]
+
   - id: POL-N6-doi-tieu-chi
-    tool: "sim.criteria"
+    tool: "sim.criteria|test.criteria"
     when: "criteria.exists && criteria.changed && criteria.has_result"
     action: ask
     gate: G-QUAL

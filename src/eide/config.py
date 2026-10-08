@@ -333,6 +333,16 @@ class Features:
     # loi chan MOI chua ai nhac toi. Doi `result.data` va chen loi nhac vao transcript, tuc
     # doi thu mo hinh doc moi luot (N-4).
     erc_tu_dong: bool = False
+    # M4-02 — sim-runner la tac tu con NEU TIEU CHI va CHAY DO. Cho no `fs.write` ra ngoai
+    # `sim/` la cho dung cai tac tu dang bi do quyen sua thuoc do cua minh: no viet lai
+    # `test/*.c` roi chay lai, va bao cao cua no van hop le. Co bat thi `fs.write` cua
+    # rieng sim-runner bi gioi han trong `sim/`.
+    #
+    # Sau co vi no DOI TAP VIEC mot tac tu con lam duoc (N-4): mot sim-runner khong ghi noi
+    # tep test co the be tac o nhung viec truoc day no lam xong. Mac dinh TAT cho toi khi bo
+    # eval noi nguoc lai. Hang rao chinh (POL-N6-sua-test) thi KHONG sau co — no chan ca
+    # tac tu chinh lan tac tu con, bang mot phep do dem duoc.
+    sim_runner_gioi_han: bool = False
 
     @classmethod
     def load(cls) -> "Features":
@@ -357,7 +367,7 @@ class Features:
     @staticmethod
     def ten_co() -> tuple[str, ...]:
         return ("schematic", "gon_cong_cu", "truy_vet", "req_phu", "req_chat_luong",
-                "ke_hoach_cong_kiem", "erc_tu_dong")
+                "ke_hoach_cong_kiem", "erc_tu_dong", "sim_runner_gioi_han")
 
     def bat(self, ten: str) -> bool:
         return bool(getattr(self, ten, False))

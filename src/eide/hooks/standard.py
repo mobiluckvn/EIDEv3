@@ -190,11 +190,15 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
         Chính `từ bao nhiêu sang bao nhiêu` mới là thứ thẻ cổng cần hiện — một thẻ hỏi "đổi
         tiêu chí?" mà không nói đổi từ đâu sang đâu thì người dùng bấm duyệt theo phản xạ.
         """
-        if call.get("tool") != "sim.criteria":
+        cong_cu = call.get("tool")
+        # M4-02 — `test.criteria` (M4-01) ghi cùng loại hiện vật `criteria`, nên nếu hook chỉ
+        # xét `sim.criteria` thì nó là một **cửa sau**: đổi ngưỡng unit test sau khi đã có kết
+        # quả đỏ mà không ai hỏi, trong khi cùng việc ấy ở mô phỏng thì phải qua thẻ G-QUAL.
+        if cong_cu not in ("sim.criteria", "test.criteria"):
             return PreToolResult(facts={"criteria.exists": False, "criteria.changed": False})
 
         args = call.get("args") or {}
-        ma = str(args.get("ma") or "sim-01")
+        ma = _ma_tieu_chi(cong_cu, args.get("ma"))
         cu = ctx.store.get(f"criteria:{ma}")
         if cu is None:
             return PreToolResult(facts={"criteria.exists": False, "criteria.changed": False},
@@ -214,12 +218,63 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
         bo = sorted(set(cu_theo_ma) - {str(a.get("ma")) for a in (args.get("assert") or [])})
         doi += [f"{x}: BỎ ĐI" for x in bo]
 
-        co_kq = ctx.store.get("sim_result:can-bang") is not None
         return PreToolResult(
             facts={"criteria.exists": True, "criteria.changed": bool(doi),
-                   "criteria.has_result": co_kq,
+                   "criteria.has_result": _co_ket_qua(ctx, ma),
                    "criteria.doi_gi": "; ".join(doi[:6])},
             fired=["doi_tieu_chi:" + ("doi" if doi else "khong-doi")])
+
+    @bus.on_pre_tool
+    def sua_test_sau_do(call: dict[str, Any], ctx: Any) -> PreToolResult:
+        """N6 — làm YẾU tệp đo sau khi đã có kết quả ĐỎ phải do người quyết.
+
+        `POL-N6-doi-tieu-chi` chặn đường thứ nhất: đổi ngưỡng sau khi đã có kết quả. Đường
+        thứ hai rộng hơn và trước M4-02 không ai canh: **xoá bớt ca test**. Tệp test ba ca,
+        một ca đỏ; ghi lại tệp còn một ca là "1/1 đạt", và mọi hàng rào đều im — `fs.write`
+        là một lời gọi bình thường, `test.run` là một lời gọi bình thường.
+
+        Hook này không chặn; nó cấp hai dữ kiện cho `policy.yaml`: **có yếu đi không**, và
+        **yếu đi bao nhiêu**. Con số thứ hai mới là thứ thẻ cổng cần hiện — một thẻ hỏi "sửa
+        tệp test?" mà không nói nó bỏ mất gì thì người dùng bấm duyệt theo phản xạ, đúng lý do
+        `doi_tieu_chi` phải hiện "15.0 → 45.0" chứ không chỉ hiện "đổi ngưỡng".
+
+        Ba chỗ cố ý KHÔNG kêu, vì kêu ở đó là chặn đúng đường đi tới chỗ sửa thật:
+
+        * **tệp sản phẩm** — sửa `firmware/pid.c` sau một kết quả đỏ là việc cần làm;
+        * **chưa có kết quả nào** — chưa có gì để ép thành "đạt";
+        * **tệp chưa tồn tại** — viết bộ test đầu tiên thì không có gì để làm yếu đi.
+        """
+        from pathlib import Path as _P
+
+        im = PreToolResult(facts={"test.weakened": False, "test.doi_gi": ""})
+        if call.get("tool") not in ("fs.write", "fs.edit"):
+            return im
+        args = call.get("args") or {}
+        duong = str(args.get("path") or "")
+        if not duong or not _TEP_DO.search(duong.replace("\\", "/")):
+            return im
+        if not _co_ket_qua_do(ctx):
+            return im
+
+        p = _P(ctx.config.paths.project_root) / duong
+        try:
+            cu = p.read_text("utf-8") if p.is_file() else None
+        except OSError:
+            cu = None
+        if cu is None:
+            return im                      # tệp mới: chưa có gì để làm yếu đi
+        moi = _noi_dung_moi(args, cu)
+        if moi is None:
+            return im
+
+        n_cu, n_moi = _dem_ca(cu), _dem_ca(moi)
+        if n_moi >= n_cu:
+            return im
+        return PreToolResult(
+            facts={"test.weakened": True,
+                   "test.doi_gi": (f"{n_cu} chỗ canh → {n_moi} ({duong})"
+                                   + (" — tệp bị xoá gần hết" if n_moi == 0 else ""))},
+            fired=["sua_test_sau_do:yeu-di"])
 
     @bus.on_pre_tool
     def kiem_release(call: dict[str, Any], ctx: Any) -> PreToolResult:
@@ -864,3 +919,114 @@ def _co_release(ctx: Any) -> bool:
         return bool(h and h.snapshots.co_release())
     except Exception:                                        # noqa: BLE001
         return False
+
+
+# ===================================================== M4-02: tiêu chí và tệp test bị sửa yếu
+#
+# `POL-N6-doi-tieu-chi` chặn đường ngắn nhất tới một "đạt" vô nghĩa: đổi NGƯỠNG sau khi đã có
+# kết quả. Nhưng có đường thứ hai, rộng hơn, và trước M4-02 không ai canh — **xoá bớt ca
+# test**. Tệp test ba ca, một ca đỏ; ghi lại tệp còn một ca là "1/1 đạt", và mọi hàng rào đều
+# im: `fs.write` là lời gọi bình thường, `test.run` là lời gọi bình thường.
+
+def _ma_tieu_chi(cong_cu: str, ma: Any) -> str:
+    """Mã tiêu chí chuẩn hoá, theo đúng quy ước mà công cụ dùng để đặt khoá hiện vật.
+
+    `test.criteria` ép tiền tố `unit-` (xem `tools/xay_dung._ma_tc_unit`, và lý do ở đó: hai
+    loại tiêu chí dùng chung không gian `criteria:*`). Hook phải lặp lại **đúng** quy ước ấy,
+    không thì nó tra một khoá không tồn tại và kết luận "tiêu chí mới" cho mọi lần đổi.
+    """
+    ten = str(ma or "").strip()
+    if cong_cu == "test.criteria":
+        ten = ten or "unit-01"
+        return ten if ten.startswith("unit-") else f"unit-{ten}"
+    return ten or "sim-01"
+
+
+def _co_ket_qua(ctx: Any, ma: str) -> bool:
+    """Đã có kết quả nào chạy theo ĐÚNG bộ tiêu chí `ma` chưa.
+
+    Bản cũ tra cứng `sim_result:can-bang`, nên mọi bộ tiêu chí khác `sim-01` luôn được coi là
+    "chưa có kết quả" — tức `POL-N6-doi-tieu-chi` **chưa bao giờ nổ** cho `sim-ntc` hay cho
+    `unit-*`. Luật viết đúng, đường dẫn tới nó đứt.
+
+    Không nhận "có hiện vật `sim_result` nào đó là đủ": như thế thì thêm một bộ mô phỏng thứ
+    hai sẽ khoá cổng cho **mọi** bộ tiêu chí, kể cả bộ chưa chạy lần nào — và hỏi ở đó dạy
+    người dùng bấm duyệt theo phản xạ.
+
+    Vẫn giữ đường cũ cho `sim-01`: hiện vật `sim_result:can-bang` của mọi kho đã lưu trước
+    M4-01 **không** khai `ma_tieu_chi`, nên một phép tra chỉ nhận hiện vật mới sẽ nới hàng rào
+    đúng ở những dự án đã chạy thật.
+    """
+    try:
+        ds = ctx.store.list("sim_result", limit=50) or []
+    except Exception:                                        # noqa: BLE001
+        ds = []
+    if any(str(((a.get("canonical") or {}).get("ma_tieu_chi") or "")) == ma for a in ds):
+        return True
+    if ma == "sim-01":
+        try:
+            return ctx.store.get("sim_result:can-bang") is not None
+        except Exception:                                    # noqa: BLE001
+            return False
+    return False
+
+
+# Tệp nào là tệp ĐO, chứ không phải tệp sản phẩm. Sửa mã sản phẩm sau một kết quả đỏ là
+# **đúng việc cần làm** — kêu ở đó là chặn đúng con đường duy nhất đi tới chỗ sửa thật.
+_TEP_DO = re.compile(
+    r"(?:^|/)(?:test|tests|sim)/"            # test/** · tests/** · sim/**
+    r"|(?:^|/)tb_[^/]*\.s?v$"                # tb_dem.v
+    r"|_tb\.s?v$",                           # dem_tb.v
+    re.I)
+
+# Dấu hiệu đếm được của "bộ kiểm này canh bao nhiêu thứ". Không phải một phép đo hoàn hảo —
+# nó không hiểu mã. Nhưng nó đếm được, và một con số đếm được thì người đọc thẻ đối chiếu
+# lại được; "tệp test đã bị sửa" thì không.
+_DAU_HIEU_CA = (
+    re.compile(r'\\?"dat\\?"\s*:'),          # {"ten": …, "dat": true} của khuôn JSON
+    re.compile(r'\\?"ma\\?"\s*:'),           # {"do": {"T1": …}} đi cùng mã assert
+    re.compile(r'\$display\s*\(\s*"[^"]*FAIL', re.I),   # testbench Verilog in FAIL
+    re.compile(r"\bassert\b"),
+)
+
+
+def _dem_ca(chu: str) -> int:
+    return sum(len(r.findall(chu)) for r in _DAU_HIEU_CA)
+
+
+def _noi_dung_moi(args: dict[str, Any], cu: str) -> str | None:
+    """Nội dung tệp SAU lời gọi — `None` nếu không suy ra được.
+
+    `fs.edit` phải được áp `old`→`new` rồi mới đếm. Nếu hook chỉ đọc `content` thì `fs.edit`
+    là một cửa sau rộng bằng `fs.write`: xoá đúng cái dòng in `FAIL` bằng một phép thay chuỗi
+    nhỏ, và không ai thấy gì.
+    """
+    if "content" in args:
+        return str(args.get("content") or "")
+    cu_chuoi, moi_chuoi = args.get("old"), args.get("new")
+    if cu_chuoi is None:
+        return None
+    if str(cu_chuoi) not in cu:
+        # Phép thay không khớp tệp trên đĩa: lời gọi sẽ trượt ở tầng công cụ. Không đoán.
+        return None
+    return cu.replace(str(cu_chuoi), str(moi_chuoi or ""), 1)
+
+
+def _co_ket_qua_do(ctx: Any) -> bool:
+    """Có hiện vật kết quả nào đang ĐỎ không — ba chỗ, vì có ba đường đo.
+
+    `sim_result:unit-test` (test.run) · `sim_result:can-bang` (sim.run) · `build:hdl:sim`
+    (hdl.sim). Chỉ cần MỘT trong ba đang đỏ là đã có một chữ "không đạt" mà ai đó có thể
+    muốn làm cho nó biến mất.
+
+    Kết quả đang XANH thì không kêu: sửa tệp test lúc ấy là việc thường, và không có "đạt"
+    nào đang bị ép.
+    """
+    for ma in ("sim_result:unit-test", "sim_result:can-bang", "build:hdl:sim"):
+        try:
+            a = ctx.store.get(ma)
+        except Exception:                                    # noqa: BLE001
+            continue
+        if a and (a.get("canonical") or {}).get("dat") is False:
+            return True
+    return False

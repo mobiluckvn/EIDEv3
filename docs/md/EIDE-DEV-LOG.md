@@ -8279,3 +8279,116 @@ hành vi. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. **Phá lại thì đỏ:
 
 README: 129 → **130 công cụ** (121 bật mặc định, nhóm "Viết mã" 8 → 9), và `test.criteria` đếm
 vào phần **chưa được Agent gọi lần nào** — như hai công cụ của DEV-344/345.
+
+---
+
+## [DEV-347] [M4-02] Đường thứ hai tới một "đạt" — và hàng rào cũ chưa bao giờ nổ ngoài `sim-01`
+
+Nhiệm vụ #18. **Sửa lỗi thuần** (đi vòng hàng rào N6/TC022) + một cờ mới
+`SIM_RUNNER_GIOI_HAN`, mặc định TẮT.
+
+### Hai lỗ, và lỗ thứ hai làm lỗ thứ nhất thành vô nghĩa
+
+**Lỗ 1 — xoá bớt ca test.** `POL-N6-doi-tieu-chi` chặn đường ngắn nhất tới một "đạt" vô
+nghĩa: đổi NGƯỠNG sau khi đã có kết quả. Nhưng đường thứ hai rộng hơn và không ai canh: tệp
+test ba ca, một ca đỏ; ghi lại tệp còn một ca là "1/1 đạt". `fs.write` là một lời gọi bình
+thường, `test.run` là một lời gọi bình thường, và không luật nào thấy gì lạ.
+
+**Lỗ 2 — hàng rào cũ chưa bao giờ nổ ngoài `sim-01`.** `criteria.has_result` tra **cứng**:
+
+```python
+co_kq = ctx.store.get("sim_result:can-bang") is not None
+```
+
+Nên mọi bộ tiêu chí khác — `sim-ntc` của phiên robot, và từ M4-01 là cả `unit-*` — luôn được
+coi là *"chưa có kết quả"*, tức `POL-N6-doi-tieu-chi` **im** cho chúng. Luật viết đúng từng
+chữ; đường dẫn tới nó đứt. Đúng cái mẫu `kiem_cap_goi_tra()` đang mắc, lần này ở một luật đã
+được viện dẫn như một hàng rào đang chạy.
+
+### Bốn chỗ sửa
+
+**`doi_tieu_chi`** nhận cả `test.criteria`, và `_co_ket_qua(ctx, ma)` tra các `sim_result` có
+`canonical.ma_tieu_chi == ma` — con số mà M4-01 vừa bắt đầu ghi vào hiện vật. Hai chỗ cố ý
+hẹp:
+
+* **không** nhận "có `sim_result` nào đó là đủ": như thế thì thêm một bộ mô phỏng thứ hai sẽ
+  khoá cổng cho **mọi** bộ tiêu chí, kể cả bộ chưa chạy lần nào — và hỏi ở đó dạy người dùng
+  bấm duyệt theo phản xạ;
+* **vẫn giữ** đường cũ cho `sim-01`, vì hiện vật `sim_result:can-bang` của mọi kho đã lưu
+  trước M4-01 không khai `ma_tieu_chi`. Một phép tra chỉ nhận hiện vật mới sẽ nới hàng rào
+  đúng ở những dự án đã chạy thật.
+
+**Hook `sua_test_sau_do`** đếm "số chỗ canh" trước–sau (`"dat":` của khuôn JSON, `"ma":` của
+khuôn số đo, `$display("FAIL` của testbench, `assert`) và phát `test.weakened` + `test.doi_gi`
+= *"7 chỗ canh → 3 (test/test_pid.c)"*. Con số thứ hai mới là thứ thẻ cổng cần hiện — cùng lý
+do `doi_tieu_chi` phải hiện "15.0 → 45.0" chứ không chỉ hiện "đổi ngưỡng".
+
+Ba chỗ hook **cố ý im**, vì kêu ở đó là chặn đúng đường đi tới chỗ sửa thật: tệp sản phẩm
+(sửa `firmware/pid.c` sau một kết quả đỏ là việc cần làm) · chưa có kết quả nào · tệp chưa
+tồn tại (viết bộ test đầu tiên). Và một chỗ nữa: **số chỗ canh không đổi** — đổi tên ca, sửa
+chữ, dọn mã. Phép đo là *"yếu đi bao nhiêu"*, không phải *"có sửa hay không"*.
+
+**`POL-N6-sua-test`** — `ask`, `G-QUAL`, `never_auto`, N6, TC022. Và `POL-N6-doi-tieu-chi` +
+`POL-QUAL-criteria-change` nay liệt cả `test.criteria`: hook cấp đúng dữ kiện là chưa đủ, nếu
+không luật nào đọc thì `test.criteria` thành cửa sau cho đúng việc mà `sim.criteria` bị chặn.
+
+**Cờ `sim_runner_gioi_han`** — bật thì `fs.write`/`fs.edit` của riêng `sim-runner` bị giới hạn
+trong `sim/`. Nó là tác tử con *nêu tiêu chí và chạy đo*; cho nó ghi vào `test/` là cho đúng
+cái tác tử đang bị đo quyền sửa thước đo của mình. Sau cờ vì nó **đổi tập việc** một tác tử
+con làm được (N-4). Hàng rào chính thì **không** sau cờ: `POL-N6-sua-test` chặn cả tác tử
+chính lẫn tác tử con, bằng một phép đo đếm được thay vì một lệnh cấm theo tên thư mục.
+
+### Một luật trỏ tới nhóm dữ kiện chưa khai thì DỪNG CẢ LƯỢT, không phải "không nổ"
+
+Thêm `POL-N6-sua-test` xong, `test_muc_tu_chu_thap_thi_ghi_phai_hoi` (ca cũ, tự dựng `pre`)
+đỏ ngay:
+
+```
+ValueError: Điều kiện policy không tính được: 'test.weakened'
+```
+
+`_eval` cố ý ném cho điều kiện không tính được — im lặng cho qua thì tệ hơn. Nhưng hệ quả là:
+`_env` có một danh sách *"nhóm nào phải luôn tồn tại"*, và nhóm `test` không có trong đó, nên
+luật mới làm **mọi** `fs.write` đổ — kể cả khi hook im đúng cách. Một luật mới không chỉ có
+thể "không nổ"; nó có thể biến một công cụ đang chạy tốt thành một lỗi hệ thống.
+
+Mở danh sách ấy ra thì thấy **`criteria` cũng chưa bao giờ có trong đó**. Nó chưa nổ chỉ vì
+hook `doi_tieu_chi` luôn cấp đủ ba khoá ở MỌI nhánh — tức là hàng rào đang dựa vào một thói
+quen tốt của một hook, không dựa vào một bảo đảm. Thêm cả hai, kèm một ca kiểm chạy bốn công
+cụ mà hai luật mới khớp tới.
+
+### Phép phá: 22/27, và hai phép phá của tôi vô hiệu
+
+Tập 27 phép phá dựng từ `git diff`. Năm chỗ LỌT:
+
+* `_ma_tieu_chi` không ép tiền tố `unit-` — ca kiểm của tôi truyền `ma="unit-01"`, đã có sẵn
+  tiền tố, nên nhánh ấy không chạy. Bù một ca truyền `ma="01"`.
+* kêu cả khi số chỗ canh **không đổi** — ca của tôi đi 1 → 3, nên nhánh `n_moi == n_cu` trống.
+* `_TEP_DO` bỏ nhánh `tb_*.v` / `*_tb.v` — ca của tôi để testbench ở `test/tb_dem.v`, khớp
+  nhánh `test/` trước. Mà dự án FPGA thật đặt testbench **cạnh RTL**
+  (`bai3/sim/tb_*.v`, `phien-bo-that-03-10/rtl/`), đúng chỗ phép lọc hẹp sẽ bỏ sót.
+* `POL-N6-doi-tieu-chi` bỏ `test.criteria` — tôi có ca kiểm **hook** cho nó, không có ca kiểm
+  **luật**. Hai tầng khác nhau, và chỉ tầng thứ hai mới dựng ra thẻ.
+
+Chỗ thứ năm hoá ra **không phải lỗ hổng mà là phép phá vô hiệu** — hai lần liền ở cùng một
+dòng:
+
+1. `cu = cu or ""` thay cho `if cu is None: return im`. Với `cu = ""` thì `n_cu = 0`, nên
+   `n_moi >= n_cu` luôn đúng và hook vẫn im. Không đổi hành vi.
+2. Sửa thành "bỏ phép kiểm `is_file()`" — vẫn vô hiệu, vì `except OSError` ngay dưới đó bắt
+   `FileNotFoundError`.
+
+Phải bỏ **cả hai** lớp phòng mới phá được. Đây là lần thứ hai trong hai nhiệm vụ liền (M4-01
+có `[] or [[…]]`), nên nó không phải tai nạn: một phép phá cũng cần được kiểm xem nó có thật
+sự đổi hành vi — y như một ca kiểm cần được kiểm xem nó có thật sự đo gì.
+
+Bù bốn ca, phá lại: **27/27**.
+
+### Số đo
+
+Bộ kiểm 1791 → **1816 xanh, 0 đỏ** (+25 ca, `tests/test_test_bi_sua_yeu.py` mới). Ca hồi quy
+`test_doi_NGUONG_khi_da_co_ket_qua_thi_hook_bao_cho_cong_G_QUAL` và
+`test_them_assert_MOI_cung_tinh_la_doi` giữ nguyên, không phải nới. `kiem_tai_lieu` 0 chỗ LỆCH
+CHẮC CHẮN. **Phá lại thì đỏ: 27/27.**
+
+Cờ tính năng 7 → **8**, cờ mới mặc định TẮT. Không công cụ mới, nên số công cụ giữ **130**.

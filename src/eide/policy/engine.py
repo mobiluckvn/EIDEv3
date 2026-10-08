@@ -158,8 +158,17 @@ class PolicyEngine:
         # Nhóm nào hook chưa đưa xuống thì vẫn phải có mặt, để `!explain.complete` đọc
         # được là "chưa có" thay vì nổ NameError — một điều kiện không tính được sẽ
         # dừng cả lượt (xem `_eval`), và ta không muốn dừng vì hook im lặng.
+        # M4-02 — `test` và `criteria` phải có trong danh sách này, và chỗ này đáng đọc kỹ:
+        # một nhóm THIẾU ở đây không làm luật "không nổ", nó làm **cả lượt dừng** bằng
+        # `ValueError`. `POL-N6-sua-test` khớp mọi `fs.write`, nên thiếu nhóm `test` là mọi
+        # lời gọi ghi tệp đều đổ — kể cả khi hook im đúng cách. Đo được ngay khi thêm luật:
+        # `test_muc_tu_chu_thap_thi_ghi_phai_hoi` đỏ với "Điều kiện policy không tính được".
+        #
+        # `criteria` cũng chưa có ở đây từ trước. Nó chưa nổ chỉ vì hook `doi_tieu_chi` luôn
+        # cấp đủ ba khoá ở MỌI nhánh — tức là hàng rào đang dựa vào một thói quen tốt của
+        # một hook, không dựa vào một bảo đảm.
         for known in ("constant_guard", "target", "explain", "plan", "snapshot", "tier",
-                      "touches"):
+                      "touches", "test", "criteria"):
             env.setdefault(known, _Dot({}))
         return env
 

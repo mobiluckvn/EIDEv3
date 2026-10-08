@@ -328,6 +328,9 @@ def chay(*, llm: Any, registry: Any, ctx: Any, ma: str, viec: str,
                       "hint_for_agent": ("Bạn chỉ có: " + ", ".join(sorted(duoc))
                                          + ". Việc cần công cụ khác thì ghi vào `chua_lam` "
                                            "rồi nộp báo cáo.")}
+            elif (loi := _ngoai_pham_vi_ghi(ma, call, ctx)):
+                kq = {"ok": False, "code": "E5006", "message_vi": loi[0],
+                      "hint_for_agent": loi[1]}
             else:
                 kq, di_vong = _chay_qua_hang_rao(registry, ctx, call)
             if ghi_so is not None:
@@ -350,3 +353,34 @@ def chay(*, llm: Any, registry: Any, ctx: Any, ma: str, viec: str,
             f"hết {dn.toi_da_goi} lời gọi mà chưa nộp báo cáo — phần việc đã làm vẫn còn "
             "trong kho, nhưng không có kết luận nào để dùng")
     return doc
+
+
+def _ngoai_pham_vi_ghi(ma: str, call: Any, ctx: Any) -> tuple[str, str] | None:
+    """M4-02 — `sim-runner` chỉ được ghi trong `sim/`, khi cờ `sim_runner_gioi_han` BẬT.
+
+    Vì sao siết đúng tác tử con này: nó là tác tử **nêu tiêu chí và chạy đo**. Cho nó ghi vào
+    `test/` là cho đúng cái tác tử đang bị đo quyền sửa thước đo của mình — nó viết lại
+    `test/*.c`, chạy lại, và báo cáo của nó vẫn hợp lệ từng chữ.
+
+    Sau cờ vì nó **đổi tập việc** một tác tử con làm được (N-4). Hàng rào chính là
+    `POL-N6-sua-test`, và hàng rào ấy KHÔNG sau cờ: nó chặn cả tác tử chính lẫn tác tử con,
+    bằng một phép đo đếm được, thay vì bằng một lệnh cấm theo tên thư mục.
+
+    Trả `None` nghĩa là không chặn. Trả `(thông điệp, chỉ dẫn)` thì bên gọi dựng E5006.
+    """
+    if ma != "sim-runner" or call.tool not in ("fs.write", "fs.edit"):
+        return None
+    try:
+        if not ctx.config.features.bat("sim_runner_gioi_han"):
+            return None
+    except Exception:                                        # noqa: BLE001
+        return None
+
+    duong = str((call.args or {}).get("path") or "").replace("\\", "/")
+    if not duong or duong.startswith("sim/") or "/sim/" in f"/{duong}":
+        return None
+    return (
+        f"Subagent “{ma}” chỉ được ghi trong `sim/` — `{duong}` nằm ngoài.",
+        ("Bạn là tác tử NÊU TIÊU CHÍ và CHẠY ĐO; sửa tệp test hay mã sản phẩm không phải "
+         "việc của bạn, vì thứ bị đo không được sửa thước đo của mình. Thấy tệp test sai thì "
+         "ghi vào `chua_lam` kèm chỗ sai, rồi nộp báo cáo — người hoặc tác tử chính sẽ sửa."))

@@ -150,7 +150,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 15 | [M3-13](#m3-13) | `hdl.sensitivity`: đo độ nhạy testbench Verilog bằng đột biến thật | P0 | M | M3-12 | — | xong 08/10/2026 · DEV-344 · 1732→1744 ca · đo thật: `tb_pcpi_dot4` 1/1, `tb_pcpi_mac` 1/1, `tb_pcpi_vmini` không dịch nổi từ 02/10 | ☑ |
 | 16 | [M3-18](#m3-18) | Kiểm ràng buộc chân FPGA (`.cst`) với cổng mô-đun đỉnh và chân của kit | P0 | M | — | — | xong 08/10/2026 · DEV-345 · 1744→1773 ca · trên 6 cặp thật: 1 chỗ CHẶN (`blinky` của riscv-tn20k-b dựng bitstream với chân đồng hồ nextpnr tự chọn) | ☑ |
 | 17 | [M4-01](#m4-01) | Máy chấm unit test do EIDE phán (`test.criteria`) | P0 | M | — | — | xong 08/10/2026 · DEV-346 · 1773→1791 ca · phá lại 24/24 (lượt đầu 17/24) · thêm E4023 cho đường unit test, và chế độ phải hiện ở tab A8 chứ không chỉ ở note_vi | ☑ |
-| 18 | [M4-02](#m4-02) | Cổng G-QUAL khi sửa/xoá tệp test sau kết quả đỏ + sửa `criteria.has_result` | P0 | M | — | SIM_RUNNER_GIOI_HAN |  | ☐ |
+| 18 | [M4-02](#m4-02) | Cổng G-QUAL khi sửa/xoá tệp test sau kết quả đỏ + sửa `criteria.has_result` | P0 | M | — | SIM_RUNNER_GIOI_HAN — TẮT | xong 08/10/2026 · DEV-347 · 1791→1816 ca · phá lại 27/27 (lượt đầu 22/27) · phát hiện: một luật trỏ tới nhóm dữ kiện chưa khai thì DỪNG CẢ LƯỢT, và `criteria` cũng chưa bao giờ có trong danh sách ấy | ☑ |
 | 19 | [M4-05](#m4-05) | Đột biến không biên dịch được không được tính là "bắt được" | P1 | S | — | — | kéo lên từ GĐ2 vì là tiền đề của M4-06 | ☐ |
 | 20 | [M4-19](#m4-19) | Đột biến trên bản sao, không ghi đè tệp sản phẩm của người dùng | P2 | S | — | — | kéo lên từ GĐ4 vì là tiền đề của M4-04 | ☐ |
 | 21 | [M4-04](#m4-04) | Đột biến chi tiết từng vị trí + điểm đột biến (mutation score) | P1 | M | M4-05, M4-19 | — | kéo lên từ GĐ3 vì là tiền đề của M4-06 | ☐ |
@@ -1343,14 +1343,45 @@ DEV-346; tất cả nằm trong `tests/test_test_tieu_chi.py`):
 | TC-M4-02-04 | Ca âm | …::test_tao_test_moi_hoac_chua_co_ket_qua_thi_KHONG_keu | không có MA_TEST, hoặc MA_TEST dat=True → test.weakened False |
 | TC-M4-02-05 | Cờ TẮT | …::test_co_tat_sim_runner_van_ghi_duoc_ngoai_sim | EIDE_FEATURE_SIM_RUNNER_GIOI_HAN chưa đặt; ScriptedGateway sim-runner gọi fs.write test/x.c → không có E5006 |
 
+**Mười hai TC thêm khi làm** (phép phá dựng từ `git diff` tìm ra bốn chỗ không ai canh — xem
+DEV-347; tất cả nằm trong `tests/test_test_bi_sua_yeu.py`):
+
+| Mã TC | Loại | Tên ca | Cho trước → Khi → Thì |
+|---|---|---|---|
+| TC-M4-02-06 | Ca âm | test_has_result_khong_keu_cho_tieu_chi_KHAC | kết quả của `sim-ntc` KHÔNG làm `sim-01` thành có-kết-quả |
+| TC-M4-02-07 | Tương thích | test_has_result_giu_duong_cu_cho_can_bang | `sim_result:can-bang` không khai `ma_tieu_chi` vẫn tính cho `sim-01` |
+| TC-M4-02-08 | Cửa sau | test_has_result_cho_ca_tieu_chi_UNIT_TEST | `criteria:unit-*` (M4-01) cũng qua cổng N6 |
+| TC-M4-02-09 | Quy ước khoá | test_has_result_ep_tien_to_unit_khi_tac_tu_chi_gui_so | `ma="01"` → hook tra `criteria:unit-01`, không tra `criteria:01` |
+| TC-M4-02-10 | Cửa sau | test_fs_edit_xoa_dong_FAIL_cung_tinh_la_weakened | `fs.edit` phải được áp `old`→`new` rồi mới đếm |
+| TC-M4-02-11 | Ca âm | test_them_ca_test_thi_KHONG_keu | 1 ca → 3 ca sau kết quả đỏ → KHÔNG hỏi |
+| TC-M4-02-12 | Ca âm | test_so_cho_canh_KHONG_DOI_thi_khong_keu | đổi tên ca, số chỗ canh không đổi → KHÔNG hỏi |
+| TC-M4-02-13 | **FPGA** | test_testbench_NGOAI_thu_muc_test_cung_duoc_canh | `rtl/tb_dem.v` cũng là tệp đo (dự án FPGA đặt tb cạnh RTL) |
+| TC-M4-02-14 | Ca âm | test_ket_qua_DAT_thi_sua_test_khong_phai_hoi | kết quả đang XANH → sửa tệp test là việc thường |
+| TC-M4-02-15 | Ca biên | test_tep_test_CHUA_CO_tren_dia_thi_khong_keu | tạo tệp test MỚI → không hỏi, và hook KHÔNG nổ |
+| TC-M4-02-16 | **Luật** | test_policy_hoi_G_QUAL_khi_doi_nguong_UNIT_TEST | `test.criteria` + has_result → ask G-QUAL never_auto |
+| TC-M4-02-17 | **Luật** | test_luat_moi_KHONG_lam_do_ca_luot_khi_hook_im | 4 công cụ, `pre` không có nhóm `test`/`criteria` → KHÔNG ném ValueError |
+| TC-M4-02-18 | Cờ BẬT | test_co_BAT_thi_sim_runner_khong_ghi_duoc_ngoai_sim | ghi `test/` bị chặn, ghi `sim/` vẫn qua |
+
 **Bảo vệ hồi quy (phải vẫn XANH):**
 - `.venv/bin/python -m pytest -q tests/test_xay_dung.py tests/test_policy_tools.py tests/test_subagent.py tests/test_s0.py`
 - test_doi_NGUONG_khi_da_co_ket_qua_thi_hook_bao_cho_cong_G_QUAL và test_them_assert_MOI_cung_tinh_la_doi giữ nguyên.
+  **Đã kiểm: cả hai vẫn xanh, không phải nới.**
+
+**Lệch khỏi kế hoạch (đo rồi mới thấy):**
+- Phải sửa cả `src/eide/policy/engine.py` (ngoài danh sách "tệp chạm tới"): `_env` có một
+  danh sách "nhóm dữ kiện phải luôn tồn tại", và thiếu nhóm trong đó thì luật mới **dừng cả
+  lượt** bằng `ValueError`, không phải "không nổ". Nhóm `criteria` cũng chưa bao giờ có trong
+  danh sách ấy — hàng rào N6 cũ đang dựa vào thói quen tốt của một hook, không dựa vào một
+  bảo đảm.
+- `POL-QUAL-criteria-change` cũng phải liệt `test.criteria` (kế hoạch chỉ nêu
+  `POL-N6-doi-tieu-chi`).
+- Phép đo là *"yếu đi bao nhiêu"*, nên phải có thêm nhánh **số chỗ canh không đổi thì im** —
+  kế hoạch không nêu, và không có nó thì mọi lần sửa chữ trong tệp test đều dựng một thẻ.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC. — 27 chỗ phá, **27/27 đỏ** (lượt đầu 22/27)
+- [x] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc. — 1791 → **1816 xanh, 0 đỏ**
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md. — **DEV-347**
 
 **Hoàn tác:** revert commit; riêng phần sim-runner thì tắt cờ.
 
