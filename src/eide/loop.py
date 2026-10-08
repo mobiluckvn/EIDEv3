@@ -101,6 +101,11 @@ class TurnContext:
     # Lượt này đã bị bắt tự kiểm chứng chưa. Vòng thứ hai là vòng tác tử đang TRẢ LỜI lời
     # nhắc ấy; bắt nó kiểm lại lần nữa sẽ thành vòng lặp.
     da_tu_kiem: bool = False
+    # M4-09 — lượt này đã chạy một verifier THẬT chưa. Tên công cụ không trả lời được câu
+    # ấy: `task.run` còn chạy năm loại tác tử con khác, và hook Stop trước đây chỉ hỏi
+    # *"`task.run` có trong lượt không"* — nên giao việc cho `firmware` rồi tuyên xong là
+    # một đường đi vòng hàng rào N6. Cờ này đặt ở đúng chỗ đọc `args.subagent`.
+    da_goi_verifier: bool = False
     # Tệp tác tử đã ĐỌC trong lượt này — `fs.write` đòi đọc trước khi đè (§E4, N9).
     da_doc: set[str] = field(default_factory=set)
     # Lời NGƯỜI đã nói trong phiên — constant-guard coi con số họ tự nói là có nguồn.
@@ -1004,6 +1009,7 @@ class Agent:
         if (res.ok and call.tool == "task.run"
                 and (call.args or {}).get("subagent") == "verifier"):
             self.ghi_chua_kiem = False
+            ctx.da_goi_verifier = True
 
         # `ok` nói về LỜI GỌI, không nói về KẾT QUẢ. Xem `eide/ket_qua.py` cho năm lần bài
         # học này xuất hiện trong một phiên duy nhất. Nhắc MỘT LẦN cho mỗi công cụ trong một
