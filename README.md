@@ -150,6 +150,11 @@ Phần này là lý do EIDE khác một khung chat gắn thêm công cụ.
 
 Đường nâng từ BẠC lên VÀNG chỉ người đi được, Agent không đi được.
 
+Cùng một ý ấy nay áp cho **kết quả đo**, không chỉ cho con số lấy từ tài liệu: một con số độ
+nhạy hay một kết quả unit test đều mang theo nó **được đo bằng gì** — `đo bằng mã` hay `tác tử
+tự khai`. Hai thứ đáng tin khác nhau, và trước DEV-344 chúng hiện ra giống hệt nhau ở đúng
+dòng quan trọng nhất của tab Mô phỏng.
+
 Và khi người dùng nói một con số, Agent phải trích **đúng câu họ nói**. Gán "người đã chọn"
 cho một câu mà họ không hề chọn là nói sai về nguồn, mà NGƯỜI là bậc cao nhất — nên EIDE kiểm
 lại: câu trích phải có thật trong sổ ghi việc, phải mang nghĩa lựa chọn, và phải nhắc đúng cách
@@ -284,8 +289,17 @@ không phải chương trình mô phỏng — chương trình chỉ in số ra. 
 "đạt" thì nó có thể in "đạt" bất kể số đo là bao nhiêu, và chuyện này **đã xảy ra thật** trong
 phiên làm robot.
 
+**Unit test cũng vậy, từ DEV-346.** Trước đó `test.run` đếm chữ `dat` mà **chính tệp test in
+ra** — tức thứ đang bị kiểm cũng là thứ tuyên bố kết quả. Và ở đây cái vòng ấy khép kín hơn ở
+mô phỏng: tệp test là thứ **Agent tự viết**, nên nó viết mã sản phẩm, viết tệp kiểm cho mã ấy,
+rồi đọc kết quả do chính tệp kiểm ấy in ra. Nay nêu mức đo bằng `test.criteria` thì tệp test
+chỉ còn in **số đo**, và EIDE so với ngưỡng. Không nêu thì vẫn chạy được — nhưng kết quả mang
+nhãn **TỰ KHAI**, cả trong câu trả về cho Agent lẫn trên tab Mô phỏng.
+
 Muốn đổi mức đo sau khi đã thấy kết quả thì phải qua cửa `G-QUAL`. Đổi thước sau khi đã đo là
-việc người phải duyệt.
+việc người phải duyệt. Và từ DEV-347, **làm yếu tệp đo** cũng qua cửa ấy: xoá bớt ca kiểm hay
+bỏ dòng in `FAIL` sau khi đã có kết quả đỏ là một đường đi tới chữ "đạt" rộng hơn đường đổi
+ngưỡng, và trước đó không luật nào thấy nó.
 
 ### 4.7 · Làm việc với bo thật
 
