@@ -153,7 +153,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 18 | [M4-02](#m4-02) | Cổng G-QUAL khi sửa/xoá tệp test sau kết quả đỏ + sửa `criteria.has_result` | P0 | M | — | SIM_RUNNER_GIOI_HAN — TẮT | xong 08/10/2026 · DEV-347 · 1791→1816 ca · phá lại 27/27 (lượt đầu 22/27) · phát hiện: một luật trỏ tới nhóm dữ kiện chưa khai thì DỪNG CẢ LƯỢT, và `criteria` cũng chưa bao giờ có trong danh sách ấy | ☑ |
 | 19 | [M4-05](#m4-05) | Đột biến không biên dịch được không được tính là "bắt được" | P1 | S | — | — | xong 08/10/2026 · DEV-348 · 1816→1835 ca · phá lại 22/22 (lượt đầu 15/20) · tìm thêm BA lỗi thật trên cùng đường đo: test.sensitivity ĐỔ trên mọi tệp firmware thật (≥10 chú thích), mo_phong chạy lại sim.vvp cũ khi biên dịch đổ, và loi_nguoi_doc khen khi chưa đo được gì | ☑ |
 | 20 | [M4-19](#m4-19) | Đột biến trên bản sao, không ghi đè tệp sản phẩm của người dùng | P2 | S | — | — | xong 08/10/2026 · DEV-349 · 1835→1846 ca · phá lại 13/13 (lượt đầu 7/13) · đo trên 3 dự án thật TẠI CHỖ: 50/50 tệp firmware giữ nguyên sha256 VÀ mtime, kết luận giống hệt lượt đột biến tại chỗ của M4-05 | ☑ |
-| 21 | [M4-04](#m4-04) | Đột biến chi tiết từng vị trí + điểm đột biến (mutation score) | P1 | M | M4-05, M4-19 | — | kéo lên từ GĐ3 vì là tiền đề của M4-06 | ☐ |
+| 21 | [M4-04](#m4-04) | Đột biến chi tiết từng vị trí + điểm đột biến (mutation score) | P1 | M | M4-05, M4-19 | — | xong 09/10/2026 · DEV-350 · 1846→1862 ca · phá lại 22/22 (lượt đầu 15/22) · TÁI HIỆN được ca DANH-GIA §2.2 bằng máy (0xFFFFFFFD dòng 147 → mutant SỐNG) · phép đo mới TREO 10 phút trên tệp thật đầu tiên, đã sửa | ☑ |
 | 22 | [M4-06](#m4-06) | Vòng tự nâng test khi đột biến sống (Evaluator–Optimizer) | P0 | M | M4-04, M4-05 | TEST_HARDEN |  | ☐ |
 | 23 | [M4-07](#m4-07) | Verifier nhận gói bằng chứng do EIDE dựng từ sổ cái, không nhận đề bài tác tử chính tự viết | P0 | M | — | VERIFIER_GOI_BANG_CHUNG |  | ☐ |
 | 24 | [M4-09](#m4-09) | Stop hook không được coi `task.run` với subagent khác là "đã kiểm chứng" | P0 | S | — | — |  | ☐ |
@@ -1569,14 +1569,46 @@ phá tìm ra năm chỗ không ai canh — xem DEV-348; tất cả trong `tests/
 | TC-M4-04-04 | Ca âm | …::test_che_do_tep_giu_nguyen_ket_qua | gọi không có `muc` → khoá trả về y như cũ (không có "diem") |
 | TC-M4-04-05 | Ca biên | …::test_lay_mau_tat_dinh_theo_seed | 100 vị trí, toi_da=10, seed=0 hai lần → cùng danh sách |
 
+**Mười một TC thêm khi làm** (phép phá tìm ra bảy chỗ không ai canh, và ba lỗi của chính phép
+đo — xem DEV-350; tất cả trong `tests/test_dot_bien.py`):
+
+| Mã TC | Loại | Tên ca | Cho trước → Khi → Thì |
+|---|---|---|---|
+| TC-M4-04-06 | Lược đồ | test_phep_moi_khong_doi_chi_so_cua_bon_phep_cu | bốn phép cũ giữ đúng chỉ số 0..3 |
+| TC-M4-04-07 | Mẫu số | test_chi_tiet_KHONG_tinh_stillborn_vao_mau_so | `diem = bắt/(thử − stillborn)`, mutant stillborn không vào `song` |
+| TC-M4-04-08 | Ca biên | test_chi_tiet_khong_co_mutant_nao_thi_diem_la_None | không phá được chỗ nào → `None`, KHÔNG `0.0` |
+| TC-M4-04-09 | **Hiện vật thật** | test_tai_hien_DANH_GIA_2_2_mutant_EXC_RETURN_phai_SONG | `control_rtos.c` thật: bảng cũ 0 đột biến · bảng mới dòng 147 · mutant SỐNG |
+| TC-M4-04-10 | **Chi phí** | test_liet_ke_khong_dung_ca_tep_cho_moi_cho_khop | 8 000 chỗ khớp kèm chú thích → liệt kê dưới 5 s (nhanh 0,04 s · chậm ≈21 s) |
+| TC-M4-04-11 | Toạ độ | test_so_dong_dung_khi_co_CHU_THICH_NHIEU_DONG | chú thích ba dòng → số dòng vẫn là số dòng người mở tệp thấy |
+| TC-M4-04-12 | Phép mới | test_phep_doi_gia_tri_tra_ve | `return x*3;` → `return 0;`, và KHÔNG chạm `return 0;` sẵn có |
+| TC-M4-04-13 | Ca âm | test_bo_muc_dot_bien_KHONG_doi_gi | `0x0` gặp phép hex → bỏ, không vào mẫu số |
+| TC-M4-04-14 | Ca âm | test_muc_la_thi_NEM_LOI_chu_khong_im_lang_chay_nhu_tep | `muc="chitiet"` → `ValueError`, không im lặng chạy chế độ tệp |
+| TC-M4-04-15 | Tích hợp | test_cong_cu_truyen_muc_xuong_VA_ghi_hien_vat | công cụ truyền `muc` xuống VÀ ghi `sim_result:test-sensitivity` |
+| TC-M4-04-16 | **Plan mode** | test_mien_khoa_plan_mode_la_CO_CHU_Y_va_co_ly_do | miễn khoá nằm trong `KHONG_KHOA`, và luật chung KHÔNG bị nới |
+
 **Bảo vệ hồi quy (phải vẫn XANH):**
 - `.venv/bin/python -m pytest -q tests/test_dot_bien.py tests/test_xay_dung.py`
+  **Đã kiểm: chế độ "tep" giữ nguyên từng khoá trả về**, và bốn ca gọi `test.sensitivity` phải
+  thêm `explain` — xem phần lệch dưới đây.
+
+**Lệch khỏi kế hoạch (đo rồi mới thấy):**
+- Phải sửa cả `src/eide/ke_hoach.py` (ngoài danh sách "tệp chạm tới"). Khai `writes_artefact`
+  là plan mode khoá công cụ — luật ấy lấy từ **hợp đồng** của công cụ, không từ danh sách tên.
+  Cách giải là dùng `KHONG_KHOA`, cùng lý do với `memory.note`: khoá một phép ĐO trong lúc
+  soạn kế hoạch là cấm tác tử biết bộ kiểm hiện tại canh được những gì.
+- `test.sensitivity` phải đòi `explain`: N8 không có ngoại lệ, và sổ công cụ chặn đúng chỗ ấy.
+  Bốn lời gọi trong ca kiểm phải sửa theo. Vẫn R1 và vẫn không khoá.
+- `liet_ke_dot_bien` **không được dựng cả tệp cho mỗi chỗ khớp**: trên `logo_ptit.c` thật
+  (720 KB, 57 600 chỗ khớp) đó là ≈41 GB việc chuỗi — lượt chạy đầu TREO 10 phút. Phải liệt kê
+  rẻ, lấy mẫu trước, và tra số dòng qua một **bản đồ đoạn**.
+- Bỏ bước sắp xếp TRƯỚC khi lấy mẫu: nó không đổi gì đo được (tính tất định đến từ `seed`).
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Chỉ số: tái hiện ca DANH-GIA §2.2 (0xFFFFFFFD→0, bộ kiểm 4/4 vẫn xanh) thì chế độ chi tiết báo đột biến đó SỐNG.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC. — 22 chỗ phá, **22/22 đỏ** (lượt đầu 15/22)
+- [x] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc. — 1846 → **1862 xanh, 0 đỏ**
+- [x] Chỉ số: tái hiện ca DANH-GIA §2.2 → **ĐẠT** — bảng cũ 0 đột biến cho hằng hex; bảng mới
+  tìm đúng dòng 147 của `control_rtos.c` thật; áp vào, bộ kiểm vẫn XANH ⇒ mutant **SỐNG**.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md. — **DEV-350**
 
 **Hoàn tác:** revert commit; chế độ mặc định không đổi.
 

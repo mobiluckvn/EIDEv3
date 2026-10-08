@@ -24,6 +24,8 @@ from .writing import EXPLAIN_SCHEMA
 MA_BUILD = "build:firmware"
 MA_MAP = "analysis:build-map"
 MA_TEST = "sim_result:unit-test"
+# M4-04 — hiện vật của phép đo độ nhạy. Dùng chung với M4-06 theo kế hoạch.
+MA_DO_NHAY = "sim_result:test-sensitivity"
 MA_SIM = "sim_result:can-bang"
 
 
@@ -772,13 +774,25 @@ def dang_ky(r: Registry) -> None:
                            "description": ("tệp mã SẢN PHẨM cần đo (không phải tệp test); "
                                            "bỏ trống thì lấy firmware/*.c")},
                  "test": {"type": "array", "items": {"type": "string"},
-                          "description": "tệp test; bỏ trống thì lấy test/*.c + tests/*.c"}},
-             "required": []},
-            risk="R1", core=False,
-            keywords=["độ nhạy", "đột biến", "mutation", "test có đo gì không",
-                      "kiểm bộ kiểm", "test giả", "ô xanh giả"])
-    def test_sensitivity(ctx: Any, nguon: list[str] | None = None,
-                         test: list[str] | None = None):
+                          "description": "tệp test; bỏ trống thì lấy test/*.c + tests/*.c"},
+                 "muc": {"type": "string", "enum": ["tep", "chi_tiet"],
+                         "description": ("tep (mặc định): một câu cho mỗi tệp. chi_tiet: phá "
+                                         "TỪNG vị trí, trả điểm đột biến và danh sách DÒNG "
+                                         "bộ kiểm không canh — chậm hơn nhiều")},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["explain"]},
+            # M4-04 — nay GHI hiện vật, nên phải đòi `explain`: N8 không có ngoại lệ, và sổ
+            # công cụ chặn đúng chỗ ấy (`writes_artefact and not needs_explain`). Vẫn R1 và
+            # vẫn không khoá — "rẻ tới mức gọi được ngay" là chuyện mức rủi ro và cửa duyệt,
+            # không phải chuyện một trường giải thích. Và một hiện vật mang lời giải thích do
+            # chính công cụ sinh ra thì đúng là "lời tự khai mặc áo phép đo" mà DEV-346 vừa
+            # đi chữa.
+            risk="R1", core=False, writes_artefact=True, needs_explain=True,
+            produces=["sim_result"],
+            keywords=["độ nhạy", "đột biến", "mutation", "mutation score", "điểm đột biến",
+                      "test có đo gì không", "kiểm bộ kiểm", "test giả", "ô xanh giả"])
+    def test_sensitivity(ctx: Any, explain: dict[str, Any], nguon: list[str] | None = None,
+                         test: list[str] | None = None, muc: str = "tep"):
         """Đo được trên phiên FreeRTOS: tác tử viết `test/test_ui.c` với sáu ca kiểm đầy đủ
         tên, ngưỡng, báo cáo JSON — và **tự định nghĩa lại** hàm của sản phẩm ngay trong tệp
         test. Phá `firmware/ui.c` thật thì cả sáu ca vẫn ĐẠT.
@@ -859,7 +873,7 @@ def dang_ky(r: Registry) -> None:
             f"-iquote{d}" for d in dict.fromkeys(str(x.parent) for x in sp)]
 
         tam = goc / ".eide" / "mutate" / str(ctx.run_id)
-        d = DB.do_do_nhay(sp, _chay, thu_muc_tam=tam)
+        d = DB.do_do_nhay(sp, _chay, thu_muc_tam=tam, muc=muc)
         # `do_do_nhay` dọn thư mục nó được GIAO; thư mục cha `.eide/mutate` là của công cụ
         # này, nên công cụ này dọn. Lồng theo `run_id` để hai lượt chạy song song không phá
         # bản sao của nhau — và vì thế phải có một bước dọn cái vỏ rỗng còn lại.
@@ -869,6 +883,18 @@ def dang_ky(r: Registry) -> None:
             pass                      # còn lượt khác đang dùng, hoặc chưa bao giờ được tạo
         xau = [x for x in d.get("tep", [])
                if x["trang_thai"] in ("khong_thay", "khong_nap_duoc")]
+
+        # M4-04 — ghi HIỆN VẬT. Trước đó phép đo này **không ghi gì vào kho**: con số nó tìm
+        # ra tắt theo lượt, nên lượt sau không ai biết nó từng xảy ra, và không bề mặt nào
+        # hiện được nó. Một phép đo không vào kho thì bằng chưa đo (xem DEV-341 cho cùng mẫu).
+        ctx.store.apply(
+            artefact_id=MA_DO_NHAY, type="sim_result",
+            op="update" if ctx.store.get(MA_DO_NHAY) else "create",
+            author=f"agent:{ctx.run_id}", explain=explain,
+            canonical={**{k: v for k, v in d.items() if k != "song"},
+                       "muc": muc, "song": (d.get("song") or [])[:20]},
+            view_hint={"kind": "table", "path": "do-nhay"})
+
         return {
             **d, "khong_cham": [x["tep"] for x in xau],
             "note_vi": DB.loi_nguoi_doc(d)

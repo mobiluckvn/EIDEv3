@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import re
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -51,6 +52,24 @@ _PHEP: tuple[tuple[str, str, str], ...] = (
     # "không dịch được" rất dễ bị đọc thành "bộ kiểm bắt được", tức là một ô xanh giả ngay
     # trong chính công cụ đi vạch mặt ô xanh giả.
     (r"(?<![-+=<>!*/%&|^])(\+)(?![+=])", "-", "đổi cộng thành trừ"),
+    # M4-04 — năm phép THÊM, đặt ở CUỐI bảng.
+    #
+    # Cuối, không chen vào giữa: bốn phép trên được gọi theo **chỉ số** ở nhiều ca kiểm
+    # (`dot_bien_van_ban(ma, 1)`), và `do_do_nhay` chế độ theo tệp chỉ dùng `toi_da_phep=3`
+    # phép đầu. Thêm vào cuối thì cả hai chuyện ấy không đổi một ly.
+    #
+    # Phép đầu trong nhóm này là ca DANH-GIA §2.2: `*(--sp) = 0xFFFFFFFDU;` là `EXC_RETURN`
+    # của ARM, sai giá trị ấy thì bo nổ `IBUSERR` ngay chu kỳ đầu — và bảng cũ KHÔNG có phép
+    # nào chạm tới nó, vì `(?<![\w.])(\d{2,})(?![\w.])` bị chặn bởi chữ `x` đứng trước.
+    (r"0[xX][0-9A-Fa-f]+", "0x0", "đổi hằng hex thành 0x0"),
+    (r"&&", "||", "đổi AND logic thành OR logic"),
+    (r">=", ">", "siết phép so sánh lớn-hơn-hoặc-bằng"),
+    # `return <biểu thức>;` → `return 0;`. Bỏ qua `return;` và `return 0;` (không đổi gì).
+    (r"\breturn\s+(?!0\s*;)[^;{}]+;", "return 0;", "đổi giá trị trả về thành 0"),
+    # Một câu lệnh gọi hàm đứng RIÊNG một dòng — xoá nó đi. Đây là phép bắt được chuyện
+    # "gọi hàm phụ mà không ai kiểm nó có được gọi hay không": bộ kiểm chỉ xem giá trị trả
+    # về thì xoá cả lời gọi `WDT_Reset();` nó vẫn xanh.
+    (r"(?m)^([ \t]*)[A-Za-z_]\w*\s*\([^;{}]*\)\s*;[ \t]*$", r"\1;", "xoá một lời gọi hàm"),
 )
 
 # M3-13 — phép đột biến cho VERILOG. Bảng kiểu C không dùng được: `==` còn khớp, nhưng
@@ -88,16 +107,24 @@ def dot_bien_van_ban(ma: str, phep: int = 0,
     được đổi một ly. Truyền `PHEP_VERILOG` để đo testbench HDL.
     """
     mau, thay, mo_ta = bang[phep % len(bang)]
+    than, giu = _che(ma)
+    moi, n = re.subn(mau, thay, than)
+    return _bo_che(moi, giu), mo_ta, n
+
+
+def _che(ma: str) -> tuple[str, list[str]]:
+    """Thay chuỗi, chú thích, dòng `#include` bằng chỗ giữ — xem `_ma_cho` cho lý do chữ hoa."""
     giu: list[str] = []
 
     def _cat(m: re.Match[str]) -> str:
         giu.append(m.group(0))
         return f"\x00{_ma_cho(len(giu) - 1)}\x00"
 
-    than = _BO_QUA.sub(_cat, ma)
-    moi, n = re.subn(mau, thay, than)
-    moi = re.sub(r"\x00([A-Z]+)\x00", lambda m: giu[_so_cho(m.group(1))], moi)
-    return moi, mo_ta, n
+    return _BO_QUA.sub(_cat, ma), giu
+
+
+def _bo_che(than: str, giu: list[str]) -> str:
+    return re.sub(r"\x00([A-Z]+)\x00", lambda m: giu[_so_cho(m.group(1))], than)
 
 
 # M4-05 — mã chỗ giữ viết bằng CHỮ HOA, không bằng chữ số.
@@ -130,10 +157,177 @@ def _so_cho(s: str) -> int:
     return n - 1
 
 
+
+# ============================= M4-04: đột biến TỪNG VỊ TRÍ, và một con số thay cho một câu
+#
+# `dot_bien_van_ban` dùng `re.subn`, nên nó đổi **mọi** chỗ khớp cùng lúc: "đảo mọi phép `==`
+# trong tệp" là một đột biến duy nhất. Một bộ kiểm canh được **một** trong mười chỗ ấy là đủ
+# để cả tệp thành `thay` — "bộ kiểm BẮT ĐƯỢC" — và chín chỗ kia không ai hỏi tới.
+#
+# `liet_ke_dot_bien` + `ap_mot` tách chuyện ấy ra: mỗi vị trí là một đột biến riêng, có số
+# dòng, có chữ trước và chữ sau. Từ đó mới dựng được một con số (điểm đột biến) và — quan
+# trọng hơn con số — một **danh sách những dòng bộ kiểm không canh**.
+
+
+@dataclass(frozen=True, slots=True)
+class DotBien:
+    """Một đột biến ở MỘT vị trí. `thu_tu` là chỗ thứ mấy mà phép `phep` khớp được."""
+
+    phep: int
+    thu_tu: int
+    mo_ta: str
+    dong: int
+    truoc: str
+    sau: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"phep": self.mo_ta, "dong": self.dong,
+                "truoc": self.truoc, "sau": self.sau}
+
+
+def _khac_o_dau(a: str, b: str) -> tuple[int, str, str]:
+    """Đoạn đầu tiên khác nhau giữa hai bản, theo toạ độ của `a`.
+
+    Đi từ hai đầu vào giữa, nên nó trả đúng đoạn đã đổi chứ không trả cả phần đuôi. Dùng toạ
+    độ của **mã gốc**, vì số dòng phải là số dòng người mở tệp ra sẽ thấy — không phải số
+    dòng của bản đã che chuỗi và chú thích.
+    """
+    i = 0
+    while i < len(a) and i < len(b) and a[i] == b[i]:
+        i += 1
+    j, k = len(a), len(b)
+    while j > i and k > i and a[j - 1] == b[k - 1]:
+        j -= 1
+        k -= 1
+    return i, a[i:j], b[i:k]
+
+
+def _che_co_moc(ma: str) -> tuple[str, list[str], list[tuple[int, int, int, int, bool]]]:
+    """Như `_che`, nhưng ghi lại BẢN ĐỒ đoạn: `(than_dau, than_cuoi, ma_dau, ma_cuoi, la_giu)`.
+
+    Cần bản đồ vì toạ độ trong bản đã che KHÔNG trùng toạ độ trong mã gốc: một chú thích
+    `/* … */` dài ba dòng co lại thành một chỗ giữ không có dòng mới nào. Thiếu bản đồ thì số
+    dòng báo ra lệch đúng ở những tệp có nhiều chú thích — tức là mọi tệp thật.
+    """
+    giu: list[str] = []
+    doan: list[tuple[int, int, int, int, bool]] = []
+    phan: list[str] = []
+    vi_ma = vi_than = 0
+    for m in _BO_QUA.finditer(ma):
+        if m.start() > vi_ma:
+            chu = ma[vi_ma:m.start()]
+            phan.append(chu)
+            doan.append((vi_than, vi_than + len(chu), vi_ma, m.start(), False))
+            vi_than += len(chu)
+        giu.append(m.group(0))
+        the = f"\x00{_ma_cho(len(giu) - 1)}\x00"
+        phan.append(the)
+        doan.append((vi_than, vi_than + len(the), m.start(), m.end(), True))
+        vi_than += len(the)
+        vi_ma = m.end()
+    if vi_ma < len(ma):
+        chu = ma[vi_ma:]
+        phan.append(chu)
+        doan.append((vi_than, vi_than + len(chu), vi_ma, len(ma), False))
+    return "".join(phan), giu, doan
+
+
+def _ve_ma_goc(doan: list[tuple[int, int, int, int, bool]], vi: int, *, cuoi: bool) -> int:
+    """Toạ độ trong bản đã che → toạ độ trong mã gốc. `cuoi`: lấy mép phải của chỗ giữ."""
+    import bisect
+
+    k = bisect.bisect_right([d[0] for d in doan], vi) - 1
+    if k < 0:
+        return 0
+    t_dau, t_cuoi, m_dau, m_cuoi, la_giu = doan[k]
+    if la_giu:
+        return m_cuoi if cuoi else m_dau
+    return min(m_dau + (vi - t_dau), m_cuoi)
+
+
+def _dong_thu(chu: str, n: int) -> str:
+    """Dòng thứ `n` (1-based), đã cắt khoảng trắng hai đầu và giới hạn 120 ký tự."""
+    ds = chu.splitlines()
+    return ds[n - 1].strip()[:120] if 0 < n <= len(ds) else ""
+
+
+def liet_ke_dot_bien(ma: str, bang: tuple[tuple[str, Any, str], ...] = _PHEP,
+                    *, toi_da: int | None = None, seed: int = 0) -> list[DotBien]:
+    """Mọi đột biến áp được lên `ma`, mỗi vị trí một mục. `toi_da` thì lấy mẫu tất định.
+
+    Bỏ qua mục không đổi gì: một đột biến không đổi hành vi mà bộ kiểm "không bắt được" là
+    một cáo buộc sai — cùng lý do `_BO_QUA` tồn tại.
+
+    **Không dựng cả tệp cho mỗi chỗ khớp.** Bản đầu của hàm này làm thế, và đo được ngày
+    09/10/2026 trên một tệp thật: `du-lieu/rtos-sinhvien/firmware/logo_ptit.c` là 720 KB
+    bitmap với **57 600** chỗ khớp phép hằng hex. Dựng một bản 720 KB rồi chạy một lượt regex
+    bỏ che cho **từng** chỗ là khoảng 41 GB việc chuỗi — phép đo treo, không đổ, nên nó trông
+    như một lượt chạy lâu chứ không như một lỗi.
+
+    Nay chỗ khớp được liệt kê **rẻ** (chỉ vị trí), lấy mẫu TRƯỚC, rồi mới dựng phần chi tiết
+    cho những mục còn lại — và số dòng tra qua bản đồ đoạn chứ không qua một phép so hai bản.
+    """
+    import bisect
+    import random
+
+    than, giu, doan = _che_co_moc(ma)
+    # Bước 1 — chỉ VỊ TRÍ. Không dựng chuỗi nào ở đây.
+    cho: list[tuple[int, int, re.Match[str]]] = []
+    for i, (mau, _thay, _mo_ta) in enumerate(bang):
+        for k, m in enumerate(re.finditer(mau, than)):
+            cho.append((i, k, m))
+    if toi_da is not None and len(cho) > toi_da:
+        # Tất định nhờ `seed`, không nhờ một bước sắp xếp trước. Bản đầu của tôi sắp xếp cả
+        # trước và sau khi lấy mẫu; phép phá cho thấy bước TRƯỚC không đổi gì đo được, nên nó
+        # là một dòng không ca kiểm nào canh — bỏ đi (bài học M4-19). Bước SAU thì giữ: nó
+        # làm thứ tự danh sách trả về theo vị trí trong tệp, tức theo thứ tự người đọc.
+        cho = sorted(random.Random(seed).sample(cho, toi_da),
+                     key=lambda x: (x[2].start(), x[0], x[1]))
+
+    dong_moi = [j for j, c in enumerate(ma) if c == "\n"]
+    dong_cua_ma = ma.splitlines()
+    ra: list[DotBien] = []
+    for i, k, m in cho:
+        mau, thay, mo_ta = bang[i]
+        rep = m.expand(thay) if isinstance(thay, str) else thay(m)
+        o1 = _ve_ma_goc(doan, m.start(), cuoi=False)
+        o2 = _ve_ma_goc(doan, m.end(), cuoi=True)
+        truoc_frag, sau_frag = ma[o1:o2], _bo_che(rep, giu)
+        if truoc_frag == sau_frag:
+            continue
+        dong = bisect.bisect_right(dong_moi, o1) + 1
+        # `truoc`/`sau` là CẢ DÒNG, không phải đoạn khác nhau nhỏ nhất: đoạn nhỏ nhất của
+        # `x==y` → `x!=y` là đúng một ký tự. Đúng về dữ liệu và vô dụng trên một bản báo cáo.
+        cu_dong = dong_cua_ma[dong - 1] if 0 < dong <= len(dong_cua_ma) else ""
+        ra.append(DotBien(phep=i, thu_tu=k, mo_ta=mo_ta, dong=dong,
+                          truoc=cu_dong.strip()[:120],
+                          sau=cu_dong.replace(truoc_frag, sau_frag, 1).strip()[:120]
+                          if truoc_frag in cu_dong else sau_frag.strip()[:120]))
+    return ra
+
+
+def ap_mot(ma: str, db: DotBien,
+           bang: tuple[tuple[str, Any, str], ...] = _PHEP) -> str:
+    """Áp ĐÚNG MỘT đột biến. Dựng lại từ `(phep, thu_tu)` chứ không giữ sẵn cả bản đã phá.
+
+    Giữ sẵn thì một tệp 50 KB với 30 đột biến là 1,5 MB nằm trong bộ nhớ cho một thứ tính lại
+    được trong một phần nghìn giây.
+    """
+    mau, thay, _ = bang[db.phep % len(bang)]
+    than, giu = _che(ma)
+    for k, m in enumerate(re.finditer(mau, than)):
+        if k != db.thu_tu:
+            continue
+        rep = m.expand(thay) if isinstance(thay, str) else thay(m)
+        return _bo_che(than[:m.start()] + rep + than[m.end():], giu)
+    return ma
+
 def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]],
                toi_da_phep: int = 3,
                bang: tuple[tuple[str, Any, str], ...] = _PHEP,
-               thu_muc_tam: Path | None = None) -> dict[str, Any]:
+               thu_muc_tam: Path | None = None,
+               muc: str = "tep", toi_da_moi_tep: int = 30,
+               seed: int = 0) -> dict[str, Any]:
     """Với từng tệp nguồn: nạp nó vào bộ kiểm, phá nó, xem có ca nào đỏ không.
 
     `chay(p)` do tầng trên đưa vào: `chay(None)` chạy bộ kiểm như tác tử vẫn chạy nó;
@@ -153,6 +347,17 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
     * `chua_do_duoc` — không có chỗ nào để phá, hoặc không đọc được tệp. Cái này mới thật
       sự là "chưa biết", và gộp nó vào "không thấy" là một cáo buộc sai.
 
+    **M4-04 — `muc="chi_tiet"`: một con số và một DANH SÁCH DÒNG, thay cho một câu nhị phân.**
+
+    Chế độ `"tep"` (mặc định, không đổi một ly) trả lời *"bộ kiểm có thấy tệp này không"*. Đủ
+    để lật tẩy một ô xanh giả, không đủ để làm gì tiếp: một tệp 400 dòng mà bộ kiểm chỉ canh
+    một hằng số vẫn ra `thay`, y như một tệp được canh từng dòng — vì `re.subn` đổi mọi chỗ
+    khớp cùng lúc, nên "đảo mọi phép `==`" là MỘT đột biến.
+
+    Chế độ `"chi_tiet"` áp từng vị trí một và trả thêm: `diem` = bắt / (đã thử − stillborn),
+    `so_mutant`, `so_bat`, `so_stillborn`, và `song` — danh sách dòng bộ kiểm **không** canh.
+    Danh sách ấy đáng hơn con số: một điểm 0,62 không nói đi sửa chỗ nào.
+
     **M4-19 — `thu_muc_tam`: đột biến trên BẢN SAO, tệp gốc chỉ được ĐỌC.**
 
     Không có nó thì hàm này ghi mã đã phá vào **chính tệp của dự án**, rồi trả lại trong
@@ -166,6 +371,8 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
     gì", và mọi tệp RTL bị kết luận là **bộ kiểm không canh tới**. Một cáo buộc sai với từng
     tệp, và lượt đo vẫn xanh trơn. Đường cũ (không `thu_muc_tam`) giữ nguyên cho nó.
     """
+    if muc not in ("tep", "chi_tiet"):
+        raise ValueError(f"muc phải là 'tep' hoặc 'chi_tiet', không phải {muc!r}")
     ra: dict[str, Any] = {"tep": [], "so_thay": 0, "so_khong_thay": 0,
                           "so_khong_nap": 0, "so_chua_do": 0,
                           # M4-05 — số mutant bị BỎ vì không dịch được (stillborn). Luôn có
@@ -173,6 +380,8 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
                           # buộc bên đọc phải `.get(...)` kèm một mặc định, và mặc định ấy sớm
                           # muộn sai ở một chỗ nào đó.
                           "so_mutant_khong_hop_le": 0}
+    if muc == "chi_tiet":
+        ra.update({"so_mutant": 0, "so_bat": 0, "so_stillborn": 0, "song": []})
     dat_goc, log_goc = chay(None)
     ra["bo_kiem_xanh_luc_dau"] = dat_goc
     if not dat_goc:
@@ -206,7 +415,10 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
             lam_viec = rieng / p.name
             lam_viec.write_text(goc, "utf-8")
         try:
-            _do_mot_tep(ra, p, lam_viec, goc, chay, toi_da_phep, bang)
+            if muc == "chi_tiet":
+                _do_chi_tiet(ra, p, lam_viec, goc, chay, bang, toi_da_moi_tep, seed)
+            else:
+                _do_mot_tep(ra, p, lam_viec, goc, chay, toi_da_phep, bang)
         finally:
             if thu_muc_tam is not None:
                 shutil.rmtree(lam_viec.parent, ignore_errors=True)
@@ -214,7 +426,75 @@ def do_do_nhay(nguon: list[Path], chay: Callable[[Path | None], tuple[bool, str]
     # là rác của phép đo nằm trong dự án của người dùng — nhỏ, nhưng nó tích lại mỗi `run_id`.
     if thu_muc_tam is not None:
         shutil.rmtree(thu_muc_tam, ignore_errors=True)
+    if muc == "chi_tiet":
+        # Mẫu số BỎ stillborn: để chúng trong đó là kéo điểm xuống vì một lý do không nói gì
+        # về bộ kiểm — đúng cái lỗi M4-05 vừa sửa ở chế độ theo tệp, lần này hiện ra thành
+        # một con số. Và không có mutant nào thì điểm là `None`, không phải `0.0`: `0.0` đọc
+        # thành "bộ kiểm không bắt được gì", một cáo buộc; cái đúng là "chưa biết".
+        mau_so = ra["so_mutant"] - ra["so_stillborn"]
+        ra["diem"] = (ra["so_bat"] / mau_so) if mau_so > 0 else None
+        ra["song"] = ra["song"][:20]
     return ra
+
+
+def _do_chi_tiet(ra: dict[str, Any], p: Path, lam_viec: Path, goc: str,
+                 chay: Callable[[Path | None], tuple[bool, str]],
+                 bang: tuple[tuple[str, Any, str], ...], toi_da: int, seed: int) -> None:
+    """Áp từng đột biến MỘT, và ghi lại những chỗ bộ kiểm không canh."""
+    nap_duoc, log_nap = chay(lam_viec)
+    if _khong_dich_duoc(log_nap):
+        ra["tep"].append({"tep": p.name, "trang_thai": "khong_nap_duoc",
+                          "vi_sao": _vi_sao_khong_nap(log_nap), "log": log_nap[-500:]})
+        ra["so_khong_nap"] += 1
+        return
+    if not nap_duoc:
+        ra["tep"].append({
+            "tep": p.name, "trang_thai": "chua_do_duoc",
+            "vi_sao": ("nạp mã thật vào thì bộ kiểm ĐỎ ngay khi chưa phá gì — bộ kiểm và sản "
+                       "phẩm đang bất đồng, xử chỗ đó trước rồi đo lại"),
+            "log": log_nap[-500:]})
+        ra["so_chua_do"] += 1
+        return
+
+    ds = liet_ke_dot_bien(goc, bang=bang, toi_da=toi_da, seed=seed)
+    if not ds:
+        ra["tep"].append({"tep": p.name, "trang_thai": "chua_do_duoc",
+                          "vi_sao": "không có chỗ nào để đột biến"})
+        ra["so_chua_do"] += 1
+        return
+    ds.sort(key=lambda x: (x.dong, x.phep, x.thu_tu))
+    bat = sb = 0
+    for db in ds:
+        try:
+            lam_viec.write_text(ap_mot(goc, db, bang=bang), "utf-8")
+            dat, log = chay(lam_viec)
+        finally:
+            lam_viec.write_text(goc, "utf-8")
+        ra["so_mutant"] += 1
+        if not dat and _la_loi_bien_dich(log):
+            sb += 1
+            ra["so_stillborn"] += 1
+            ra["so_mutant_khong_hop_le"] += 1
+        elif not dat:
+            bat += 1
+            ra["so_bat"] += 1
+        else:
+            ra["song"].append({"tep": p.name, **db.to_dict()})
+
+    da_thu = len(ds) - sb
+    ra["tep"].append({
+        "tep": p.name,
+        "trang_thai": ("thay" if bat else ("chua_do_duoc" if da_thu == 0 else "khong_thay")),
+        "vi_sao": (f"bắt {bat}/{da_thu} đột biến" if da_thu
+                   else f"mọi đột biến đều làm hỏng biên dịch ({sb} phép)"),
+        "diem": (bat / da_thu) if da_thu else None,
+        "so_mutant": len(ds), "so_stillborn": sb})
+    if bat:
+        ra["so_thay"] += 1
+    elif da_thu == 0:
+        ra["so_chua_do"] += 1
+    else:
+        ra["so_khong_thay"] += 1
 
 
 def _do_mot_tep(ra: dict[str, Any], p: Path, lam_viec: Path, goc: str,

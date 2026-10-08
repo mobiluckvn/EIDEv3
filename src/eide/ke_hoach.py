@@ -328,7 +328,14 @@ def cong_cu_bi_khoa(spec: Any) -> bool:
 # Những công cụ KHÔNG bị khoá dù mang dấu ghi: chính bộ công cụ của plan mode, và việc ghi
 # bộ nhớ dài hạn. Khoá `memory.note` trong lúc soạn kế hoạch nghĩa là cấm tác tử ghi lại
 # đúng thứ nó vừa học được để soạn kế hoạch ấy.
-KHONG_KHOA = ("plan.enter", "plan.exit", "plan.cancel", "plan.step_done", "memory.note")
+#
+# M4-04 — `test.sensitivity` vào danh sách này vì **cùng một lý do**. Từ M4-04 nó ghi hiện
+# vật (một phép đo không vào kho thì bằng chưa đo), nên luật chung khoá nó lại. Nhưng nó là
+# một phép ĐO, không phải một thay đổi thiết kế: khoá nó trong lúc soạn kế hoạch là cấm tác
+# tử biết bộ kiểm hiện tại canh được những gì — đúng thứ nó cần để soạn một kế hoạch sửa.
+# Và một phép đo tự vạch mặt mình thì phải rẻ tới mức gọi được ngay, không phải xin duyệt.
+KHONG_KHOA = ("plan.enter", "plan.exit", "plan.cancel", "plan.step_done", "memory.note",
+              "test.sensitivity")
 
 
 def doi_chieu(kh: KeHoach, da_goi: list[str]) -> dict[str, Any]:

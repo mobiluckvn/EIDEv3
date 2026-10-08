@@ -8631,3 +8631,121 @@ thay vì im lặng bỏ qua, nên nó không lẫn vào đâu được. Bù năm
 
 Bộ kiểm 1835 → **1846 xanh, 0 đỏ** (+11 ca). `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. **Phá lại
 thì đỏ: 13/13.** Không công cụ mới, không cờ mới: **130 công cụ**, **8 cờ**.
+
+---
+
+## [DEV-350] [M4-04] Điểm đột biến — và phép đo mới treo 10 phút trên tệp thật đầu tiên
+
+Nhiệm vụ #21. **Công cụ mới** (tham số `muc` cho `test.sensitivity`, mặc định giữ hành vi cũ),
+không cờ. Tiền đề M4-05 và M4-19 đã xong — và đó là lý do nhiệm vụ này làm được: con số chỉ
+đáng tin khi mutant hỏng biên dịch không được tính (M4-05) và phép đo không ghi vào tệp người
+dùng (M4-19).
+
+### Chỗ hổng: `re.subn` gộp mọi chỗ khớp thành MỘT đột biến
+
+Chế độ cũ trả đúng một câu cho mỗi tệp: *"bộ kiểm có thấy tệp này không?"* — đủ để lật tẩy một
+ô xanh giả, không đủ để làm gì tiếp. Một tệp 400 dòng mà bộ kiểm chỉ canh **một** hằng số vẫn
+ra `thay` ("bộ kiểm BẮT ĐƯỢC"), y như một tệp được canh từng dòng. Vì `dot_bien_van_ban` dùng
+`re.subn`, "đảo mọi phép `==` trong tệp" là một đột biến duy nhất, và canh được một trong mười
+chỗ là đủ.
+
+Nay `liet_ke_dot_bien` + `ap_mot` tách từng vị trí, và `muc="chi_tiet"` trả `diem`,
+`so_mutant`, `so_bat`, `so_stillborn`, kèm `song` — **danh sách dòng bộ kiểm không canh**.
+Danh sách đáng hơn con số: một điểm 0,62 không nói đi sửa chỗ nào.
+
+Năm phép thêm, đặt ở **cuối** bảng (bốn phép cũ được gọi theo chỉ số ở nhiều ca kiểm, và chế
+độ theo tệp chỉ dùng `toi_da_phep=3` phép đầu — nên thêm vào cuối thì cả hai chuyện ấy không
+đổi một ly): hằng hex → `0x0` · `&&` → `||` · `>=` → `>` · `return <biểu thức>;` →
+`return 0;` · xoá một lời gọi hàm đứng riêng.
+
+### Tiêu chí xong của kế hoạch: tái hiện ca DANH-GIA §2.2, và nó ĐẠT
+
+Hôm ấy Agent **tự khai** *"2 trong 4 ca bộ kiểm không bắt được"* kèm dự đoán *"nạp lên bo thật
+sẽ nổ HardFault ngay chu kỳ đầu"*; người kiểm lại bằng tay — đổi `0xFFFFFFFD` thành `0`, dịch
+lại, cả 4 ca vẫn xanh. Rồi bo nổ đúng `IBUSERR` ở đúng chỗ ấy.
+
+Đo lại bằng máy trên hiện vật thật (`du-lieu/rtos-sinhvien/firmware/control_rtos.c`):
+
+| câu hỏi | trả lời đo được |
+|---|---|
+| bảng phép **cũ** có đột biến nào cho hằng hex? | **0** — `(?<![\w.])(\d{2,})(?![\w.])` bị chặn bởi chữ `x`, nên phép đo cũ *về mặt cấu trúc* không thể thấy chỗ này |
+| bảng **mới** có, ở dòng nào? | dòng **147**: `*(--sp) = 0xFFFFFFFDU;` → `0x0U` |
+| áp vào rồi chạy bộ kiểm thật? | **XANH** — mutant **SỐNG** |
+
+Điểm mù mà hôm ấy chỉ tồn tại vì Agent tự khai và một người ngồi sửa tay, nay **đo được bằng
+máy**. Thành một ca kiểm thường trực, chạy trên chính hiện vật ấy.
+
+### Phép đo mới TREO 10 phút trên tệp thật đầu tiên
+
+Lượt chạy `muc="chi_tiet"` đầu tiên trên `du-lieu/rtos-sinhvien` không xong trong 10 phút và
+bị tôi giết. Không đổ, không báo gì — nó trông như một lượt chạy lâu.
+
+Đo ra nguyên nhân:
+
+```
+logo_ptit.c: 720 311 ký tự, 7 209 dòng
+  phép 4 (đổi hằng hex thành 0x0): 57 600 chỗ khớp
+```
+
+`liet_ke_dot_bien` bản đầu dựng **cả tệp** cho **mỗi** chỗ khớp — một bản 720 KB cộng một lượt
+regex bỏ che, 57 600 lần: khoảng **41 GB** việc chuỗi. Và một lượt `chay_test` của dự án ấy chỉ
+mất **0,6 s**, nên chi phí không nằm ở biên dịch mà nằm ở chính phần liệt kê.
+
+Nay chỗ khớp được liệt kê **rẻ** (chỉ vị trí), lấy mẫu **trước**, rồi mới dựng chi tiết cho
+những mục còn lại; số dòng tra qua một **bản đồ đoạn** chứ không qua phép so hai bản — cần bản
+đồ vì một chú thích `/* … */` ba dòng co lại thành một chỗ giữ không có dòng mới nào, nên toạ
+độ bản đã che không trùng toạ độ mã gốc. Đo lại: **0,04 s** cho tệp 150 KB, so với **≈ 21 s**
+của bản chậm.
+
+Ca kiểm chi phí của tôi cũng phải sửa một lần: bản đầu dùng hằng hex **trần**, và nó KHÔNG bắt
+được bản chậm — `_bo_che` trả về ngay khi không có chỗ giữ nào. Chính các **chú thích mỗi dòng**
+mới làm mỗi lượt bỏ che thành một lượt regex thật, và đó đúng là hình dạng của tệp thật.
+
+### Chạy chi_tiet trên 12 tệp thật: 110 s, và một con số đúng mà vô dụng
+
+```
+muc=chi_tiet · 110 s · điểm=0,0 · mutant=180 bắt=0 stillborn=0
+  font12/16/20/24/8.c, logo_ptit.c → mỗi tệp "bắt 0/30 đột biến"
+```
+
+Điểm 0,0 là **đúng**: đây là sáu tệp bitmap, không bộ kiểm nào đọc chúng. Nhưng nó cũng là một
+con số không dùng được, và nó chỉ ra chỗ thật: tệp duy nhất đáng đo của dự án ấy —
+`control_rtos.c` — là `khong_nap_duoc`, vì tệp test `#include` chính tệp `.c` đó nên nạp nó
+thành đơn vị dịch thứ hai là trùng ký hiệu. **Phép đo DANH-GIA §2.2 ở trên phải đi đường
+riêng, không qua công cụ.** Đây là lần thứ ba việc còn mở *"`chay(None)` chỉ dịch tệp test"*
+chặn đúng chỗ cần đo (M4-01, M4-19, nay M4-04).
+
+Một chỗ tiến bộ đáng ghi: `font8.c` ở chế độ tệp là `chua_do_duoc` (*"không có chỗ nào để đột
+biến"*) — bảng cũ không chạm được nó. Chế độ chi tiết có **30** đột biến cho nó, nhờ phép hằng
+hex. Bảng mới thấy những tệp bảng cũ không chạm tới.
+
+### Hai luật của dự án bắt được chuyện tôi làm sai
+
+**N8 không có ngoại lệ.** Cho `test.sensitivity` ghi hiện vật (kế hoạch đòi) thì sổ công cụ đổ
+ngay: *"ghi hiện vật nhưng không đòi explain — trái N8"*. Tôi nhận luật: thêm `explain` vào
+lược đồ và sửa bốn lời gọi trong ca kiểm. Vẫn R1, vẫn không khoá — *"rẻ tới mức gọi được
+ngay"* là chuyện mức rủi ro và cửa duyệt, không phải chuyện một trường giải thích. Và một hiện
+vật mang lời giải thích do **chính công cụ** sinh ra thì đúng là "lời tự khai mặc áo phép đo"
+mà DEV-346 vừa đi chữa.
+
+**Plan mode khoá công cụ ghi, lấy từ hợp đồng chứ không từ danh sách tên.** Nên vừa khai
+`writes_artefact` là `test.sensitivity` bị khoá, và ca kiểm cũ đỏ đúng chỗ. Cách giải không
+phải nới luật chung mà là dùng cơ chế đã có: `KHONG_KHOA`, cùng lý do với `memory.note` —
+khoá một phép **đo** trong lúc soạn kế hoạch là cấm tác tử biết bộ kiểm hiện tại canh được
+những gì, đúng thứ nó cần để soạn một kế hoạch sửa. Kèm một ca canh chính chỗ miễn ấy, và canh
+rằng luật chung **không** bị nới cho mọi công cụ R1 khác.
+
+### Phép phá: 15/22, rồi 21/22, rồi 22/22
+
+Bảy chỗ LỌT ở lượt đầu. Năm cần ca kiểm mới: phép `return` · bỏ mục đột biến không đổi gì ·
+`muc` lạ phải ném lỗi · công cụ truyền `muc` xuống · công cụ ghi hiện vật. Một chỗ là **bước
+sắp xếp trước khi lấy mẫu** — nó không đổi gì đo được (tính tất định đến từ `seed`), nên tôi
+**bỏ dòng** thay vì dựng một ca contrived, đúng bài học M4-19. Chỗ cuối là bước sắp xếp **sau**
+khi lấy mẫu: nó có đổi thứ đo được (danh sách theo thứ tự trong tệp, để người đọc không phải
+nhảy ngược xuôi), nên thêm một phép kiểm thứ tự.
+
+### Số đo
+
+Bộ kiểm 1846 → **1862 xanh, 0 đỏ** (+16 ca). `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. **Phá lại
+thì đỏ: 22/22.** Không công cụ mới, không cờ mới: **130 công cụ**, **8 cờ**. Hiện vật mới:
+`sim_result:test-sensitivity`.
