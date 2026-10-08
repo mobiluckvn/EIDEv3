@@ -149,12 +149,16 @@ class _So:
 
 
 class _Ctx:
-    def __init__(self, noi, cong_cu=(), da_ghi=True, chua_kiem=False, so=None):
+    def __init__(self, noi, cong_cu=(), da_ghi=True, chua_kiem=False, so=None,
+                 da_goi_verifier=False):
         self.said_anything = bool(noi)
         self.loi_da_noi = list(noi)
         self.cong_cu_da_goi = list(cong_cu)
         self.da_ghi_gi_do = da_ghi
         self.da_tu_kiem = False
+        # M4-09 — lượt này đã gọi verifier THẬT chưa. Tên công cụ không trả lời được câu ấy:
+        # `task.run` còn chạy năm loại tác tử con khác.
+        self.da_goi_verifier = da_goi_verifier
         self.store = None
         self.registry = None
         # `chua_kiem=True` ⇒ dựng một sổ cái có lời gọi GHI mà chưa có verifier sau nó.
@@ -179,7 +183,38 @@ def test_luot_THUAN_DOC_thi_KHONG_bat_kiem_chung():
 
 
 def test_da_goi_verifier_roi_thi_thoi():
-    r = _hook_tu_kiem().stop(_Ctx(["đã xong"], cong_cu=["fs.write", "task.run"]))
+    """M4-09 — ca này trước đây dựng `cong_cu=["fs.write","task.run"]` với sổ cái RỖNG, và
+    nó khoá đúng **hành vi sai**: hook im chỉ vì thấy TÊN `task.run` trong lượt.
+
+    Điều kiện đúng là *verifier đã chạy*, và nó đọc được ở hai chỗ, không ở tên công cụ: sổ
+    cái (`task.run` có `subagent="verifier"` sau lần ghi cuối) — ca này — hoặc cờ của lượt
+    (`ctx.da_goi_verifier`) — ca `test_verifier_that_thi_hook_im`.
+    """
+    r = _hook_tu_kiem().stop(_Ctx(
+        ["đã xong"], cong_cu=["fs.write", "task.run"], da_ghi=False,
+        so=_So([("fs.write", {}), ("task.run", {"subagent": "verifier"})])))
+    assert r.another_round is False
+
+
+def test_task_run_subagent_KHAC_khong_tat_hook():
+    """TC-M4-09-01 — đường đi vòng hàng rào N6, đo được trong mã: hook chỉ hỏi *"tên
+    `task.run` có trong lượt không"*, nên một lời gọi `task.run(subagent="firmware")` —
+    hoặc bất cứ loại nào trong năm loại còn lại — tắt luôn yêu cầu kiểm chứng.
+
+    Tức tác tử tự giao việc cho một tác tử con **không phải người kiểm**, rồi tuyên xong.
+    `loop.py` và `kiem_chung.py` đều đã đọc `args.subagent`; riêng hook này thì không.
+    """
+    r = _hook_tu_kiem().stop(_Ctx(["đã xong"], cong_cu=["fs.write", "task.run"],
+                                  chua_kiem=True))
+    assert r.another_round is True, "task.run với subagent KHÁC vẫn tắt được hook"
+    assert "kiem_viec_chua_ai_kiem" in r.fired
+
+
+def test_verifier_that_thi_hook_im():
+    """TC-M4-09-03 — ca âm. Cờ của lượt BẬT thì hook phải im, không thì vòng thứ hai lại
+    đòi kiểm chứng ngay sau khi verifier vừa chạy xong."""
+    r = _hook_tu_kiem().stop(_Ctx(["đã xong"], cong_cu=["fs.write", "task.run"],
+                                  chua_kiem=True, da_goi_verifier=True))
     assert r.another_round is False
     assert "tu_kiem_da_chay" in r.fired
 
@@ -241,6 +276,87 @@ def test_LOI_bat_tat_co_khi_verifier_chay(make_agent):
     agent.turn(HumanAct.from_dict({"kind": "say", "text": "tạo giúp a.c",
                                    "origin": {"surface": "console"}}), lambda c: None)
     assert agent.ghi_chua_kiem is True, "ghi xong mà cờ không bật"
+
+
+def test_ctx_KHONG_co_truong_thi_coi_nhu_CHUA_kiem():
+    """Mặc định của `getattr` phải là `False`, và hướng ấy là hướng an toàn.
+
+    Phá lại thì đỏ chỉ ra chỗ này: đổi mặc định thành `True` thì mọi `ctx` không mang trường
+    — ngữ cảnh do một đường khác dựng, một bản cũ khôi phục lại, một đối tượng giả — đều làm
+    hook im. Một hàng rào mà im khi KHÔNG BIẾT thì nó không phải hàng rào.
+    """
+    ctx = _Ctx(["đã xong"], cong_cu=["fs.write", "task.run"], chua_kiem=True)
+    del ctx.da_goi_verifier
+    assert not hasattr(ctx, "da_goi_verifier")
+    assert _hook_tu_kiem().stop(ctx).another_round is True
+
+
+def _luot_co_task_run(agent, subagent: str, bao_cao: str):
+    """Chạy MỘT lượt thật — `fs.write` → `task.run(subagent=…)` → nói một câu — và trả về
+    `ctx` của chính lượt ấy, bắt từ bus hook Stop.
+
+    Bắt `ctx` thay vì đọc một cờ trên `agent`: thứ hook đọc là `ctx`, nên phép đo phải nhìn
+    đúng vật mà hook nhìn.
+    """
+    from eide.hooks.base import StopResult
+    from eide.llm import Response, ToolCall
+    from eide.protocol.humanact import HumanAct
+
+    ex = {"summary": "s", "why": "w", "sources": [], "diff_prev": "mới", "next": "—",
+          "confidence": "CAU_HINH"}
+    agent.llm.script = [
+        Response(tool_calls=[ToolCall("c1", "fs.write",
+                                      {"path": "a.c", "content": "int x;", "explain": ex})]),
+        Response(tool_calls=[ToolCall("c2", "task.run",
+                                      {"subagent": subagent, "viec": "xem a.c dịch được chưa",
+                                       "explain": ex})]),
+        Response(text=bao_cao),                        # tác tử con trả lời
+        Response(text="Tôi đã ghi a.c và giao việc cho " + subagent + "."),
+        Response(text="Nói thêm cho đủ vòng."),
+        Response(text="Nói thêm cho đủ vòng."),
+    ]
+    agent.llm._i = 0
+    bat: list = []
+
+    @agent.hooks.on_stop
+    def _bat_ctx(ctx):
+        bat.append(ctx)
+        return StopResult()
+
+    agent.turn(HumanAct.from_dict({"kind": "say", "text": "xem giúp a.c",
+                                   "origin": {"surface": "console"}}), lambda c: None)
+    assert bat, "hook Stop không chạy lần nào"
+    return bat[0]
+
+
+def test_LOI_task_run_firmware_khong_dat_co_da_goi_verifier(make_agent):
+    """TC-M4-09-02 — đường thật, không phải `ctx` giả: giao việc cho `firmware` rồi kết lượt.
+
+    `firmware` tuyên `khong_dat` nên đường tự động gọi verifier KHÔNG chạy (nó chỉ chạy khi
+    một tác tử con tuyên đạt). Tức cả lượt không có một lần kiểm chứng độc lập nào — và
+    `da_goi_verifier` phải nói đúng điều đó.
+    """
+    import json
+
+    bc = json.dumps({"tom_tat": "chưa dịch được", "da_lam": ["mở a.c"],
+                     "bang_chung": [{"kind": "file", "ref": "a.c"}], "chua_lam": ["dịch"],
+                     "ket_luan": "khong_dat", "do_tin": "BAC"}, ensure_ascii=False)
+    ctx = _luot_co_task_run(make_agent([]), "firmware", "Báo cáo:\n" + bc)
+    assert ctx.cong_cu_da_goi.count("task.run") == 1, ctx.cong_cu_da_goi
+    assert ctx.da_goi_verifier is False, "task.run với subagent KHÁC tính là đã kiểm chứng"
+
+
+def test_task_run_verifier_THAT_thi_co_bat(make_agent):
+    """Mặt còn lại của TC-M4-09-02: cờ chỉ BẬT khi `subagent` đúng là `verifier`. Thiếu nửa
+    này thì một cờ luôn-TẮT cũng qua được ca trên."""
+    import json
+
+    bc = json.dumps({"tom_tat": "đọc a.c, không thấy hiện vật dịch",
+                     "da_lam": ["mở a.c"], "bang_chung": [{"kind": "file", "ref": "a.c"}],
+                     "chua_lam": [], "ket_luan": "chua_du_du_kien", "do_tin": "BAC"},
+                    ensure_ascii=False)
+    ctx = _luot_co_task_run(make_agent([]), "verifier", "Báo cáo:\n" + bc)
+    assert ctx.da_goi_verifier is True, "verifier chạy thật mà cờ không bật"
 
 
 def test_verifier_da_chay_thi_viec_TRUOC_no_khong_tinh_la_chua_kiem():

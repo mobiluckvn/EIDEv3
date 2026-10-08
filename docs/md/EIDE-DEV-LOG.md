@@ -8954,3 +8954,74 @@ trả lời được *"bằng chứng này còn giá trị không"*. Chỗ thứ
 bị làm cho im lặng cũng xanh, mà im lặng và "không có gì để kiểm" khác hẳn nhau với người đọc.
 
 Sau khi thêm hai ca đọc riêng từng khối: **36/36**. Bộ kiểm 1 878 → **1 896 xanh**, 0 đỏ.
+
+## [DEV-353] [M4-09] Hook Stop đọc TÊN công cụ, nên `task.run(code-analyst)` tắt được hàng rào N6
+
+Nhiệm vụ #24. **Sửa lỗi thuần**, không cờ, không tiền đề.
+
+### Một phép kiểm tư cách thành viên đứng thay cho một phép đọc tham số
+
+`kiem_viec_chua_ai_kiem` đi ra sớm bằng
+`if "task.run" in (getattr(ctx, "cong_cu_da_goi", []) or [])`. Mà `cong_cu_da_goi` chỉ ghi
+**TÊN** (`loop.py` `_one_tool`: `ctx.cong_cu_da_goi.append(call.tool)`), còn `task.run` chạy
+**tám** loại tác tử con. Nên một lời gọi `task.run(subagent="code-analyst")` — hay `firmware`,
+`sim-runner`, `test-writer`… — tắt luôn yêu cầu kiểm chứng độc lập ở cuối lượt.
+
+Hai chỗ khác trên cùng đường đã làm đúng từ trước: `loop.py` đặt `ghi_chua_kiem = False` chỉ
+khi `(call.args or {}).get("subagent") == "verifier"`, và `kiem_chung.co_viec_chua_kiem` lùi sổ
+cái tới đúng cái mốc ấy. Chỉ hook này đọc tên.
+
+### Đường đi vòng này đã NỔ, và nó nổ ở một lượt có `fs.edit` vào hàm ngắt
+
+Hỏi "nó có đúng không" là hỏi sau; hỏi trước là "nó đã nổ lần nào chưa". Hook Stop ghi lại
+chính `checks` của nó vào sổ cái, nên đếm được trên **68 sổ cái** (26 sổ có `task.run`, 257 lời
+gọi — `verifier` 253, `code-analyst` 2, `firmware` 1, `sim-runner` 1):
+
+* **41 lượt** hook khai `tu_kiem_da_chay`, tức nó đã im;
+* **1 trong 41 lượt ấy không có một `task.run(subagent="verifier")` nào** —
+  `robot-sinhvien2` `run-007`;
+* và quét theo hình dạng (có `task.run` khác verifier + còn việc ghi chưa kiểm tới cuối lượt)
+  ra **2 lượt**: thêm `rtos-sinhvien` `run-026`, lượt có cả `target.flash`.
+
+`run-007` đọc rất rõ. Lời gọi `task.run(subagent="code-analyst")` nằm ở **đầu** lượt, trước khi
+tác tử ghi dòng nào. Sau nó mới là `fs.edit` vào `ISR(TIMER2_COMPA_vect)` của
+`firmware/timer.c`, rồi `build.compile`, rồi `fs.write sim/dump_isr.c`, rồi `sim.run`. Hook Stop
+cuối lượt: `['tu_kiem_da_chay']`, `another_round=False`. Lời gọi làm hook im xảy ra **trước** cái
+việc mà nó được coi là đã bảo đảm — một phép kiểm tư cách thành viên trên một danh sách tên thì
+không có thứ tự, và cũng không có tham số.
+
+### Sửa: một cờ của LƯỢT, đặt ở đúng chỗ đã đọc `subagent`
+
+`TurnContext.da_goi_verifier: bool = False`, đặt `True` ngay cạnh `self.ghi_chua_kiem = False`
+trong `_one_tool` — cùng một điều kiện, nên không có chỗ thứ tư để lệch. Hook đổi sang
+`getattr(ctx, "da_goi_verifier", False)`.
+
+Vì sao một cờ trong bộ nhớ là đúng **ở đây**, trong khi DEV-33x đã bỏ một cờ bộ nhớ cho đúng
+câu hỏi này: hai câu hỏi khác nhau. *"Còn việc chưa ai kiểm chưa"* là câu hỏi xuyên phiên — app
+khởi động lại giữa các bước — nên nó phải đọc sổ cái, và nó vẫn đọc sổ cái
+(`co_viec_chua_kiem`, không đổi). *"Verifier có chạy trong LƯỢT này không"* là câu hỏi trong
+phạm vi một lượt; `ctx` sinh ra và chết cùng lượt, nên nó là vật đúng để hỏi.
+
+Ca kiểm cũ `test_da_goi_verifier_roi_thi_thoi` dựng `cong_cu=["fs.write","task.run"]` với sổ cái
+RỖNG — nó **khoá đúng hành vi sai**. Theo §3.2: sửa ca cũ cho nó dựng một sổ cái có
+`task.run(subagent="verifier")` sau lần ghi, và ghi lý do vào đây.
+
+### Phá lại thì đỏ: 10/12 — hai chỗ LỌT không đổi hành vi
+
+Tập phá dựng từ `git diff`, đi theo chỗ tháo được: mỗi nhánh `if`, mỗi điều kiện ghép `and`,
+mỗi giá trị mặc định, mỗi chỗ đặt cờ. Lượt đầu **9/12**; chỗ LỌT thật là *mặc định của `getattr`
+đổi thành `True`* — ctx nào không mang trường thì hook im luôn. Thêm
+`test_ctx_KHONG_co_truong_thi_coi_nhu_CHUA_kiem` → **10/12**.
+
+Hai chỗ LỌT còn lại **không đổi hành vi**, và đã kiểm lại chính phép phá trước khi tin chữ LỌT
+(bài học M4-01/M4-02):
+
+* *bỏ `res.ok` khỏi điều kiện* — `_one_tool` đã `return self._tool_error(...)` khi
+  `not res.ok and res.error is not None`, và `grep` cho thấy **không có** `ToolResult(False)`
+  nào trong `src/eide` thiếu `error=`. Nên nhánh ấy không tới được: `res.ok` ở dòng đó là một
+  guard chết. Không viết ca kiểm contrived cho nó, và không bỏ nó đi vì nó là mã có sẵn, ngoài
+  phạm vi nhiệm vụ.
+* *so `subagent` lỏng thành `"verifier" in ten`* — trong tám tên của `SUBAGENT`, chỉ `verifier`
+  chứa chuỗi ấy, và tên lạ đã bị `task_run` chặn bằng `E5004` trước khi tới đây.
+
+Bộ kiểm 1 896 → **1 901 xanh**, 0 đỏ (5 ca mới). `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.

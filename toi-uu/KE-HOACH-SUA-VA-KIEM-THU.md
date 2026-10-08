@@ -156,7 +156,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 21 | [M4-04](#m4-04) | Đột biến chi tiết từng vị trí + điểm đột biến (mutation score) | P1 | M | M4-05, M4-19 | — | xong 09/10/2026 · DEV-350 · 1846→1862 ca · phá lại 22/22 (lượt đầu 15/22) · TÁI HIỆN được ca DANH-GIA §2.2 bằng máy (0xFFFFFFFD dòng 147 → mutant SỐNG) · phép đo mới TREO 10 phút trên tệp thật đầu tiên, đã sửa | ☑ |
 | 22 | [M4-06](#m4-06) | Vòng tự nâng test khi đột biến sống (Evaluator–Optimizer) | P0 | M | M4-04, M4-05 | TEST_HARDEN — TẮT | xong 09/10/2026 · DEV-351 · 1862→1878 ca · phá lại 22/22 (lượt đầu 18/22) · **một tiêu chí CHƯA đạt**: "mutation score tăng sau harden" cần lời gọi mô hình (§3.0 bắt hỏi trước), và dự án mẫu không có chỗ để đo | ☑ |
 | 23 | [M4-07](#m4-07) | Verifier nhận gói bằng chứng do EIDE dựng từ sổ cái, không nhận đề bài tác tử chính tự viết | P0 | M | — | VERIFIER_GOI_BANG_CHUNG | DEV-352 · một tiêu chí còn mở (cần M4-22) | ☑ |
-| 24 | [M4-09](#m4-09) | Stop hook không được coi `task.run` với subagent khác là "đã kiểm chứng" | P0 | S | — | — |  | ☐ |
+| 24 | [M4-09](#m4-09) | Stop hook không được coi `task.run` với subagent khác là "đã kiểm chứng" | P0 | S | — | — | DEV-353 | ☑ |
 | 25 | [M4-11](#m4-11) | Hồi quy tự động sau khi sửa mã + STALE chính xác theo tệp | P0 | M | M2-01 | HOI_QUY_NEN |  | ☐ |
 | 26 | [M2-09](#m2-09) | Phân tích tĩnh chiều sâu: call graph, ngăn xếp, luật ngữ cảnh ISR (`code.static`) | P1 | L | M2-08 | — | kéo lên từ GĐ3 vì là tiền đề của M4-13 | ☐ |
 | 27 | [M4-13](#m4-13) | Kiểm "nối" tĩnh sau biên dịch (vector table, hàm không ai gọi, return hằng) | P0 | M | M2-09 | KIEM_NOI |  | ☐ |
@@ -1838,9 +1838,10 @@ Sau khi thêm hai ca: **36/36**.
 - `.venv/bin/python -m pytest -q tests/test_tu_phat_hien_sai.py tests/test_loop.py tests/test_subagent.py tests/test_ke_hoach.py`
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC (khôi phục dòng 562 thì TC-01 đỏ).
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC (khôi phục dòng cũ thì TC-01 đỏ). Tập phá
+      dựng từ `git diff`: **10/12**; hai chỗ LỌT đã kiểm lại là **không đổi hành vi** (DEV-353).
+- [x] Toàn bộ `pytest -q` xanh: 1 896 → **1 901**, 0 đỏ.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md — DEV-353.
 
 **Hoàn tác:** revert commit.
 

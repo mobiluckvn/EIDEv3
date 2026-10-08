@@ -793,7 +793,14 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
             return StopResult()
         if not getattr(ctx, "said_anything", False):
             return StopResult()          # chưa trả lượt về thì chưa tới lúc
-        if "task.run" in (getattr(ctx, "cong_cu_da_goi", []) or []):
+        # VERIFIER đã chạy trong lượt này thì thôi — và đọc `args.subagent`, không đọc TÊN
+        # công cụ. Bản trước hỏi *"`task.run` có trong `cong_cu_da_goi` không"*, mà
+        # `cong_cu_da_goi` chỉ ghi tên (loop.py `_one_tool`): nên một lời gọi
+        # `task.run(subagent="firmware")` — hay bất cứ loại nào trong năm loại còn lại — tắt
+        # luôn yêu cầu kiểm chứng. Tác tử tự giao việc cho một tác tử con KHÔNG phải người
+        # kiểm, rồi tuyên xong: đúng cái hàng rào N6 dựng ra để chặn. `loop.py` và
+        # `kiem_chung.co_viec_chua_kiem` đều đã đọc tham số; riêng chỗ này thì chưa (M4-09).
+        if getattr(ctx, "da_goi_verifier", False):
             return StopResult(fired=["tu_kiem_da_chay"])
         # ĐANG GIỮA một kế hoạch đã duyệt thì khoan.
         #
