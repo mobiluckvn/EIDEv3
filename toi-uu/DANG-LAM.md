@@ -1,56 +1,57 @@
-# ĐANG LÀM — chỗ dừng khuya 08/10/2026
+# ĐANG LÀM — chỗ dừng ngày 09/10/2026
 
 > Tệp này trả lời đúng một câu cho phiên sau: **mở ra là làm tiếp được từ đâu.**
 > Trạng thái đầy đủ của 106 việc nằm ở `EIDE_Toi_uu_Agent_2026-10-06.xlsx`,
-> sheet **“Tiến độ 08-10-2026 (khuya)”** (cột Q, T–Y của sheet “Danh mục tối ưu” là bằng
-> chứng từng việc). Ba sheet “Tiến độ 08-10-2026”, “… (chiều)”, “… (toi)” là ảnh chụp sáng,
-> chiều và tối, giữ lại để so.
+> sheet **“Tiến độ 09-10-2026”** (cột Q, T–Y của sheet “Danh mục tối ưu” là bằng chứng từng
+> việc). Bốn sheet “Tiến độ 08-10-2026” và ba biến thể “(chiều)/(toi)/(khuya)” là ảnh chụp
+> của ngày 08/10, giữ lại để so.
 
 ## Đang ở đâu
 
 | | |
 |---|---|
-| **Xong** | **19/106** — việc #1 → #19 của Giai đoạn 1, theo đúng thứ tự `#` của kế hoạch |
-| **Đang dở** | **không có.** `main` = `a3228c5`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
-| Ca kiểm | 1 610 → **1 835** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
-| Nhật ký | DEV-330 → **DEV-348** trong `docs/md/EIDE-DEV-LOG.md` |
+| **Xong** | **20/106** — việc #1 → #20 của Giai đoạn 1, theo đúng thứ tự `#` của kế hoạch |
+| **Đang dở** | **không có.** `main` = `280b9a2`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
+| Ca kiểm | 1 610 → **1 846** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
+| Nhật ký | DEV-330 → **DEV-349** trong `docs/md/EIDE-DEV-LOG.md` |
 | Công cụ | 127 → **130** (`hdl.sensitivity`, `hdl.constraints_check`, `test.criteria`) |
 | Cờ | 7 → **8** (thêm `SIM_RUNNER_GIOI_HAN`, mặc định TẮT như sáu cờ kia) |
 
-## Việc đầu tiên của phiên sau: #20 M4-19
+## Việc đầu tiên của phiên sau: #21 M4-04
 
-Đột biến trên **bản sao**, không ghi đè tệp sản phẩm của người dùng — P2 · S, không cờ, không
-tiền đề (M4-04, M4-12, M4-16 dựa trên nó). Mở `KE-HOACH-SUA-VA-KIEM-THU.md`, mục `[M4-19]`,
-làm đúng quy trình §3.1:
+Đột biến chi tiết từng vị trí + **điểm đột biến** (mutation score) — P1 · M, không cờ. Tiền đề
+M4-05 và M4-19 **đã xong**. Mở `KE-HOACH-SUA-VA-KIEM-THU.md`, mục `[M4-04]`, làm đúng quy
+trình §3.1:
 
 ```bash
-git switch -c toi-uu/M4-19
+git switch -c toi-uu/M4-04
 # viết TC TRƯỚC, xem chúng ĐỎ trên mã hiện tại
 find src tests -name __pycache__ -type d -exec rm -rf {} +      # bắt buộc, xem DEV-335
-.venv/bin/python -m pytest -q -rf            # mốc: 1835, không ca cũ nào đỏ
+.venv/bin/python -m pytest -q -rf            # mốc: 1846, không ca cũ nào đỏ
 .venv/bin/python tools/kiem_tai_lieu.py      # phải 0 chỗ LỆCH CHẮC CHẮN
 ```
 
-M4-19 vá cái rủi ro mà M4-05 vừa phải lách quanh suốt: phép đo độ nhạy **ghi đè tệp sản phẩm
-thật** rồi trả lại trong `finally`, nên mọi lượt đo của tôi hôm nay đều phải chạy trên một bản
-sao trong scratchpad. `finally` chỉ đỡ được ngoại lệ Python — một lần `Ctrl-C` hay một lần máy
-chết giữa vòng đo sẽ để lại mã đã bị phá trong dự án. Kế hoạch có nêu cái bẫy ở bước 3: sao
-tệp ra thư mục tạm thì `#include "x.h"` tương đối đứt, nên `chay_test` cần thêm `them_co`
-(`-I`).
+M4-04 là chỗ bốn nhiệm vụ vừa rồi dẫn tới: nay phép đo đã **không tính mutant hỏng biên dịch**
+(M4-05) và **không ghi vào tệp người dùng** (M4-19), nên mới dựng được một con số *mutation
+score* đáng tin. Đọc trước hai chỗ: mẫu số của con số hiện tại là **TỆP**, không phải phép phá
+(DEV-344) — M4-04 đổi đúng chỗ ấy, nên phải đổi cả nhãn ở khối A8.0 và `note_vi` cho khớp; và
+`so_mutant_khong_hop_le` phải nằm **ngoài** mẫu số, không thì điểm đột biến đếm cả những phép
+chưa bao giờ chạy.
 
 Hết Giai đoạn 1 mới chạy **cổng cuối giai đoạn (§4.2)**, không phải sau mỗi việc.
 Nhớ: công cụ mới nào cũng làm README lệch số công cụ — sửa 4 chỗ (dòng ~43 tổng + số bật
 mặc định, dòng bảng nhóm việc, dòng ~1041 phần chưa dùng thật, dòng ~1180 cây mã). Cờ mới
 thì README không đếm, nhưng Excel có ô "Cờ tính năng mới" phải sửa.
 
-## Chín thứ phải đọc trước khi gõ dòng đầu tiên
+## Mười một thứ phải đọc trước khi gõ dòng đầu tiên
 
 1. **Xoá `__pycache__` trước mỗi phép “phá lại thì đỏ”.** Một phép phá dài **đúng bằng** mã
    gốc (`0.6` → `0.0`) làm Python coi `.pyc` cũ là còn hợp lệ, và phép đo chạy **mã khác với
    mã trong tệp** — DEV-335.
 2. **“Phá lại thì đỏ N/N” nói được điều gì chỉ khi tập phép phá không do người đang mong nó
    đẹp chọn ra.** M3-13 khai 6/6; phá bằng tập rộng hơn ra **7/9**. M3-18 ra **18/20** và
-   M4-01 ra **17/24**, M4-02 ra **22/27** ở lượt đầu. Cách dựng tập: đọc `git diff`, không
+   M4-01 ra **17/24**, M4-02 ra **22/27**, M4-05 ra **15/20**, M4-19 ra **7/13** ở lượt
+   đầu. Cách dựng tập: đọc `git diff`, không
    đọc ký ức — đi theo
    *chỗ mã tháo được*, không theo *chỗ mình biết đã có ca canh*. Và mỗi nhánh `if` của một hàm
    là **một** chỗ, không phải cả hàm là một chỗ.
@@ -64,8 +65,9 @@ thì README không đếm, nhưng Excel có ô "Cờ tính năng mới" phải s
    `POL-QUAL-criteria-change`, không nêu nhánh *số chỗ canh không đổi thì im*; M4-05 ghi "tệp
    chạm tới" là `dot_bien.py` + tests, mà thật ra phải sửa cả `build/hdl.py`,
    `tools/xay_dung.py`, `tools/hdl.py` — và một trong ba lỗi phụ (`mo_phong` chạy lại tệp cũ)
-   là **tiền đề** của chính nhiệm vụ. Những chỗ ấy chỉ hiện ra khi đọc mã quanh nó, hoặc khi
-   chạy phép đo thật.
+   là **tiền đề** của chính nhiệm vụ; M4-19 ghi cờ dịch là `-I`, mà `-I` che header hệ thống
+   nên phải là `-iquote`. Những chỗ ấy chỉ hiện ra khi đọc mã quanh nó, hoặc khi chạy phép đo
+   thật.
 4. **Phạm vi phép đo sai thì ra một con số *hợp lý* chứ không ra rỗng** — và lúc ấy nó tốn
    nhiều lượt hơn. Hai lần trong M3-18: ghép mọi mạng cổng với mọi `.cst` ra “409 lỗi” trong
    khi số thật là **1**; và phép quét tệp `.cst` thật thu 4 trong 7 tệp mà ca kiểm vẫn xanh.
@@ -94,6 +96,16 @@ thì README không đếm, nhưng Excel có ô "Cờ tính năng mới" phải s
    tham số `bang`), và ba chỗ **báo lại** của một công cụ mà mọi ca cũ đều đi qua với
    `stillborn == 0`. Tầng báo lại hỏng theo kiểu riêng: phép đo đúng, con số đúng, rồi con số
    không đi tới đâu.
+10. **Một cờ biên dịch thêm vào là một phép đo khác.** `-I` thay vì `-iquote` làm `stdio.h`
+   giả của bo che bản hệ thống, và **11 trong 12** tệp bị xếp là *"không dịch được trên máy
+   chủ"* — tôi thêm một cờ để tránh một cáo buộc sai và sinh ra mười một cáo buộc sai khác.
+   Gắn cờ cho **lượt mốc** thì tệ hơn nữa: nó đổi chính cái mốc mà mọi so sánh dựa vào, và cả
+   ba dự án thật thành "không đo được" (M4-19). Trước khi thêm một cờ: nó đổi đường tìm của
+   `"..."` hay của cả `<...>`, và nó có vào lượt mốc không.
+11. **Một nhánh `if` không đổi hành vi thì bỏ đi, đừng viết ca cho nó.** Sau khi đổi sang
+   `-iquote`, cái guard *"chỉ gắn cờ cho lượt có tệp sản phẩm"* thành vô nghĩa — phép phá chỉ
+   ra đúng điều đó bằng một chữ LỌT, và câu trả lời là bỏ nhánh, không phải dựng một ca kiểm
+   contrived để che nó.
 
 ## Việc còn MỞ, không thuộc nhiệm vụ nào trong 106
 
@@ -104,11 +116,17 @@ thì README không đếm, nhưng Excel có ô "Cờ tính năng mới" phải s
 * **Ba công cụ mới nhất chưa lượt Agent nào GỌI** — `hdl.sensitivity` ·
   `hdl.constraints_check` · `test.criteria`. Mã của cả ba đã chạy trên hiện vật thật, nhưng đó
   là tôi gọi hàm, không phải tác tử gọi công cụ. README §8 đếm cả ba vào phần chưa dùng thật.
-* **Chưa dự án firmware nào trong repo có một con số độ nhạy đáng tin** — đo 08/10/2026 trên
-  cả ba dự án có cả `test/` lẫn `firmware/`: `rtos-sinhvien` **0/12 tệp** đo được (4 tệp font
-  `khong_thay`, `control_rtos.c` trùng ký hiệu, `main.c` không dịch trên máy chủ,
-  `logo_ptit.c` mọi mutant hỏng biên dịch); `stm32f469-freertos` và `thu-nghiem-g6` có bộ
-  kiểm **ĐỎ SẴN**. Đây là trạng thái của dữ liệu đo, không phải lỗi sản phẩm. DEV-348.
+* **Chưa dự án firmware nào trong repo có một con số độ nhạy đáng tin** — đo lại 09/10/2026
+  bằng đường bản sao, kết quả giống hệt lượt 08/10: `rtos-sinhvien` **0/12 tệp** đo được (4 tệp
+  font `khong_thay`, `control_rtos.c` trùng ký hiệu, `main.c` không dịch trên máy chủ,
+  `logo_ptit.c` mọi mutant hỏng biên dịch); `stm32f469-freertos` và `thu-nghiem-g6` có bộ kiểm
+  **ĐỎ SẴN**. Đây là trạng thái của dữ liệu đo, không phải lỗi sản phẩm. DEV-348 · DEV-349.
+* **`chay(None)` của `test.sensitivity` chỉ dịch tệp TEST, nên một tệp test gọi hàm sản phẩm
+  làm mốc ĐỎ** và cả phép đo dừng trước khi vào vòng đột biến. Tức phép đo chỉ chạy được khi
+  tệp test **tự dịch được một mình** — mà một tệp test tự định nghĩa lại hàm sản phẩm thì đúng
+  là cái ô xanh giả phép đo này đi tìm. Trúng hai lần trong hai nhiệm vụ liền (M4-01, M4-19)
+  khi dựng ca kiểm. Chưa sửa: nó là một quyết định thiết kế của `test.sensitivity`, không phải
+  một lỗi — nhưng nó giải thích vì sao hai trong ba dự án thật có "mốc ĐỎ".
 * **`POL-N6-sua-test` chưa nổ trên một phiên thật nào** — hook `sua_test_sau_do` cấp dữ kiện
   cho lời gọi **sắp** xảy ra, nên không soát lại được phiên đã lưu như mọi phép đo trước của
   đợt này. Nó có 25 ca kiểm và phá lại 27/27, nhưng chưa lượt tác tử thật nào chạm vào.

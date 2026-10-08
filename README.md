@@ -325,7 +325,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **1 835 ca Python + 43 ca giao diện**
+### Mức 1 — Ca đơn vị: **1 846 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -424,6 +424,11 @@ Phép đo này cũng tự đo lại được: chạy **cả hai hành vi** trên
 cho `so_thay` **1 → 0** — `logo_ptit.c` từng được báo là "bộ kiểm ĐỎ", sự thật là mọi đột biến
 của nó đều làm hỏng biên dịch.
 
+**Và nó không ghi vào tệp của anh** (DEV-349). Bản trước phá mã ngay trên tệp sản phẩm rồi trả
+lại trong `finally` — an toàn với ngoại lệ Python, không an toàn với một lần `Ctrl-C`. Nay mỗi
+tệp được sao ra `.eide/mutate/<lượt>/` và chỉ bản sao bị phá; tệp gốc chỉ được đọc. Đo trên ba
+dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫn `mtime` sau lượt đo.
+
 ---
 
 ## 6 · Kết quả thử đến nay
@@ -432,7 +437,7 @@ của nó đều làm hỏng biên dịch.
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **1 835** | `pytest -q` |
+| Ca đơn vị Python | **1 846** | `pytest -q` |
 | Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -462,15 +467,16 @@ Một công cụ không bao giờ được dùng thì bằng không có nó.
 ### Đợt rà lại chính Agent, từ 06/10/2026
 
 Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Kế hoạch
-có 106 việc; **19 việc đầu đã xong** (DEV-330 → DEV-348). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
+có 106 việc; **20 việc đầu đã xong** (DEV-330 → DEV-349). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
 không nhìn tới, và mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca
-kiểm. Bộ kiểm 1 610 → **1 835 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
+kiểm. Bộ kiểm 1 610 → **1 846 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
 
 Và một con số nữa về chính đợt này: với mỗi việc, phép **"phá lại thì đỏ"** được dựng từ
-`git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Năm việc gần nhất bắt
-**9/9 · 20/20 · 24/24 · 27/27 · 22/22** — nhưng *lượt đầu* của chúng là 7/9, 18/20, 17/24,
-22/27, 15/20. Một tỉ lệ 100 % chỉ nói được điều gì khi tập phép phá không do người đang mong
-nó đẹp chọn ra; khuôn script giữ ở [`toi-uu/pha_lai-khuon.py`](toi-uu/pha_lai-khuon.py).
+`git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Sáu việc gần nhất bắt
+**9/9 · 20/20 · 24/24 · 27/27 · 22/22 · 13/13** — nhưng *lượt đầu* của chúng là 7/9, 18/20,
+17/24, 22/27, 15/20, 7/13. Một tỉ lệ 100 % chỉ nói được điều gì khi tập phép phá không do
+người đang mong nó đẹp chọn ra; khuôn script giữ ở
+[`toi-uu/pha_lai-khuon.py`](toi-uu/pha_lai-khuon.py).
 
 | Việc | Chỗ hỏng | Đo trên dữ liệu thật |
 |---|---|---|
@@ -493,6 +499,7 @@ nó đẹp chọn ra; khuôn script giữ ở [`toi-uu/pha_lai-khuon.py`](toi-uu
 | Unit test tự in `dat:true` | thứ bị kiểm cũng là thứ tuyên bố kết quả — và tệp test là thứ **tác tử tự viết** | 18 ca, phần đo chạy `cc` thật: tệp test in số đo `{"T1": 300}` với ngưỡng `<= 255` → EIDE phán **1 ca hỏng**, tệp test không nói một chữ nào về đạt |
 | Xoá bớt ca test sau một kết quả đỏ | `POL-N6-doi-tieu-chi` chặn đường *đổi ngưỡng*; đường *xoá ca test* rộng hơn và không luật nào thấy | và `criteria.has_result` tra **cứng** `sim_result:can-bang`, nên cổng N6 **chưa bao giờ nổ** ngoài `sim-01` |
 | Mutant không dịch được tính là "bắt được" | `False` của một lượt chạy có hai nghĩa, và vòng đột biến gộp chúng lại | `du-lieu/rtos-sinhvien`, chạy cả hai hành vi: `so_thay` **1 → 0**. Và phép đo **đổ** `IndexError` trên mọi tệp firmware thật — nó chưa bao giờ chạy nổi trên một tệp thật |
+| Phép đo ghi vào chính tệp sản phẩm | `finally` trả tệp về, nên nó chỉ an toàn với ngoại lệ Python — một `Ctrl-C` để lại mã đã bị phá trong dự án | chạy **tại chỗ** trên 3 dự án thật: kết luận giống hệt lượt cũ, và **50/50** tệp firmware giữ nguyên cả `sha256` lẫn `mtime` |
 
 Chỗ đáng nói nhất không phải ba lỗi, mà là **cả ba đều có cơ chế sẵn và đường dẫn tới nó đứt** —
 đúng hình dạng đã lặp lại suốt dự án này. Cái trần token tồn tại nhưng không ai nối dây tới nó.
