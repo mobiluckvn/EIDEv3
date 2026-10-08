@@ -1,8 +1,8 @@
-# ĐANG LÀM — chỗ dừng chiều 09/10/2026
+# ĐANG LÀM — chỗ dừng tối 09/10/2026
 
 > Tệp này trả lời đúng một câu cho phiên sau: **mở ra là làm tiếp được từ đâu.**
 > Trạng thái đầy đủ của 106 việc nằm ở `EIDE_Toi_uu_Agent_2026-10-06.xlsx`,
-> sheet **“Tiến độ 09-10-2026 (chiều)”** (cột Q, T–Y của sheet “Danh mục tối ưu” là bằng
+> sheet **“Tiến độ 09-10-2026 (toi)”** (cột Q, T–Y của sheet “Danh mục tối ưu” là bằng
 > chứng từng việc). Các sheet “Tiến độ 08-10-2026” + ba biến thể, và “Tiến độ 09-10-2026”,
 > là ảnh chụp các mốc trước, giữ lại để so.
 
@@ -10,53 +10,54 @@
 
 | | |
 |---|---|
-| **Xong** | **21/106** — việc #1 → #21 của Giai đoạn 1, theo đúng thứ tự `#` của kế hoạch |
-| **Đang dở** | **không có.** `main` = `2bc325f`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
-| Ca kiểm | 1 610 → **1 862** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
-| Nhật ký | DEV-330 → **DEV-350** trong `docs/md/EIDE-DEV-LOG.md` |
+| **Xong** | **22/106** — việc #1 → #22 của Giai đoạn 1. Việc #22 còn **một tiêu chí chưa đạt** (xem dưới) |
+| **Đang dở** | **không có.** `main` = `f829ddb`, đã đẩy. Mọi nhánh `toi-uu/*` đã gộp. |
+| Ca kiểm | 1 610 → **1 878** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
+| Nhật ký | DEV-330 → **DEV-351** trong `docs/md/EIDE-DEV-LOG.md` |
 | Công cụ | 127 → **130** (`hdl.sensitivity`, `hdl.constraints_check`, `test.criteria`) |
-| Cờ | 7 → **8** (thêm `SIM_RUNNER_GIOI_HAN`, mặc định TẮT như sáu cờ kia) |
+| Cờ | 7 → **9** (thêm `SIM_RUNNER_GIOI_HAN`, `TEST_HARDEN` — mặc định TẮT như các cờ kia) |
 
-## Việc đầu tiên của phiên sau: #22 M4-06
+## Việc đầu tiên của phiên sau: #23 M4-07
 
-Vòng **tự nâng test** khi đột biến còn sống (Evaluator–Optimizer) — P0 · M, **có cờ**
-`TEST_HARDEN`. Tiền đề M4-04 và M4-05 **đã xong**. Mở `KE-HOACH-SUA-VA-KIEM-THU.md`, mục
-`[M4-06]`, làm đúng quy trình §3.1:
+Verifier nhận **gói bằng chứng do EIDE dựng từ sổ cái**, không nhận đề bài tác tử chính tự
+viết — P0 · M, **có cờ** `VERIFIER_GOI_BANG_CHUNG`, không tiền đề. Mở
+`KE-HOACH-SUA-VA-KIEM-THU.md`, mục `[M4-07]`, làm đúng quy trình §3.1:
 
 ```bash
-git switch -c toi-uu/M4-06
+git switch -c toi-uu/M4-07        # ĐỪNG quên bước này — xem ghi chú dưới
 # viết TC TRƯỚC, xem chúng ĐỎ trên mã hiện tại
 find src tests -name __pycache__ -type d -exec rm -rf {} +      # bắt buộc, xem DEV-335
-.venv/bin/python -m pytest -q -rf            # mốc: 1862, không ca cũ nào đỏ
+.venv/bin/python -m pytest -q -rf            # mốc: 1878, không ca cũ nào đỏ
 .venv/bin/python tools/kiem_tai_lieu.py      # phải 0 chỗ LỆCH CHẮC CHẮN
 ```
 
-M4-06 đứng trên đúng thứ M4-04 vừa dựng: danh sách `song` (dòng bộ kiểm không canh) và hiện
-vật `sim_result:test-sensitivity`. Ba chỗ phải đọc trước khi gõ:
+> **Tôi quên `git switch -c` ở M4-06** và commit thẳng lên `main`; nội dung đúng, quy trình thì
+> không. Đã dựng lại con trỏ `toi-uu/M4-06` tại đúng commit `f829ddb`. Gõ lệnh mở nhánh **trước
+> khi** viết dòng mã đầu tiên, đừng để nó là bước nhớ sau.
 
-* **Chi phí.** `muc="chi_tiet"` mất **110 s** cho 12 tệp thật (0,6 s mỗi lượt biên dịch + chạy).
-  Một vòng *đo → sửa test → đo lại* nhân con số ấy lên, nên trần vòng lặp phải tính bằng số đo
-  này, không tính bằng cảm giác.
-* **Điểm 0,0 là một con số đúng mà vô dụng** trên sáu tệp bitmap. Vòng tự nâng không được đi
-  viết test cho `font12.c`.
-* **Chỗ đáng nâng nhất lại không đo được**: `control_rtos.c` là `khong_nap_duoc` vì tệp test
-  `#include` chính tệp `.c` đó. Nếu M4-06 chỉ chạy trên thứ `test.sensitivity` đo được thì nó
-  sẽ không bao giờ chạm tới tệp duy nhất đáng nâng.
+## Việc còn NỢ của #22 M4-06 — một tiêu chí chưa đạt
 
-Hết Giai đoạn 1 mới chạy **cổng cuối giai đoạn (§4.2)**, không phải sau mỗi việc.
-Nhớ: công cụ mới nào cũng làm README lệch số công cụ — sửa 4 chỗ (dòng ~43 tổng + số bật
-mặc định, dòng bảng nhóm việc, dòng ~1041 phần chưa dùng thật, dòng ~1180 cây mã). Cờ mới
-thì README không đếm, nhưng Excel có ô "Cờ tính năng mới" phải sửa.
+`[M4-06]` đã ☑ nhưng **một tiêu chí xong còn để mở**, và nó cần anh Công quyết:
 
-## Mười một thứ phải đọc trước khi gõ dòng đầu tiên
+* Tiêu chí: *"mutation score trên dự án mẫu **tăng** sau harden"*.
+* Đã có phần **trước**: `du-lieu/rtos-sinhvien`, `logo_ptit.c` → điểm **0,0** · 30 mutant ·
+  20 sống · 18 s.
+* Phần **sau** chưa đo, hai lý do: chạy `test.harden` thật cần **lời gọi mô hình** và §3.0 bắt
+  hỏi người dùng trước; và dự án ấy **không có chỗ để đo** — tệp duy nhất đáng nâng
+  (`control_rtos.c`) là `khong_nap_duoc` vì tệp test `#include` chính tệp `.c` đó, còn sáu tệp
+  kia là bitmap (không ca kiểm nào giết được một đột biến một byte trong logo).
+* Nên cờ `TEST_HARDEN` giữ **TẮT**. Muốn đóng tiêu chí này thì cần một dự án mẫu có bộ kiểm
+  **đo được** — hoặc sửa chỗ hẹp `chay(None)` nói ở phần việc còn mở.
+
+## Mười hai thứ phải đọc trước khi gõ dòng đầu tiên
 
 1. **Xoá `__pycache__` trước mỗi phép “phá lại thì đỏ”.** Một phép phá dài **đúng bằng** mã
    gốc (`0.6` → `0.0`) làm Python coi `.pyc` cũ là còn hợp lệ, và phép đo chạy **mã khác với
    mã trong tệp** — DEV-335.
 2. **“Phá lại thì đỏ N/N” nói được điều gì chỉ khi tập phép phá không do người đang mong nó
    đẹp chọn ra.** M3-13 khai 6/6; phá bằng tập rộng hơn ra **7/9**. M3-18 ra **18/20** và
-   M4-01 ra **17/24**, M4-02 ra **22/27**, M4-05 ra **15/20**, M4-19 ra **7/13** ở lượt
-   đầu. Cách dựng tập: đọc `git diff`, không
+   M4-01 ra **17/24**, M4-02 ra **22/27**, M4-05 ra **15/20**, M4-19 ra **7/13**, M4-04 ra
+   **15/22**, M4-06 ra **18/22** ở lượt đầu. Cách dựng tập: đọc `git diff`, không
    đọc ký ức — đi theo
    *chỗ mã tháo được*, không theo *chỗ mình biết đã có ca canh*. Và mỗi nhánh `if` của một hàm
    là **một** chỗ, không phải cả hàm là một chỗ.
@@ -110,7 +111,12 @@ thì README không đếm, nhưng Excel có ô "Cờ tính năng mới" phải s
 11. **Một nhánh `if` không đổi hành vi thì bỏ đi, đừng viết ca cho nó.** Sau khi đổi sang
    `-iquote`, cái guard *"chỉ gắn cờ cho lượt có tệp sản phẩm"* thành vô nghĩa — phép phá chỉ
    ra đúng điều đó bằng một chữ LỌT, và câu trả lời là bỏ nhánh, không phải dựng một ca kiểm
-   contrived để che nó.
+   contrived để che nó. Trúng lần nữa ở M4-04 với bước sắp xếp trước khi lấy mẫu.
+12. **So PHIÊN BẢN, đừng so đồng hồ.** `updated_at` của kho có độ phân giải thô, nên hai lần
+   ghi trong cùng một giây **bằng nhau** và phép so "mới hơn" im lặng sai — ca kiểm đầu tiên
+   của hook M4-06 đỏ ngay vì chuyện ấy. Hiện vật nào cần biết "thứ kia đã đổi chưa" thì ghi
+   kèm **số phiên bản** của thứ kia (`version_test`), rồi so con số. Một số phiên bản là dữ
+   kiện chính xác; một cái đồng hồ thì không.
 
 ## Việc còn MỞ, không thuộc nhiệm vụ nào trong 106
 
