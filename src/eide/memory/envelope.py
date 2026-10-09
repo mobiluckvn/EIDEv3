@@ -374,7 +374,10 @@ CHINH_SACH: dict[str, Callable[[Any, dict[str, Any]], tuple[Any, str, bool]]] = 
     "analyze.capture": _cs_log,
     "build.compile": _cs_build,
     "ingest.file": _cs_ingest,
-    "rag.ask": _cs_danh_sach,
+    # M5-01 — khoá này trước đây là `"rag.ask"`, **một công cụ không tồn tại**: dấu vết
+    # của một tính năng đã được nghĩ tới rồi bỏ dở, nằm đúng chỗ dễ làm người đọc mã tin
+    # là đã có RAG. Nay nó trỏ về công cụ thật.
+    "doc.search": _cs_danh_sach,
     "history.list": _cs_danh_sach,
     "ledger.query": _cs_danh_sach,
     "store.list": _cs_danh_sach,

@@ -170,7 +170,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 
 | # | Mã | Nhiệm vụ | Ưu tiên | Công sức | Tiền đề | Cờ tính năng | Ghi chú | Trạng thái |
 |---|---|---|---|---|---|---|---|---|
-| 33 | [M5-01](#m5-01) | Chỉ mục tìm kiếm tài liệu BM25 (FTS5) lưu bền + công cụ `doc.search` | P0 | L | — | DOC_EMBED |  | ☐ |
+| 33 | [M5-01](#m5-01) | Chỉ mục tìm kiếm tài liệu BM25 (FTS5) lưu bền + công cụ `doc.search` | P0 | L | — | DOC_EMBED | DEV-360 | ☑ |
 | 34 | [M5-04](#m5-04) | Trích bảng có cấu trúc từ PDF datasheet (hàng bảng + ngữ cảnh mục) | P0 | L | M5-05 | PDF_BANG |  | ☐ |
 | 35 | [M1-05](#m1-05) | Ngân sách, cắt kết quả và lượt buộc nộp cho tác tử con | P1 | M | M1-03 | SUBAGENT_NOP | kéo lên từ GĐ3 vì là tiền đề của M1-07 | ☐ |
 | 36 | [M1-06](#m1-06) | Thi hành tính độc lập của verifier | P1 | S | — | — |  | ☐ |
@@ -2308,10 +2308,15 @@ Sau khi thêm hai ca: **36/36**.
 - `doc.read` trả đúng định dạng cũ; `doc.load` trả đúng các khoá cũ; migration v1→v4 không đổi.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] recall@5 trên bộ vàng của M5-21 được ghi lại (mốc cho giai đoạn embedding).
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ": **30/30** (lượt đầu 21/30 — một chỗ LỌT là lỗ THẬT
+      (`duong_xep_hang` im lặng), tám chỗ còn lại là dàn dựng ca kiểm không phân biệt được).
+- [x] Toàn bộ `pytest -q` xanh: 2 046 → **2 060**, 0 đỏ.
+- [x] **recall@5 đã ghi lại**, nhưng KHÔNG trên bộ vàng M5-21 (chưa làm). Bộ vàng dựng **cơ
+      học** từ 7 PDF thật trên máy (92 trang trong một kho): phép đo A (3 từ chỉ có ở đúng một
+      trang) **34/34 = 100 %** ở cả @1 và @5; phép đo B (truy vấn dùng **tên khác**, 5 ca)
+      **3/5 @1 · 5/5 @5**. Phép `in` của `doc.read` cũ trên cùng bộ B: **0/5**. Xem DEV-360
+      cho mức độ của hai con số — A dễ, B khó mà chỉ có 5 ca.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md — DEV-360.
 
 **Hoàn tác:** revert commit; `Store.ha_cap(4)` gỡ bảng (không chạm dữ liệu cũ).
 
