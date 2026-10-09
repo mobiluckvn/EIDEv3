@@ -162,7 +162,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 27 | [M4-13](#m4-13) | Kiểm "nối" tĩnh sau biên dịch (vector table, hàm không ai gọi, return hằng) | P0 | M | M2-09 | KIEM_NOI |  | ☐ |
 | 28 | [M5-03](#m5-03) | Bộ đọc SVD: nạp register map thành Fact `reg:`/`field:` + `reg.lookup` | P0 | M | — | — | DEV-355 | ☑ |
 | 29 | [M5-05](#m5-05) | Kiểm thứ nguyên đơn vị + thống nhất khoá khoảng hợp lý + kiểm cả đường bảng | P0 | S | — | — | DEV-356 | ☑ |
-| 30 | [M5-07](#m5-07) | `fact.from_doc`: kiểm giá trị theo ranh giới token và câu trích nguyên văn | P0 | S | — | — |  | ☐ |
+| 30 | [M5-07](#m5-07) | `fact.from_doc`: kiểm giá trị theo ranh giới token và câu trích nguyên văn | P0 | S | — | — | DEV-357 | ☑ |
 | 31 | [M5-13](#m5-13) | Chính sách phong bì cho `doc.read`/`fact.query`/`fact.extract`; sửa `_cat_chung` cắt phần tử dài | P0 | S | — | — |  | ☐ |
 | 32 | [M5-17](#m5-17) | Resume nạp lại bản tóm tắt C2 từ sổ cái; tường thuật cơ học phiên trước | P0 | S | — | RESUME_TUONG_THUAT |  | ☐ |
 
@@ -2141,9 +2141,16 @@ Sau khi thêm hai ca: **36/36**.
 - Các test đang gọi `fact.from_doc` (grep `fact.from_doc` trong tests: test_ke_hoach.py) giữ xanh.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ": **22/22** (lượt đầu 15/22 — cả bảy chỗ LỌT là ca
+      kiểm CHƯA chạm tới, không chỗ nào vô hiệu; năm trong bảy chỉ lộ ra khi dàn dựng có đúng
+      hình dạng cần đo).
+- [x] Toàn bộ `pytest -q` xanh: 1 993 → **2 000**, 0 đỏ.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md — DEV-357.
+
+> **Hai chỗ không theo chữ của kế hoạch** (DEV-357): giữ **E2006** cho *"giá trị không có trong
+> đoạn"* và dùng **E2008** chỉ cho ba lý do MỚI — bốn lý do dẫn tới bốn việc khác nhau. Và
+> **TC-M5-07-01 viết đúng chữ thì xanh vì một lý do khác**: `"27"` dài hai ký tự nên luật
+> số-ngắn chặn trước, phép so dấu chấm không bao giờ chạy tới.
 
 **Hoàn tác:** revert commit.
 

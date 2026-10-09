@@ -994,13 +994,18 @@ def register(r: Registry) -> Registry:
                  "khoa": {"type": "string", "description": "gia_tri | dia_chi | he_so"},
                  "gia_tri": {"type": "string",
                              "description": "đúng như tài liệu viết: 0x27, 39, 3,55"},
-                 "don_vi_do": {"type": "string", "description": "V, mA, Hz… nếu có"}},
+                 "don_vi_do": {"type": "string", "description": "V, mA, Hz… nếu có"},
+                 "trich": {"type": "string",
+                           "description": ("câu NGUYÊN VĂN (≤200 ký tự) của tài liệu có "
+                                           "chứa con số. BẮT BUỘC khi giá trị ngắn hơn ba "
+                                           "ký tự — một số một–hai chữ số gần như luôn tìm "
+                                           "thấy ở đâu đó trong một đoạn")}},
              "required": ["doc_id", "don_vi", "thuc_the", "khoa", "gia_tri"]},
             risk="R2", produces=["fact"], core=False,
             keywords=["ghi fact", "hằng số", "thanh ghi", "địa chỉ", "từ tài liệu",
                       "truy vết", "nguồn"])
     def fact_from_doc(ctx: Any, doc_id: str, don_vi: int, thuc_the: str, khoa: str,
-                      gia_tri: str, don_vi_do: str = ""):
+                      gia_tri: str, don_vi_do: str = "", trich: str = ""):
         """Cây cầu còn thiếu giữa “đọc được tài liệu” và “được phép viết mã”.
 
         Chuyện đã xảy ra trên một dự án thật: tác tử đọc đúng bốn mục tài liệu, hiểu đúng các
@@ -1029,29 +1034,100 @@ def register(r: Registry) -> Registry:
 
         noi_dung = (t.chu or "") + " " + " ".join(t.o or [])
         gt = str(gia_tri).strip()
+        tr = str(trich or "").strip()[:200]
 
-        def _chuan(x: str) -> str:
-            return _re.sub(r"[\s.,]", "", x).lower()
+        # M5-07 — phép kiểm cũ là `re.sub(r"[\s.,]", "", x)` rồi `in`. Nó nói sai theo đúng
+        # chiều tệ nhất — **nhận bừa** — ở hai chỗ:
+        #
+        # * xoá dấu chấm biến `2.7 V` thành `27v`, nên `gia_tri="27"` đi qua. Một điện áp
+        #   2,7 V vào kho thành 27, mang trích dẫn, mang tầng BẠC, trông y như đọc đúng;
+        # * phép CHỨA không có ranh giới, nên `3` khớp `Table 3`, `180` khớp `1800`.
+        #
+        # Đây là cửa mà MỌI hằng số firmware phải đi qua, nên một chỗ nhận bừa ở đây là ô
+        # xanh giả đắt nhất trong cả mảng tri thức.
+        def _gop(x: str) -> str:
+            """Chỉ gộp khoảng trắng — KHÔNG xoá dấu chấm/phẩy, vì chúng mang nghĩa số."""
+            return _re.sub(r"\s+", " ", x or "").strip()
 
-        co = _chuan(gt) in _chuan(noi_dung)
-        if not co and _re.fullmatch(r"(0x)?[0-9a-fA-F]+", gt):
+        def _khop(mau: str, trong: str) -> _re.Match[str] | None:
+            """`mau` đứng đúng ranh giới token trong `trong`.
+
+            Chặn `180` khớp `1800` (sau nó là chữ số) và `39` khớp `0.39` (trước nó là dấu
+            thập phân). Dấu chấm/phẩy **theo sau** chỉ chặn khi nó mở đầu một phần thập phân
+            — `0x27 (39) cho` phải còn khớp được `39`.
+            """
+            return _re.search(r"(?<![\w.,])" + _re.escape(mau) + r"(?![\w]|[.,]\d)",
+                              trong, _re.I)
+
+        def _loi(msg: str, goi: str, ma: str = "E2008") -> ToolResult:
+            return ToolResult(False, error=EideError(
+                ma, msg,
+                hint_for_agent=(
+                    goi + "\nĐoạn đó viết như sau — chọn đúng câu chứa con số, hoặc sửa giá "
+                    f"trị cho khớp NGUYÊN VĂN (không bỏ dấu chấm):\n{noi_dung[:600]}"),
+                details={"trich_dan": t.trich_dan, "noi_dung": noi_dung[:1000],
+                         "gia_tri": gt, "trich": tr},
+                alternatives=["doc.read", "fact.assert_human"], blame="agent"))
+
+        # `trich` phải CÓ THẬT trong đoạn. Thiếu phép kiểm này thì `trich` là một trường tự
+        # do: mô hình gõ một câu nghe hợp lý, con số nằm trong câu ấy, và cả hai cùng do nó
+        # viết ra — tức lời khai tự chứng minh chính nó.
+        if tr and _gop(tr).lower() not in _gop(noi_dung).lower():
+            return _loi(f"Câu trích KHÔNG có trong đoạn {don_vi} của {doc_id}.",
+                        "Câu bạn nêu ở `trich` không khớp nguyên văn đoạn này.")
+
+        # Một con số một–hai ký tự gần như luôn tìm thấy ở đâu đó trong một đoạn tài liệu,
+        # nên ranh giới token một mình không đủ: `3` khớp `Table 3` ở đúng ranh giới.
+        if len(gt) <= 2 and not tr:
+            return _loi(f"Giá trị “{gt}” quá ngắn để kiểm một mình trong đoạn {don_vi}.",
+                        "Số quá ngắn: hãy truyền `trich` là CÂU nguyên văn chứa nó. Một số "
+                        "một–hai chữ số gần như luôn tìm thấy ở đâu đó trong một đoạn, nên "
+                        "một phép khớp trần không chứng minh được gì.")
+
+        vung = tr or noi_dung
+        m = _khop(gt, vung)
+        if m is None and _re.fullmatch(r"(0x)?[0-9a-fA-F]+", gt):
             # Tài liệu hay viết một giá trị ở hai dạng: "39 (0x27)". Chấp nhận cả hai, nhưng
-            # vẫn là ĐỌC từ đoạn đó chứ không phải suy ra.
+            # vẫn là ĐỌC từ đoạn đó chứ không phải suy ra — và vẫn qua CÙNG phép ranh giới,
+            # không đi đường riêng.
             try:
                 v = int(gt, 16) if gt.lower().startswith("0x") else int(gt)
-                co = any(_chuan(x) in _chuan(noi_dung)
-                         for x in (str(v), hex(v), f"0x{v:02X}", f"0x{v:02x}"))
+                for x in (str(v), hex(v), f"0x{v:02X}", f"0x{v:02x}"):
+                    m = _khop(x, vung)
+                    if m is not None:
+                        break
             except ValueError:
-                co = False
-        if not co:
-            return ToolResult(False, error=EideError(
-                "E2006",
-                f"Giá trị “{gt}” KHÔNG có trong đoạn {don_vi} của {doc_id}.",
-                hint_for_agent=(
-                    "Đoạn đó viết như sau — chọn đúng đoạn chứa con số, hoặc sửa giá trị cho "
-                    f"khớp nguyên văn:\n{noi_dung[:600]}"),
-                details={"trich_dan": t.trich_dan, "noi_dung": noi_dung[:1000]},
-                alternatives=["doc.read", "fact.assert_human"], blame="agent"))
+                m = None
+        if m is None:
+            # E2006, KHÔNG phải E2008: "giá trị không có trong đoạn" là đúng nghĩa mã cũ, và
+            # việc cần làm vẫn như trước — chọn đoạn khác hoặc sửa giá trị. Ba lý do MỚI của
+            # M5-07 (`trich` bịa · số quá ngắn · đơn vị lệch) mới là E2008, vì chúng dẫn tới
+            # ba việc khác. Kế hoạch ghi E2008 cho cả bốn; gộp lại là bắt tác tử học một mã
+            # cho bốn chuyện khác nhau, và một ca kiểm cũ đang khoá đúng nghĩa cũ.
+            return _loi(f"Giá trị “{gt}” KHÔNG có trong {'câu trích' if tr else f'đoạn {don_vi}'}"
+                        f" của {doc_id}.",
+                        "Giá trị phải đứng NGUYÊN VĂN, đúng ranh giới token — dấu chấm và "
+                        "dấu phẩy KHÔNG bị bỏ qua nữa, nên `2.7` khác `27`.",
+                        ma="E2006")
+
+        # `don_vi_do` khai sai thì Fact mang một đơn vị không có trong tài liệu — và `ve_si`
+        # sẽ quy đổi theo nó, nên con số trong kho khác con số trên giấy.
+        if don_vi_do:
+            sau = vung[m.end():m.end() + len(don_vi_do) + 2]
+            if not _re.match(r"\s?" + _re.escape(don_vi_do) + r"\b", sau, _re.I):
+                return _loi(
+                    f"Đơn vị “{don_vi_do}” KHÔNG đứng ngay sau giá trị “{gt}”.",
+                    f"Sau con số, tài liệu viết: “{sau.strip() or '(hết câu)'}”. Khai đúng "
+                    "đơn vị tài liệu dùng, hoặc bỏ `don_vi_do` đi.")
+
+        # Câu trích đã lưu phải là chỗ CÓ con số, không phải 200 ký tự đầu đoạn: một đơn vị
+        # trích dẫn của tài liệu văn bản dài hàng chục dòng, nên người mở Fact ra xem sẽ thấy
+        # một đoạn KHÔNG chứa con số — và lúc ấy trích dẫn không chứng minh gì cả.
+        if tr:
+            quote = tr
+        else:
+            dau = max(0, m.start() - 90)
+            quote = ("…" if dau else "") + noi_dung[dau:m.end() + 90].strip()
 
         a_doc = ctx.store.get(doc_id)
         nguon = ((a_doc or {}).get("canonical") or {}).get("nguon", "nha_san_xuat")
@@ -1062,7 +1138,7 @@ def register(r: Registry) -> Registry:
             "fact_id": fid, "subject": thuc_the, "key": khoa, "value": gt,
             "unit": don_vi_do or "", "condition": "", "tier": tang, "origin": "extract",
             "source": {"doc_id": doc_id, "version": tl.phien_ban, "page": t.so,
-                       "cite": t.trich_dan, "quote": noi_dung[:200]},
+                       "cite": t.trich_dan, "quote": quote[:200]},
             "explain": {
                 "summary": f"{thuc_the} · {khoa} = {gt}",
                 "why": f"Đọc từ {tl.ten}, {t.trich_dan}; mã đã kiểm giá trị có trong đoạn đó.",

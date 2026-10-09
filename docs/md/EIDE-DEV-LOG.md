@@ -9381,3 +9381,89 @@ trả nguyên nên đơn vị cơ bản vẫn khớp, và kết quả không đ�
 
 Bộ kiểm 1 976 → **1 980 xanh**, 1 skip, 0 đỏ (30 ca mới trong `tests/test_don_vi_fact.py`).
 `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.
+
+## [DEV-357] [M5-07] Chốt N1 cuối cùng mà MÃ đứng canh, và nó so chuỗi sau khi xoá hết dấu chấm
+
+Nhiệm vụ #30. **Sửa lỗi thuần**, không cờ, không tiền đề.
+
+### Cửa mà MỌI hằng số firmware phải đi qua, và nó nhận bừa
+
+`fact.from_doc` là cây cầu duy nhất để một con số trong tài liệu được phép đi vào mã nguồn: mô
+hình chọn đoạn và đặt tên khoá, **mã kiểm giá trị có mặt thật trong đoạn ấy**. Kỷ luật đó là
+toàn bộ giá trị của công cụ — nó ra đời vì tác tử đọc đúng bốn mục tài liệu rồi bị chốt hằng số
+N1 chặn khi ghi `main.c`.
+
+Phép kiểm cũ, hai dòng:
+
+```python
+def _chuan(x): return re.sub(r"[\s.,]", "", x).lower()
+co = _chuan(gt) in _chuan(noi_dung)
+```
+
+Hai chỗ nó nói sai, và cả hai nói sai theo đúng chiều tệ nhất — **nhận bừa**:
+
+* **Xoá dấu chấm** biến `2.7 V` thành `27v`, nên `gia_tri="27"` đi qua. Một điện áp 2,7 V vào
+  kho thành **27**, mang trích dẫn, mang tầng BẠC, trông y như một Fact đọc đúng.
+* **Phép CHỨA không có ranh giới**, nên `3` khớp `Table 3`, `180` khớp `1800`, `39` khớp `0.39`.
+
+Và `source.quote` lưu 200 ký tự **đầu đoạn**, không phải chỗ có con số — nên người mở Fact ra
+xem thấy một đoạn không chứa con số, và trích dẫn không chứng minh gì cả.
+
+### Bốn phép kiểm, và chúng trả lời bốn câu khác nhau
+
+1. **`trich` phải có thật** trong đoạn (chỉ gộp khoảng trắng, không xoá dấu chấm). Thiếu phép
+   này thì `trich` là một trường tự do: mô hình gõ một câu nghe hợp lý, con số nằm trong câu
+   ấy, và **cả hai cùng do nó viết ra** — lời khai tự chứng minh chính nó.
+2. **Ranh giới token** `(?<![\w.,])…(?![\w]|[.,]\d)`. Dấu chấm/phẩy *theo sau* chỉ chặn khi nó
+   mở đầu một phần thập phân, nên `Mã lỗi 39, và…` vẫn khớp được — chặn cả dấu phẩy ngắt câu
+   là chặn một cách viết rất thường gặp.
+3. **Giá trị ≤ 2 ký tự thì phải có `trich`.** Ranh giới một mình không đủ: `3` khớp `Table 3`
+   ở đúng ranh giới. Một số một–hai chữ số gần như luôn tìm thấy ở đâu đó trong một đoạn.
+4. **`don_vi_do` phải đứng ngay sau số**, khớp cả token. `Tần số 180 MHz, điện áp 3.3 V` có cả
+   `MHz` lẫn `V`; một phép "có mặt trong câu" sẽ nhận `V` cho giá trị `180`. Và `m` không phải
+   `mA` — `ve_si` quy đổi theo cái tác tử khai, nên con số trong kho khác con số trên giấy.
+
+Nhánh hex/thập phân (`39` ↔ `0x27`) giữ nguyên ý nhưng đi **cùng** phép ranh giới, không đường
+riêng.
+
+### Hai chỗ KHÔNG theo chữ của kế hoạch, và lý do
+
+**Mã lỗi.** Kế hoạch ghi `E2008` cho mọi lý do từ chối. Giữ **E2006** cho *"giá trị không có
+trong đoạn"* — đúng nghĩa mã cũ, và việc cần làm vẫn như trước (chọn đoạn khác hoặc sửa giá
+trị). `E2008` chỉ cho ba lý do **mới**: `trich` bịa · số quá ngắn · đơn vị lệch. Gộp cả bốn vào
+một mã là bắt tác tử học một mã cho bốn chuyện dẫn tới bốn việc khác nhau — và một ca kiểm cũ
+đang khoá đúng nghĩa cũ ấy.
+
+**Một ca cũ phải sửa (§3.2).** `test_fact_from_doc_nhan_ca_hai_dang_cua_mot_gia_tri` gọi với
+`gia_tri="39"` không kèm `trich`. Tính chất nó canh (*"hai dạng của một giá trị đều nhận"*) vẫn
+đúng; nó chỉ phải nói ra mình đọc ở **câu** nào. Lý do ghi ngay trong docstring của ca ấy.
+
+### TC-M5-07-01 của kế hoạch cũng xanh vì một lý do khác
+
+Viết đúng chữ kế hoạch — `gia_tri="27"`, không `trich` — thì ca bị chặn vì **số quá ngắn**
+(`"27"` dài hai ký tự), và phép so dấu chấm **không bao giờ chạy tới**. Cùng cái bẫy vừa gặp ở
+TC-M5-05-04: một ca kiểm đúng đề mà không chạm thứ nó nói nó canh. Ca thật nêu `trich` để luật
+số-ngắn không che mất, rồi kiểm **cả hai** lý do bằng hai lời gọi với hai mã lỗi khác nhau.
+
+### Phá lại thì đỏ: 15/22 lượt đầu → **22/22**
+
+Bảy chỗ LỌT, và **cả bảy là ca kiểm của tôi chưa chạm tới** — không chỗ nào vô hiệu:
+
+1. *trả lại phép xoá dấu chấm* — phép ấy nằm ở hàm so `trich`, còn phép khớp giá trị đi regex
+   riêng; ca `27 ≠ 2.7` không canh chỗ đó.
+2. *bỏ ranh giới TRƯỚC* — không ca nào có giá trị đứng sau dấu thập phân (`0.39`).
+3. *ranh giới sau chặn luôn dấu phẩy ngắt câu* — không ca nào có `39,`.
+4. *bỏ nhánh hex* — câu trích của ca hex có **cả hai** dạng, nên phép khớp trần đã tìm thấy và
+   nhánh hex chưa bao giờ chạy tới.
+5. *đơn vị khớp ở bất kỳ đâu* — ca cũ dùng một đơn vị không xuất hiện ở đâu trong câu, nên
+   "bất kỳ đâu" cũng trượt.
+6. *đơn vị không cần ranh giới cuối* — không ca nào có đơn vị là tiền tố của đơn vị khác
+   (`m` ⊂ `mA`).
+7. *cửa sổ quote hẹp còn 2 ký tự* — ca cũ chỉ kiểm `"1800" in quote`, mà ±1 ký tự vẫn chứa.
+
+Năm trong bảy chỗ ấy chỉ lộ ra khi **dàn dựng có đúng hình dạng cần đo** — bốn dòng văn bản
+thêm vào bộ dàn dựng (`0.39 phần trăm`, `0x27` một mình, `39,`, `100 mA`) là thứ biến bảy chữ
+LỌT thành bảy chữ ĐỎ.
+
+Bộ kiểm 1 993 → **2 000 xanh**, 1 skip, 0 đỏ (20 ca mới trong `tests/test_fact_from_doc.py`).
+`kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.

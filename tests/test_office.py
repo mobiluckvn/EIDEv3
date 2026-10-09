@@ -550,7 +550,14 @@ def test_fact_from_doc_KIEM_gia_tri_co_that_trong_doan(make_agent, tep_ban_giao)
 
 
 def test_fact_from_doc_nhan_ca_hai_dang_cua_mot_gia_tri(make_agent, tmp_path):
-    """Tài liệu hay viết "39 (0x27)". Cả hai dạng đều là ĐỌC từ đoạn đó."""
+    """Tài liệu hay viết "39 (0x27)". Cả hai dạng đều là ĐỌC từ đoạn đó.
+
+    **M5-07 đổi ca này, và đổi có lý do.** Trước đây nó gọi không kèm `trich`. Nhưng một giá
+    trị một–hai ký tự gần như luôn tìm thấy ở đâu đó trong một đoạn tài liệu — `"3"` khớp
+    `"Table 3"` ở đúng ranh giới token — nên `fact.from_doc` nay đòi **câu nguyên văn** cho
+    những giá trị ngắn. Tính chất ca này canh (*"hai dạng của một giá trị đều nhận"*) không
+    đổi; nó chỉ phải nói ra mình đọc ở CÂU nào. Xem DEV-357 và §3.2.
+    """
     import docx
 
     agent = make_agent([])
@@ -567,5 +574,6 @@ def test_fact_from_doc_nhan_ca_hai_dang_cua_mot_gia_tri(make_agent, tmp_path):
     for gt in ("39", "0x27"):
         k = agent.registry.run("fact.from_doc", {
             "doc_id": "TG-1", "don_vi": so, "thuc_the": "reg:OCR2A", "khoa": "gia_tri",
-            "gia_tri": gt}, ctx)
+            "gia_tri": gt,
+            "trich": "OCR2A = 39 (0x27) cho chu kỳ ngắt 20 µs."}, ctx)
         assert k.ok, (gt, getattr(k.error, "message_vi", ""))
