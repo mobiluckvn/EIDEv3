@@ -604,3 +604,307 @@ def test_MEM08_khong_kiem_duoc_phai_NOI_DUNG_CHU_DO(make_agent):
     dong = kq.dong_he_thong()
     assert "chưa kiểm được" in dong and "huỷ nén" in dong
     assert "3/3" not in dong
+
+
+# =========================================================================== M5-17
+# Bản tóm tắt C2 sống đúng MỘT tiến trình, rồi mất.
+#
+# `BoNen.__init__` đặt `tom_tat_hien_tai = None` và chỉ gán nó khi nén thành công TRONG tiến
+# trình ấy. Tiến trình mới dựng một `BoNen` mới, nên `dung_khoi_resume(tom_tat_truoc=...)`
+# luôn nhận `None` và khối resume in "Chưa có bản tóm tắt nào".
+#
+# Hậu quả đúng chỗ đau nhất: bản tóm tắt là **NGUỒN DUY NHẤT** về giai đoạn đã bị nén khỏi
+# ngữ cảnh (chính `van_ban()` của nó nói thế). Mở lại dự án sau một lần nén thì phần hội thoại
+# ấy không còn ở transcript, cũng không còn ở resume — nó chỉ còn trong sổ cái, mà không ai
+# đọc. Và bản tóm tắt ĐÃ ĐƯỢC GHI vào sổ cái từ đầu: `ledger.append("compact", {... "tom_tat":
+# tt.to_dict()})`. Lần thứ chín của một hình dạng: cơ chế có sẵn, đường dẫn tới nó đứt.
+def test_tu_dict_dao_to_dict():
+    """TC-M5-17-02 — `tu_dict` phải đảo đúng `to_dict`, kể cả kiểu của `covers`.
+
+    `to_dict` ghi `covers` thành **list** (JSON không có tuple), nên đọc lại phải đưa về tuple
+    — không thì `covers` của một bản nạp lại khác kiểu bản vừa tạo, và chỗ nào so bằng sẽ im
+    lặng sai.
+    """
+    tt = sm.BanTomTat(muc=_tt_args(muc_tieu="bộ thu video qua Ethernet"), covers=(3, 17),
+                      prev_hash="abc", created_at="2026-10-09T00:00:00Z",
+                      model="gemini-3.8-flash", tokens=123)
+    lai = sm.BanTomTat.tu_dict(tt.to_dict())
+    assert lai.muc == tt.muc
+    assert lai.covers == (3, 17) and isinstance(lai.covers, tuple), lai.covers
+    assert (lai.prev_hash, lai.created_at, lai.model, lai.tokens) == (
+        "abc", "2026-10-09T00:00:00Z", "gemini-3.8-flash", 123)
+    assert lai.van_ban() == tt.van_ban()
+
+
+def test_tu_dict_chiu_duoc_du_lieu_THIEU():
+    """Sổ cái của một bản EIDE cũ có thể thiếu khoá. Một `KeyError` lúc khởi động là đổi một
+    bản tóm tắt mất thành cả dự án không mở được."""
+    lai = sm.BanTomTat.tu_dict({"muc": {"muc_tieu": "x"}})
+    assert lai.muc["muc_tieu"] == "x" and lai.covers == (0, 0)
+    assert sm.BanTomTat.tu_dict({}) is not None
+    assert sm.BanTomTat.tu_dict("khong-phai-dict") is None
+
+
+def test_MEM17_mo_lai_sau_C2_co_tom_tat(bo_nen, make_agent):
+    """TC-M5-17-01 — phép đo đầu-cuối, và là lý do cả nhiệm vụ tồn tại.
+
+    Nén xong ở tiến trình một; tiến trình HAI mở lại cùng dự án phải thấy đúng bản tóm tắt ấy
+    trong khối `<resume>`.
+    """
+    agent, bn = bo_nen([_rsp_tom_tat(muc_tieu="bộ thu video qua Ethernet"),
+                        _rsp_kiem("x", "y", "z")])
+    kq = bn.nen(_messages(20), run_id="run-1")
+    assert kq.ok, kq.ly_do
+
+    # "Tiến trình mới": một Agent khác trên CÙNG dự án, nên cùng sổ cái trên đĩa.
+    hai = make_agent([])
+    assert hai.bo_nen.tom_tat_hien_tai is not None, "bản tóm tắt không sống qua tiến trình"
+    khoi = dung_khoi_resume(ledger=hai.ledger, store=hai.store, history=hai.history,
+                            tom_tat_truoc=hai.bo_nen.tom_tat_hien_tai)
+    assert "bộ thu video qua Ethernet" in khoi
+    assert "Chưa có bản tóm tắt" not in khoi
+
+
+def test_da_huy_nen_thi_khong_nap_lai(bo_nen, make_agent):
+    """TC-M5-17-03 — người đã HUỶ nén thì bản tóm tắt ấy không được sống lại.
+
+    §6.2.3 cho huỷ nén trong 24 giờ, và huỷ nghĩa là *"đoạn hội thoại ấy quay về nguyên văn"*.
+    Nạp lại bản tóm tắt sau khi huỷ là đưa vào ngữ cảnh một bản rút gọn của thứ đang có đủ —
+    hai nguồn cho một giai đoạn, và mô hình không biết tin cái nào.
+    """
+    agent, bn = bo_nen([_rsp_tom_tat(muc_tieu="bộ thu video qua Ethernet"),
+                        _rsp_kiem("x", "y", "z")])
+    ms = _messages(20)
+    assert bn.nen(ms, run_id="run-1").ok
+    bn.huy_nen(ms)
+
+    hai = make_agent([])
+    assert hai.bo_nen.tom_tat_hien_tai is None, "bản tóm tắt đã huỷ vẫn sống lại"
+    khoi = dung_khoi_resume(ledger=hai.ledger, store=hai.store, history=hai.history,
+                            tom_tat_truoc=hai.bo_nen.tom_tat_hien_tai)
+    assert "Chưa có bản tóm tắt nào" in khoi
+
+
+def test_nen_LAI_sau_khi_huy_thi_lay_ban_MOI(bo_nen, make_agent):
+    """Huỷ rồi nén lại thì phải lấy bản MỚI, không phải im lặng trả None mãi.
+
+    Phép duyệt ngược phải dừng ở sự kiện gần nhất, không phải "có `huy` ở đâu đó thì bỏ hết" —
+    nếu không thì một lần huỷ ở tháng trước làm mọi lần nén sau đó vô hình.
+    """
+    agent, bn = bo_nen([_rsp_tom_tat(muc_tieu="bản ĐẦU")])
+    ms = _messages(20)
+    assert bn.nen(ms, run_id="run-1").ok
+    bn.huy_nen(ms)
+    # Kịch bản mới cho lượt nén thứ hai — số lời gọi mô hình của một lượt nén không cố định
+    # (có vòng kiểm chứng), nên gán lại rõ ràng thay vì đoán cần bao nhiêu phản hồi.
+    agent.llm.script = [_rsp_tom_tat(muc_tieu="bản SAU")]
+    agent.llm._i = 0
+    ms2 = _messages(20)
+    assert bn.nen(ms2, run_id="run-2").ok
+
+    hai = make_agent([])
+    tt = hai.bo_nen.tom_tat_hien_tai
+    assert tt is not None and "bản SAU" in tt.van_ban(), tt
+
+
+def test_so_cai_HONG_khong_lam_chet_khoi_dong(make_agent, monkeypatch):
+    """Một sổ cái hỏng phải làm mất bản tóm tắt, KHÔNG làm mất cả dự án.
+
+    `BoNen.__init__` chạy ở đường khởi động. Để một ngoại lệ đọc sổ bay ra từ đó là đổi một
+    bất tiện (thiếu tóm tắt) lấy một chỗ tắc (không mở được dự án).
+    """
+    from eide.memory import nen as N
+
+    def _no(_ledger):
+        raise ValueError("sổ cái hỏng")
+
+    monkeypatch.setattr(N, "tom_tat_cuoi_tu_so_cai", _no)
+    ag = make_agent([])
+    assert ag.bo_nen.tom_tat_hien_tai is None
+
+
+def test_tom_tat_cuoi_tu_so_cai_bo_qua_buoc_KHAC_ok(bo_nen, make_agent):
+    """Sổ cái có mười loại sự kiện `compact` (`pre`, `loi`, `tombstone`, `bo_cuoc`…). Chỉ
+    `buoc == "ok"` mới mang bản tóm tắt đã qua kiểm chứng."""
+    from eide.memory.nen import tom_tat_cuoi_tu_so_cai
+
+    agent, _bn = bo_nen([])
+    agent.ledger.append("compact", {"run_id": "r", "buoc": "pre", "k_luot": 6})
+    agent.ledger.append("compact", {"run_id": "r", "buoc": "loi_kiem", "lan": 1})
+    assert tom_tat_cuoi_tu_so_cai(agent.ledger) is None
+
+
+# ------------------------------------------------- phần B: tường thuật cơ học sau cờ
+def _ms_phien(co_loi: bool = True) -> list[dict]:
+    """Transcript một phiên: hai lời người, ba lời gọi công cụ, một cái lỗi."""
+    ms: list[dict] = [
+        {"role": "user", "_kind": "say", "text": "đọc datasheet rồi viết driver I2C"},
+        {"role": "model", "tool_calls": [{"id": "c1", "tool": "fs.read"}]},
+        {"role": "tool", "tool_call_id": "c1", "tool": "fs.read",
+         "result": {"ok": True}, "envelope": {"summary_line": "fs.read main.c (120 dòng)"}},
+        {"role": "user", "_he_thong": True, "text": "lời nhắc hệ thống KHÔNG được tính"},
+        {"role": "user", "_kind": "say", "text": "nạp luôn lên bo đi"},
+        {"role": "tool", "tool_call_id": "c2", "tool": "target.flash",
+         "result": ({"code": "E4040", "message_vi": "không thấy bo nào trên cổng USB"}
+                    if co_loi else {"ok": True}),
+         "envelope": {"summary_line": "target.flash"}}]
+    return ms
+
+
+def test_tuong_thuat_co_hoc_ke_dung_BA_THU():
+    """Lời người, lời gọi, lỗi cuối — và KHÔNG tóm tắt lời tác tử nói.
+
+    Một bản rút gọn của lời tác tử tự nói là chỗ dễ nhất để một kết luận sai sống thêm một
+    phiên, mà cả mảng này tồn tại để chặn đúng chuyện đó.
+    """
+    from eide.memory import tuong_thuat_co_hoc
+
+    chu = tuong_thuat_co_hoc(_ms_phien())
+    assert "đọc datasheet rồi viết driver I2C" in chu
+    assert "nạp luôn lên bo đi" in chu
+    assert "lời nhắc hệ thống" not in chu, "lời hệ thống không phải lời người"
+    assert "`fs.read`" in chu and "`target.flash`" in chu
+    # Mã lỗi phải nằm NGAY dòng lời gọi, không chỉ ở dòng "lỗi cuối" — một bản kê mười lời
+    # gọi mà chỉ dòng cuối có mã thì không nói được cái nào trong mười cái đã đổ.
+    assert "`target.flash` → E4040" in chu, chu
+    assert "`fs.read` ok" in chu, chu
+    assert "không thấy bo nào" in chu
+    assert "không phải việc cần làm tiếp" in chu
+    assert len(chu) <= 1500, len(chu)
+
+
+def test_tuong_thuat_co_hoc_co_TRAN():
+    """Trần 1 500 ký tự chỉ đo được khi dàn dựng VƯỢT nó.
+
+    Phép phá chỉ ra rằng ca trên không canh trần: transcript dàn dựng của nó ngắn, nên bỏ trần
+    đi cũng không đổi gì. Một phiên thật có hàng trăm lời gọi, và tường thuật là thứ chen vào
+    lượt ĐẦU TIÊN — lượt đắt nhất để chen.
+    """
+    from eide.memory import tuong_thuat_co_hoc
+
+    ms = [{"role": "user", "_kind": "say", "text": "x" * 400} for _ in range(5)]
+    for i in range(30):
+        ms.append({"role": "tool", "tool_call_id": f"c{i}", "tool": f"cong.cu.{i}",
+                   "result": {"ok": True},
+                   "envelope": {"summary_line": "y" * 200}})
+    chu = tuong_thuat_co_hoc(ms)
+    assert len(chu) <= 1500 + 20, len(chu)
+    assert "(đã cắt)" in chu
+
+
+def test_tuong_thuat_co_hoc_phien_RONG_thi_rong():
+    """Không có gì thì trả rỗng, để khối resume rơi về câu “chưa có bản tóm tắt nào” — một
+    mục tường thuật trống là một mục nói rằng đã tường thuật."""
+    from eide.memory import tuong_thuat_co_hoc
+
+    assert tuong_thuat_co_hoc([]) == ""
+    assert tuong_thuat_co_hoc([{"role": "user", "_he_thong": True, "text": "x"}]) == ""
+
+
+def test_khoi_resume_uu_tien_BAN_TOM_TAT_hon_tuong_thuat(make_agent):
+    """Có cả hai thì bản tóm tắt C2 thắng: nó đã qua vòng kiểm chứng (§6.2), còn tường thuật
+    chỉ là một bản kê việc."""
+    from eide.llm.gateway import Response
+    from eide.memory import tuong_thuat_co_hoc
+    from eide.protocol.rpc import Core
+
+    ag = make_agent([Response(text="ok")])
+    Core(ag.ledger, ag.ids, ag.turn, on_emit=lambda c: None).console_act(
+        {"kind": "say", "text": "x"})
+    tt = sm.BanTomTat(muc=_tt_args(muc_tieu="bộ thu video qua Ethernet"))
+    khoi = dung_khoi_resume(ledger=ag.ledger, store=ag.store, history=ag.history,
+                            tom_tat_truoc=tt,
+                            tuong_thuat=tuong_thuat_co_hoc(_ms_phien()))
+    assert "bộ thu video qua Ethernet" in khoi
+    assert "target.flash" not in khoi
+
+
+def test_tuong_thuat_co_hoc_khi_co_bat(make_agent, monkeypatch, tmp_path):
+    """TC-M5-17-05 — cờ BẬT thì khối resume của phiên sau có tên công cụ và mã lỗi của phiên
+    trước; cờ TẮT thì không có mục tường thuật nào.
+
+    Phần lớn phiên thật KHÔNG chạm ngưỡng nén, nên đây là trường hợp **thường gặp**: khối
+    resume nói "chưa có bản tóm tắt nào" trong khi một transcript đầy đủ đang nằm trên đĩa.
+    """
+    from eide.config import Features
+    from eide.llm.gateway import Response
+    from eide.protocol.rpc import Core
+
+    mot = make_agent([Response(text="ok")])
+    Core(mot.ledger, mot.ids, mot.turn, on_emit=lambda c: None).console_act(
+        {"kind": "say", "text": "x"})
+    # Dựng transcript của "phiên trước" bằng đúng kho phiên mà agent dùng.
+    mot.phien.transcript(mot.session_id).thay_toan_bo(_ms_phien())
+    mot.phien.danh_dau_ket_thuc(mot.session_id)
+
+    hai = make_agent([])
+    assert hai.session_id != mot.session_id
+
+    hai.config.features = Features.load()
+    assert hai.config.features.bat("resume_tuong_thuat") is False
+    assert hai._tuong_thuat_phien_truoc() == "", "cờ TẮT mà vẫn tường thuật"
+
+    monkeypatch.setenv("EIDE_FEATURE_RESUME_TUONG_THUAT", "1")
+    hai.config.features = Features.load()
+    chu = hai._tuong_thuat_phien_truoc()
+    assert "`target.flash`" in chu and "E4040" in chu, chu[:200]
+    khoi = dung_khoi_resume(ledger=hai.ledger, store=hai.store, history=hai.history,
+                            tom_tat_truoc=None, tuong_thuat=chu)
+    assert "target.flash" in khoi and "Chưa có bản tóm tắt nào" not in khoi
+
+
+def test_transcript_HONG_khong_lam_chet_luot_dau(make_agent, monkeypatch):
+    """Một transcript hỏng phải làm mất phần tường thuật, KHÔNG làm mất lượt đầu tiên.
+
+    Phải dựng một phiên TRƯỚC, không thì `_tuong_thuat_phien_truoc` trả rỗng ngay ở bước
+    "không có phiên nào trước" và ca này xanh mà chưa chạm tới cửa `try` nó nói nó canh —
+    phép phá chỉ ra đúng điều đó.
+    """
+    from eide import memory as M
+    from eide.config import Features
+
+    monkeypatch.setenv("EIDE_FEATURE_RESUME_TUONG_THUAT", "1")
+    mot = make_agent([])
+    mot.phien.transcript(mot.session_id).thay_toan_bo(_ms_phien())
+    ag = make_agent([])
+    ag.config.features = Features.load()
+    assert ag.phien.gan_nhat(tru=ag.session_id) == mot.session_id
+
+    def _no(_ms):
+        raise ValueError("transcript hỏng")
+
+    # Trước khi phá: phải CÓ tường thuật, không thì ca dưới xanh vì rỗng sẵn.
+    assert ag._tuong_thuat_phien_truoc() != ""
+    monkeypatch.setattr(M, "tuong_thuat_co_hoc", _no)
+    assert ag._tuong_thuat_phien_truoc() == ""
+
+
+def test_co_resume_tuong_thuat_co_ten_va_mac_dinh_TAT():
+    from eide.config import Features
+
+    assert "resume_tuong_thuat" in Features.ten_co()
+    assert Features().bat("resume_tuong_thuat") is False
+
+
+def test_tuong_thuat_moi_LOI_GOI_mang_ma_loi_cua_chinh_no():
+    """Mã lỗi phải nằm trên TỪNG dòng lời gọi, không chỉ ở dòng "lỗi cuối".
+
+    Phép phá chỉ ra rằng ca trên không đo được chuyện này: dòng *Lỗi cuối cùng* in ra đúng
+    chuỗi `` `target.flash` → E4040 ``, nên bỏ mã khỏi dòng lời gọi mà ca vẫn xanh. Ca này
+    dựng **hai** lời gọi đổ với **hai** mã khác nhau — dòng "lỗi cuối" chỉ kể được cái sau.
+    """
+    from eide.memory import tuong_thuat_co_hoc
+
+    ms = [
+        {"role": "user", "_kind": "say", "text": "nạp rồi đo"},
+        {"role": "tool", "tool_call_id": "c1", "tool": "build.compile",
+         "result": {"code": "E4001", "message_vi": "không thấy mã nguồn"},
+         "envelope": {"summary_line": "build.compile"}},
+        {"role": "tool", "tool_call_id": "c2", "tool": "target.flash",
+         "result": {"code": "E4040", "message_vi": "không thấy bo nào"},
+         "envelope": {"summary_line": "target.flash"}}]
+    chu = tuong_thuat_co_hoc(ms)
+    # Dòng "Lỗi cuối cùng" chỉ nói về `target.flash`, nên `E4001` chỉ có thể đến từ dòng
+    # lời gọi của chính nó.
+    assert "E4001" in chu.split("**Lỗi cuối cùng:**")[0], chu
+    assert "`build.compile` → E4001" in chu, chu

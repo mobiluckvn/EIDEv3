@@ -376,6 +376,15 @@ class Features:
     # §E5.4 danh STALE moi ket qua khi sua bat ky tep ma nao, va mot nhan STALE khong ai doc
     # luc ket luot thi chi la trang tri.
     hoi_quy_nen: bool = False
+    # M5-17 — khi phien truoc CHUA cham nguong nen (tuc khong co ban tom tat C2 nao), khoi
+    # `<resume>` nhan mot TUONG THUAT CO HOC do ma dung tu transcript phien ay: loi nguoi da
+    # nho, loi goi cong cu, loi cuoi. 0 token mo hinh.
+    #
+    # Sau co vi no doi thu mo hinh doc o luot DAU TIEN cua moi phien mo lai (N-4) — va luot
+    # dau tien la luot dat nhat de doi, vi moi thu sau do dua tren no. Phan KHONG sau co:
+    # nap lai ban tom tat C2 tu so cai (sua loi thuan — ban tom tat la NGUON DUY NHAT ve giai
+    # doan da bi nen khoi ngu canh, va no dang chet cung tien trinh).
+    resume_tuong_thuat: bool = False
 
     @classmethod
     def load(cls) -> "Features":

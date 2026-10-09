@@ -118,6 +118,42 @@ def bia_mo(ledger: Any) -> list[str]:
             if e.kind == "tombstone"]
 
 
+def tom_tat_cuoi_tu_so_cai(ledger: Any) -> "sm.BanTomTat | None":
+    """Bản tóm tắt C2 gần nhất **còn hiệu lực**, đọc từ sổ cái.
+
+    Vì sao cần: `BoNen.tom_tat_hien_tai` chỉ được gán khi nén thành công TRONG tiến trình ấy,
+    nên nó sống đúng một tiến trình rồi mất. Mà bản tóm tắt là **nguồn duy nhất** về giai đoạn
+    đã bị nén khỏi ngữ cảnh — chính `van_ban()` của nó nói thế. Mở lại dự án sau một lần nén
+    thì đoạn hội thoại ấy không còn ở transcript, cũng không còn ở khối `<resume>`.
+
+    Và nó đã được ghi vào sổ cái từ đầu (`ledger.append("compact", {... "tom_tat": …})`). Lần
+    thứ chín của một hình dạng: cơ chế có sẵn, đường dẫn tới nó đứt.
+
+    Duyệt NGƯỢC và dừng ở sự kiện `compact` gần nhất đáng kể:
+
+    * `buoc == "ok"` kèm `tom_tat` → trả bản ấy;
+    * `buoc == "huy"` → trả `None`. §6.2.3 cho huỷ nén trong 24 giờ, và huỷ nghĩa là đoạn hội
+      thoại ấy **quay về nguyên văn**. Nạp lại bản tóm tắt sau khi huỷ là đưa vào ngữ cảnh một
+      bản rút gọn của thứ đang có đủ — hai nguồn cho một giai đoạn, và mô hình không biết tin
+      cái nào.
+
+    Dừng ở cái GẦN NHẤT, không phải "có `huy` ở đâu đó thì bỏ hết": một lần huỷ tháng trước
+    không được làm mọi lần nén sau đó vô hình.
+    """
+    if ledger is None:
+        return None
+    for ev in reversed(list(ledger.read())):
+        if getattr(ev, "kind", "") != "compact":
+            continue
+        d = ev.data or {}
+        buoc = d.get("buoc")
+        if buoc == "huy":
+            return None
+        if buoc == "ok" and d.get("tom_tat"):
+            return sm.BanTomTat.tu_dict(d["tom_tat"])
+    return None
+
+
 # =========================================================================== bộ nén
 class BoNen:
     """Chạy C2 trên một danh sách message. Không biết gì về vòng lặp."""
@@ -129,7 +165,15 @@ class BoNen:
         self.store = store
         self.eide_md = eide_md
         self.transcript = transcript
-        self.tom_tat_hien_tai: sm.BanTomTat | None = None
+        # M5-17 — nạp lại bản tóm tắt gần nhất từ SỔ CÁI, không để nó chết cùng tiến trình.
+        #
+        # Bọc `try`: một sổ cái hỏng phải làm mất bản tóm tắt, KHÔNG làm mất cả dự án. Hàm này
+        # chạy ở đường khởi động, nên để một ngoại lệ đọc sổ bay ra từ đây là đổi một bất tiện
+        # lấy một chỗ tắc.
+        try:
+            self.tom_tat_hien_tai: sm.BanTomTat | None = tom_tat_cuoi_tu_so_cai(ledger)
+        except Exception:                                    # noqa: BLE001
+            self.tom_tat_hien_tai = None
         # §6.2.3 — bản trước khi nén giữ 24 giờ, để huỷ nén được.
         self.ban_truoc_nen: list[dict[str, Any]] | None = None
         self.luc_nen: str = ""

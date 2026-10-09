@@ -19,9 +19,63 @@ from __future__ import annotations
 from typing import Any
 
 
+TRAN_TUONG_THUAT = 1500
+
+
+def tuong_thuat_co_hoc(messages: list[dict[str, Any]]) -> str:
+    """Tường thuật phiên trước **bằng mã**, 0 token mô hình — M5-17 phần B.
+
+    Dùng khi phiên trước **chưa chạm ngưỡng nén**, nên không có bản tóm tắt C2 nào. Lúc ấy
+    khối resume chỉ nói *"chưa có bản tóm tắt nào"* — đúng, nhưng nó bỏ qua một transcript
+    đang nằm sẵn trên đĩa. Phần lớn phiên thật không chạm ngưỡng nén, nên đây là trường hợp
+    **thường gặp**, không phải ngoại lệ.
+
+    Ba thứ, và chỉ ba: lời NGƯỜI nói (việc được giao), lời gọi công cụ (việc đã làm), lỗi cuối
+    (chỗ đang mắc). Cố ý **không** tóm tắt lời tác tử nói: một bản rút gọn của lời nó tự nói
+    là chỗ dễ nhất để một kết luận sai sống thêm một phiên.
+    """
+    if not messages:
+        return ""
+    nguoi = [str(m.get("text") or "").strip() for m in messages
+             if m.get("role") == "user" and not m.get("_he_thong")]
+    goi: list[str] = []
+    loi = ""
+    for m in messages:
+        if m.get("role") != "tool":
+            continue
+        ten = m.get("tool") or "?"
+        env = m.get("envelope") or {}
+        kq = m.get("result") or {}
+        ma = (kq.get("code") if isinstance(kq, dict) else "") or ""
+        dong = str(env.get("summary_line") or "").strip()
+        goi.append(f"- `{ten}`" + (f" → {ma}" if ma else " ok")
+                   + (f" · {dong[:90]}" if dong else ""))
+        if ma:
+            loi = f"`{ten}` → {ma}: " + str(
+                (kq.get("message_vi") if isinstance(kq, dict) else "") or "")[:160]
+
+    if not nguoi and not goi:
+        return ""
+    L = ["Phiên trước CHƯA chạm ngưỡng nén nên không có bản tóm tắt. Dưới đây là tường "
+         "thuật do MÃ dựng từ transcript phiên ấy — không ai tóm tắt lại, nên nó không "
+         "thêm kết luận nào."]
+    if nguoi:
+        L.append("\n**Người đã nhờ** (3 lời cuối):")
+        L += [f"- “{c[:150]}”" for c in nguoi[-3:]]
+    if goi:
+        L.append(f"\n**Đã gọi** ({len(goi)} lời gọi, hiện 10 cái cuối):")
+        L += goi[-10:]
+    if loi:
+        L.append(f"\n**Lỗi cuối cùng:** {loi}")
+    L.append("\nĐây là việc ĐÃ xảy ra, không phải việc cần làm tiếp. Việc tiếp theo do "
+             "người dùng giao ở lượt này.")
+    chu = "\n".join(L)
+    return chu if len(chu) <= TRAN_TUONG_THUAT else chu[:TRAN_TUONG_THUAT] + "\n… (đã cắt)"
+
+
 def dung_khoi_resume(*, ledger: Any, store: Any, history: Any,
                      tom_tat_truoc: Any = None, phuc_hoi: Any = None,
-                     so_su_kien: int = 20) -> str:
+                     tuong_thuat: str = "", so_su_kien: int = 20) -> str:
     """Khối `<resume>` cho lượt đầu tiên của một phiên mở lại."""
     su_kien = list(ledger.read())
     if not su_kien:
@@ -35,6 +89,10 @@ def dung_khoi_resume(*, ledger: Any, store: Any, history: Any,
     # --- 1. Bản tóm tắt phiên trước.
     if tom_tat_truoc is not None:
         L += ["## Phiên trước tóm lại", tom_tat_truoc.van_ban(), ""]
+    elif tuong_thuat:
+        # Bản tóm tắt C2 thắng tường thuật cơ học khi có cả hai: nó đã qua vòng kiểm chứng
+        # (§6.2), còn tường thuật thì chỉ là một bản kê việc.
+        L += ["## Phiên trước tóm lại", tuong_thuat, ""]
     else:
         L += ["## Phiên trước tóm lại",
               "Chưa có bản tóm tắt nào — phiên trước chưa chạm ngưỡng nén.", ""]
