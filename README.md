@@ -339,7 +339,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **1 896 ca Python + 43 ca giao diện**
+### Mức 1 — Ca đơn vị: **1 929 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -458,7 +458,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **1 896** | `pytest -q` |
+| Ca đơn vị Python | **1 929** | `pytest -q` |
 | Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -467,7 +467,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 18 tệp | `tools/kiem_tai_lieu.py` |
 | Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/`](docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/) |
-| Công cụ đã được dùng thật | **115/130** | rà toàn bộ sổ ghi việc |
+| Công cụ đã được dùng thật | **115/131** | rà toàn bộ sổ ghi việc |
 
 Mỗi ca kiểm có một tệp log riêng, trong đó có **bảng từng lời gọi công cụ kèm tham số đầy đủ
 và mã lỗi**: [`ket-qua-chay-lai/nhat-ky/`](docs/review-v3/test/ket-qua-chay-lai/nhat-ky/).
@@ -488,16 +488,23 @@ Một công cụ không bao giờ được dùng thì bằng không có nó.
 ### Đợt rà lại chính Agent, từ 06/10/2026
 
 Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Kế hoạch
-có 106 việc; **23 việc đầu đã xong** (DEV-330 → DEV-352). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
+có 106 việc; **25 việc đầu đã xong** (DEV-330 → DEV-354). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
 không nhìn tới, và mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca
-kiểm. Bộ kiểm 1 610 → **1 896 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
+kiểm. Bộ kiểm 1 610 → **1 929 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
 
 Và một con số nữa về chính đợt này: với mỗi việc, phép **"phá lại thì đỏ"** được dựng từ
-`git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Chín việc gần nhất bắt
+`git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Chín việc trước bắt
 **9/9 · 20/20 · 24/24 · 27/27 · 22/22 · 13/13 · 22/22 · 22/22 · 36/36** — nhưng *lượt đầu* của
 chúng là 7/9, 18/20, 17/24, 22/27, 15/20, 7/13, 15/22, 18/22, 34/36. Một tỉ lệ 100 % chỉ nói được điều gì khi tập phép phá
 không do người đang mong nó đẹp chọn ra; khuôn script giữ ở
 [`toi-uu/pha_lai-khuon.py`](toi-uu/pha_lai-khuon.py).
+
+Hai việc mới nhất **không** đạt 100 %, và chỗ ấy đáng nói hơn chỗ đạt: 10/12 và 31/34. Năm phép
+phá còn LỌT đều đã mở ra kiểm lại từng cái, và cả năm **không đổi hành vi** — ba trong số đó là
+*guard chết* (một nhánh `if` không nhánh nào tới được), hai là *một lớp phòng trong hai lớp*.
+Chỗ có hai lớp phòng độc lập thì tháo riêng từng lớp không nói được gì; phải có một phép phá
+**gộp**. Gộp rồi thì nó ĐỎ — và một trong hai lần gộp ấy làm lộ ra một lỗi trong chính mã vừa
+viết (xem dưới).
 
 | Việc | Chỗ hỏng | Đo trên dữ liệu thật |
 |---|---|---|
@@ -524,6 +531,8 @@ không do người đang mong nó đẹp chọn ra; khuôn script giữ ở
 | Một câu trả lời nhị phân cho cả một tệp | `re.subn` đổi mọi chỗ khớp cùng lúc, nên canh được **một** trong mười chỗ `==` là đủ để cả tệp thành "bộ kiểm bắt được" | tái hiện được ca người từng kiểm tay: `control_rtos.c` thật, dòng **147**, `0xFFFFFFFD` → `0x0` ⇒ mutant **SỐNG**. Bảng phép cũ có **0** đột biến cho hằng hex |
 | Bộ kiểm xanh mà chưa ai đo nó bắt được gì | nâng bộ kiểm sau một phép đo độ nhạy là việc **không ai nhắc**, nên con số 0,0 nằm đó không ai đụng | vòng tự nâng chạy thật trên `du-lieu/rtos-sinhvien`: `logo_ptit.c` → điểm **0,0** · 30 mutant · **20 sống** · 18 s. Và tiêu chí *"điểm tăng sau harden"* **chưa đạt**: tệp duy nhất đáng nâng không dịch nổi, sáu tệp kia là bitmap |
 | Verifier đọc đề bài do tác tử chính tự viết | `DinhNghia.doc_duoc_viec=False` có trong mã từ G6 kèm một đoạn giải thích rõ vì sao — và **không dòng nào đọc nó** | sổ cái 42 dự án: **327 lời gọi `task.run`, 323 là verifier**, và **209/323** đề bài dài hơn trần 300 ký tự. Gói bằng chứng do mã dựng chạy được trên **29/42 dự án**, 0 lần đổ |
+| Stop hook coi MỌI `task.run` là "đã kiểm chứng" | cửa đi ra sớm hỏi *tên công cụ có trong lượt không*, mà `task.run` chạy **tám** loại tác tử con — nên giao việc cho `code-analyst` rồi tuyên xong là một đường đi vòng hàng rào N6 | hook Stop ghi lại chính `checks` của nó, nên đếm được trên **68 sổ cái**: hook im **41 lượt**, và **1 trong 41** lượt ấy không có verifier nào — `robot-sinhvien2` `run-007`, nơi lời gọi làm hook im nằm **trước** `fs.edit` vào `ISR(TIMER2_COMPA_vect)` |
+| Sửa một tệp mã làm lỗi thời **mọi** kết quả test/sim | lớp đọc đồ thị phụ thuộc đã đúng từ trước; `test.run`/`sim.run` thì ghi hiện vật **không khai nó dựng từ tệp nào** | **9 kho thật**: bán kính STALE **107 → 49 lần** (58/107 là cáo buộc oan). Và dữ liệu thật bác luôn cách làm mà kế hoạch ghi: `robot-sinhvien2` lưu **một** tệp nguồn, mà tệp ấy `#include` ba tệp firmware |
 
 Chỗ đáng nói nhất không phải ba lỗi, mà là **cả ba đều có cơ chế sẵn và đường dẫn tới nó đứt** —
 đúng hình dạng đã lặp lại suốt dự án này. Cái trần token tồn tại nhưng không ai nối dây tới nó.
@@ -549,7 +558,13 @@ sửa mã, rồi **hoàn nguyên từng chỗ sửa một** để chắc đúng 
   câu ấy thì ra 19 trong 26;
 * một hook **so đồng hồ thay vì so số phiên bản**: `updated_at` của kho có độ phân giải thô, nên
   hai lần ghi trong cùng một giây *bằng nhau* và phép so "mới hơn" im lặng sai — nay hiện vật
-  độ nhạy ghi kèm **số phiên bản** của bộ kiểm nó đã đo.
+  độ nhạy ghi kèm **số phiên bản** của bộ kiểm nó đã đo;
+* một **cái trần không chặn gì cả**, trong mã tôi vừa viết xong. Hàm dò bao đóng `#include` có
+  trần 200 và vòng lặp viết `while còn_hàng_đợi and số_tệp_đã_xong < 200`. Hai tệp `#include` lẫn
+  nhau làm hàng đợi tự nuôi chính nó trong khi *số tệp đã xong* dừng ở hai — nên phép phá tháo
+  lớp phòng còn lại **không ra chữ đỏ, nó treo 900 giây** và giết luôn cả phép đo. Nay trần đếm
+  **lượt**, và ca kiểm vòng `#include` chạy trong một **luồng có đồng hồ**: một lượt treo phải
+  biến thành một chữ đỏ, không thì nó biến thành sự im lặng.
 
 Và bốn lần nữa cùng một hình dạng với mục thứ hai: một ca kiểm **xanh vì nó không chạm tới
 thứ nó nói nó canh** — một lần vì dàn dựng của nó không có net đất nào để mà kiểm, một lần vì
@@ -569,7 +584,7 @@ Cả năm đều chỉ lộ ra vì một con số trông lạ. Đó là lý do m
 không chỉ ghi "đã xong".
 
 Kế hoạch đầy đủ 106 việc nằm ở [`toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md`](toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md);
-nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-352).
+nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-354).
 
 ---
 
@@ -1159,12 +1174,15 @@ Nói ra để người đọc không phải tự tìm:
 - **Phép soát "mỗi lời gọi một kết quả" chưa thành hàng rào.** `kiem_cap_goi_tra()` chạy được
   trên mọi phiên đã lưu, nhưng chưa hook nào gọi nó tự động — nên nó bắt được chuyện cũ, chưa
   chặn được chuyện mới.
-- **Năm cờ của đợt rà lại đều còn TẮT**, và cùng một lý do: `GON_CONG_CU` (thu gọn lược đồ),
+- **Mười cờ của đợt rà lại đều còn TẮT**, và cùng một lý do: `GON_CONG_CU` (thu gọn lược đồ),
   `TRUY_VET` (khai REQ khi ghi tệp), `REQ_PHU` (nhắc khi còn yêu cầu chưa đo), `REQ_CHAT_LUONG`
-  (cảnh báo yêu cầu mơ hồ), `KE_HOACH_CONG_KIEM` (bước kế hoạch phải khai kiểm bằng gì). Cả
-  năm đổi **thứ Agent nhìn thấy hoặc đọc mỗi lượt**, nên chỉ bộ 76 ca chạy cả hai chế độ mới
-  nói được chúng làm Agent khá hơn hay tệ hơn — mà bộ ấy tốn tiền mô hình. Phần nền của từng
-  việc (đo, ghi sổ, bảng trên tab) chạy cả khi cờ tắt.
+  (cảnh báo yêu cầu mơ hồ), `KE_HOACH_CONG_KIEM` (bước kế hoạch phải khai kiểm bằng gì),
+  `ERC_TU_DONG`, `SIM_RUNNER_GIOI_HAN`, `TEST_HARDEN`, `VERIFIER_GOI_BANG_CHUNG`, và
+  `HOI_QUY_NEN` (tự chạy lại bộ kiểm ngay sau khi sửa một tệp nó dịch tới). Cả mười đổi **thứ
+  Agent nhìn thấy, đọc, hoặc LÀM ĐƯỢC mỗi lượt**, nên chỉ bộ 76 ca chạy cả hai chế độ mới nói
+  được chúng làm Agent khá hơn hay tệ hơn — mà bộ ấy tốn tiền mô hình. Phần nền của từng việc
+  (đo, ghi sổ, bảng trên tab, và với việc mới nhất là **khai nguồn của kết quả đo** cùng cửa
+  chặn tuyên xong khi còn kết quả lỗi thời) chạy cả khi cờ tắt.
 - **Cột "Mã nguồn" của ma trận truy vết còn trống ở mọi dự án.** Nó đọc trường `hien_thuc_req`,
   mà trường ấy vừa mới tồn tại — nên "chưa hiện thực" ở đó nghĩa là *"không tệp nào KHAI rằng
   nó làm yêu cầu này"*, không phải *"chưa ai viết mã"*. Robot hai bánh có mã chạy trên bo thật
@@ -1184,6 +1202,12 @@ Nói ra để người đọc không phải tự tìm:
   `"ON DINH"` không khớp nhau. Hàm ấy đang dùng để đối chiếu câu trích của người với sổ ghi
   việc, tức một phép kiểm an toàn. Đã ghi lại, chưa sửa: đổi cách so khớp của một phép kiểm an
   toàn cần bộ ca kiểm riêng.
+
+- **Chỉ số *"không lượt nào tuyên xong khi còn kết quả lỗi thời"* chưa đóng được.** Cửa chặn
+  đã có và có 28 ca kiểm, nhưng con số ấy đòi **phát lại** các phiên mẫu với cửa mới: sổ cái ghi
+  lời gọi công cụ và dấu hiệu hook đã nổ, mà **không** ghi trạng thái kho tại thời điểm ấy — nên
+  khác mọi phép đo khác của đợt rà lại, nó không soát lại được phiên đã lưu. Phát lại tốn tiền
+  mô hình. Thay vào đó đã đo trên chín kho thật: bán kính lỗi-thời 107 → 49 lần.
 
 Danh sách đầy đủ, kèm chỗ cần sửa trong mã:
 [`docs/md/VIEC-CHO-LAM.md`](docs/md/VIEC-CHO-LAM.md).
