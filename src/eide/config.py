@@ -385,6 +385,14 @@ class Features:
     # nap lai ban tom tat C2 tu so cai (sua loi thuan — ban tom tat la NGUON DUY NHAT ve giai
     # doan da bi nen khoi ngu canh, va no dang chet cung tien trinh).
     resume_tuong_thuat: bool = False
+    # M4-13 — `build.compile` thanh cong thi NOI THEM phan "kiem noi" vao note_vi: o vector
+    # tro Default_Handler du ma nguon co handler ten gan giong, ham bi linker loai, ham chi
+    # tra hang.
+    #
+    # Sau co vi no doi thu mo hinh doc sau MOI lan bien dich (N-4) — va bien dich la hanh
+    # dong hay nhat trong mot phien firmware. Cong cu `build.wiring` thi KHONG sau co: goi no
+    # la mot viec tac tu tu chon.
+    kiem_noi: bool = False
 
     @classmethod
     def load(cls) -> "Features":

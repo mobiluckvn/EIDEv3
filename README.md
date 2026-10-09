@@ -40,7 +40,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 
 ## 1 · Nhìn một lượt: EIDE làm được gì
 
-Agent có **134 công cụ**: **124 đăng ký mặc định** — trong đó 73 nằm sẵn trong lược đồ mỗi lượt,
+Agent có **135 công cụ**: **125 đăng ký mặc định** — trong đó 73 nằm sẵn trong lược đồ mỗi lượt,
 số còn lại hiện ra sau khi Agent gọi `tool.search` — cộng **10 công cụ chỉ đăng ký khi bật cờ**
 (9 công cụ vẽ sơ đồ mạch và 1 công cụ tự nâng bộ kiểm). Thêm **8 Agent con**, **8 bộ hướng dẫn
 nạp theo việc**, **11 cửa duyệt**, và **11 tab** để người xem việc đang tới đâu.
@@ -68,7 +68,7 @@ lời gọi, không nói về tệp nằm trên đĩa.
 
 **Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà trong kho chưa có
 công cụ nào làm được, nó tự viết một công cụ mới kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ
-đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 134 công cụ kể ở trên — nó sinh
+đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 135 công cụ kể ở trên — nó sinh
 ra lúc chạy, trong đúng dự án đang làm. Việc này đã chạy thật, không phải tính năng trên giấy.
 
 ---
@@ -340,7 +340,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **2 096 ca Python + 43 ca giao diện**
+### Mức 1 — Ca đơn vị: **2 125 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -459,7 +459,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **2 096** | `pytest -q` |
+| Ca đơn vị Python | **2 125** | `pytest -q` |
 | Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -468,7 +468,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 18 tệp | `tools/kiem_tai_lieu.py` |
 | Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/`](docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/) |
-| Công cụ đã được dùng thật | **115/134** | rà toàn bộ sổ ghi việc |
+| Công cụ đã được dùng thật | **118/135** | rà 77 tệp sổ cái · 201 774 bản ghi (10/10/2026) |
 
 Mỗi ca kiểm có một tệp log riêng, trong đó có **bảng từng lời gọi công cụ kèm tham số đầy đủ
 và mã lỗi**: [`ket-qua-chay-lai/nhat-ky/`](docs/review-v3/test/ket-qua-chay-lai/nhat-ky/).
@@ -480,32 +480,36 @@ nhau, nên gộp vào một cột là nói sai về sản phẩm.
 ### Một việc không thêm tính năng nào nhưng đáng kể
 
 Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào** (số
-đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 134). Bảy công cụ có đường dẫn tới chúng
-bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/134 đã được dùng
-thật**.
+đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 135). Bảy công cụ có đường dẫn tới chúng
+bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **118/135 đã được dùng
+thật** — đo lại 10/10/2026 trên 77 tệp sổ cái, 201 774 bản ghi.
+
+> Con số này từng ghi là *115/134*, và nó sai vì **phép lọc**, không vì dữ liệu: lần quét ấy dùng
+> `glob('**/ledger*.jsonl')`, mà `glob` của Python **không vào thư mục ẩn** — nó thấy 6 trên 73
+> sổ cái. Lọc sai mà trả về rỗng thì rẻ; lọc sai mà trả về một con số **hợp lý** thì đắt.
 
 Một công cụ không bao giờ được dùng thì bằng không có nó.
 
 ### Đợt rà lại chính Agent, từ 06/10/2026
 
 Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Kế hoạch
-có 106 việc; **32 việc đã xong** (DEV-330 → DEV-361). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
+có 106 việc; **33 việc đã xong** (DEV-330 → DEV-362). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
 không nhìn tới, và mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca
-kiểm. Bộ kiểm 1 610 → **2 096 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
+kiểm. Bộ kiểm 1 610 → **2 125 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
 
-Giai đoạn 1 có 32 việc; **31 việc xong**. Việc còn lại duy nhất của giai đoạn là một việc
-**P0** — kiểm "nối" tĩnh sau biên dịch — và nó vừa **hết bị chặn**: tiền đề của nó, phân tích
-tĩnh chiều sâu (đồ thị gọi hàm, ngăn xếp theo chuỗi gọi, luật ngữ cảnh ngắt), đã xong ở dòng
-cuối bảng dưới.
+**Giai đoạn 1 xong hết: 32/32.** Việc đóng giai đoạn là dòng cuối bảng dưới — kiểm "nối" tĩnh
+sau biên dịch, tức là đọc chính tệp `.elf` **sau khi** nó dựng xong, chỗ mà trước đây không bề
+mặt nào của EIDE đọc tới.
 
-Ở Giai đoạn 2, **chỉ mục tìm kiếm tài liệu đã xong** (xem dòng cuối bảng dưới). Còn **một việc
-P0 nữa**: trích bảng có cấu trúc từ PDF datasheet — cỡ **L**, và nó cần một phụ thuộc mới, nên
-theo luật của chính dự án thì phải hỏi chủ sản phẩm trước khi cài.
+Ở Giai đoạn 2, **chỉ mục tìm kiếm tài liệu đã xong**. Trong 106 việc còn **đúng một việc P0**:
+trích bảng có cấu trúc từ PDF datasheet — cỡ **L**, và nó cần một phụ thuộc mới, nên theo luật
+của chính dự án thì phải hỏi chủ sản phẩm trước khi cài. Phần còn lại là **P1 trở xuống**:
+52 việc P1, 19 việc P2, 2 việc P3.
 
 Và một con số nữa về chính đợt này: với mỗi việc, phép **"phá lại thì đỏ"** được dựng từ
-`git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Chín việc trước bắt
-**9/9 · 20/20 · 24/24 · 27/27 · 22/22 · 13/13 · 22/22 · 22/22 · 36/36** — nhưng *lượt đầu* của
-chúng là 7/9, 18/20, 17/24, 22/27, 15/20, 7/13, 15/22, 18/22, 34/36. Một tỉ lệ 100 % chỉ nói được điều gì khi tập phép phá
+`git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Mười việc trước bắt
+**9/9 · 20/20 · 24/24 · 27/27 · 22/22 · 13/13 · 22/22 · 22/22 · 36/36 · 26/26** — nhưng *lượt đầu*
+của chúng là 7/9, 18/20, 17/24, 22/27, 15/20, 7/13, 15/22, 18/22, 34/36, 20/29. Một tỉ lệ 100 % chỉ nói được điều gì khi tập phép phá
 không do người đang mong nó đẹp chọn ra; khuôn script giữ ở
 [`toi-uu/pha_lai-khuon.py`](toi-uu/pha_lai-khuon.py).
 
@@ -550,6 +554,7 @@ viết (xem dưới).
 | Bản tóm tắt nén — **nguồn duy nhất** về đoạn đã nén — sống đúng một tiến trình | nó chỉ được gán khi nén thành công *trong* tiến trình ấy; tiến trình mới dựng lại từ đầu và khối mở-lại in *"chưa có bản tóm tắt nào"*. Mà nó đã được ghi vào sổ cái từ đầu | **4 lần nén đạt** trên sổ cái thật, nạp lại được và không rỗng ở **2/2 dự án**. Và **303/313 phiên (96 %)** chưa từng chạm ngưỡng nén — nên câu *"chưa có bản tóm tắt"* là câu nói ở gần như **mọi** lần mở lại |
 | Cả hệ thống chỉ có **một phép `in`** để tìm trong tài liệu | phép tìm lọc chuỗi chứa trên **một** tài liệu, không xếp hạng — nên *"tài liệu nào nói về pull-up"* phải gọi từng tài liệu rồi tự so, và tìm `VCC` trên một datasheet viết `Supply voltage` ra **rỗng** | `grep -i "fts5|bm25|embedd|rerank"` trong `src/` ra **0 kết quả** — mà phong bì kết quả đã khai chính sách cho `"rag.ask"`, **một công cụ không tồn tại**. Nay đo trên **7 PDF thật (92 trang)**: recall@5 **34/34** với từ khoá đặc trưng, **5/5** khi truy vấn dùng tên khác — phép `in` cũ trên cùng bộ ấy: **0/5** |
 | Ba câu hỏi đầu tiên của người làm nhúng, không ai trả lời | *"ngăn xếp sâu nhất bao nhiêu byte"* · *"hàm nào gọi hàm nào"* · *"trong hàm ngắt có phép chia, `printf`, `_delay_ms` không"*. Bộ phân tích mã nói thẳng trong chính nó: *"không dựng đồ thị gọi hàm đúng nghĩa"*, và chuỗi biên dịch không có một cờ đo ngăn xếp nào | chính tài liệu đánh giá đã ghi: Agent *"mô tả hai cách đo ngăn xếp rất đúng mà `grep` không ra một `0xA5A5A5A5` nào trong mã"*. Nay đo được trên firmware thật: dự án ARM **13 hàm + đồ thị gọi hàm + 3 hàm ngắt**; firmware robot AVR **3 hàm ngắt, 0 vi phạm** — và con số 0 ấy đã **kiểm chéo**: 8 hàm dùng số thực, **không hàm nào** hàm ngắt gọi tới được |
+| Biên dịch sạch, nạp xong, và ngắt không bao giờ chạy | bốn trong bảy ca mà *"trình biên dịch im lặng tuyệt đối"* không phải lỗi logic mà lỗi **nối**: ô vector trỏ `Default_Handler`, hàm bị linker loại vì không ai gọi, hàm chỉ `return 0`, hàm `static` mà vector cần. Không bề mặt nào đọc tệp `.elf` **sau khi** nó dựng xong — `build.compile` báo `ok` khi `gcc` trả 0, và `ok` ở đó nói về **lời gọi** | luật dò mà kế hoạch ghi sẵn bắt được **0 ca**: GNU ld tự ưu tiên định nghĩa mạnh trước alias yếu, nên *"có ký hiệu mạnh mà ô vector vẫn trỏ alias"* gần như không xảy ra — cơ chế thật là **sai chính tả tên** và **khai `static`**. Luật viết lại rồi đo trên ELF dựng bằng `arm-none-eabi-gcc` thật: tái hiện **3/7 ca** (hàm không ai gọi · `SysTick_handler` chữ `h` nhỏ · hàm `static`), và hai ca RTOS thì **ngoài phạm vi** — `note_vi` tự khai điều đó mỗi lần kết quả rỗng |
 
 Chỗ đáng nói nhất không phải ba lỗi, mà là **cả ba đều có cơ chế sẵn và đường dẫn tới nó đứt** —
 đúng hình dạng đã lặp lại suốt dự án này. Cái trần token tồn tại nhưng không ai nối dây tới nó.
@@ -601,7 +606,7 @@ Cả năm đều chỉ lộ ra vì một con số trông lạ. Đó là lý do m
 không chỉ ghi "đã xong".
 
 Kế hoạch đầy đủ 106 việc nằm ở [`toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md`](toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md);
-nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-361).
+nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-362).
 
 ---
 
@@ -1138,12 +1143,13 @@ là chỗ hay đứt nhất. Nay mỗi khối có một ca đi qua đúng đư�
 
 Nói ra để người đọc không phải tự tìm:
 
-- **19 trong 134 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
-  bo, chưa viết xong. Và sáu công cụ mới nhất — `hdl.sensitivity` (DEV-344),
+- **17 trong 135 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
+  bo, chưa viết xong. Và bảy công cụ mới nhất — `hdl.sensitivity` (DEV-344),
   `hdl.constraints_check` (DEV-345), `test.criteria` (DEV-346), `reg.lookup` (DEV-355),
-  `doc.search` (DEV-360) và `code.static` (DEV-361): mã của cả sáu đã chạy trên hiện vật thật,
-  nhưng chưa lượt Agent nào *gọi công cụ* ấy, nên chúng vẫn tính là chưa dùng. "Mã đã chạy" và
-  "tác tử đã gọi" là hai chuyện, và gộp chúng lại là cách đếm ra một con số đẹp hơn sự thật.
+  `doc.search` (DEV-360), `code.static` (DEV-361) và `build.wiring` (DEV-362): mã của cả bảy đã
+  chạy trên hiện vật thật, nhưng chưa lượt Agent nào *gọi công cụ* ấy, nên chúng vẫn tính là chưa
+  dùng. "Mã đã chạy" và "tác tử đã gọi" là hai chuyện, và gộp chúng lại là cách đếm ra một con số
+  đẹp hơn sự thật.
 - **Chưa dự án firmware nào trong repo có một con số độ nhạy đáng tin.** Đo 08/10/2026 trên cả
   ba dự án có cả `test/` lẫn `firmware/`: `rtos-sinhvien` **0 trong 12 tệp** đo được (4 tệp
   font bộ kiểm không chạm tới, `control_rtos.c` trùng ký hiệu vì tệp test tự định nghĩa lại
@@ -1194,13 +1200,18 @@ Nói ra để người đọc không phải tự tìm:
 - **Mười hai cờ của đợt rà lại đều còn TẮT**, và cùng một lý do: `GON_CONG_CU` (thu gọn lược đồ),
   `TRUY_VET` (khai REQ khi ghi tệp), `REQ_PHU` (nhắc khi còn yêu cầu chưa đo), `REQ_CHAT_LUONG`
   (cảnh báo yêu cầu mơ hồ), `KE_HOACH_CONG_KIEM` (bước kế hoạch phải khai kiểm bằng gì),
-  `ERC_TU_DONG`, `SIM_RUNNER_GIOI_HAN`, `TEST_HARDEN`, `VERIFIER_GOI_BANG_CHUNG`, và
-  `HOI_QUY_NEN` (tự chạy lại bộ kiểm ngay sau khi sửa một tệp nó dịch tới), và
-  `RESUME_TUONG_THUAT` (tường thuật cơ học phiên trước ở lượt mở lại). Cả mười hai đổi **thứ
+  `ERC_TU_DONG`, `SIM_RUNNER_GIOI_HAN`, `TEST_HARDEN`, `VERIFIER_GOI_BANG_CHUNG`,
+  `HOI_QUY_NEN` (tự chạy lại bộ kiểm ngay sau khi sửa một tệp nó dịch tới),
+  `RESUME_TUONG_THUAT` (tường thuật cơ học phiên trước ở lượt mở lại), và `KIEM_NOI` (phần
+  "kiểm nối" nối vào kết quả mỗi lần biên dịch). Cả mười hai đổi **thứ
   Agent nhìn thấy, đọc, hoặc LÀM ĐƯỢC mỗi lượt**, nên chỉ bộ 76 ca chạy cả hai chế độ mới nói
   được chúng làm Agent khá hơn hay tệ hơn — mà bộ ấy tốn tiền mô hình. Phần nền của từng việc
-  (đo, ghi sổ, bảng trên tab, và với việc mới nhất là **khai nguồn của kết quả đo** cùng cửa
-  chặn tuyên xong khi còn kết quả lỗi thời) chạy cả khi cờ tắt.
+  (đo, ghi sổ, bảng trên tab, và với việc mới nhất là **công cụ `build.wiring` gọi tay**) chạy
+  cả khi cờ tắt.
+
+  Trước việc cuối của Giai đoạn 1, câu này ghi *"mười hai"* mà liệt kê **mười một** tên — con số
+  tổng (12 cờ trong `Features`) bị dùng thay cho con số của đợt rà lại (11). Nay `Features` có
+  **13** cờ, trong đó `SCHEMATIC` có từ trước đợt này, nên "mười hai" mới là con số đúng.
 - **Cột "Mã nguồn" của ma trận truy vết còn trống ở mọi dự án.** Nó đọc trường `hien_thuc_req`,
   mà trường ấy vừa mới tồn tại — nên "chưa hiện thực" ở đó nghĩa là *"không tệp nào KHAI rằng
   nó làm yêu cầu này"*, không phải *"chưa ai viết mã"*. Robot hai bánh có mã chạy trên bo thật
@@ -1308,7 +1319,7 @@ bản kể lại nào.
 ```
 src/eide/
 ├── loop.py            vòng lặp Agent
-├── tools/             134 công cụ, chia theo nhóm
+├── tools/             135 công cụ, chia theo nhóm
 ├── policy/            luật chặn và cửa duyệt
 ├── knowledge/         đọc tài liệu, rút con số, chữ trong hình
 ├── store/             kho dữ liệu dựa trên sổ ghi việc + git

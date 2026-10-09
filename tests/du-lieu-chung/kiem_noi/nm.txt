@@ -1,0 +1,8 @@
+08000046 T Default_Handler
+08000046 W NMI_Handler
+08000040 T PendSV_Handler
+08000048 T Reset_Handler
+08000046 W SysTick_Handler
+20020000 T _estack
+08000000 R g_vector
+08000042 T main

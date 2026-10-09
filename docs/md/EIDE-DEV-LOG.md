@@ -9894,3 +9894,91 @@ nó (bài học M4-19).
 
 Bộ kiểm 2 060 → **2 096 xanh**, 1 skip, 0 đỏ (36 ca mới trong `tests/test_phan_tich_tinh.py`).
 Công cụ 133 → **134**. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.
+
+## [DEV-362] [M4-13] Biên dịch sạch, nạp xong, và ngắt không bao giờ chạy
+
+Nhiệm vụ #27, P0 · L — việc **cuối** của Giai đoạn 1. Module mới `build/kiem_noi.py` + công cụ
+`build.wiring` (`core=False`, R1, ghi `analysis:wiring`), và một phần "Kiểm nối" nối vào
+`note_vi` của `build.compile` sau cờ `kiem_noi` (mặc định **TẮT**, N-4: nó đổi thứ mô hình đọc
+sau **mỗi** lần biên dịch).
+
+### Chỗ hổng
+
+`DANH-GIA-NGUOI-VS-AGENT-2-VIEC.md` §3.1 liệt bảy ca mà **trình biên dịch im lặng tuyệt đối**:
+mã dịch sạch, `.elf` dựng xong, nạp chip trót lọt, và chức năng không chạy. Bốn ca trong đó
+không phải lỗi logic mà là lỗi **nối**: ô vector trỏ `Default_Handler`, hàm bị linker loại vì
+không ai gọi, hàm chỉ `return 0` chưa viết xong, hàm `static` mà vector cần.
+
+Không bề mặt nào của EIDE v3 trước việc này đọc tới `.elf` **sau khi** nó dựng xong. `build.compile`
+báo `ok` khi `gcc` trả 0, và `ok` ở đó nói về **lời gọi**, không nói về sản phẩm.
+
+### Ba ca tái hiện được, đo trên bo thật 09/10/2026
+
+| Ca §3.1 | Cơ chế | Phát hiện bằng |
+|---|---|---|
+| #3 hàm không ai gọi | `--print-gc-sections` loại `.text.tong_kiem_chuan` | `ham_bi_loai` đọc log link |
+| #5 ngắt không nối | mã viết `SysTick_handler` (chữ `h` nhỏ), ô 15 giữ alias yếu | `isr_bi_bo_quen` |
+| #7 hàm `static` | `-Wunused-function` đã kêu từ trước | chuỗi biên dịch cũ |
+
+Ca #6 (*"không ai tạo tác vụ rỗi"*) và ca *"không ai đặt `PENDSVSET`"* **ngoài** phạm vi — và
+`note_vi` **tự khai** điều đó mỗi lần kết quả rỗng, vì một dòng *"không thấy gì"* không kèm phạm
+vi sẽ được đọc là *"nối đúng hết"* (N6).
+
+### Luật dò của kế hoạch SAI, và chỉ phép đo chỉ ra
+
+Kế hoạch viết: *"ô vector trỏ `Default_Handler` **trong khi** có một ký hiệu mạnh `<X>_Handler` ở
+địa chỉ khác"*. Luật ấy **không bắt được ca nào**: GNU ld tự ưu tiên định nghĩa mạnh trước alias
+yếu, nên tình huống "có ký hiệu mạnh mà ô vector vẫn trỏ alias" gần như không xảy ra. Hai cơ chế
+thật là **sai chính tả tên** và **khai `static`**. Luật viết lại thành:
+
+> ô trỏ `Default_Handler` **và** mã nguồn có một tên gần giống — *kể cả giống hệt* (ca `static`).
+
+Phép so chuẩn hoá bằng `_chuan` (bỏ `_`, về chữ thường), nên `SysTick_handler` khớp
+`SysTick_Handler`. Vế thứ hai là vế giữ cho cảnh báo còn nghĩa: phần lớn ô vector của một dự án
+thật trỏ `Default_Handler` một cách **đúng đắn**.
+
+### Bốn hằng số của công cụ thật, tra chứ không nhớ
+
+* bảng vector Cortex-M dùng **bit 0 = 1** (bit Thumb) — phải gỡ trước khi so địa chỉ, nhưng
+  **không** gỡ ở ô 0 vì ô 0 là con trỏ ngăn xếp, không phải địa chỉ lệnh;
+* `objdump -s` in bốn từ 32-bit mỗi dòng, **little-endian** trong từng từ;
+* `nm` phân biệt `T` (định nghĩa mạnh) với `W` (alias yếu) — bỏ cột loại là bỏ đúng thông tin
+  cần để nói "đã nối hay chưa";
+* `ld --print-gc-sections` ghi `removing unused section '<sec>' in file '<tep>'`, và một hàm bị
+  loại ở hai đơn vị dịch thì ra **hai** dòng cho **một** chỗ.
+
+### Phá lại thì đỏ: 26/26
+
+Tập 29 phép phá dựng từ `git diff`. Chín chỗ LỌT ở vòng đầu, và chín chỗ ấy chia làm ba loại:
+
+**Sáu lỗ thật trong tập ca kiểm** — ca kiểm chưa chạm tới dòng nó tưởng đang canh:
+`ham_tra_hang` không phân biệt "đúng hai lệnh" với "từ hai lệnh trở lên" (hàm đối chứng mở đầu
+bằng `add.w`, nên phép kiểm hỏng cũng loại nó); không ca nào có log `gc-sections` trùng dòng;
+không ca nào có ảnh thiếu `.isr_vector`; không ca nào đòi `build.wiring` **ghi hiện vật**.
+
+**Hai phép phá VÔ HIỆU** — đo ra, không đoán:
+* *"gỡ bit Thumb cả ở ô 0"*: con trỏ ngăn xếp ban đầu luôn chia hết cho 8 (AAPCS, và phần cứng
+  Cortex-M đòi căn từ), nên bit 0 của nó **luôn** bằng 0. Cửa `if i` ở đó để **nói** rằng ô 0
+  không phải địa chỉ lệnh, không phải để sửa số.
+* *"không có `Default_Handler` thì lấy mốc 0"*: địa chỉ 0 chính là mốc vòng lặp dùng để bỏ ô
+  trống, nên không ô nào khớp nổi. Hai nhánh cho cùng một kết quả trên mọi dữ liệu thật.
+
+**Một mã CHẾT, đã xoá**: cửa `if not ten or ten == "Default_Handler"` cho ô dự trữ (7–10, 13).
+Chúng rơi ở vế dưới rồi — biểu thức tên handler đòi ít nhất chữ `handler`, nên tên rỗng không
+khớp nổi ký hiệu nào; và `"Default_Handler"` không nằm trong `TEN_O_CORTEX_M`. Phép phá chỉ ra
+rằng xoá cửa ấy không đổi một kết quả nào.
+
+Một phép phá nữa báo `[?]` vì **chuỗi phá của tôi lỗi thời**: tôi đã sửa `note_vi` nêu thẳng hai
+cái tên handler thay vì dựa vào `vi_sao`, nên đoạn mã cũ không còn trong tệp. Tập phá dựng từ
+`git diff` mà **đọc lại sau mỗi lần sửa mã** mới giữ đúng — đây là lần thứ hai trong chiến dịch
+này một phép phá im lặng trượt vì chuỗi cũ.
+
+### Số
+
+Bộ kiểm 2 096 → **2 125 xanh**, 1 skip, 0 đỏ (29 ca mới trong `tests/test_kiem_noi.py`).
+Công cụ 134 → **135** (125 thấy mặc định, 73 `core`, 10 sau cờ). Cờ 12 → **13**, cả 13 TẮT.
+`kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. Dữ liệu chung thật trong
+`tests/du-lieu-chung/kiem_noi/` (nguồn C, script liên kết, `objdump`, `nm`, log link) — dựng
+bằng `arm-none-eabi-gcc` trên máy, không viết tay.
+
+**Giai đoạn 1 đóng ở 32/32.**

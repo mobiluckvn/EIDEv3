@@ -159,7 +159,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 24 | [M4-09](#m4-09) | Stop hook không được coi `task.run` với subagent khác là "đã kiểm chứng" | P0 | S | — | — | DEV-353 | ☑ |
 | 25 | [M4-11](#m4-11) | Hồi quy tự động sau khi sửa mã + STALE chính xác theo tệp | P0 | M | M2-01 | HOI_QUY_NEN | DEV-354 | ☑ |
 | 26 | [M2-09](#m2-09) | Phân tích tĩnh chiều sâu: call graph, ngăn xếp, luật ngữ cảnh ISR (`code.static`) | P1 | L | M2-08 | — | DEV-361 · kéo lên từ GĐ3 vì là tiền đề của M4-13 | ☑ |
-| 27 | [M4-13](#m4-13) | Kiểm "nối" tĩnh sau biên dịch (vector table, hàm không ai gọi, return hằng) | P0 | M | M2-09 | KIEM_NOI |  | ☐ |
+| 27 | [M4-13](#m4-13) | Kiểm "nối" tĩnh sau biên dịch (vector table, hàm không ai gọi, return hằng) | P0 | M | M2-09 | KIEM_NOI | DEV-362 · luật dò của kế hoạch viết lại (xem §tiêu chí) | ☑ |
 | 28 | [M5-03](#m5-03) | Bộ đọc SVD: nạp register map thành Fact `reg:`/`field:` + `reg.lookup` | P0 | M | — | — | DEV-355 | ☑ |
 | 29 | [M5-05](#m5-05) | Kiểm thứ nguyên đơn vị + thống nhất khoá khoảng hợp lý + kiểm cả đường bảng | P0 | S | — | — | DEV-356 | ☑ |
 | 30 | [M5-07](#m5-07) | `fact.from_doc`: kiểm giá trị theo ranh giới token và câu trích nguyên văn | P0 | S | — | — | DEV-357 | ☑ |
@@ -1998,10 +1998,29 @@ Sau khi thêm hai ca: **36/36**.
 - `.venv/bin/python -m pytest -q tests/test_xay_dung.py tests/test_arm_bien_dich.py tests/test_bien_dich_rv32.py`
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Chỉ số: tái hiện ≥3/7 ca của DANH-GIA §3.1 bắt được ở bước build.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC. — 29 ca trong `tests/test_kiem_noi.py`;
+      tập phá dựng từ `git diff`: **26/26** sau khi bù sáu ca còn hổng, rút hai phép phá VÔ HIỆU
+      (đo ra lý do, DEV-362) và xoá một cửa mã CHẾT.
+- [x] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa. — 2 096 → **2 125**, 1 skip.
+- [x] Chỉ số: tái hiện ≥3/7 ca của DANH-GIA §3.1 bắt được ở bước build. — **3/7**: ca #3 (hàm
+      không ai gọi, `--print-gc-sections`), ca #5 (`SysTick_handler` chữ `h` nhỏ), ca #7 (hàm
+      `static`, do `-Wunused-function` có từ trước). Đo trên ELF thật dựng bằng
+      `arm-none-eabi-gcc` trên máy, không trên vector viết tay.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md. — DEV-362.
+
+**Hai chỗ LỆCH so với kế hoạch, ghi lại nguyên văn:**
+
+1. **Luật dò ISR của bước 2 viết lại.** Kế hoạch đòi *"ô trỏ `Default_Handler` mà trong mã có
+   định nghĩa mạnh `<X>_Handler` ở địa chỉ KHÁC"*. Luật ấy bắt được **0 ca**: GNU ld tự ưu tiên
+   định nghĩa mạnh trước alias yếu, nên tình huống ấy gần như không tồn tại. Hai cơ chế thật là
+   **sai chính tả tên** và **khai `static`**, nên luật đổi thành *"ô trỏ `Default_Handler` **và**
+   mã nguồn có tên gần giống — kể cả giống hệt"*, so sau khi chuẩn hoá (bỏ `_`, về chữ thường).
+2. **`doc_vector` trả `(chi_so, dia_chi)`, không trả `ten`.** Tên lấy từ `nm` ở bước sau, vì
+   `objdump -s -j .isr_vector` chỉ in byte — không có tên nào trong đó để trả.
+
+**Ngoài phạm vi, và `note_vi` TỰ KHAI điều đó mỗi lần kết quả rỗng:** ca #6 (*"không ai tạo tác
+vụ rỗi"*) và ca *"không ai đặt `PENDSVSET`"* của DANH-GIA §3.1 — hai ca cần hiểu ngữ nghĩa RTOS,
+không đọc ra được từ bảng vector.
 
 **Hoàn tác:** tắt cờ; revert commit.
 
