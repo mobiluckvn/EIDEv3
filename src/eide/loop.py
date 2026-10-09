@@ -573,7 +573,8 @@ class Agent:
             self.can_resume = False
             khoi = mem.dung_khoi_resume(
                 ledger=self.ledger, store=self.store, history=self.history,
-                tom_tat_truoc=self.bo_nen.tom_tat_hien_tai, phuc_hoi=self.phuc_hoi)
+                tom_tat_truoc=self.bo_nen.tom_tat_hien_tai, phuc_hoi=self.phuc_hoi,
+                tuong_thuat=self._tuong_thuat_phien_truoc())
             if khoi:
                 self.messages.append({"role": "user", "_he_thong": True,
                                       "_ghim": True, "text": khoi})
@@ -1043,6 +1044,25 @@ class Agent:
         self.messages.append({"role": "tool", "tool_call_id": call.id,
                               "tool": call.tool, "result": env.to_model(),
                               "envelope": env.to_ledger()})
+
+    def _tuong_thuat_phien_truoc(self) -> str:
+        """M5-17 phần B — tường thuật cơ học phiên trước, sau cờ `resume_tuong_thuat`.
+
+        Chỉ đọc transcript của phiên GẦN NHẤT khác phiên này. Không nạp lại nó vào
+        `self.messages`: mục đích là *"nói ra việc đã xảy ra"*, không phải sống lại phiên cũ —
+        và nạp lại transcript cũ là đưa nguyên ngữ cảnh của một phiên khác vào lượt đầu.
+        """
+        try:
+            if not self.config.features.bat("resume_tuong_thuat"):
+                return ""
+            truoc = self.phien.gan_nhat(tru=self.session_id)
+            if not truoc:
+                return ""
+            ms, _hong = self.phien.transcript(truoc).doc()
+            return mem.tuong_thuat_co_hoc(ms)
+        except Exception:                                    # noqa: BLE001
+            # Một transcript hỏng phải làm mất phần tường thuật, KHÔNG làm mất lượt đầu tiên.
+            return ""
 
     # Trần của một lượt hồi quy nhẹ. 20 s là con số của kế hoạch, và nó là một TRẦN chứ
     # không phải một kỳ vọng: quá trần thì nói ra "chưa chạy xong", không im lặng bỏ.

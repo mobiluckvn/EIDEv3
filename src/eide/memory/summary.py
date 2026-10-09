@@ -116,6 +116,32 @@ class BanTomTat:
                 "prev_hash": self.prev_hash, "created_at": self.created_at,
                 "model": self.model, "tokens": self.tokens}
 
+    @classmethod
+    def tu_dict(cls, d: Any) -> "BanTomTat | None":
+        """Đảo `to_dict` — để bản tóm tắt đọc lại được từ SỔ CÁI sau khi tắt app (M5-17).
+
+        Hai chỗ phải cẩn thận, và cả hai là chuyện của dữ liệu đã nằm trên đĩa:
+
+        * `covers` được ghi thành **list** (JSON không có tuple), nên đọc lại phải đưa về
+          tuple — không thì một bản nạp lại khác KIỂU bản vừa tạo, và chỗ nào so bằng sẽ im
+          lặng sai.
+        * Sổ cái của một bản EIDE cũ có thể **thiếu khoá**. Hàm này chạy ở đường khởi động,
+          nên một `KeyError` ở đây là đổi một bản tóm tắt mất lấy cả dự án không mở được.
+        """
+        if not isinstance(d, dict):
+            return None
+        c = d.get("covers") or (0, 0)
+        try:
+            cv = (int(c[0]), int(c[1])) if len(c) >= 2 else (0, 0)
+        except (TypeError, ValueError, IndexError):
+            cv = (0, 0)
+        m = d.get("muc")
+        return cls(muc=dict(m) if isinstance(m, dict) else {}, covers=cv,
+                   prev_hash=str(d.get("prev_hash") or ""),
+                   created_at=str(d.get("created_at") or ""),
+                   model=str(d.get("model") or ""),
+                   tokens=int(d.get("tokens") or 0))
+
     def chua_noi_dung_da_quen(self, tombstones: list[str]) -> list[str]:
         """P7 — thứ người đã bảo quên không được sống lại qua bản tóm tắt."""
         chu = " ".join(self.muc.values()).lower()

@@ -9556,3 +9556,96 @@ cắt, dàn dựng phải có **ít nhất hai** phần tử và chúng phải *
 
 Bộ kiểm 2 012 → **2 015 xanh**, 1 skip, 0 đỏ (tổng 15 ca mới trong `tests/test_mem_a.py`).
 `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.
+
+## [DEV-359] [M5-17] Bản tóm tắt C2 — nguồn DUY NHẤT về đoạn đã nén — sống đúng một tiến trình
+
+Nhiệm vụ #32, P0 cuối của Giai đoạn 1. **Phần A sửa lỗi thuần**; **phần B đổi hành vi** sau cờ
+`RESUME_TUONG_THUAT` (mặc định TẮT). Không tiền đề.
+
+### Phần A: cơ chế có sẵn, đường dẫn tới nó đứt (lần thứ chín)
+
+`BoNen.__init__` đặt `tom_tat_hien_tai = None`, và chỉ gán nó khi nén thành công **trong tiến
+trình ấy**. Tiến trình mới dựng một `BoNen` mới, nên `dung_khoi_resume(tom_tat_truoc=…)` luôn
+nhận `None` và khối `<resume>` in *"Chưa có bản tóm tắt nào"*.
+
+Hậu quả đúng chỗ đau nhất: bản tóm tắt là **nguồn duy nhất** về giai đoạn đã bị nén khỏi ngữ
+cảnh — chính `van_ban()` của nó nói thế. Mở lại dự án sau một lần nén thì đoạn hội thoại ấy
+không còn ở transcript (`thay_toan_bo` đã ghi đè), cũng không còn ở resume. Nó chỉ còn **trong
+sổ cái**, nơi nó đã được ghi từ đầu: `ledger.append("compact", {… "tom_tat": tt.to_dict()})`.
+
+`tom_tat_cuoi_tu_so_cai(ledger)` duyệt ngược và dừng ở sự kiện `compact` gần nhất đáng kể:
+`buoc == "ok"` kèm `tom_tat` → trả bản ấy; `buoc == "huy"` → trả `None`. §6.2.3 cho huỷ nén
+trong 24 giờ, và huỷ nghĩa là đoạn hội thoại **quay về nguyên văn** — nạp lại bản tóm tắt lúc
+ấy là đưa vào ngữ cảnh một bản rút gọn của thứ đang có đủ, tức hai nguồn cho một giai đoạn.
+
+Dừng ở cái **gần nhất**, không phải *"có `huy` ở đâu đó thì bỏ hết"*: một lần huỷ tháng trước
+không được làm mọi lần nén sau đó vô hình.
+
+`BanTomTat.tu_dict` đảo `to_dict`, và hai chỗ phải cẩn thận vì đây là dữ liệu đã nằm trên đĩa:
+`covers` ghi thành **list** (JSON không có tuple) nên đọc lại phải đưa về tuple; và sổ cái của
+một bản EIDE cũ có thể **thiếu khoá** — hàm này chạy ở đường khởi động, nên một `KeyError` ở
+đây là đổi một bản tóm tắt mất lấy cả dự án không mở được. Cùng lý do, `BoNen.__init__` bọc
+`try`.
+
+### Phần B: 96 % phiên thật chưa bao giờ chạm ngưỡng nén
+
+Đo trên dữ liệu thật: **313 phiên có transcript**, và **303 trong số đó (96 %) thuộc dự án chưa
+từng nén lần nào**. Tức câu *"chưa có bản tóm tắt nào"* không phải một ngoại lệ — nó là câu khối
+resume nói ở **gần như mọi lần mở lại**, trong khi một transcript đầy đủ đang nằm sẵn trên đĩa.
+
+`tuong_thuat_co_hoc(messages)` dựng tường thuật **bằng mã, 0 token mô hình**: 3 lời người cuối,
+10 lời gọi công cụ cuối (tên · ok hoặc mã lỗi · `summary_line`), lỗi cuối. Trần 1 500 ký tự.
+
+Ba thứ, và chỉ ba. Cố ý **không** tóm tắt lời tác tử nói: một bản rút gọn của lời nó tự nói là
+chỗ dễ nhất để một kết luận sai sống thêm một phiên — mà cả mảng này tồn tại để chặn đúng
+chuyện đó. Và tường thuật kết bằng một câu nói rõ *"đây là việc ĐÃ xảy ra, không phải việc cần
+làm tiếp"*: bài học DEV-34x, bốn lượt liền lặp lại việc cũ vì khối resume nghe như một lời giao
+việc.
+
+Bản tóm tắt C2 **thắng** tường thuật khi có cả hai: nó đã qua vòng kiểm chứng (§6.2), còn tường
+thuật chỉ là một bản kê việc.
+
+Sau cờ vì nó đổi thứ mô hình đọc ở **lượt đầu tiên** của mọi phiên mở lại (N-4) — và lượt đầu
+là lượt đắt nhất để đổi, vì mọi thứ sau đó dựa trên nó.
+
+### Số đo trên dữ liệu thật
+
+| Phép đo | Con số |
+|---|---|
+| Lần nén C2 **đạt** trên sổ cái thật | **4** (2 dự án: `robot-tu-can-bang`, `thu-nghiem-mem-c`) |
+| Lần **huỷ** nén | 0 |
+| Bản tóm tắt nạp lại được qua `tu_dict`, **không rỗng** | **2/2 dự án** |
+| Phiên có transcript | **313** |
+| … thuộc dự án **chưa từng nén** | **303 (96 %)** |
+
+### Một lỗi trong chính phép đo, lần thứ bảy của đợt
+
+Phép đếm phiên đầu tiên của tôi lọc bằng `'"buoc": "ok"' in line`. Sổ cái thật ghi JSON **không
+có khoảng trắng** sau dấu hai chấm (`{"seq":1,…}`), nên chuỗi ấy **không khớp lần nào** — và
+phép đo trả về **100 %** thay vì trả rỗng. Một con số hợp lý, sai, và không có gì kêu lên.
+
+Đúng bài học *"lọc sai ra số đẹp"*: lọc sai mà trả rỗng thì rẻ, trả một con số hợp lý thì tốn.
+Lần này nó rẻ vì tôi mở dữ liệu thô ra đếm — `grep -c '"compact"'` ra 146 dòng ở
+`robot-tu-can-bang`, trong khi phép lọc nói dự án ấy chưa nén lần nào. Hai con số chỏi nhau là
+thứ duy nhất cứu phép đo.
+
+### Phá lại thì đỏ: 20/23 lượt đầu → **23/23**
+
+Ba chỗ LỌT, **cả ba là ca kiểm của tôi chưa chạm tới**, và cả ba cùng một hình dạng với ba
+nhiệm vụ trước:
+
+1. *tường thuật không nói mã lỗi ở dòng lời gọi* — chuỗi `` `target.flash` → E4040 `` cũng
+   xuất hiện ở dòng **Lỗi cuối cùng**, nên assertion của tôi xanh qua dòng khác. Ca mới dựng
+   **hai** lời gọi đổ với **hai** mã, và soi phần văn bản **trước** dòng lỗi cuối.
+2. *bỏ trần 1 500 ký tự* — transcript dàn dựng ngắn hơn trần, nên bỏ trần không đổi gì.
+3. *bỏ cửa `try` quanh phép đọc transcript* — ca kiểm của tôi chạy trên một dự án **chỉ có một
+   phiên**, nên `_tuong_thuat_phien_truoc` trả rỗng ngay ở bước *"không có phiên nào trước"* và
+   chưa chạm tới cửa `try` nó nói nó canh. Nay ca dựng một phiên trước, và **khẳng định có
+   tường thuật trước khi phá**.
+
+Bốn nhiệm vụ liền (M5-03 · M5-07 · M5-13 · M5-17) đều có chỗ LỌT nằm ở **bộ dàn dựng**, không ở
+mã sản phẩm. Bài học gom lại, viết ra để dùng: *trước khi tin một ca kiểm, hỏi nó có chạy tới
+dòng mã nó nói nó canh không — và khẳng định điều đó bằng một assertion đặt TRƯỚC phép phá.*
+
+Bộ kiểm 2 015 → **2 030 xanh**, 1 skip, 0 đỏ (18 ca mới trong `tests/test_mem_c.py`).
+Cờ 11 → **12**, cái mới giữ TẮT. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.

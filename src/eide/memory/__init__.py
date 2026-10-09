@@ -6,7 +6,7 @@ from .envelope import CHINH_SACH, ToolResultEnvelope, boc_ket_qua, dong_tom_tat,
 from .don_dep import DoLuong, do_luong, gc
 from .nen import (K_LUOT, BoNen, KetQuaNen, bia_mo, c4, pre_compact)
 from .nguoi_dung import CHU_DE, BoNhoNguoiDung, nen_de_xuat
-from .resume import dung_khoi_resume
+from .resume import dung_khoi_resume, tuong_thuat_co_hoc
 from .summary import BanTomTat, CauKiem, cham_phieu, lam_phieu_kiem
 
 __all__ = ["ToolResultEnvelope", "boc_ket_qua", "CHINH_SACH", "dong_tom_tat",
@@ -14,4 +14,4 @@ __all__ = ["ToolResultEnvelope", "boc_ket_qua", "CHINH_SACH", "dong_tom_tat",
            "BoNen", "KetQuaNen", "K_LUOT", "pre_compact", "bia_mo", "c4",
            "gc", "do_luong", "DoLuong",
            "BanTomTat", "CauKiem", "lam_phieu_kiem", "cham_phieu",
-           "BoNhoNguoiDung", "CHU_DE", "nen_de_xuat", "dung_khoi_resume"]
+           "BoNhoNguoiDung", "CHU_DE", "nen_de_xuat", "dung_khoi_resume", "tuong_thuat_co_hoc"]

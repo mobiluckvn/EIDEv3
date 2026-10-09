@@ -164,7 +164,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 29 | [M5-05](#m5-05) | Kiểm thứ nguyên đơn vị + thống nhất khoá khoảng hợp lý + kiểm cả đường bảng | P0 | S | — | — | DEV-356 | ☑ |
 | 30 | [M5-07](#m5-07) | `fact.from_doc`: kiểm giá trị theo ranh giới token và câu trích nguyên văn | P0 | S | — | — | DEV-357 | ☑ |
 | 31 | [M5-13](#m5-13) | Chính sách phong bì cho `doc.read`/`fact.query`/`fact.extract`; sửa `_cat_chung` cắt phần tử dài | P0 | S | — | — | DEV-358 | ☑ |
-| 32 | [M5-17](#m5-17) | Resume nạp lại bản tóm tắt C2 từ sổ cái; tường thuật cơ học phiên trước | P0 | S | — | RESUME_TUONG_THUAT |  | ☐ |
+| 32 | [M5-17](#m5-17) | Resume nạp lại bản tóm tắt C2 từ sổ cái; tường thuật cơ học phiên trước | P0 | S | — | RESUME_TUONG_THUAT | DEV-359 | ☑ |
 
 ### Giai đoạn 2 — Ngắn hạn: P0 công sức lớn và P1 công sức nhỏ
 
@@ -2245,9 +2245,13 @@ Sau khi thêm hai ca: **36/36**.
 - `test_MEM17_agent_tiem_khoi_resume_DUNG_MOT_LAN`, `test_MEM17_khoi_resume_KHONG_duoc_chiem_cho_cau_hoi_cua_nguoi` giữ xanh.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC (TC-01 đỏ khi bỏ bước 2).
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ": **23/23** (lượt đầu 20/23 — cả ba chỗ LỌT là ca
+      kiểm CHƯA chạm tới dòng mã nó nói nó canh).
+- [x] Toàn bộ `pytest -q` xanh: 2 015 → **2 030**, 0 đỏ.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md — DEV-359.
+- [x] **Đo trên dữ liệu thật**: 4 lần nén C2 đạt trên sổ cái thật (2 dự án), bản tóm tắt nạp
+      lại được và KHÔNG rỗng ở **2/2**. Và **303/313 phiên (96 %)** thuộc dự án chưa từng nén
+      — tức đường tường thuật cơ học là trường hợp THƯỜNG GẶP, không phải ngoại lệ.
 
 **Hoàn tác:** revert commit (A); tắt cờ `EIDE_FEATURE_RESUME_TUONG_THUAT` (B).
 
