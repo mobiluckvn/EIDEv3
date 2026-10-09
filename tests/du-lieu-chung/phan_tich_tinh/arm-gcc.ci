@@ -1,0 +1,11 @@
+graph: { title: "m2.c"
+node: { title: "m2.c:bo_dem_phu" label: "bo_dem_phu\nm2.c:2:13\n48 bytes (static)" }
+node: { title: "__aeabi_idiv" label: "__aeabi_idiv\n<built-in>" shape : ellipse }
+edge: { sourcename: "m2.c:bo_dem_phu" targetname: "__aeabi_idiv" }
+node: { title: "m2.c:loc" label: "loc\nm2.c:3:13\n80 bytes (static)" }
+edge: { sourcename: "m2.c:loc" targetname: "m2.c:bo_dem_phu" label: "m2.c:3:57" }
+node: { title: "tinh" label: "tinh\nm2.c:4:6\n144 bytes (static)" }
+edge: { sourcename: "tinh" targetname: "m2.c:loc" label: "m2.c:4:37" }
+node: { title: "main" label: "main\nm2.c:5:5\n8 bytes (static)" }
+edge: { sourcename: "main" targetname: "tinh" label: "m2.c:5:36" }
+}

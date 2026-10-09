@@ -9764,3 +9764,133 @@ dựng của ca kiểm không phân biệt được — và đây là **lần th
 
 Bộ kiểm 2 046 → **2 060 xanh**, 1 skip, 0 đỏ (30 ca mới trong `tests/test_chi_muc.py`).
 Công cụ 132 → **133**. Lược đồ kho v4 → **v5**, có đường lùi. `kiem_tai_lieu` 0 chỗ LỆCH.
+
+## [DEV-361] [M2-09] Ba câu hỏi đầu tiên của người làm nhúng, và không ai trả lời
+
+Nhiệm vụ #26, P1 · L — việc lớn nhất còn lại của Giai đoạn 1, và **tiền đề cứng của #27
+M4-13**. Công cụ mới `code.static` (`core=False`, R1) + module `build/phan_tich_tinh.py`. Không
+cờ: nó chỉ đọc, và chỉ hiện sau `tool.search`.
+
+### Chỗ hổng
+
+`phan_tich_ma.py` nói thẳng trong docstring của chính nó: *"Không phân tích ngữ nghĩa, không
+dựng đồ thị gọi hàm đúng nghĩa"*. Chuỗi biên dịch có `-Wall -Wextra` mà **không** có
+`-fstack-usage`, `-fcallgraph-info`, `-fanalyzer`. Nên:
+
+* *"ngăn xếp sâu nhất bao nhiêu byte"* — RAM của ATmega328P là 2 048 byte, và tràn ngăn xếp
+  **không có lỗi nào kêu lên**: nó ghi lên biến toàn cục rồi chương trình sai ở một chỗ khác;
+* *"hàm nào gọi hàm nào"*;
+* *"trong ISR có phép chia, `printf`, `_delay_ms` không"* — ba thứ làm một ISR 50 kHz trượt
+  deadline, và cả ba **biên dịch sạch**.
+
+Tài liệu đánh giá của chính dự án đã ghi đúng chỗ này:
+> *"mô tả hai cách đo ngăn xếp rất đúng (sơn `0xA5A5A5A5`, `-fstack-usage`) mà `grep` không ra
+> một `0xA5A5A5A5` nào trong mã"* — `DANH-GIA-NGUOI-VS-AGENT-2-VIEC.md` §3.2.
+
+### Bốn chỗ trình biên dịch THẬT khác kế hoạch, cả bốn đo được 09/10/2026
+
+Kế hoạch nêu **một** định dạng `.su`. Đo thật thì có bốn chỗ lệch, và mỗi chỗ làm phép đọc
+trượt **im lặng**:
+
+| # | Chỗ lệch | Hậu quả nếu không xử lý |
+|---|---|---|
+| 1 | `.su` có **hai** dạng: `arm-none-eabi-gcc` ghi `tep.c:DÒNG:CỘT:ham`, Apple clang ghi `tep.c:DÒNG:ham` (**thiếu cột**) | công cụ không chạy nổi trên máy chủ — mà máy chủ là nơi `test.run` dịch mọi thứ |
+| 2 | **clang KHÔNG có `-fcallgraph-info`** (`unknown argument`) | đồ thị gọi hàm rỗng, và nó rỗng *im lặng* |
+| 3 | Tên nút VCG **không nhất quán**: hàm `static` → `"m2.c:loc"`, hàm `extern` → `"tinh"` | cung `tinh → m2.c:loc` không khớp khoá nào của `.su`; đồ thị rời ra từng mảnh |
+| 4 | `-O1` **inline mất** hàm `static`, và ở mọi mức ≥ `-O1` hàm lá báo **0 byte** | phép đo biến mất đúng ở chỗ nó cần nói |
+
+Chỗ (4) là bài học DEV-349 lặp lại: **một cờ biên dịch thêm vào là một phép đo khác.** Nên
+`CO_PHAN_TICH = ("-O0", "-std=c11")`, và kết quả **tự khai** `bi_quan=True`: con số `-O0` lớn
+hơn con số của ảnh thật (`-Os`), nên nó là **chặn trên bi quan**. Bi quan là chiều an toàn cho
+một phép kiểm tràn ngăn xếp — vừa ở đây thì chắc chắn vừa ở ảnh thật — nhưng người đọc phải
+biết, không thì họ đem một con số bi quan đi so với RAM rồi kết luận sai.
+
+Mẫu `.su`/`.ci` ở `tests/du-lieu-chung/phan_tich_tinh/` là **đầu ra thật** của
+`arm-none-eabi-gcc 16.2.0` và Apple clang, không phải chuỗi tự viết.
+
+### Một nguyên tắc: chặn TRÊN hay chặn DƯỚI phải tự khai
+
+Con số ngăn xếp là **chặn trên** chỉ khi mọi hàm trong chuỗi gọi đều đo được. Gặp một hàm thư
+viện (`__aeabi_idiv`, `memcpy`) không có trong `.su` thì nó thành **chặn dưới** — và
+`KetQuaNganXep.la_chan_duoi` nói ra điều đó. Im lặng coi hàm không đo được bằng 0 là biến một
+chặn dưới thành một trần.
+
+Cùng lý do, đệ quy thì **không trả con số**: trả một con số cho một chuỗi gọi đệ quy là trả một
+lời nói dối có đơn vị byte — nó trông như một trần, và người đọc sẽ đem nó so với RAM.
+
+### Ba lỗ tìm ra khi chạy trên FIRMWARE THẬT trong repo
+
+Chạy `code.static` trên hai dự án thật lộ ra ba chỗ mà bộ ca kiểm tự viết không chạm tới:
+
+1. **Chỉ nhận ISR kiểu AVR.** Firmware ARM của repo khai handler là hàm thường
+   (`SysTick_Handler`, `*_IRQHandler` — `docs/rtos-tu-viet/firmware-chay-duoc/startup.c`). Chạy
+   lần đầu trên dự án RTOS ra `isr: []` dù nó có hàng chục handler — **mù hẳn** trên một nửa
+   firmware của repo.
+2. **Không có `.ci` thì luật ISR chỉ soi THÂN ISR.** Trên máy chủ (clang) đó là *mọi lúc*. Đo
+   trên `robot-sinhvien2`: `ISR(TIMER2_COMPA_vect)` gọi `motor_step_isr()`, và phép soi dừng
+   ngay ở dòng gọi. Nay có đồ thị dò bằng **văn bản** làm đường dự phòng — nó mù với lời gọi
+   qua con trỏ hàm và có thể kêu thừa, nên nó **tự khai là đồ thị văn bản**.
+3. **Luật ISR không cần trình biên dịch, nhưng công cụ trả về sớm khi dịch đổ.** Macro
+   `ISR(T_vect)` của AVR không dịch được trên máy chủ, nên firmware AVR **không bao giờ** đưa
+   được một vi phạm nào tới tác tử — mà AVR là đúng chỗ luật ISR đáng giá nhất. Hai năng lực ấy
+   độc lập; trộn chúng lại là tự làm đứt một đường dẫn.
+
+Và hai lỗ nữa trong chính luật, tìm ra bằng tập phá:
+
+* **`printf("dem=%lu\n", dem)` bị đọc là một phép chia** — `%lu` có đúng hình dạng "`%` rồi một
+  tên". Phải bỏ nội dung chuỗi trước khi soi.
+* **Chú thích phải bỏ trên CẢ VĂN BẢN, và phải giữ ký tự xuống dòng.** Bỏ theo từng dòng thì
+  `/* … */` trải nhiều dòng không khớp, và các dòng giữa nó bị soi như mã — mà mã
+  `robot-sinhvien2` chú thích **rất dày** bằng tiếng Việt. Còn thay cả khối bằng khoảng trắng
+  thì ba dòng thành **một**, và mọi số dòng sau đó lệch: ca kiểm của chính nhiệm vụ này báo
+  phép chia ở dòng 4 trong khi nó ở dòng 6.
+
+### Số đo trên firmware thật
+
+| Dự án | Kết quả |
+|---|---|
+| `docs/rtos-tu-viet/firmware-chay-duoc` (ARM, `arm-none-eabi-gcc`) | **13 hàm** đo được, **có đồ thị**, 3 ISR (`SysTick_Handler`, `Reset_Handler`, `Default_Handler`), **0 vi phạm**. `main.c`/`startup.c` KHÔNG dịch được: thiếu `stm32f469xx.h` — header CMSIS không nằm trong repo |
+| `du-lieu/robot-sinhvien2/firmware` (AVR) | ngăn xếp **chưa đo được** (máy không có `avr-gcc`, và header AVR không có trên máy chủ); **3 ISR** tìm thấy; **0 vi phạm** |
+
+Con số **0 vi phạm** của robot đã **kiểm chéo bằng tay**, vì một số 0 chưa nói gì tới khi biết
+cơ chế nào làm nó bằng 0: liệt kê mọi hàm có `float`/`double` trong cả firmware → **8 hàm**
+(`pid_calculate`, `filter_update`, `fsm_update`, `motor_calc_pulse`, …), và **không hàm nào
+trong 8 ấy ISR gọi tới được**. Tập ISR tới được đúng 4 hàm: ba ISR cộng `motor_step_isr`. Nên
+0 ở đây là **0 đúng**, và nó khớp với chính luật thiết kế của dự án ấy — tài liệu phương án
+PA-A ghi *"ISR phải tối ưu tuyệt đối, không được dùng phép chia hay số thực"*.
+
+### Tiêu chí KHÔNG đóng được: đối chiếu với stack-painting
+
+Kế hoạch đòi *"ước lượng stack được đối chiếu với đo stack-painting"*. **Không đóng được, và lý
+do nằm ngay trong repo:**
+
+* `grep -rn "0xA5A5A5A5"` ra **0 kết quả** trong mã — chính tài liệu đánh giá đã ghi điều đó.
+  Phép sơn ngăn xếp **chưa bao giờ được chạy** ở dự án này;
+* con số painting duy nhất trong repo là *"Đo thật: **65 word**"* ở
+  `DANH-GIA-NGUOI-VS-AGENT-2-VIEC.md` §3.3 — nó nằm trong **văn xuôi**, không có hiện vật, số
+  liệu thô, hay tệp kết quả nào đứng sau, và không nói rõ tác vụ nào trên bản mã nào.
+
+Ghép con số tĩnh của tôi với một con số không truy nguồn được là đúng cái bài học
+*"hằng số phần cứng phải tra, không được dựng lại"* cấm. Nên tôi ghi lại **chỗ không đối chiếu
+được** thay vì dựng một phép so trông như đã làm. Muốn đóng tiêu chí này thì phải chạy painting
+thật trên bo — cần bo cắm, tức một phiên khác.
+
+### Phá lại thì đỏ: 29/35 lượt đầu → **35/35**
+
+Sáu chỗ LỌT. **Hai** là lỗ thật (luật ISR bị chặn sau cửa `chay_duoc`; chú thích khối nhiều
+dòng), **bốn** là dàn dựng ca kiểm không phân biệt được — **lần thứ sáu liền**:
+
+* *"chọn nhánh đầu tiên thay vì nhánh sâu nhất"* — nhánh sâu của tôi tên `a`, đứng **trước**
+  theo thứ tự chữ, nên lấy nhánh đầu cũng ra đúng. Đổi thành `z`.
+* *"bỏ trần 20 phát hiện"* — dàn dựng chỉ sinh 0–1 vi phạm.
+* *"chưa chạy được mà không nói rõ"* — ca cũ chỉ gọi `chay_phan_tich`, không qua công cụ.
+* *"`code.analyze` không đính tóm tắt"* — ca cũ gọi `_tom_tat_tinh` **trực tiếp**, nên bỏ hẳn
+  chỗ nối trong `code.analyze` mà bộ kiểm vẫn xanh. Một hàm đúng với đường dẫn tới nó bị đứt —
+  đúng hình dạng cả đợt này đi vá, lần này trong mã tôi vừa viết.
+
+Và một phép phá hoá ra là **mã chết**: hai tên `.su` (`p.stem` và `ra_o.stem`) trùng nhau vì ta
+đặt tên `.o` đúng bằng stem của nguồn. Bỏ nhánh thứ hai đi thay vì dựng một ca contrived để che
+nó (bài học M4-19).
+
+Bộ kiểm 2 060 → **2 096 xanh**, 1 skip, 0 đỏ (36 ca mới trong `tests/test_phan_tich_tinh.py`).
+Công cụ 133 → **134**. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.

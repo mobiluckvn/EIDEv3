@@ -332,6 +332,16 @@ def dang_ky(r: Registry) -> None:
         # trả lời được — nặng nhất là câu thứ ba: **chỗ gọi GIÁN TIẾP** qua con trỏ hàm, macro,
         # bảng phân phối. Phép quét văn bản kêu thừa chứ không bỏ sót chỗ gọi thẳng, nhưng chỗ
         # gọi gián tiếp thì nó mù hẳn — mà đó đúng là chỗ hỏng đắt nhất khi sửa firmware.
+        # M2-09 — đính TÓM TẮT phân tích tĩnh vào phần DỮ KIỆN, nếu nó MỚI HƠN mọi tệp
+        # trong phạm vi.
+        #
+        # So PHIÊN BẢN, không so đồng hồ (bài học DEV-351: `updated_at` của kho có độ phân
+        # giải thô, nên hai lần ghi trong cùng một giây bằng nhau và phép so "mới hơn" im
+        # lặng sai). Hiện vật `analysis:static` khai `deps.upstream` là các tệp nó đã đo, và
+        # kho đánh STALE nó khi một tệp ấy đổi — nên câu hỏi đúng là *"nó có STALE không"*,
+        # không phải *"nó có mới hơn không"*.
+        noi_dung += _tom_tat_tinh(ctx, [t.duong for t in tm])
+
         nhan_dinh = _nhan_dinh_cua_tac_tu_con(ctx, noi_dung, doi_gi)
         noi_dung += nhan_dinh
 
@@ -478,6 +488,121 @@ def dang_ky(r: Registry) -> None:
                    "mảng. Viết mã không dùng thư viện chuẩn, hoặc nhờ người dùng cài newlib "
                    "qua tool.install."
                    if kq.thieu_libc else ""))}
+
+    @r.tool("code.static", "Mã nguồn",
+            "Phân tích TĨNH chiều sâu firmware: ngăn xếp sâu nhất theo chuỗi gọi từ `main` và "
+            "từng ISR, đồ thị gọi hàm, và vi phạm ngữ cảnh ngắt (số thực, phép chia trên biến, "
+            "hàm chặn, biến toàn cục thiếu `volatile`). Dịch ra thư mục riêng, KHÔNG chạm ảnh "
+            "nạp chip.",
+            {"type": "object",
+             "properties": {
+                 "nguon": {"type": "array", "items": {"type": "string"},
+                           "description": "tệp .c cần phân tích; mặc định firmware/*.c"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["explain"]},
+            risk="R1", core=False, needs_explain=True, produces=["analysis"],
+            writes_artefact=True,
+            keywords=["ngăn xếp", "stack", "call graph", "đồ thị gọi hàm", "isr", "ngắt",
+                      "phân tích tĩnh", "tràn ngăn xếp", "volatile", "static analysis"])
+    def code_static(ctx: Any, explain: dict[str, Any], nguon: list[str] | None = None):
+        """Ba câu hỏi mà một người làm nhúng hỏi đầu tiên, và trước M2-09 không ai trả lời.
+
+        `phan_tich_ma.py` nói thẳng trong docstring của nó: *"không dựng đồ thị gọi hàm đúng
+        nghĩa"*. Chuỗi biên dịch có `-Wall -Wextra` mà không có `-fstack-usage`. Nên:
+
+        * *"ngăn xếp sâu nhất bao nhiêu byte"* — RAM của ATmega328P là 2 048 byte, và tràn ngăn
+          xếp **không có lỗi nào kêu lên**: nó ghi lên biến toàn cục rồi chương trình sai ở một
+          chỗ khác, cách đó vài trăm chu kỳ;
+        * *"hàm nào gọi hàm nào"*;
+        * *"trong ISR có phép chia, `printf`, `_delay_ms` không"* — ba thứ làm một ISR 50 kHz
+          trượt deadline, và cả ba **biên dịch sạch**.
+
+        Hai điều công cụ này cố ý KHÔNG làm: không đổi cờ của `build.compile` (đổi cờ là đổi
+        chính cái ảnh sẽ nạp vào chip), và không chặn ghi tệp dựa trên kết quả — nó trả **dữ
+        kiện**, người quyết.
+        """
+        from ..build import phan_tich_tinh as PT
+
+        goc = ctx.config.paths.project_root
+        ds = ([(goc / x) for x in nguon] if nguon else
+              sorted((goc / "firmware").glob("*.c")) + sorted((goc / "src").glob("*.c")))
+        ds = [p for p in ds if p.is_file()][:24]
+        if not ds:
+            return ToolResult(False, error=EideError(
+                "E4011", "Không thấy tệp .c nào để phân tích.",
+                hint_for_agent="Nêu `nguon` là các tệp .c của firmware, hoặc đặt mã ở "
+                               "`firmware/`. Chưa có mã thì nói thẳng là chưa có.",
+                alternatives=["fs.glob", "fs.write"], blame="agent"))
+
+        kq = PT.chay_phan_tich(goc, ds)
+        flash, ram = _han_muc(ctx, (ctx.store.get("passport:chip") or {}).get("canonical"))
+
+        # Hai mươi phát hiện là trần của phần vào NGỮ CẢNH, không phải của phép đo — và chỗ
+        # bị cắt được nói ra. Một danh sách 300 dòng vào transcript thì không ai đọc.
+        vp = kq["vi_pham"][:20]
+        nx = kq.get("ngan_xep") or {}
+        sau_nhat = max((v.get("byte", 0) for v in nx.values()), default=0)
+        ngan_sach = ""
+        if ram and sau_nhat:
+            ty = 100.0 * sau_nhat / ram
+            ngan_sach = (f" Ngăn xếp sâu nhất {sau_nhat} byte trên {ram} byte SRAM "
+                         f"({ty:.1f} %)"
+                         + (" — và đây là con số BI QUAN (dịch `-O0`), nên ảnh thật dựng "
+                            "`-Os` sẽ nhỏ hơn." if kq.get("bi_quan") else "")
+                         + (" CHÚ Ý: còn hàm không đo được nên con số này là chặn DƯỚI."
+                            if any(v.get("la_chan_duoi") for v in nx.values()) else ""))
+
+        out = {
+            "chay_duoc": kq["chay_duoc"], "co_do_thi": kq["co_do_thi"],
+            "cc": kq.get("cc", ""), "co_bien_dich": kq.get("co_bien_dich", []),
+            "so_ham": len(kq["ham"]), "so_tep": len(ds),
+            "isr": kq.get("isr", []),
+            "ngan_xep": nx, "ngan_xep_sau_nhat": sau_nhat,
+            "so_vi_pham": len(kq["vi_pham"]), "vi_pham": vp,
+            "bi_cat": len(kq["vi_pham"]) > len(vp),
+            "cong_cu_thieu": kq.get("cong_cu_thieu", []),
+            "vi_sao": kq.get("vi_sao", ""),
+        }
+        # Hai năng lực ĐỘC LẬP, và trộn chúng lại là tự làm đứt một đường dẫn.
+        #
+        # Ngăn xếp cần trình biên dịch (`.su`). Luật ngữ cảnh ngắt thì **không** — nó đọc mã
+        # nguồn. Bản đầu của tôi trả về sớm khi `chay_duoc=False`, nên trên máy chủ (không có
+        # `avr/interrupt.h`) firmware AVR **không bao giờ** đưa được một vi phạm nào tới tác
+        # tử — mà AVR là đúng chỗ luật ISR đáng giá nhất. Tìm ra bằng tập phá của chính nhiệm
+        # vụ này.
+        if not kq["chay_duoc"] and not kq["vi_pham"]:
+            # `ok` vẫn True, nhưng NÓI RÕ là chưa đo được gì. Trả `{}` im lặng ở đây sẽ được
+            # đọc là "không có vi phạm nào" — đúng cái N6 cấm.
+            out["note_vi"] = ("CHƯA phân tích được: " + (kq.get("vi_sao") or "không rõ vì sao")
+                              + ". Đây KHÔNG phải “không có vi phạm” — nói thẳng với người "
+                                "dùng là phép đo chưa chạy.")
+            return out
+
+        ctx.store.apply(
+            artefact_id="analysis:static", type="analysis",
+            op="update" if ctx.store.get("analysis:static") else "create",
+            author=f"agent:{ctx.run_id}", explain=explain,
+            canonical={k: v for k, v in kq.items() if k != "do_thi"},
+            deps={"upstream": [str(p.relative_to(goc)) for p in ds]},
+            view_hint={"kind": "table", "path": "static"})
+
+        out["note_vi"] = (
+            ("" if kq["chay_duoc"] else
+             "NGĂN XẾP chưa đo được (" + (kq.get("vi_sao") or "không rõ")[:160]
+             + ") — nhưng luật ngữ cảnh ngắt đọc MÃ NGUỒN nên phần dưới vẫn là phép đo thật. ")
+            + f"{len(kq['ham'])} hàm trong {len(ds)} tệp, dịch bằng `{kq.get('cc')}` "
+            f"{' '.join(kq.get('co_bien_dich', []))} ra `.eide/build/tinh/` — ảnh nạp chip "
+            "KHÔNG bị chạm." + ngan_sach
+            + (f" {len(kq['vi_pham'])} vi phạm ngữ cảnh ngắt"
+               + (f", hiện {len(vp)}" if out["bi_cat"] else "")
+               + ". Mỗi cái có số dòng; đọc `vi_sao` của nó trước khi sửa."
+               if kq["vi_pham"] else " Không vi phạm ngữ cảnh ngắt nào.")
+            + ("" if kq["co_do_thi"] else
+               " KHÔNG dựng được đồ thị gọi hàm trên trình biên dịch này, nên con số ngăn xếp "
+               "chỉ là của TỪNG hàm, chưa cộng dồn theo chuỗi gọi — nói rõ điều đó khi báo.")
+            + (f" Thiếu công cụ tuỳ chọn: {', '.join(kq['cong_cu_thieu'])}."
+               if kq.get("cong_cu_thieu") else ""))
+        return out
 
     @r.tool("build.map", "Mã nguồn",
             "Đọc bản đồ bộ nhớ của tệp ảnh vừa biên dịch: từng section chiếm bao nhiêu, "
@@ -1399,6 +1524,52 @@ def _ho_chieu(ctx: Any) -> dict[str, Any] | None:
     for a in ctx.store.list("passport", limit=5):
         return a.get("canonical") or {}
     return None
+
+
+def _tom_tat_tinh(ctx: Any, tep: list[str]) -> str:
+    """Tóm tắt `analysis:static` để đính vào bản phân tích mã — M2-09 bước 4.
+
+    Ba cửa, và cửa thứ hai là cửa đáng nói nhất:
+
+    * chưa chạy `code.static` lần nào → không nói gì (im lặng ở đây là đúng: *"chưa đo"* khác
+      *"không có vấn đề"*, và phần nhận định phía dưới sẽ không khai gì về ngăn xếp);
+    * hiện vật **đang STALE** → nói rõ là số cũ, và chỉ đường chạy lại. So **cờ STALE** chứ
+      không so đồng hồ: `updated_at` của kho có độ phân giải thô nên phép so "mới hơn" im lặng
+      sai (DEV-351), còn `deps.upstream` của hiện vật đã khai đúng các tệp nó đo;
+    * hiện vật còn tươi nhưng **không đo tệp nào trong phạm vi** → cũng không nói gì, vì nó
+      nói về mã khác.
+    """
+    a = ctx.store.get("analysis:static")
+    if a is None:
+        return ""
+    c = a.get("canonical") or {}
+    up = set((a.get("deps") or {}).get("upstream") or [])
+    if up and not (up & set(tep)):
+        return ""
+    nx = c.get("ngan_xep") or {}
+    sau = max((v.get("byte", 0) for v in nx.values()), default=0)
+    goc_sau = max(nx, key=lambda k: nx[k].get("byte", 0), default="")
+    vp = c.get("vi_pham") or []
+    L = ["\n## Phân tích tĩnh (hiện vật `analysis:static`)\n"]
+    if a.get("stale"):
+        ly_do = a.get("stale_reason") or "mã đã đổi sau lần đo"
+        L.append(f"> **Số dưới đây LỖI THỜI** — {ly_do}. Chạy lại `code.static` trước khi "
+                 "dựa vào nó.\n")
+    L.append(f"* Ngăn xếp sâu nhất: **{sau} byte**"
+             + (f" theo chuỗi `{' → '.join(nx[goc_sau].get('chuoi') or [])}`" if goc_sau else "")
+             + (" — con số BI QUAN (dịch `-O0`)" if c.get("bi_quan") else "")
+             + (" · **chặn DƯỚI**, còn hàm không đo được"
+                if any(v.get("la_chan_duoi") for v in nx.values()) else "") + ".")
+    if any(v.get("de_quy") for v in nx.values()):
+        L.append("* Có **đệ quy** trong chuỗi gọi — ngăn xếp KHÔNG chặn trên được.")
+    L.append(f"* Vi phạm ngữ cảnh ngắt: **{len(vp)}**"
+             + ("" if not vp else " — "
+                + "; ".join(f"{v.get('loai')} dòng {v.get('dong')}" for v in vp[:6]))
+             + ".")
+    if not c.get("co_do_thi"):
+        L.append("* KHÔNG dựng được đồ thị gọi hàm trên trình biên dịch đã dùng, nên con số "
+                 "ngăn xếp là của TỪNG hàm, chưa cộng dồn theo chuỗi gọi.")
+    return "\n".join(L) + "\n"
 
 
 def _han_muc(ctx: Any, hc: dict[str, Any] | None) -> tuple[int, int]:
