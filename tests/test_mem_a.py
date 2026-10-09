@@ -351,3 +351,246 @@ def test_tim_skill_khop_tung_chu_khong_doi_ca_cum():
     assert len(tim_skill()) >= 7
     # Chữ không dính gì thì trả rỗng, chứ không trả bừa.
     assert tim_skill("zzzqqq") == []
+
+
+# ===================================================================== M5-13
+# Chính sách phong bì cho `doc.read` / `fact.query` / `fact.extract`.
+#
+# Ba công cụ ấy KHÔNG có chính sách riêng, nên chúng rơi vào trần chung — và trần chung bị
+# lách vì `_cat_chung` cắt SỐ phần tử của một list (`d[:30]`) mà không cắt từng phần tử.
+# Một `doc.read` mặc định trả 40 đoạn × 2 000 ký tự ≈ 60 000 ký tự ≈ 20 000 token, và 30 phần
+# tử đầu của nó vẫn là 60 000 ký tự.
+def _doc_read(so: int, dai: int = 2000, tim_o: int | None = None, tu_khoa: str = "throttle"):
+    def _chu(i: int) -> str:
+        if tim_o is None:
+            return "x" * dai
+        return "x" * tim_o + tu_khoa + "x" * max(0, dai - tim_o - len(tu_khoa))
+
+    return {"doc_id": "DS", "so_khop": so, "so_tra_ve": so, "bi_cat": False,
+            "don_vi_trich_dan": "trang",
+            "doan": [{"so": i + 1, "trich_dan": f"trang {i + 1}", "chu": _chu(i),
+                      "la_bang": False, "loai_bang": "", "o": [], "cot": []}
+                     for i in range(so)],
+            "note_vi": f"{so}/{so} đoạn khớp."}
+
+
+def test_doc_read_40_doan_khong_nuot_ngu_canh():
+    """TC-M5-13-01 — 40 đoạn × 2 000 ký tự là một lời gọi `doc.read` MẶC ĐỊNH, không phải ca
+    bất thường. Nó đưa khoảng 20 000 token vào ngữ cảnh."""
+    d = _doc_read(40)
+    tho = uoc_token(d)
+    assert tho > 15_000, tho          # mốc: kết quả thô thật sự lớn
+    env = boc_ket_qua(tool="doc.read", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    assert env.shown_tokens <= 2500, env.shown_tokens
+    assert env.truncated and env.blob_ref, env
+    assert env.data["so_khop"] == 40, env.data
+    assert "40" in env.data["note_vi"] and "blob.read" in env.data["note_vi"]
+
+
+def test_doc_read_giu_duong_DOC_LAI_nguyen_van():
+    """Cắt không được thành mất: phần dư phải đọc lại được NGUYÊN VĂN qua blob."""
+    kho = KhoBlob()
+    d = _doc_read(40)
+    env = boc_ket_qua(tool="doc.read", call_id="c1", ket_qua=_ok(d), args={}, blobs=kho)
+    lai = json.loads(kho.get(env.blob_ref.split(":")[-1]).decode())
+    assert len(lai["doan"]) == 40
+    assert lai["doan"][39]["chu"] == d["doan"][39]["chu"]
+
+
+def test_doc_read_cat_quanh_tu_khoa():
+    """TC-M5-13-02 — cắt 600 ký tự ĐẦU đoạn thì chỗ khớp từ khoá nằm ngoài cửa sổ.
+
+    Tác tử gọi `doc.read(tim="throttle")` vì nó cần đúng chỗ ấy. Trả về 600 ký tự đầu của một
+    đoạn 5 000 ký tự là trả về phần nó **không** hỏi, và nó sẽ gọi lại — hoặc tệ hơn, kết luận
+    tài liệu không có.
+    """
+    d = _doc_read(1, dai=5000, tim_o=4000)
+    env = boc_ket_qua(tool="doc.read", call_id="c1", ket_qua=_ok(d),
+                      args={"tim": "throttle"}, blobs=KhoBlob())
+    chu = env.data["doan"][0]["chu"]
+    # Phải kiểm CẢ HAI: đã cắt, VÀ cắt đúng chỗ. Chỉ kiểm "có throttle" thì ca này xanh cả
+    # khi không cắt gì — một đoạn 5 000 ký tự nằm dưới trần chung nên nó đi nguyên qua.
+    assert len(chu) <= 700, len(chu)
+    assert "throttle" in chu, chu[:80]
+
+
+def test_doc_read_khong_co_tim_thi_lay_dau_doan():
+    """Không có `tim` thì không có chỗ nào đáng ưu tiên — lấy đầu đoạn."""
+    d = _doc_read(1, dai=5000, tim_o=4000)
+    env = boc_ket_qua(tool="doc.read", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    chu = env.data["doan"][0]["chu"]
+    assert "throttle" not in chu and len(chu) <= 700, len(chu)
+
+
+def test_doc_read_ngan_di_nguyen():
+    """TC-M5-13-05 — ca âm. Hai đoạn ngắn phải đi qua y nguyên, không bọc giấy.
+
+    Một chính sách cắt luôn-luôn-cắt sẽ thêm `truncated` và một dòng ghi chú vào MỌI lời gọi,
+    và lúc ấy dấu "đã cắt" mất nghĩa.
+    """
+    d = _doc_read(2, dai=100)
+    env = boc_ket_qua(tool="doc.read", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    assert env.truncated is False, env
+    assert env.data == d
+    assert env.blob_ref is None
+
+
+def _facts(n: int) -> dict:
+    return {"count": n, "facts": [
+        {"fact_id": f"f-{i}", "subject": "chip:X", "key": "vdd.max", "value": "3.6",
+         "unit": "V", "condition": "", "tier": "BAC", "origin": "extract",
+         "source": json.dumps({"doc_id": "DS", "version": "1", "page": i,
+                               "cite": f"trang {i}", "quote": "q" * 300}),
+         "explain": json.dumps({"summary": "s" * 300, "why": "w" * 400,
+                                "sources": [{"kind": "doc", "ref": "r" * 200}],
+                                "diff_prev": "d" * 100, "next": "n" * 100,
+                                "confidence": "BAC"})}
+        for i in range(n)], "note_vi": ""}
+
+
+def test_fact_query_bo_explain():
+    """TC-M5-13-03 — `explain` của một Fact là một chuỗi JSON cỡ 1 KB, và mô hình KHÔNG cần
+    nó để dùng con số: nó cần `value`, `unit`, `tier`, và chỗ tra lại.
+
+    100 Fact × 1 KB `explain` là 100 KB — hơn 30 000 token cho một phép tra.
+    """
+    d = _facts(100)
+    assert uoc_token(d) > 30_000, uoc_token(d)
+    env = boc_ket_qua(tool="fact.query", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    ds = env.data["facts"]
+    assert len(ds) <= 30, len(ds)
+    assert all("explain" not in f for f in ds), ds[0].keys()
+    assert env.data["count"] == 100
+    assert env.shown_tokens <= 2500, env.shown_tokens
+
+
+def test_fact_query_giu_duong_TRA_LAI_cua_tung_Fact():
+    """Bỏ `explain` thì `source` phải còn đủ để mở tài liệu ra: `doc_id`, `page`, `cite`.
+
+    Cắt luôn cả `source` là lấy mất chính thứ làm một Fact khác với một con số nhớ được.
+    """
+    env = boc_ket_qua(tool="fact.query", call_id="c1", ket_qua=_ok(_facts(100)), args={},
+                      blobs=KhoBlob())
+    f = env.data["facts"][0]
+    src = f["source"] if isinstance(f["source"], dict) else json.loads(f["source"])
+    assert src["doc_id"] == "DS" and src["cite"] == "trang 0", src
+    assert f["value"] == "3.6" and f["unit"] == "V" and f["tier"] == "BAC"
+
+
+def test_fact_query_KHONG_CO_GI_de_cat_thi_di_nguyen():
+    """Ca âm — và nó phải là ca âm ĐÚNG.
+
+    Bản đầu của ca này dựng ba Fact *có* `explain` 1 KB và mong nó đi nguyên. Sai: ba Fact như
+    thế đã là 4,4 KB ≈ 1 460 token, và bỏ `explain` ở đó tiết kiệm thật. Ca âm đúng là *"không
+    có gì để cắt"* — Fact đã gọn thì phong bì không được đánh dấu `truncated`, vì một dấu
+    "đã cắt" xuất hiện ở mọi nơi thì không còn nói gì.
+    """
+    d = {"count": 2, "facts": [
+        {"fact_id": "f-1", "subject": "chip:X", "key": "vdd.max", "value": "3.6",
+         "unit": "V", "tier": "BAC",
+         "source": {"doc_id": "DS", "page": 1, "cite": "trang 1"}},
+        {"fact_id": "f-2", "subject": "chip:X", "key": "vdd.min", "value": "2.7",
+         "unit": "V", "tier": "BAC",
+         "source": {"doc_id": "DS", "page": 1, "cite": "trang 1"}}], "note_vi": ""}
+    env = boc_ket_qua(tool="fact.query", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    assert env.truncated is False, (env.truncated, env.shown_tokens, env.full_tokens)
+    assert env.data == d
+
+
+def test_fact_query_BA_Fact_co_explain_thi_VAN_cat():
+    """Ba Fact có `explain` 1 KB là 4,4 KB — bỏ `explain` ở đó tiết kiệm thật, nên phải cắt.
+    Trần của chính sách đặt ở mức một phép tra gọn không chạm tới."""
+    env = boc_ket_qua(tool="fact.query", call_id="c1", ket_qua=_ok(_facts(3)), args={},
+                      blobs=KhoBlob())
+    assert env.truncated is True
+    assert all("explain" not in f for f in env.data["facts"])
+    assert env.data["count"] == 3
+
+
+def test_fact_extract_cung_chinh_sach():
+    """`fact.extract` trả khoá `fact` (số ít) chứ không phải `facts` — cùng chính sách, hai
+    tên khoá. Bỏ một tên là để nguyên một đường 30 000 token."""
+    d = {"doc_id": "DS", "so_ung_vien": 100, "tang": "BAC",
+         "fact": _facts(100)["facts"], "note_vi": ""}
+    env = boc_ket_qua(tool="fact.extract", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    assert len(env.data["fact"]) <= 30
+    assert all("explain" not in f for f in env.data["fact"])
+
+
+def test_cat_chung_cat_phan_tu_dai():
+    """TC-M5-13-04 — trần chung bị LÁCH vì `_cat_chung` cắt số phần tử mà không cắt phần tử.
+
+    `{"ds": ["y"*20000]*5}` có 5 phần tử, nên `d[:30]` không cắt gì, và 100 000 ký tự đi
+    nguyên vào ngữ cảnh. Một công cụ bên thứ ba hay một công cụ mới chưa có chính sách riêng
+    đi đúng đường này — mà trần chung tồn tại chính để đỡ những cái đó.
+    """
+    d = {"ds": ["y" * 20000] * 5}
+    env = boc_ket_qua(tool="cong.cu.la", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    assert env.shown_tokens < 4000, env.shown_tokens
+    assert env.truncated and env.blob_ref
+
+
+def test_cat_chung_list_long_nhau():
+    """List trong list cũng phải được cắt — một kết quả lồng hai cấp không phải ca lạ."""
+    d = {"ds": [[{"chu": "z" * 30000}]]}
+    env = boc_ket_qua(tool="cong.cu.la", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    assert env.shown_tokens < 4000, env.shown_tokens
+
+
+def test_doc_read_cat_O_cua_hang_bang():
+    """Một hàng bảng datasheet có thể có hàng chục ô. `doc.read` đã cắt `o[:20]` ở tầng công
+    cụ, nhưng 8 đoạn × 20 ô vẫn là một khối chữ đáng kể — và phong bì là chỗ cuối cùng đứng
+    giữa nó và cửa sổ ngữ cảnh."""
+    d = {"doc_id": "DS", "so_khop": 1, "so_tra_ve": 1, "bi_cat": False,
+         "don_vi_trich_dan": "trang",
+         "doan": [{"so": 1, "trich_dan": "trang 1", "chu": "bảng", "la_bang": True,
+                   "loai_bang": "thong_so", "o": [f"o{i}" * 50 for i in range(50)],
+                   "cot": ["c"] * 50}],
+         "note_vi": ""}
+    env = boc_ket_qua(tool="doc.read", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    assert len(env.data["doan"][0]["o"]) <= 10, len(env.data["doan"][0]["o"])
+    assert env.truncated and env.blob_ref
+
+
+def test_fact_query_explain_NGAN_thi_di_nguyen():
+    """Ca âm thật của trần kích hoạt: hai Fact có `explain` NGẮN phải đi nguyên.
+
+    Phép phá chỉ ra rằng ca âm trước không đo được chỗ này — `source` của nó đã đúng hình
+    dạng `_gon` trả về, nên hạ trần về 0 cũng không đổi gì. Ca này có `explain` để `_gon`
+    *có thể* cắt, và đòi nó **đừng** cắt.
+    """
+    d = {"count": 2, "facts": [
+        {"fact_id": f"f-{i}", "subject": "chip:X", "key": "vdd.max", "value": "3.6",
+         "unit": "V", "tier": "BAC",
+         "source": json.dumps({"doc_id": "DS", "page": 1, "cite": "trang 1"}),
+         "explain": json.dumps({"summary": "ngắn", "confidence": "BAC"})}
+        for i in range(2)], "note_vi": ""}
+    assert uoc_token(d) <= 800, uoc_token(d)
+    env = boc_ket_qua(tool="fact.query", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    assert env.truncated is False, (env.shown_tokens, env.full_tokens)
+    assert env.data == d
+
+
+def test_cat_chung_chia_ngan_sach_cho_NHIEU_khoa():
+    """Ngân sách phải chia theo số khoá của dict, không chỉ theo số phần tử của list.
+
+    Phép phá chỉ ra rằng ca `{"ds": [...]}` không đo được chuyện này — nó có **một** khoá,
+    nên chia cho một là phép đồng nhất. Ba khoá lớn thì mỗi khoá tiêu cả trần sẽ thành ba
+    lần trần.
+    """
+    d = {"a": "x" * 20000, "b": "y" * 20000, "c": "z" * 20000}
+    env = boc_ket_qua(tool="cong.cu.la", call_id="c1", ket_qua=_ok(d), args={},
+                      blobs=KhoBlob())
+    assert env.shown_tokens < 4000, env.shown_tokens
+    # Và cả ba khoá phải CÒN MẶT — cắt một khoá đi là làm mất hình dạng kết quả.
+    assert set(env.data) >= {"a", "b", "c"}, env.data.keys()
