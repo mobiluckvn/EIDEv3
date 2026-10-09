@@ -9292,3 +9292,92 @@ Ca `test_nap_duoc_SVD_THAT` đã viết và đánh `nha_that` + `skipif`: nó d�
 không thấy. Nên con số *"nạp được N thanh ghi của một chip thật"* chưa có — và tôi ghi đúng như
 thế, thay vì tự viết một tệp SVD lớn rồi gọi nó là *thật*. Một bộ đọc chạy đúng trên tệp tự
 viết chưa nói gì về một tệp có `derivedFrom` khắp nơi và cluster lồng nhau.
+
+## [DEV-356] [M5-05] Một con số ĐÚNG ĐỘ LỚN mà SAI THỨ NGUYÊN vẫn vào kho được
+
+Nhiệm vụ #29. **Sửa lỗi thuần**, không cờ, không tiền đề.
+
+### Ba chỗ đứt, và cả ba cùng một hình dạng
+
+1. **`hop_ly` không kiểm đơn vị.** Nó quy về đơn vị cơ bản rồi chỉ so **độ lớn**, nên
+   `hop_ly("vdd.max", 25, "°C")` trả `True`: 25 nằm trong khoảng điện áp hợp lý (0,5–60 V), và
+   chẳng dòng nào hỏi *"25 cái gì"*. Một Fact `vdd.max = 25 °C` ở tầng BẠC là **vế giới hạn**
+   của luật ERC quá áp — tức một ô xanh giả đúng chỗ đắt nhất.
+2. **Hai khoá không bao giờ được kiểm khoảng.** `_MAU_THONG_SO` sinh ra `"fmax"` và `"ta.max"`;
+   `PHAM_VI_HOP_LY` khai `"f.max"`, `"temp.min"`, `"temp.max"`. Hai bảng không gặp nhau, nên
+   phép kiểm khoảng của tần số và nhiệt độ **chưa nổ lần nào**.
+3. **Đường HÀNG BẢNG không gọi `hop_ly` lần nào** — mà bảng là đường chính của datasheet:
+   `_tu_hang_bang` tồn tại chính vì đơn vị nằm ở cột riêng, nên nó có đủ dữ kiện để kiểm thứ
+   nguyên, và nó là đường duy nhất không kiểm.
+
+Lần thứ tám đúng hình dạng ấy trong đợt: cơ chế có sẵn (`PHAM_VI_HOP_LY`, `ve_si`), đường dẫn
+tới nó đứt.
+
+### Tra thứ nguyên theo tiền tố DÀI NHẤT, và vì sao không theo "phần trước dấu chấm cuối"
+
+Kế hoạch ghi *"theo TIỀN TỐ khoá (phần trước dấu chấm cuối)"*. Làm đúng thế thì ba khoá
+`i2c.pullup.typ` (ohm), `i2c.fmax` (hertz) và `i2c.addr` (không có thứ nguyên, giá trị là chuỗi
+`"0x48"`) đều rút về `i2c` hoặc `i2c.pullup` — và hai trong ba bị gán sai. Nên `thu_nguyen_cua`
+tra khoá nguyên vẹn trước rồi bỏ dần đoạn cuối, lấy **cái dài nhất khớp**.
+
+Đơn vị **rỗng** bị loại cho mọi thứ nguyên trừ nhóm byte: datasheet ghi `Flash: 32768` không kèm
+đơn vị thật, và `ve_don_vi_co_ban` đã có ngữ nghĩa KB=1024 cho nhóm ấy. Với volt/ampe/hertz thì
+một con số không đơn vị là một con số không ai kiểm lại được — và `_SO_DON_VI` vốn luôn bắt kèm
+đơn vị, nên không mất gì.
+
+### Ca kiểm của kế hoạch XANH VÌ MỘT LÝ DO KHÁC
+
+Bảng TC nêu TC-M5-05-04: hàng `o=["VDD","25","°C"]` → `_tu_hang_bang` trả rỗng. **Nó trả rỗng
+trên mã chưa sửa** — nhưng không vì phép kiểm đơn vị nào: `"VDD"` trơn KHÔNG khớp mẫu nào trong
+`_MAU_THONG_SO` (mẫu đòi `VDD (max)` / `VDD (min)` hoặc `supply voltage`), nên hàng bị bỏ ngay ở
+bước tìm khoá. Viết đúng chữ của kế hoạch thì được một ca xanh trước và sau khi sửa.
+
+Nên các ca đơn vị dùng tên hàng **khớp mẫu** (`VDD (max)`, `Supply voltage`), và có thêm một ca
+ghim lại chính tính chất ấy để lần sau không ai lặp lại.
+
+### Hai lỗ nữa, tìm ra bằng TẬP PHÁ, ngoài phạm vi kế hoạch nêu
+
+**`hop_ly` nổ `TypeError` với giá trị không phải số.** `pv[0] <= co_ban` so một `float` với một
+`str`. `i2c.addr` — khoá giá trị-chuỗi duy nhất hiện có — sống sót **chỉ vì** nó không có khoảng
+trong `PHAM_VI_HOP_LY`. Cái lỗi nằm đó im lặng, chờ người đầu tiên thêm một khoảng cho một khoá
+như thế. Đã thêm cửa chặn ở phép kiểm khoảng.
+
+**Đường bảng và đường dòng chữ sinh HAI KHOÁ KHÁC NHAU cho cùng một thông số.**
+`_tu_hang_bang` cắt mù hậu tố (`k.rsplit(".", 1)[0]`), nên:
+
+| Thông số | đường dòng chữ | đường BẢNG (trước M5-05) |
+|---|---|---|
+| dung lượng Flash | `flash.size` | **`flash.max`** |
+| tần số tối đa | `fmax` | **`fmax.max`** |
+| địa chỉ I2C | `i2c.addr` | **`i2c.max`** |
+
+Ba khoá bên phải không có trong `KHOA_CHUAN`, không có trong `PHAM_VI_HOP_LY`, và
+`tools/xay_dung._han_muc` **không đọc `flash.max`** — nên **một dung lượng Flash đọc từ BẢNG
+chưa bao giờ thành hạn mức**, mà Fact vẫn trông hợp lệ nên không ai thấy. Đúng cùng hình dạng
+với chính lỗi M5-05 đi vá: hai khoá cho một thông số, hai bên không gặp nhau.
+
+Sửa: chỉ cắt hậu tố khi nó **đúng là** một hậu tố mà cột bảng cấp được (`min`/`typ`/`max`); khoá
+còn lại giữ nguyên vẹn. Kế hoạch có dòng *"Không đổi tên khoá mà bộ trích sinh ra"* — và sửa này
+nằm trong tinh thần ấy chứ không ngược: ba khoá bị đổi là ba khoá **không chỗ nào đọc**, nên
+không Fact cũ nào đang khớp với ai bị lệch.
+
+### Phá lại thì đỏ: 17/21 lượt đầu → **23/24**
+
+Bốn chỗ LỌT ở lượt đầu, và chúng chia làm hai loại:
+
+* **Hai lỗ thật** → thành hai mục ở trên (`TypeError` với chuỗi; khoá bảng kiểm bằng `khoa_goc`
+  nên mất phép kiểm khoảng). Thêm ba phép phá mới cho phần vừa sửa.
+* **Hai phép phá vô hiệu**, đã kiểm lại trước khi tin chữ LỌT:
+  * *"tra tiền tố NGẮN nhất trước"* — bảng hiện **không có** khoá `"i2c"`, nên đi từ ngắn hay
+    từ dài cũng cùng rơi vào `"i2c.pullup"`. Tức ca kiểm `i2c` của tôi **không đo được** tính
+    chất nó nói nó đo. Nay có một ca đo trực tiếp `thu_nguyen_cua` bằng cách thêm một dòng vào
+    bảng trong phạm vi ca kiểm (`adc` cạnh `adc.fmax`).
+  * *"ô sai làm BỎ NỐT cả hàng (`break` thay `continue`)"* — `cap` có đúng **một** phần tử cho
+    mỗi ô, nên `break` thoát một vòng lặp một phần tử: không đổi hành vi. Bỏ phép phá ấy đi
+    thay vì dựng một ca kiểm contrived để che nó (bài học M4-19).
+
+Chỗ LỌT còn lại cũng vô hiệu: bỏ `isinstance` khỏi phép kiểm thứ nguyên — với chuỗi, `ve_si`
+trả nguyên nên đơn vị cơ bản vẫn khớp, và kết quả không đổi.
+
+Bộ kiểm 1 976 → **1 980 xanh**, 1 skip, 0 đỏ (30 ca mới trong `tests/test_don_vi_fact.py`).
+`kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.

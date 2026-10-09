@@ -492,7 +492,53 @@ PHAM_VI_HOP_LY: dict[str, tuple[float, float]] = {
     "iout.max": (1e-3, 50),
     "f.max": (1_000, 2_000_000_000),
     "temp.min": (-100, 200), "temp.max": (-100, 200),
+    # M5-05 — hai khoá mà bộ trích THẬT SỰ sinh ra. `_MAU_THONG_SO` cho `"fmax"` và `"ta.*"`,
+    # còn bảng này khai `"f.max"`/`"temp.*"` — hai bên không gặp nhau, nên phép kiểm khoảng
+    # của tần số và nhiệt độ **chưa nổ lần nào**. Thêm, không đổi tên: `tools/xay_dung.py`
+    # đọc bảng này theo khoá, và Fact cũ trong kho người dùng vẫn mang khoá cũ.
+    "fmax": (1_000, 2_000_000_000),
+    "i2c.fmax": (1_000, 1e8), "spi.fmax": (1_000, 1e9),
+    "ta.min": (-100, 200), "ta.max": (-100, 200),
 }
+
+# M5-05 — THỨ NGUYÊN của một khoá, tra theo tiền tố DÀI NHẤT khớp trước.
+#
+# Vì sao cần: `hop_ly` quy về đơn vị cơ bản rồi chỉ so ĐỘ LỚN, nên `hop_ly("vdd.max", 25, "°C")`
+# trả `True` — 25 nằm trong khoảng điện áp hợp lý, và chẳng ai hỏi *"25 cái gì"*. Một Fact
+# `vdd.max = 25 °C` ở tầng BẠC là vế giới hạn của luật ERC quá áp, tức một ô xanh giả đúng chỗ
+# đắt nhất.
+#
+# Tra theo tiền tố dài nhất, không theo "phần trước dấu chấm cuối": ba khoá `i2c.pullup.typ`
+# (ohm), `i2c.fmax` (hertz) và `i2c.addr` (không có thứ nguyên) cùng bắt đầu bằng `i2c`, nên
+# một phép tra theo tiền tố ngắn sẽ gán sai thứ nguyên cho hai trong ba.
+THU_NGUYEN_KHOA: dict[str, str] = {
+    "vdd": "V", "vih": "V", "vil": "V", "voh": "V", "vol": "V", "vddio": "V", "vref": "V",
+    "icc": "A", "iol": "A", "ioh": "A", "iout": "A",
+    "fmax": "Hz", "i2c.fmax": "Hz", "spi.fmax": "Hz", "f": "Hz",
+    "ta": "°C", "temp": "°C",
+    "flash": "B", "ram": "B", "sram": "B", "eeprom": "B",
+    "i2c.pullup": "Ω",
+}
+
+# Nhóm thứ nguyên cho phép ĐƠN VỊ RỖNG. Datasheet ghi `Flash: 32768` không kèm đơn vị thật, và
+# `ve_don_vi_co_ban` đã có ngữ nghĩa KB=1024 cho nhóm ấy. Với volt/ampe/hertz thì một con số
+# không đơn vị là một con số không ai kiểm lại được — và `_SO_DON_VI` vốn luôn bắt kèm đơn vị,
+# nên không mất gì.
+_CHO_PHEP_RONG = frozenset({"B"})
+
+
+def thu_nguyen_cua(khoa: str) -> str:
+    """Thứ nguyên khai báo của khoá, hoặc `""` nếu chưa khai.
+
+    Tra `khoa` nguyên vẹn trước, rồi bỏ dần đoạn cuối: `i2c.pullup.typ` → `i2c.pullup` (Ω),
+    `i2c.addr` → `i2c` (chưa khai) → `""`.
+    """
+    phan = (khoa or "").split(".")
+    for i in range(len(phan), 0, -1):
+        tn = THU_NGUYEN_KHOA.get(".".join(phan[:i]))
+        if tn:
+            return tn
+    return ""
 
 _NHAN_DON_VI = {
     "k": 1e3, "K": 1e3, "M": 1e6, "G": 1e9, "m": 1e-3, "u": 1e-6, "µ": 1e-6, "n": 1e-9,
@@ -554,10 +600,37 @@ def doc_so(gt: Any) -> float | None:
 
 
 def hop_ly(khoa: str, gia_tri: float, don_vi: str) -> bool:
-    """Giá trị này có thể là thứ mà khoá đó nói tới không."""
+    """Giá trị này có thể là thứ mà khoá đó nói tới không.
+
+    Hai phép kiểm, và chúng trả lời hai câu khác nhau:
+
+    * **thứ nguyên** — `vdd` đo volt, nên `25 °C` không phải điện áp. Đây là phép kiểm M5-05
+      thêm vào, và nó bắt được đúng cái mà phép so độ lớn bỏ qua: một con số **đúng độ lớn mà
+      sai loại**. `hop_ly("vdd.max", 25, "°C")` trước đây trả `True`.
+    * **độ lớn** — `vdd.max = 600 V` thì đúng thứ nguyên mà không phải chip này.
+
+    Khoá chưa khai gì (cả thứ nguyên lẫn khoảng) thì **không chặn**: một phép kiểm chặn cả thứ
+    nó không biết sẽ bỏ mất Fact thật, và lúc ấy tác tử phải hỏi người dùng những con số đang
+    nằm sẵn trong datasheet.
+    """
+    tn = thu_nguyen_cua(khoa)
+    if tn and isinstance(gia_tri, (int, float)) and not isinstance(gia_tri, bool):
+        _, co_ban_dv = ve_si(gia_tri, don_vi)
+        dv = (don_vi or "").strip()
+        if not dv:
+            if tn not in _CHO_PHEP_RONG:
+                return False
+        elif co_ban_dv != tn:
+            return False
     pv = PHAM_VI_HOP_LY.get(khoa)
     if pv is None:
         return True                       # chưa có khoảng cho khoá này thì không chặn
+    if not isinstance(gia_tri, (int, float)) or isinstance(gia_tri, bool):
+        # Giá trị KHÔNG phải số (M3-07: `i2c.addr` = `"0x48"`) thì không có khoảng nào áp
+        # được. Thiếu cửa này thì `pv[0] <= "0x48"` ném `TypeError` — tìm ra bằng tập phá
+        # của M5-05: `i2c.addr` chỉ sống sót vì nó KHÔNG có khoảng trong bảng, nên cái lỗi
+        # nằm đó im lặng chờ người đầu tiên thêm một khoảng cho một khoá giá trị-chuỗi.
+        return True
     co_ban = ve_don_vi_co_ban(gia_tri, don_vi)
     return pv[0] <= co_ban <= pv[1]
 
@@ -595,10 +668,27 @@ def _tu_hang_bang(t: "Trang", thuc_the: str) -> list["FactUngVien"]:
     if not ten:
         return []
 
+    # M5-05 — chỉ CẮT hậu tố khi nó đúng là một hậu tố mà CỘT BẢNG cấp được.
+    #
+    # Bản trước cắt mù `k.rsplit(".", 1)[0]`, nên đường bảng và đường dòng chữ sinh ra **hai
+    # khoá khác nhau cho cùng một thông số**: `flash.size` thành `flash` + hậu tố cột →
+    # `flash.max`, và `fmax` (một đoạn, không có hậu tố nào để cắt) thành `fmax.max`. Cả hai
+    # khoá ấy không có trong `KHOA_CHUAN`, không có trong `PHAM_VI_HOP_LY`, và
+    # `tools/xay_dung._han_muc` không đọc `flash.max` — nên một dung lượng Flash đọc từ BẢNG
+    # chưa bao giờ thành hạn mức, và không ai thấy vì nó vẫn là một Fact trông hợp lệ.
+    #
+    # Tìm ra bằng tập phá của chính nhiệm vụ này, ngoài phạm vi kế hoạch nêu. Sửa được vì hai
+    # khoá bị đổi (`flash.max`, `fmax.max`) là hai khoá **không chỗ nào đọc** — đổi chúng
+    # không làm lệch Fact cũ nào đang khớp với ai.
     khoa_goc = None
+    khoa_co_dinh = False
     for mau, k in _MAU_THONG_SO:
         if mau.search(ten):
-            khoa_goc = k.rsplit(".", 1)[0]
+            dau, _, cuoi = k.rpartition(".")
+            if dau and cuoi in ("min", "typ", "max"):
+                khoa_goc = dau
+            else:
+                khoa_goc, khoa_co_dinh = k, True
             break
     if khoa_goc is None:
         return []
@@ -634,8 +724,22 @@ def _tu_hang_bang(t: "Trang", thuc_the: str) -> list["FactUngVien"]:
             cap.append((hau_to, g.gia_tri))
 
         for ht, v in cap:
+            khoa = khoa_goc if khoa_co_dinh else f"{khoa_goc}.{ht}"
+            # M5-05 — đường HÀNG BẢNG cũng phải qua `hop_ly`, và nó là đường duy nhất trước
+            # đây không qua. Mà bảng là đường CHÍNH của datasheet: `_tu_hang_bang` tồn tại
+            # chính vì đơn vị nằm ở cột riêng, nên nó có đủ dữ kiện để kiểm thứ nguyên.
+            #
+            # Tra bằng khoá ĐẦY ĐỦ, không bằng `khoa_goc`: thứ nguyên tra theo tiền tố nên
+            # `"vdd"` cũng ra `"V"`, nhưng `PHAM_VI_HOP_LY` không có khoá `"vdd"` — dùng khoá
+            # gốc thì phép kiểm **khoảng** im lặng mất, và một `600 V` đúng thứ nguyên mà
+            # không phải chip này sẽ đi qua.
+            #
+            # Bỏ TỪNG Ô, không bỏ cả hàng: một hàng có ô đúng và ô sai là hình dạng có thật —
+            # bộ đọc bảng cắt lệch một cột thì giá trị `Conditions` rơi vào một cột giá trị.
+            if not hop_ly(khoa, v, g.don_vi):
+                continue
             ra.append(FactUngVien(
-                khoa=f"{khoa_goc}.{ht}", gia_tri=v, don_vi=g.don_vi, trang=t.so,
+                khoa=khoa, gia_tri=v, don_vi=g.don_vi, trang=t.so,
                 trich_doan=t.chu[:200], thuc_the=thuc_the,
                 nguyen_van=g.raw.strip(),
                 dieu_kien={**dieu_kien_hang, **g.dieu_kien}))

@@ -161,7 +161,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 26 | [M2-09](#m2-09) | Phân tích tĩnh chiều sâu: call graph, ngăn xếp, luật ngữ cảnh ISR (`code.static`) | P1 | L | M2-08 | — | kéo lên từ GĐ3 vì là tiền đề của M4-13 | ☐ |
 | 27 | [M4-13](#m4-13) | Kiểm "nối" tĩnh sau biên dịch (vector table, hàm không ai gọi, return hằng) | P0 | M | M2-09 | KIEM_NOI |  | ☐ |
 | 28 | [M5-03](#m5-03) | Bộ đọc SVD: nạp register map thành Fact `reg:`/`field:` + `reg.lookup` | P0 | M | — | — | DEV-355 | ☑ |
-| 29 | [M5-05](#m5-05) | Kiểm thứ nguyên đơn vị + thống nhất khoá khoảng hợp lý + kiểm cả đường bảng | P0 | S | — | — |  | ☐ |
+| 29 | [M5-05](#m5-05) | Kiểm thứ nguyên đơn vị + thống nhất khoá khoảng hợp lý + kiểm cả đường bảng | P0 | S | — | — | DEV-356 | ☑ |
 | 30 | [M5-07](#m5-07) | `fact.from_doc`: kiểm giá trị theo ranh giới token và câu trích nguyên văn | P0 | S | — | — |  | ☐ |
 | 31 | [M5-13](#m5-13) | Chính sách phong bì cho `doc.read`/`fact.query`/`fact.extract`; sửa `_cat_chung` cắt phần tử dài | P0 | S | — | — |  | ☐ |
 | 32 | [M5-17](#m5-17) | Resume nạp lại bản tóm tắt C2 từ sổ cái; tường thuật cơ học phiên trước | P0 | S | — | RESUME_TUONG_THUAT |  | ☐ |
@@ -2089,9 +2089,14 @@ Sau khi thêm hai ca: **36/36**.
 - `test_pham_vi_hop_ly` (mọi tham số cũ, kể cả `temp.max 85 °C` là True) và `test_han_muc_*` trong test_doc_van_ban giữ nguyên.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ": **23/24** (lượt đầu 17/21). Hai chỗ LỌT là lỗ THẬT
+      → thành hai phần sửa thêm; hai chỗ còn lại đã kiểm lại là **không đổi hành vi** (DEV-356).
+- [x] Toàn bộ `pytest -q` xanh: 1 976 → **1 980**, 0 đỏ.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md — DEV-356.
+
+> **TC-M5-05-04 của bảng trên XANH SẴN vì một lý do khác.** Hàng `o=["VDD","25","°C"]` trả rỗng
+> trên mã chưa sửa, nhưng không vì phép kiểm đơn vị nào: `"VDD"` trơn không khớp mẫu nào trong
+> `_MAU_THONG_SO`. Ca kiểm thật dùng `VDD (max)` / `Supply voltage`.
 
 **Hoàn tác:** revert commit.
 
