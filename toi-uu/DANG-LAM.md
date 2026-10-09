@@ -1,71 +1,93 @@
-# ĐANG LÀM — chỗ dừng khuya 09/10/2026
+# ĐANG LÀM — chỗ dừng 09/10/2026, sau việc #32
 
 > Tệp này trả lời đúng một câu cho phiên sau: **mở ra là làm tiếp được từ đâu.**
-> Trạng thái đầy đủ của 106 việc nằm ở `EIDE_Toi_uu_Agent_2026-10-06.xlsx`,
-> sheet **“Tiến độ 09-10-2026 (khuya)”** (cột Q, T–Y của sheet “Danh mục tối ưu” là bằng
-> chứng từng việc). Các sheet “Tiến độ 08-10-2026” + ba biến thể, và “Tiến độ 09-10-2026”,
-> là ảnh chụp các mốc trước, giữ lại để so.
+> Bằng chứng từng việc nằm ở `EIDE_Toi_uu_Agent_2026-10-06.xlsx`, sheet **“Danh mục tối ưu”**
+> (cột Q, T–Y). Các sheet “Tiến độ …” là ảnh chụp các mốc trước, giữ lại để so.
 
 ## Đang ở đâu
 
 | | |
 |---|---|
-| **Xong** | **23/106** — việc #1 → #23 của Giai đoạn 1. Việc #22 và #23 mỗi cái còn **một tiêu chí chưa đạt** (xem dưới) |
-| **Đang dở** | **không có.** Nội dung M4-07 ở `3edbab5`; `main` đã đẩy và khớp `origin/main`. Mọi nhánh `toi-uu/*` đã gộp. |
-| Ca kiểm | 1 610 → **1 896** xanh, 0 đỏ · `swift test` 43 · `kiem_tai_lieu` 0 chỗ LỆCH |
-| Nhật ký | DEV-330 → **DEV-352** trong `docs/md/EIDE-DEV-LOG.md` |
-| Công cụ | 127 → **130** (`hdl.sensitivity`, `hdl.constraints_check`, `test.criteria`) |
-| Cờ | 7 → **10** (thêm `SIM_RUNNER_GIOI_HAN`, `TEST_HARDEN`, `VERIFIER_GOI_BANG_CHUNG` — mặc định TẮT như các cờ kia) |
+| **Xong** | **30/106** — và **hết P0 không bị chặn của Giai đoạn 1**. GĐ1 có 32 việc, còn #26 (P1) và #27 (P0, bị #26 chặn) |
+| **Đang dở** | **không có.** `main` đã đẩy và khớp `origin/main`. Mọi nhánh `toi-uu/*` đã gộp |
+| Ca kiểm | 1 896 → **2 030** xanh · 1 skip · 0 đỏ · `kiem_tai_lieu` 0 chỗ LỆCH |
+| Nhật ký | DEV-352 → **DEV-359** trong `docs/md/EIDE-DEV-LOG.md` |
+| Công cụ | 130 → **132** (`reg.lookup` là cái mới nhất, chưa lượt Agent nào gọi) |
+| Cờ | 10 → **12** (thêm `HOI_QUY_NEN`, `RESUME_TUONG_THUAT` — mặc định TẮT như các cờ kia) |
 
-## Việc đầu tiên của phiên sau: #24 M4-09
+Bảy việc của đợt này, mỗi việc một dòng:
 
-Stop hook **không được coi `task.run` với subagent khác là "đã kiểm chứng"** — P0 · S, **không
-cờ**, không tiền đề. Mở `KE-HOACH-SUA-VA-KIEM-THU.md`, mục `[M4-09]`, làm đúng quy trình §3.1:
+| # | Mã | DEV | Phá lại thì đỏ | Đo trên dữ liệu thật |
+|---|---|---|---|---|
+| 24 | M4-09 | 353 | 10/12 | 68 sổ cái · hook im 41 lượt, **1 lượt không có verifier nào** |
+| 25 | M4-11 | 354 | 24/32 → **31/34** | 9 kho · bán kính STALE **107 → 49** (58 cáo buộc oan) |
+| 28 | M5-03 | 355 | 28/34 → **34/34** | `grep -rni svd src/` ra **2 chỗ**, không bộ đọc nào |
+| 29 | M5-05 | 356 | 17/21 → **23/24** | `hop_ly("vdd.max", 25, "°C")` trả `True` |
+| 30 | M5-07 | 357 | 15/22 → **22/22** | `2.7 V` → `27v`, nên giá trị `27` đi qua |
+| 31 | M5-13 | 358 | 20/23 → **23/23** | 23 kho · một `fact.query` **67 635 → 32 560 token** (−51 %) |
+| 32 | M5-17 | 359 | 20/23 → **23/23** | 4 lần nén đạt · **303/313 phiên (96 %)** chưa từng nén |
+
+## Việc đầu tiên của phiên sau: #26 M2-09, rồi #27 M4-13
+
+**Thứ tự ấy là bắt buộc**, không phải sở thích: `M4-13` (P0 · M) khai tiền đề cứng là
+`M2-09`, và `M2-09` là **P1 · L** — việc lớn nhất còn lại của GĐ1. Tôi đã bỏ qua nó để làm hết
+P0 không bị chặn trước; nay nó là đường duy nhất đi tiếp trong GĐ1.
 
 ```bash
-git switch -c toi-uu/M4-09        # ĐỪNG quên bước này — xem ghi chú dưới
+git switch -c toi-uu/M2-09        # ĐỪNG quên — xem ghi chú ở cuối
 # viết TC TRƯỚC, xem chúng ĐỎ trên mã hiện tại
 find src tests -name __pycache__ -type d -exec rm -rf {} +      # bắt buộc, xem DEV-335
-.venv/bin/python -m pytest -q -rf            # mốc: 1896, không ca cũ nào đỏ
+.venv/bin/python -m pytest -q -rf            # mốc: 2 030 xanh, 1 skip
 .venv/bin/python tools/kiem_tai_lieu.py      # phải 0 chỗ LỆCH CHẮC CHẮN
 ```
 
-M4-09 đứng ngay cạnh M4-07 vừa xong và **cùng chạm một chỗ**: `loop.py` tắt `ghi_chua_kiem`
-khi thấy `task.run` với `subagent == "verifier"` (đọc tham số, không đọc tên công cụ — chỗ ấy
-đã đúng), còn `kiem_chung.co_viec_chua_kiem` lùi sổ cái tới đúng mốc ấy. Hai chỗ phải đọc
-trước khi gõ:
+Hai chỗ phải đọc trước khi gõ, cả hai nằm ngay trong mô tả M2-09:
 
-* **Mốc dùng chung.** `subagent.goi_bang_chung_tu_so_cai` nay cũng lùi tới **đúng cái mốc ấy**
-  (`_doi_moc_verifier`). Ba chỗ phải chung một mốc; lệch một chỗ là hook nói "còn việc chưa
-  kiểm" trong khi gói bằng chứng kể một đợt việc khác.
-* **Số đo của đường này.** Sổ cái 42 dự án có **327 lời gọi `task.run` có `viec`, 323 là
-  verifier** — nên mọi phép siết ở đây chạm vào đường chính, không chạm một ngóc ngách.
+* **Nó cần cờ biên dịch mới** (`-fstack-usage`, `-fcallgraph-info`) và *"Không đổi cờ biên dịch
+  của `build.compile`"*. Bài học M4-19 nằm đúng ở đây: **một cờ biên dịch thêm vào là một phép
+  đo khác** — `-I` thay vì `-iquote` đã làm 11/12 tệp bị xếp sai. Phải dịch ra thư mục riêng
+  (`.eide/build/tinh/`), không chạm ảnh nạp chip.
+* **`cppcheck`/`lizard` là phụ thuộc tuỳ chọn** (N-10): thiếu thì nói rõ và rơi về đường cũ,
+  **hỏi anh Công trước khi cài**.
+
+Sau #27 thì hai P0 còn lại của cả kế hoạch là **#33 M5-01** (chỉ mục BM25/FTS5 + `doc.search`,
+P0 · L) và **#34 M5-04** (trích bảng từ PDF datasheet, P0 · L). Cả hai ở Giai đoạn 2, và **cả
+hai gần như chắc chắn cần phụ thuộc mới** (`pdfplumber` cho M5-04) — tức §N-10 bắt hỏi trước.
+
+## Bài học của đợt này, viết ra vì nó lặp BỐN lần liền
+
+Bốn nhiệm vụ liền (M5-03 · M5-07 · M5-13 · M5-17) đều có chỗ LỌT nằm ở **bộ dàn dựng của ca
+kiểm**, không ở mã sản phẩm. Bốn hình dạng, cùng một gốc:
+
+1. **Hai vế tình cờ bằng nhau.** Ca kiểm chính của M5-03 ra 4 thanh ghi và 4 trường, nên
+   `dem()` trả `(r, r)` vẫn xanh. Một phép đo mà hai vế bằng nhau thì nó không đo được vế nào.
+2. **Một tập hợp tình cờ có một phần tử.** `{"ds": [...]}` có **một** khoá, nên phép chia ngân
+   sách cho số khoá là phép đồng nhất. Dàn dựng cho một phép CHIA hay một phép CẮT phải có **ít
+   nhất hai** phần tử, và chúng phải **khác nhau**.
+3. **Một hình dạng tình cờ đã đúng.** Ca âm của M5-13 dựng `source` đã đúng y hình dạng hàm
+   gọn trả về, nên hạ trần kích hoạt về 0 cũng không đổi gì.
+4. **Ca kiểm không chạy tới dòng nó nói nó canh.** Ca *"transcript hỏng"* của M5-17 chạy trên
+   một dự án **chỉ có một phiên**, nên hàm trả rỗng ngay ở bước *"không có phiên nào trước"*.
+
+Cách làm từ nay: **đặt một assertion TRƯỚC phép phá** để khẳng định ca kiểm thật sự chạm tới
+chỗ cần đo (`assert ag._tuong_thuat_phien_truoc() != ""` rồi mới monkeypatch).
+
+Và ba lần kế hoạch nói khác thực tế, cả ba chỉ biết nhờ đo trước khi tin:
+
+* **M4-11** — kế hoạch bảo sửa lớp ĐỌC đồ thị phụ thuộc; ba ca kiểm đầu **xanh sẵn**, vì lớp ấy
+  đã đúng từ M2-01. Chỗ đứt ở lớp GHI.
+* **M4-11** — làm đúng chữ kế hoạch (`upstream = tep_nguon`) thì **tự đẻ ra một ô "còn tươi"
+  giả**: `robot-sinhvien2` lưu một tệp nguồn, mà tệp ấy `#include` ba tệp firmware.
+* **M5-05 và M5-07** — hai ca kiểm của bảng TC **xanh vì một lý do khác**: `"VDD"` trơn không
+  khớp mẫu nào, và `"27"` dài hai ký tự nên luật số-ngắn chặn trước phép so dấu chấm.
+
+Và một lỗi trong chính phép đo, lần thứ bảy của đợt: phép đếm phiên của M5-17 lọc bằng
+`'"buoc": "ok"' in line`, mà **sổ cái thật ghi JSON không có khoảng trắng** sau dấu hai chấm —
+nên nó trả **100 %** thay vì trả rỗng. Cứu được chỉ vì `grep -c '"compact"'` ra 146 dòng, chỏi
+với kết luận *"chưa nén lần nào"*. **Mở dữ liệu thô ra đếm trước khi lọc.**
 
 > **Tôi quên `git switch -c` ở M4-06** và commit thẳng lên `main`; nội dung đúng, quy trình thì
-> không. Gõ lệnh mở nhánh **trước khi** viết dòng mã đầu tiên, đừng để nó là bước nhớ sau.
-
-## Hai tiêu chí còn NỢ — cả hai cần anh Công quyết
-
-Hai việc đã ☑ nhưng mỗi việc còn **một tiêu chí xong để mở**, và cả hai mắc ở cùng một chỗ:
-phép đo cần **lời gọi mô hình thật**, mà §3.0 bắt hỏi người dùng trước.
-
-**#22 M4-06** — *"mutation score trên dự án mẫu tăng sau harden"*:
-
-* Đã có phần **trước**: `du-lieu/rtos-sinhvien`, `logo_ptit.c` → điểm **0,0** · 30 mutant ·
-  20 sống · 18 s.
-* Phần **sau** chưa đo, và dự án ấy **không có chỗ để đo**: tệp duy nhất đáng nâng
-  (`control_rtos.c`) là `khong_nap_duoc` vì tệp test `#include` chính tệp `.c` đó, còn sáu tệp
-  kia là bitmap. Muốn đóng tiêu chí này thì cần một dự án mẫu **đo được** — hoặc sửa chỗ hẹp
-  `chay(None)` nói ở phần việc còn mở.
-* Cờ `TEST_HARDEN` giữ **TẮT**.
-
-**#23 M4-07** — *"trên bộ ca gài lỗi (M4-22), tỉ lệ verifier bác đúng không giảm khi bật cờ"*:
-
-* **M4-22 chưa làm** — nó nằm ở nhiệm vụ sau trong kế hoạch, nên tiêu chí này chưa có bộ dữ
-  liệu để chạy. Đây là một tiêu chí **viết lệch thứ tự**, không phải một phép đo bị bỏ.
-* Ba con số đã đo được thì đo bằng **dữ liệu thật, không bằng mô hình**: 323 đề bài verifier
-  thật, 95/1 706 câu bị `loc_claim` lọc, 29/42 dự án dựng được gói bằng chứng (0 lần đổ).
-* Cờ `VERIFIER_GOI_BANG_CHUNG` giữ **TẮT**.
+> không. Gõ lệnh mở nhánh **trước khi** viết dòng mã đầu tiên.
 
 ## Mười ba thứ phải đọc trước khi gõ dòng đầu tiên
 
@@ -73,132 +95,98 @@ phép đo cần **lời gọi mô hình thật**, mà §3.0 bắt hỏi người
    gốc (`0.6` → `0.0`) làm Python coi `.pyc` cũ là còn hợp lệ, và phép đo chạy **mã khác với
    mã trong tệp** — DEV-335.
 2. **“Phá lại thì đỏ N/N” nói được điều gì chỉ khi tập phép phá không do người đang mong nó
-   đẹp chọn ra.** M3-13 khai 6/6; phá bằng tập rộng hơn ra **7/9**. M3-18 ra **18/20** và
-   M4-01 ra **17/24**, M4-02 ra **22/27**, M4-05 ra **15/20**, M4-19 ra **7/13**, M4-04 ra
-   **15/22**, M4-06 ra **18/22**, M4-07 ra **34/36** ở lượt đầu. Cách dựng tập: đọc `git diff`, không
-   đọc ký ức — đi theo
-   *chỗ mã tháo được*, không theo *chỗ mình biết đã có ca canh*. Và mỗi nhánh `if` của một hàm
-   là **một** chỗ, không phải cả hàm là một chỗ.
-3. **Kế hoạch có chỗ sai, hoặc thiếu chỗ; đo trước khi tin.** Sáu lần sai trong 18 việc:
-   A2.5 đã có chủ (M2-02) ·
-   mã lỗi ghi nhầm E6010 (M2-06) · regex PASS/FAIL từ chối oan 588/846 (M3-12) · “phần dài
-   nằm ở mô tả tham số” chỉ đúng một nửa (M1-02) · mã lỗi E4031 đã có chủ ở `loop.py`
-   (M3-18) · khoá Fact chân kit kế hoạch ghi `chuc_nang`, mã ghi `ten`/`net`/`af` (M3-18).
-   Và ba nhiệm vụ gần nhất không sai mà **thiếu**: M4-01 không nêu cổng E4023 cho đường unit
-   test, không nêu `surfaces.py`; M4-02 không nêu `policy/engine.py`, không nêu
-   `POL-QUAL-criteria-change`, không nêu nhánh *số chỗ canh không đổi thì im*; M4-05 ghi "tệp
-   chạm tới" là `dot_bien.py` + tests, mà thật ra phải sửa cả `build/hdl.py`,
-   `tools/xay_dung.py`, `tools/hdl.py` — và một trong ba lỗi phụ (`mo_phong` chạy lại tệp cũ)
-   là **tiền đề** của chính nhiệm vụ; M4-19 ghi cờ dịch là `-I`, mà `-I` che header hệ thống
-   nên phải là `-iquote`. Những chỗ ấy chỉ hiện ra khi đọc mã quanh nó, hoặc khi chạy phép đo
-   thật.
-4. **Phạm vi phép đo sai thì ra một con số *hợp lý* chứ không ra rỗng** — và lúc ấy nó tốn
-   nhiều lượt hơn. Hai lần trong M3-18: ghép mọi mạng cổng với mọi `.cst` ra “409 lỗi” trong
-   khi số thật là **1**; và phép quét tệp `.cst` thật thu 4 trong 7 tệp mà ca kiểm vẫn xanh.
-5. **Soi đúng một dòng, đừng soi cả khối.** `assert "TỰ KHAI" in str(khoi)` của tôi vẫn xanh
-   khi tôi phá chữ ấy ở dòng *Kết luận* — vì `summary` của khối cũng chứa nó. Phép phá bắt
-   được, ca kiểm thì không (M4-01).
-6. **Kiểm lại chính PHÉP PHÁ của mình.** Ba lần trong hai nhiệm vụ: `them = [] or [[…]]`
-   (M4-01), rồi `cu = cu or ""` và bỏ `is_file()` ở cùng một dòng (M4-02) — cả ba **không đổi
-   hành vi**, nên chúng báo LỌT oan và suýt làm tôi viết ca kiểm cho những chỗ vốn đã được
-   canh. Trước khi tin một chữ LỌT: phép phá ấy có thật sự đổi hành vi không? Chỗ có **hai**
-   lớp phòng (`is_file()` **và** `except OSError`) thì phải tháo cả hai mới phá được. Từ M4-05
-   script phá **tự kiểm**: so byte trước–sau và in `[VÔ HIỆU]` thay vì chạy bộ kiểm — nên dùng
-   lại script ấy (`scratchpad/pha_lai_m4_05.py`) làm khuôn.
-7. **Một luật `policy.yaml` mới trỏ tới nhóm dữ kiện chưa khai thì DỪNG CẢ LƯỢT**, không phải
-   "không nổ": `_eval` ném `ValueError`, và `_env` có một danh sách *"nhóm phải luôn tồn tại"*.
-   Thêm luật thì thêm nhóm vào danh sách ấy — không thì công cụ mà luật khớp tới đổ hết
-   (M4-02).
-8. **CHẠY phép đo trên dữ liệu thật, đừng chỉ đọc mã.** M4-05 là nhiệm vụ nhỏ nhất của đợt
-   (P1 · S) và tìm ra **bốn** lỗi — ba trong số đó ngoài việc được giao, và cả ba chỉ lộ ra ở
-   lượt chạy đầu trên firmware thật: phép đo **đổ** `IndexError`, `mo_phong` chạy lại
-   `sim.vvp` **cũ** khi biên dịch đổ, và `loi_nguoi_doc` khen một chỗ trống. Đọc mã không bắt
-   được cái nào.
-9. **Luật đúng mà nằm trong một closure thì không ca kiểm nào với tới.** Bốn chỗ LỌT của M4-05
-   cùng hình dạng ấy: luật gắn tiền tố nằm trong hai closure (gom về `ket_qua_chay` thì đo
-   được ngay), nhánh stillborn của đường HDL không dựng nổi ca qua bảng phép mặc định (mở
-   tham số `bang`), và ba chỗ **báo lại** của một công cụ mà mọi ca cũ đều đi qua với
-   `stillborn == 0`. Tầng báo lại hỏng theo kiểu riêng: phép đo đúng, con số đúng, rồi con số
-   không đi tới đâu.
-10. **Một cờ biên dịch thêm vào là một phép đo khác.** `-I` thay vì `-iquote` làm `stdio.h`
-   giả của bo che bản hệ thống, và **11 trong 12** tệp bị xếp là *"không dịch được trên máy
-   chủ"* — tôi thêm một cờ để tránh một cáo buộc sai và sinh ra mười một cáo buộc sai khác.
-   Gắn cờ cho **lượt mốc** thì tệ hơn nữa: nó đổi chính cái mốc mà mọi so sánh dựa vào, và cả
-   ba dự án thật thành "không đo được" (M4-19). Trước khi thêm một cờ: nó đổi đường tìm của
-   `"..."` hay của cả `<...>`, và nó có vào lượt mốc không.
-11. **Một nhánh `if` không đổi hành vi thì bỏ đi, đừng viết ca cho nó.** Sau khi đổi sang
-   `-iquote`, cái guard *"chỉ gắn cờ cho lượt có tệp sản phẩm"* thành vô nghĩa — phép phá chỉ
-   ra đúng điều đó bằng một chữ LỌT, và câu trả lời là bỏ nhánh, không phải dựng một ca kiểm
-   contrived để che nó. Trúng lần nữa ở M4-04 với bước sắp xếp trước khi lấy mẫu.
-12. **So PHIÊN BẢN, đừng so đồng hồ.** `updated_at` của kho có độ phân giải thô, nên hai lần
-   ghi trong cùng một giây **bằng nhau** và phép so "mới hơn" im lặng sai — ca kiểm đầu tiên
-   của hook M4-06 đỏ ngay vì chuyện ấy. Hiện vật nào cần biết "thứ kia đã đổi chưa" thì ghi
-   kèm **số phiên bản** của thứ kia (`version_test`), rồi so con số. Một số phiên bản là dữ
-   kiện chính xác; một cái đồng hồ thì không.
-
-13. **Một ca kiểm nêu đúng bất biến mà kiểm MỘT TÊN GÕ SẴN thì nó xanh suốt.**
-   `test_co_moi_co_trong_ten_co_va_to_dict` canh đúng điều cần canh — *"cờ nào không có trong
-   `ten_co()` thì không bật được"* — bằng cách kiểm **một** tên cờ. Nên cờ thứ mười vô hình,
-   `Features.load()` trả `False` cả khi biến môi trường đã đặt, và ca kiểm im. Bất biến dạng
-   *"mọi X đều phải có trong Y"* phải viết thành **phép so hai tập hợp**, không viết thành một
-   phép kiểm tư cách thành viên.
+   đẹp chọn ra.** M3-13 khai 6/6; phá bằng tập rộng hơn ra **7/9**. Lượt đầu của mười sáu việc
+   gần nhất: 7/9 · 18/20 · 17/24 · 22/27 · 15/20 · 7/13 · 15/22 · 18/22 · 34/36 · 10/12 ·
+   24/32 · 28/34 · 17/21 · 15/22 · 20/23 · 20/23. Cách dựng tập: đọc `git diff`, không đọc ký
+   ức — đi theo *chỗ mã tháo được*, không theo *chỗ mình biết đã có ca canh*. Và mỗi nhánh `if`
+   của một hàm là **một** chỗ, không phải cả hàm là một chỗ.
+3. **Chỗ có HAI LỚP PHÒNG thì chỉ phép phá GỘP nói được gì.** Tháo riêng từng lớp không đổi
+   hành vi, nên nó báo LỌT oan. Trúng ở M4-11 (`dedupe` + trần-đếm-lượt — gộp lại thì vòng lặp
+   **treo 900 giây** thay vì đỏ) và M5-03 (`p.is_file()` + `ung.is_file()`). Khuôn script nhận
+   một **danh sách cặp** để áp nhiều chỗ cùng lúc.
+4. **Phép đo phải biến cái TREO thành chữ ĐỎ.** pytest không có đồng hồ cho từng ca, nên một ca
+   treo **không phải** một ca đỏ — và nó giết luôn mọi phép phá còn lại. Ca kiểm vòng `#include`
+   nay chạy trong một **luồng có đồng hồ** (`join(timeout=5)`), và khuôn script coi quá hạn
+   180 s là một chữ ĐỎ.
+5. **Kế hoạch có chỗ sai, hoặc thiếu chỗ; đo trước khi tin.** Chín lần trong 30 việc — xem mục
+   *"ba lần kế hoạch nói khác thực tế"* ở trên, cộng sáu lần cũ: A2.5 đã có chủ (M2-02) · mã
+   lỗi ghi nhầm E6010 (M2-06) · regex PASS/FAIL từ chối oan 588/846 (M3-12) · “phần dài nằm ở
+   mô tả tham số” chỉ đúng một nửa (M1-02) · mã lỗi E4031 đã có chủ (M3-18) · khoá Fact chân
+   kit ghi `chuc_nang` mà mã ghi `ten`/`net`/`af` (M3-18).
+6. **Phạm vi phép đo sai thì ra một con số *hợp lý* chứ không ra rỗng** — và lúc ấy nó tốn
+   nhiều lượt hơn. Ba lần: ghép mọi mạng cổng với mọi `.cst` ra “409 lỗi” trong khi số thật là
+   **1**; phép quét tệp `.cst` thu 4 trong 7 tệp mà ca kiểm vẫn xanh (M3-18); và phép đếm phiên
+   của M5-17 trả **100 %** vì so chuỗi JSON có khoảng trắng (DEV-359).
+7. **Soi đúng một dòng, đừng soi cả khối.** `assert "TỰ KHAI" in str(khoi)` vẫn xanh khi tôi
+   phá chữ ấy ở dòng *Kết luận* — vì `summary` của khối cũng chứa nó (M4-01). Cùng hình dạng ở
+   M5-17: `` `target.flash` → E4040 `` cũng có ở dòng *Lỗi cuối cùng*.
+8. **Kiểm lại chính PHÉP PHÁ của mình.** Năm lần: `them = [] or [[…]]` (M4-01), `cu = cu or ""`
+   và bỏ `is_file()` ở cùng một dòng (M4-02), `break` thay `continue` trong một vòng lặp **một
+   phần tử** (M5-05), và hai *guard chết* `res.ok` (M4-09, M4-11) — `_one_tool` đã `return`
+   trước đó, và không `ToolResult(False)` nào trong `src/eide` thiếu `error=`. Trước khi tin
+   một chữ LỌT: phép phá ấy có thật sự đổi hành vi không?
+9. **Một luật `policy.yaml` mới trỏ tới nhóm dữ kiện chưa khai thì DỪNG CẢ LƯỢT** (M4-02).
+10. **CHẠY phép đo trên dữ liệu thật, đừng chỉ đọc mã.** M4-05 là nhiệm vụ nhỏ nhất của đợt và
+   tìm ra **bốn** lỗi, ba trong số đó ngoài việc được giao và cả ba chỉ lộ ra ở lượt chạy đầu
+   trên firmware thật.
+11. **Luật đúng mà nằm trong một closure thì không ca kiểm nào với tới** (M4-05).
+12. **Một cờ biên dịch thêm vào là một phép đo khác.** `-I` thay vì `-iquote` làm **11 trong
+   12** tệp bị xếp là *"không dịch được trên máy chủ"* (M4-19). **Đọc lại mục này trước khi làm
+   M2-09** — nó thêm `-fstack-usage` và `-fcallgraph-info`.
+13. **So PHIÊN BẢN, đừng so đồng hồ.** `updated_at` của kho có độ phân giải thô (M4-06). Và một
+   ca kiểm nêu đúng bất biến mà kiểm **một tên gõ sẵn** thì nó xanh suốt — bất biến dạng *"mọi
+   X đều phải có trong Y"* phải viết thành **phép so hai tập hợp** (M4-07).
 
 ## Việc còn MỞ, không thuộc nhiệm vụ nào trong 106
 
-* **Bảy cờ mới đều còn TẮT** — `GON_CONG_CU` · `TRUY_VET` · `REQ_PHU` · `REQ_CHAT_LUONG` ·
-  `KE_HOACH_CONG_KIEM` · `ERC_TU_DONG` · `SIM_RUNNER_GIOI_HAN`. Cả bảy đổi thứ Agent **nhìn
-  thấy, đọc, hoặc LÀM ĐƯỢC mỗi lượt**, nên chỉ bộ 76 ca chạy **hai chế độ** mới nói được chúng
-  làm Agent khá hơn hay tệ hơn. Bộ ấy tốn tiền mô hình nên §3.0 bắt **hỏi người dùng trước**.
-* **Ba công cụ mới nhất chưa lượt Agent nào GỌI** — `hdl.sensitivity` ·
-  `hdl.constraints_check` · `test.criteria`. Mã của cả ba đã chạy trên hiện vật thật, nhưng đó
-  là tôi gọi hàm, không phải tác tử gọi công cụ. README §8 đếm cả ba vào phần chưa dùng thật.
-* **Chưa dự án firmware nào trong repo có một con số độ nhạy đáng tin** — đo lại 09/10/2026
-  bằng đường bản sao, và đo thêm bằng chế độ chi tiết (điểm **0,0** trên 180 mutant, 110 s): `rtos-sinhvien` **0/12 tệp** đo được (4 tệp
-  font `khong_thay`, `control_rtos.c` trùng ký hiệu, `main.c` không dịch trên máy chủ,
-  `logo_ptit.c` mọi mutant hỏng biên dịch); `stm32f469-freertos` và `thu-nghiem-g6` có bộ kiểm
-  **ĐỎ SẴN**. Đây là trạng thái của dữ liệu đo, không phải lỗi sản phẩm. DEV-348 · DEV-349.
-* **`chay(None)` của `test.sensitivity` chỉ dịch tệp TEST, nên một tệp test gọi hàm sản phẩm
-  làm mốc ĐỎ** và cả phép đo dừng trước khi vào vòng đột biến. Tức phép đo chỉ chạy được khi
-  tệp test **tự dịch được một mình** — mà một tệp test tự định nghĩa lại hàm sản phẩm thì đúng
-  là cái ô xanh giả phép đo này đi tìm. Trúng **ba** lần (M4-01, M4-19, M4-04) khi dựng ca
-  kiểm, và lần thứ ba nặng hơn: tệp duy nhất đáng đo của `rtos-sinhvien` —
-  `control_rtos.c` — là `khong_nap_duoc` vì tệp test `#include` chính tệp `.c` đó, nên phép đo
-  tái hiện DANH-GIA §2.2 phải đi **đường riêng**, không qua công cụ. Chưa sửa: nó là một
-  quyết định thiết kế của `test.sensitivity`, không phải một lỗi — nhưng nó là chỗ hẹp nhất
-  của cả mảng, và M4-06 sẽ đụng ngay vào nó.
-* **`POL-N6-sua-test` chưa nổ trên một phiên thật nào** — hook `sua_test_sau_do` cấp dữ kiện
-  cho lời gọi **sắp** xảy ra, nên không soát lại được phiên đã lưu như mọi phép đo trước của
-  đợt này. Nó có 25 ca kiểm và phá lại 27/27, nhưng chưa lượt tác tử thật nào chạm vào.
+* **Mười hai cờ đều còn TẮT** — `GON_CONG_CU` · `TRUY_VET` · `REQ_PHU` · `REQ_CHAT_LUONG` ·
+  `KE_HOACH_CONG_KIEM` · `ERC_TU_DONG` · `SIM_RUNNER_GIOI_HAN` · `TEST_HARDEN` ·
+  `VERIFIER_GOI_BANG_CHUNG` · `HOI_QUY_NEN` · `RESUME_TUONG_THUAT` (và `SCHEMATIC` từ trước).
+  Tất cả đổi thứ Agent **nhìn thấy, đọc, hoặc LÀM ĐƯỢC mỗi lượt**, nên chỉ bộ 76 ca chạy **hai
+  chế độ** mới nói được chúng làm Agent khá hơn hay tệ hơn. Bộ ấy tốn tiền mô hình nên §3.0 bắt
+  **hỏi người dùng trước**.
+* **Bốn công cụ mới nhất chưa lượt Agent nào GỌI** — `hdl.sensitivity` ·
+  `hdl.constraints_check` · `test.criteria` · `reg.lookup`. Mã của cả bốn đã chạy trên hiện vật
+  thật, nhưng đó là tôi gọi hàm, không phải tác tử gọi công cụ. README §8 đếm cả bốn vào phần
+  chưa dùng thật.
+* **Chưa có tệp `.svd` THẬT nào trên máy** — quét cả máy 09/10/2026 không thấy tệp nào ngoài
+  tệp do chính bộ kiểm sinh trong `tmp`. Ca `test_nap_duoc_SVD_THAT` đã viết, đánh `nha_that` +
+  `skipif`, dò bốn chỗ hay có và **SKIP**. Nên con số *"nạp được N thanh ghi của một chip
+  thật"* chưa có — và tôi không tự viết một SVD lớn rồi gọi nó là *thật*.
+* **Chỉ số *"không lượt nào tuyên xong khi còn kết quả lỗi thời"* chưa đóng được** — cửa chặn đã
+  có và có 28 ca kiểm, nhưng con số ấy đòi **phát lại** phiên mẫu với cửa mới: sổ cái ghi lời
+  gọi và dấu hiệu hook đã nổ, mà **không** ghi trạng thái kho tại thời điểm ấy. Phát lại tốn
+  tiền mô hình.
+* **Chưa dự án firmware nào trong repo có một con số độ nhạy đáng tin** — `rtos-sinhvien`
+  **0/12 tệp** đo được; `stm32f469-freertos` và `thu-nghiem-g6` có bộ kiểm **ĐỎ SẴN**. Đây là
+  trạng thái của dữ liệu đo, không phải lỗi sản phẩm. DEV-348 · DEV-349.
+* **`chay(None)` của `test.sensitivity` chỉ dịch tệp TEST**, nên một tệp test gọi hàm sản phẩm
+  làm mốc ĐỎ và cả phép đo dừng trước khi vào vòng đột biến. Trúng **ba** lần (M4-01, M4-19,
+  M4-04). Chưa sửa: nó là một quyết định thiết kế, nhưng là chỗ hẹp nhất của cả mảng.
+* **`POL-N6-sua-test` chưa nổ trên một phiên thật nào** — hook `sua_test_sau_do` cấp dữ kiện cho
+  lời gọi **sắp** xảy ra, nên không soát lại được phiên đã lưu. Có 25 ca kiểm và phá lại 27/27.
 * **Chưa kho nào có tiêu chí unit test** — loại hiện vật `criteria:unit-*` vừa mới tồn tại
-  (DEV-346), nên `test.run` ở mọi dự án đang có vẫn đi đường **tự khai**: tệp test tự in `dat`.
-  Đường EIDE-phán đã thông và đã đo, chỉ chưa dự án nào dùng. Cùng hình dạng với hai luật kiểm
-  chân FPGA bên dưới.
-* **`kiem_cap_goi_tra()` chưa thành hàng rào** — soát được mọi phiên đã lưu, nhưng chưa hook
-  nào gọi tự động: bắt được chuyện cũ, chưa chặn được chuyện mới.
-* **Ba luật kiểm chưa nổ được trên dữ liệu thật vì thiếu dữ liệu, không vì sai:**
-  luật ERC quá áp (ba kho có Fact điện áp thì không có mô hình mạch, và ngược lại), rồi
-  `chan_lech_kit` và `io_type_lech_bank` của M3-18 — **không kho nào** trong repo có Fact
-  `pin:tangnano20k.*` hay khoá `vccio`. Cả ba đã có đường dẫn đo được, chỉ chưa ai nạp dữ liệu.
+  (DEV-346), nên `test.run` ở mọi dự án đang có vẫn đi đường **tự khai**.
+* **`kiem_cap_goi_tra()` chưa thành hàng rào** — soát được mọi phiên đã lưu, nhưng chưa hook nào
+  gọi tự động: bắt được chuyện cũ, chưa chặn được chuyện mới.
+* **Ba luật kiểm chưa nổ được trên dữ liệu thật vì thiếu dữ liệu, không vì sai** — luật ERC quá
+  áp, `chan_lech_kit` và `io_type_lech_bank`: **không kho nào** có Fact `pin:tangnano20k.*` hay
+  khoá `vccio`.
 * **Một bitstream cũ đã dựng với chân đồng hồ do nextpnr tự chọn** — `blinky` của
-  `du-lieu/riscv-tn20k-b`: cổng `sys_clk` không có `IO_LOC` ở bất kỳ tệp `.cst` nào, mà
-  `blinky.fs` 4,6 MB vẫn dựng ra 01/10/2026. Nó rơi đúng chân 4 nên có thể đã chạy đúng —
-  bằng may. Không sửa hiện vật cũ; từ nay `dat_di_day` chặn trước nextpnr. DEV-345 · README §8.
+  `du-lieu/riscv-tn20k-b`. Nó rơi đúng chân 4 nên có thể đã chạy đúng — bằng may. Không sửa
+  hiện vật cũ; từ nay `dat_di_day` chặn trước nextpnr. DEV-345 · README §8.
 * **Testbench nấc 3c của Bài 3 không dịch nổi từ 02/10/2026** — `tb_pcpi_vmini.v` tạo thực thể
-  `bram` với năm cổng `b_*` của **bản hai cổng**, mà `rtl/bram.v` đã đưa về một cổng (có lý do
-  ghi sẵn trong tệp: bản hai cổng làm suy luận BSRAM đứt). `bai3/NGOAI-PHAM-VI.md` vẫn ghi
-  “độ nhạy 7/7” — con số ấy đúng lúc được viết và hết hiệu lực từ hôm `bram.v` đổi. Bài 3 đã
-  ở ngoài đường dựng nên **chưa sửa**. DEV-344.
-* **Lỗi `_go_dau` trong `src/eide/tools/design.py`** — viết `.replace("d", "d")` nên
-  `"ổn định"` và `"ON DINH"` không khớp nhau; hàm ấy đang dùng cho một phép kiểm an toàn
-  (*người có thật sự chọn không*). Tìm thấy ở M2-03, **chưa sửa** vì ngoài phạm vi.
-* **Cột “Mã nguồn” của ma trận truy vết trống ở mọi dự án** — nó đọc `hien_thuc_req`, trường
-  vừa mới tồn tại nên chưa dự án nào có.
-* **`req-critic`** (bước 4 của M2-03) — kế hoạch ghi “tuỳ chọn, gộp M2-13”. Chưa làm, đúng
-  theo kế hoạch.
-* **Gói bằng chứng chưa lần nào tới một MÔ HÌNH thật.** Nó dựng được trên 29/42 dự án và đọc
-  rất rõ với người, nhưng *"verifier đọc gói này có bác đúng hơn không"* là một câu hỏi về
-  **hành vi mô hình**, và nó chưa được đo. Cần M4-22 (bộ ca gài lỗi) rồi hỏi anh Công.
-* **`loc_claim` là một phép lọc văn xuôi, và nó leaky có số đo.** 95 trong 1 706 câu của 323
-  đề bài thật. Một câu lập luận không mang chữ nào trong sáu dấu hiệu vẫn đi qua. Đừng nhầm
-  nó với hàng rào — hàng rào là gói bằng chứng do mã dựng.
-
+  `bram` với năm cổng của **bản hai cổng**, mà `rtl/bram.v` đã đưa về một cổng. Bài 3 đã ở ngoài
+  đường dựng nên **chưa sửa**. DEV-344.
+* **Lỗi `_go_dau` trong `src/eide/tools/design.py`** — viết `.replace("d", "d")` nên `"ổn định"`
+  và `"ON DINH"` không khớp nhau; hàm ấy đang dùng cho một phép kiểm an toàn. Tìm thấy ở M2-03,
+  **chưa sửa** vì ngoài phạm vi.
+* **Cột “Mã nguồn” của ma trận truy vết trống ở mọi dự án** — nó đọc `hien_thuc_req`, trường vừa
+  mới tồn tại nên chưa dự án nào có.
+* **`req-critic`** (bước 4 của M2-03) — kế hoạch ghi “tuỳ chọn, gộp M2-13”. Chưa làm, đúng theo
+  kế hoạch.
+* **Gói bằng chứng chưa lần nào tới một MÔ HÌNH thật.** Nó dựng được trên 29/42 dự án và đọc rất
+  rõ với người, nhưng *"verifier đọc gói này có bác đúng hơn không"* là một câu hỏi về **hành vi
+  mô hình**, và nó chưa được đo. Cần M4-22 (bộ ca gài lỗi) rồi hỏi anh Công.
+* **`loc_claim` là một phép lọc văn xuôi, và nó leaky có số đo.** 95 trong 1 706 câu của 323 đề
+  bài thật. Đừng nhầm nó với hàng rào — hàng rào là gói bằng chứng do mã dựng.

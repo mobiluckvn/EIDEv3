@@ -339,7 +339,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **1 929 ca Python + 43 ca giao diện**
+### Mức 1 — Ca đơn vị: **2 030 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -458,7 +458,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **1 929** | `pytest -q` |
+| Ca đơn vị Python | **2 030** | `pytest -q` |
 | Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -488,9 +488,13 @@ Một công cụ không bao giờ được dùng thì bằng không có nó.
 ### Đợt rà lại chính Agent, từ 06/10/2026
 
 Một đợt rà soát riêng, lần này đo **chính vòng lặp Agent** thay vì đo việc nó làm ra. Kế hoạch
-có 106 việc; **25 việc đầu đã xong** (DEV-330 → DEV-354). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
+có 106 việc; **30 việc đã xong** (DEV-330 → DEV-359). Mỗi việc tìm ra một chỗ mà bộ kiểm cũ
 không nhìn tới, và mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca
-kiểm. Bộ kiểm 1 610 → **1 929 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
+kiểm. Bộ kiểm 1 610 → **2 030 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
+
+Giai đoạn 1 có 32 việc; **30 việc xong**. Hai việc còn lại là một tiền đề P1 cỡ lớn (phân tích
+tĩnh chiều sâu) và việc P0 phụ thuộc nó — nên **mọi việc P0 của Giai đoạn 1 mà không bị chặn
+đều đã xong**.
 
 Và một con số nữa về chính đợt này: với mỗi việc, phép **"phá lại thì đỏ"** được dựng từ
 `git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Chín việc trước bắt
@@ -533,6 +537,11 @@ viết (xem dưới).
 | Verifier đọc đề bài do tác tử chính tự viết | `DinhNghia.doc_duoc_viec=False` có trong mã từ G6 kèm một đoạn giải thích rõ vì sao — và **không dòng nào đọc nó** | sổ cái 42 dự án: **327 lời gọi `task.run`, 323 là verifier**, và **209/323** đề bài dài hơn trần 300 ký tự. Gói bằng chứng do mã dựng chạy được trên **29/42 dự án**, 0 lần đổ |
 | Stop hook coi MỌI `task.run` là "đã kiểm chứng" | cửa đi ra sớm hỏi *tên công cụ có trong lượt không*, mà `task.run` chạy **tám** loại tác tử con — nên giao việc cho `code-analyst` rồi tuyên xong là một đường đi vòng hàng rào N6 | hook Stop ghi lại chính `checks` của nó, nên đếm được trên **68 sổ cái**: hook im **41 lượt**, và **1 trong 41** lượt ấy không có verifier nào — `robot-sinhvien2` `run-007`, nơi lời gọi làm hook im nằm **trước** `fs.edit` vào `ISR(TIMER2_COMPA_vect)` |
 | Sửa một tệp mã làm lỗi thời **mọi** kết quả test/sim | lớp đọc đồ thị phụ thuộc đã đúng từ trước; `test.run`/`sim.run` thì ghi hiện vật **không khai nó dựng từ tệp nào** | **9 kho thật**: bán kính STALE **107 → 49 lần** (58/107 là cáo buộc oan). Và dữ liệu thật bác luôn cách làm mà kế hoạch ghi: `robot-sinhvien2` lưu **một** tệp nguồn, mà tệp ấy `#include` ba tệp firmware |
+| Tệp SVD: hệ thống trả **hai câu trả lời trái nhau** | phép phân loại khai tệp ấy là *đọc được, mức ĐẦY ĐỦ*; `doc.load` trả *chưa có bộ đọc*. Tác tử hỏi, nghe **có**, rồi nạp và nghe **không** | `grep -rni svd src/` trước khi sửa ra đúng **hai** chỗ: phép phân loại, và một câu chú thích nói *"bốn loại đó có công cụ riêng"*. Không có bộ đọc nào |
+| Một con số **đúng độ lớn mà sai thứ nguyên** vào kho được | phép kiểm quy về đơn vị cơ bản rồi chỉ so ĐỘ LỚN, nên `vdd.max = 25 °C` đi qua: 25 nằm trong khoảng điện áp hợp lý, và không dòng nào hỏi *"25 cái gì"* | và đường đọc BẢNG sinh khoá khác đường đọc dòng chữ — `flash.size` thành `flash.max`, nên **một dung lượng Flash đọc từ bảng chưa bao giờ thành hạn mức**, mà Fact vẫn trông hợp lệ |
+| Cửa mà **mọi hằng số firmware** phải đi qua thì nhận bừa | nó xoá hết dấu chấm rồi so chuỗi chứa: `2.7 V` thành `27v` nên giá trị `27` đi qua, và `3` khớp `Table 3`, `180` khớp `1800` | một điện áp 2,7 V vào kho thành **27**, mang trích dẫn, mang tầng BẠC, trông y như một Fact đọc đúng |
+| Trần ngữ cảnh bị **lách bởi chính phép cắt** dựng ra để giữ nó | phép thu gọn cắt *số* phần tử của một danh sách mà không cắt từng phần tử, rồi cắt mỗi chuỗi theo trần của **cả** kết quả | một lời gọi đọc tài liệu **mặc định** đưa ~20 000 token vào ngữ cảnh. Đo trên **23 kho thật**: một phép tra Fact giảm **67 635 → 32 560 token** (−51 %); `robot-sinhvien` một mình 12 076 → 4 579 |
+| Bản tóm tắt nén — **nguồn duy nhất** về đoạn đã nén — sống đúng một tiến trình | nó chỉ được gán khi nén thành công *trong* tiến trình ấy; tiến trình mới dựng lại từ đầu và khối mở-lại in *"chưa có bản tóm tắt nào"*. Mà nó đã được ghi vào sổ cái từ đầu | **4 lần nén đạt** trên sổ cái thật, nạp lại được và không rỗng ở **2/2 dự án**. Và **303/313 phiên (96 %)** chưa từng chạm ngưỡng nén — nên câu *"chưa có bản tóm tắt"* là câu nói ở gần như **mọi** lần mở lại |
 
 Chỗ đáng nói nhất không phải ba lỗi, mà là **cả ba đều có cơ chế sẵn và đường dẫn tới nó đứt** —
 đúng hình dạng đã lặp lại suốt dự án này. Cái trần token tồn tại nhưng không ai nối dây tới nó.
@@ -584,7 +593,7 @@ Cả năm đều chỉ lộ ra vì một con số trông lạ. Đó là lý do m
 không chỉ ghi "đã xong".
 
 Kế hoạch đầy đủ 106 việc nằm ở [`toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md`](toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md);
-nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-354).
+nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-359).
 
 ---
 
@@ -1174,11 +1183,12 @@ Nói ra để người đọc không phải tự tìm:
 - **Phép soát "mỗi lời gọi một kết quả" chưa thành hàng rào.** `kiem_cap_goi_tra()` chạy được
   trên mọi phiên đã lưu, nhưng chưa hook nào gọi nó tự động — nên nó bắt được chuyện cũ, chưa
   chặn được chuyện mới.
-- **Mười cờ của đợt rà lại đều còn TẮT**, và cùng một lý do: `GON_CONG_CU` (thu gọn lược đồ),
+- **Mười hai cờ của đợt rà lại đều còn TẮT**, và cùng một lý do: `GON_CONG_CU` (thu gọn lược đồ),
   `TRUY_VET` (khai REQ khi ghi tệp), `REQ_PHU` (nhắc khi còn yêu cầu chưa đo), `REQ_CHAT_LUONG`
   (cảnh báo yêu cầu mơ hồ), `KE_HOACH_CONG_KIEM` (bước kế hoạch phải khai kiểm bằng gì),
   `ERC_TU_DONG`, `SIM_RUNNER_GIOI_HAN`, `TEST_HARDEN`, `VERIFIER_GOI_BANG_CHUNG`, và
-  `HOI_QUY_NEN` (tự chạy lại bộ kiểm ngay sau khi sửa một tệp nó dịch tới). Cả mười đổi **thứ
+  `HOI_QUY_NEN` (tự chạy lại bộ kiểm ngay sau khi sửa một tệp nó dịch tới), và
+  `RESUME_TUONG_THUAT` (tường thuật cơ học phiên trước ở lượt mở lại). Cả mười hai đổi **thứ
   Agent nhìn thấy, đọc, hoặc LÀM ĐƯỢC mỗi lượt**, nên chỉ bộ 76 ca chạy cả hai chế độ mới nói
   được chúng làm Agent khá hơn hay tệ hơn — mà bộ ấy tốn tiền mô hình. Phần nền của từng việc
   (đo, ghi sổ, bảng trên tab, và với việc mới nhất là **khai nguồn của kết quả đo** cùng cửa
