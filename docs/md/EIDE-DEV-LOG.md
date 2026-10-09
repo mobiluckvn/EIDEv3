@@ -9180,3 +9180,115 @@ kho tại thời điểm ấy, nên không soát lại được phiên đã lưu
 Đóng nó cần **phát lại** các phiên mẫu với hook mới — tức lời gọi mô hình thật, mà §3.0 bắt hỏi
 anh Công trước. Thay vào đó phép đo trên kho thật ở trên (107 → 49) nói về đúng cơ chế mà tiêu
 chí ấy nhắm tới, và nói bằng dữ liệu đã có.
+
+## [DEV-355] [M5-03] SVD: hệ thống trả HAI CÂU TRẢ LỜI TRÁI NHAU cho cùng một tệp
+
+Nhiệm vụ #28. **Sửa lỗi thuần** (nối hai câu trả lời lại thành một) + **công cụ mới**
+`reg.lookup` (`core=False`, R1). Không tiền đề, không cờ.
+
+### Chỗ hổng: không phải thiếu tính năng, mà là một mâu thuẫn
+
+`ingest.phan_loai` nhìn một tệp SVD, thấy `<device>` + `peripheral`, và khai `loai="svd"`,
+mức hỗ trợ **ĐẦY ĐỦ**, `doc_duoc=True`. Rồi `doc.load` gọi `_nap_theo_loai` — `"svd"` không
+nằm trong `_LOAI_VAN_BAN`, không phải Office, không có nhánh nào — nên nó rơi xuống
+`E1001 "chưa có bộ đọc nạp nó vào kho tài liệu"`.
+
+Một comment ngay trên `_LOAI_VAN_BAN` nói *"bốn loại đó có công cụ riêng đọc đúng cấu trúc của
+chúng"*. `grep -rni svd src/` trước M5-03 ra đúng **hai** chỗ: phép phân loại, và chính câu
+comment ấy. Không có bộ đọc nào.
+
+Mâu thuẫn tệ hơn một tính năng thiếu. Thiếu thì tác tử đi đường khác; mâu thuẫn thì nó hỏi
+*"tệp này đọc được không"*, nghe **có**, nạp, nghe **không** — và thử lại y nguyên.
+
+### Vì sao đọc bằng mã, và vì sao phép cộng phải do mã làm
+
+Một địa chỉ thanh ghi là `base + offset`. `0x40011000 + 0x08` nhớ sai một chữ số thì firmware
+ghi vào **một thanh ghi khác**: không lỗi biên dịch, không lỗi chạy, chỉ là một ngoại vi không
+làm gì. Đúng loại con số mà §C1 đòi phải có nguồn tra lại được, và đúng loại sai mà bài học
+*"hằng số phần cứng phải tra, không được dựng lại"* nói tới.
+
+`knowledge/svd.py` đọc `device/peripherals/peripheral` → `registers/register` → `fields/field`
+bằng `xml.etree` (không thêm phụ thuộc, N-10). Ba chỗ SVD thật khác tệp tự viết, và cả ba đều
+có ca kiểm riêng:
+
+* **`derivedFrom`** — phần lớn ngoại vi cùng họ của một SVD thật khai bằng MỘT dòng
+  `derivedFrom` và không có `<registers>`. Không xử lý thì mất gần hết register map. Và chiều
+  ngược lại cũng phải đúng: một ngoại vi vừa `derivedFrom` vừa tự khai thanh ghi thì **bản tự
+  khai thắng** — lấy thanh ghi của ngoại vi gốc lúc ấy là ghi vào kho một register map không
+  phải của nó, mà nó trông đúng y như một register map thật.
+* **`<cluster>`** — gói một nhóm thanh ghi lặp lại, cộng offset riêng, và cho tên một tiền tố.
+  Bỏ qua thì mất thanh ghi; cộng thiếu offset cluster thì ra địa chỉ **SAI** — và địa chỉ sai
+  tệ hơn thanh ghi thiếu, vì nó trông như đã có.
+* **Ba lối khai vị trí bit** — `bitOffset`+`bitWidth`, `bitRange` `[msb:lsb]`, và `lsb`/`msb`
+  (Nordic, SiLabs). SVD thật trộn cả ba trong một tệp.
+
+### Hai chỗ chọn phía THẬN TRỌNG, và vì sao
+
+`_so` trả `None` chứ không `0` khi không đọc được, và một ngoại vi có `baseAddress` hỏng thì bị
+**bỏ cả ngoại vi**. Thanh ghi thiếu `addressOffset` cũng bị bỏ. Lý do giống nhau: `base = 0`
+làm mọi địa chỉ của ngoại vi ấy thành offset trần, và một địa chỉ bằng `base` là một địa chỉ
+**sai mà hợp lệ**. Thiếu một thanh ghi thì tác tử đi tra tiếp; có một thanh ghi sai thì nó dùng
+luôn.
+
+Địa chỉ ghi `0x` + **tám** chữ số như datasheet viết. `0x44` và `0x00000044` là cùng một số mà
+không cùng một thứ với người đọc: cái thứ nhất trông như offset, và tác tử sẽ cộng base vào nó
+lần thứ hai.
+
+`size`/`access` **chỉ ghi khi SVD khai**. Điền mặc định 32 bit cho một thanh ghi không khai là
+bịa một dữ kiện rồi dán tầng BẠC lên nó.
+
+### Trần, và chỗ trần cắt phải NÓI RA
+
+SVD thật của một MCU họ F4 có cỡ 1 500–3 000 thanh ghi và hơn 10 000 trường bit, nên trần
+`TRAN_DON_VI = 40 000` là cần. Nhưng bản đầu của tôi cắt **im lặng** — và cắt im lặng ở đây là
+chỗ tệ nhất của cả tệp: tác tử tra một thanh ghi ở cuối tệp, nhận *"không có"*, rồi kết luận
+**chip không có thanh ghi ấy** trong khi câu đúng là **chưa nạp tới**. Hai câu dẫn tới hai việc
+ngược nhau. Nay `doc.load` trả `da_cat_o_tran` và nói thẳng điều đó trong `note_vi`.
+
+### `reg.lookup`, và vì sao nó phải tồn tại cạnh bộ đọc
+
+Đo được trên bo STM32F469: nạp xong header BSP, tác tử đi `fs.grep` trong tệp để đọc chân thay
+vì gọi `fact.extract_pinout` — bản đồ chân vào được **mắt** nó mà không vào **kho**, và firmware
+sau đó dùng số không có Fact nào đứng sau (N1). SVD rơi vào đúng cái bẫy ấy và nặng hơn: nó là
+XML hàng chục nghìn dòng, nên `fs.grep` trả về những mảnh thẻ **không mang theo `baseAddress`**
+— tác tử đọc `addressOffset` rồi tự cộng, và phép cộng ấy không có nguồn nào kiểm lại được.
+
+`reg.lookup` gom theo **chủ thể** (một thanh ghi một dòng, không tãi ra bốn dòng theo khoá),
+trần **20 dòng** không nâng được qua tham số, và **nói ra** tổng số khớp. Phép tra rỗng phân
+biệt hai câu: *chip không có thanh ghi ấy* và *chưa ai nạp register map* — hai việc khác nhau.
+
+Và SVD **tự ghi Fact ngay lúc nạp**, khác PDF (phải gọi `fact.extract` sau). Lý do: với PDF phép
+trích là một phỏng đoán trên văn xuôi, nên nó là một bước riêng người xem được; với SVD không có
+phỏng đoán nào, và bắt gọi thêm một công cụ chỉ tạo thêm một chỗ để quên.
+
+### Phá lại thì đỏ: 28/34 lượt đầu → **34/34**
+
+Sáu chỗ LỌT ở lượt đầu, và **cả sáu là lỗ thật**, không chỗ nào vô hiệu:
+
+1. `_so` trả `0` thay vì `None` — không ca nào canh `baseAddress` hỏng.
+2. Bỏ lối khai bit thứ ba (`lsb`/`msb`) — ca kiểm chỉ dùng hai lối đầu.
+3. Thanh ghi thiếu `addressOffset` vẫn được nạp với địa chỉ = `base`.
+4. **`dem()` trả `(r, r)` vẫn xanh** — vì ca kiểm chính của bộ ra 4 thanh ghi và 4 trường, hai
+   con số **tình cờ bằng nhau**. Một phép đo mà hai vế bằng nhau thì nó không đo được vế nào;
+   ca mới dựng 1 thanh ghi / 3 trường.
+5. `reg.lookup` không gom theo chủ thể vẫn xanh — vì 25 thanh ghi của ca trần chỉ có **một**
+   Fact mỗi cái, nên gom hay không cũng ra 25 dòng. Ca mới cho mỗi thanh ghi hai Fact.
+6. Trần 20 nâng được lên 500 qua tham số — không ca nào truyền `gioi_han` lớn.
+
+Hai chỗ 4 và 5 cùng một hình dạng và đáng ghi lại: **phép đo xanh vì dàn dựng của nó làm hai vế
+trùng nhau**, không vì mã đúng. Nó là biến thể của DEV-344 ở tầng dữ liệu dàn dựng chứ không ở
+tầng assert.
+
+Bộ kiểm 1 942 → **1 950 xanh**, 1 skip, 0 đỏ (21 ca mới + 1 ca `nha_that`).
+Công cụ 131 → **132**. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.
+
+### Tiêu chí còn mở: chưa có SVD THẬT nào trên máy
+
+Kế hoạch đòi *"nạp được SVD thật STM32F469, ghi số thanh ghi vào DEV-LOG"*. Quét cả máy
+09/10/2026: **không có tệp `.svd` nào** ngoài các tệp do chính bộ kiểm sinh ra trong `tmp`.
+
+Ca `test_nap_duoc_SVD_THAT` đã viết và đánh `nha_that` + `skipif`: nó dò bốn chỗ hay có
+(`~/STM32Cube`, `~/.platformio`, `STM32CubeIDE.app`, `tai-lieu-tham-khao/`) và **skip** khi
+không thấy. Nên con số *"nạp được N thanh ghi của một chip thật"* chưa có — và tôi ghi đúng như
+thế, thay vì tự viết một tệp SVD lớn rồi gọi nó là *thật*. Một bộ đọc chạy đúng trên tệp tự
+viết chưa nói gì về một tệp có `derivedFrom` khắp nơi và cluster lồng nhau.

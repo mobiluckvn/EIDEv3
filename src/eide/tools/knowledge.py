@@ -27,6 +27,11 @@ from .writing import EXPLAIN_SCHEMA
 # Những loại `phan_loai` trả về mà `doc.load` nạp như TÀI LIỆU VĂN BẢN (trích dẫn theo dòng).
 # Cố ý KHÔNG có netlist/schematic/eagle/svd: bốn loại đó có công cụ riêng đọc đúng cấu trúc
 # của chúng, và nạp chúng thành văn bản thô sẽ che mất đường đúng bằng một đường tệ hơn.
+#
+# M5-03 — và câu trên chỉ đúng với ba loại đầu cho tới 09/10/2026: `svd` **không có** công cụ
+# riêng nào, nên `phan_loai` khai nó ĐẦY ĐỦ còn `doc.load` trả `E1001 "chưa có bộ đọc"`. Hai
+# câu trả lời trái nhau cho cùng một tệp thì tác tử thử lại y nguyên. Nay bộ đọc ở
+# `knowledge/svd.py`, và nó đọc theo CẤU TRÚC — mỗi thanh ghi một đơn vị trích dẫn.
 _LOAI_VAN_BAN = ("source", "vendor", "note", "config", "log", "text", "html", "script")
 
 
@@ -106,6 +111,20 @@ def _nap_theo_loai(ctx: Any, p: Path, *, loai: str, doc_id: str, phien_ban: str,
     if loai == "pdf":
         return docs_mod.nap_tai_lieu(p, doc_id=doc_id, phien_ban=phien_ban,
                                      nha_phat_hanh=nha_phat_hanh), None
+    if loai == "svd":
+        from ..knowledge import svd as svd_mod
+        try:
+            return svd_mod.doc_svd(p, doc_id=doc_id, phien_ban=phien_ban,
+                                   nha_phat_hanh=nha_phat_hanh), None
+        except (ValueError, OSError) as e:
+            # Nói RÕ vì sao, và **không** trả về một tài liệu rỗng: ghi một nửa register map
+            # rồi báo lỗi là trạng thái tệ nhất — kho có số, và không ai biết nó thiếu gì.
+            return None, EideError(
+                "E2007", f"SVD không đọc được: {e}",
+                hint_for_agent=("Tệp SVD hỏng hoặc không phải SVD. Gọi `ingest.file` để biết "
+                                "nó là gì, và nói cho người dùng biết — đừng thử lại y nguyên, "
+                                "và đừng đọc thanh ghi bằng `fs.grep` rồi nhớ trong đầu."),
+                alternatives=["ingest.file", "doc.load"], blame="user")
     if loai in _LOAI_VAN_BAN:
         # `phan_loai` đã nói những loại này đọc được; trước đây `doc.load` vẫn từ chối, nên
         # tác tử bị dẫn vào ngõ cụt giữa hai câu trả lời trái nhau của cùng một hệ thống.
@@ -354,6 +373,40 @@ def register(r: Registry) -> Registry:
                 (out.get("note_vi", "") + " ").strip()
                 + "Word KHÔNG có số trang cố định — trích dẫn theo đường tiêu đề và số "
                   "bảng. Người cần số trang thì gọi doc.to_pdf.")
+        if tl.loai == "svd":
+            # M5-03 — SVD tự ghi Fact ngay lúc nạp, khác PDF (phải gọi `fact.extract` sau).
+            #
+            # Vì sao khác: với PDF, phép trích là một phỏng đoán trên văn xuôi — có thể sai,
+            # nên nó là một bước riêng mà người xem được. Với SVD thì không có phỏng đoán nào:
+            # địa chỉ là `base + offset`, vị trí bit là hai con số trong thẻ XML. Bắt gọi thêm
+            # một công cụ nữa chỉ tạo thêm một chỗ để quên — và đo được trên header BSP là tác
+            # tử quên thật: nó đi `fs.grep` trong tệp thay vì đưa số vào kho.
+            from ..knowledge import svd as svd_mod
+            so_reg, so_field = svd_mod.dem(tl)
+            for f in svd_mod.fact_tu_svd(tl, thuc_the=f"doc:{doc_id}", tier=tang):
+                ctx.store.put_fact(f)
+            out["so_thanh_ghi"] = so_reg
+            out["so_truong"] = so_field
+            out["note_vi"] = (
+                (out.get("note_vi", "") + " ").strip()
+                + (f"Đã ghi {so_reg} thanh ghi và {so_field} trường bit thành Fact "
+                   f"`reg:<Ngoại vi>.<Thanh ghi>` / `field:…` ở tầng {tang}, mỗi cái kèm "
+                   "trích dẫn tra lại được. Tra bằng **reg.lookup**, đừng đọc tệp SVD bằng "
+                   "`fs.grep` rồi nhớ trong đầu: một địa chỉ nhớ sai một chữ số thì firmware "
+                   "ghi vào thanh ghi khác mà không có lỗi nào kêu lên."
+                   if so_reg else
+                   "Tệp này đọc được nhưng **không có thanh ghi nào** — hoặc mọi ngoại vi "
+                   "thiếu `baseAddress`/`addressOffset`. Nói thẳng là chưa có register map, "
+                   "đừng coi 0 thanh ghi là đã nạp xong."))
+            if svd_mod.da_cat(tl):
+                # NÓI RA chỗ bị cắt. Một trần cắt im lặng làm tác tử tra một thanh ghi ở cuối
+                # tệp, nhận "không có", rồi kết luận *chip không có thanh ghi ấy* — trong khi
+                # câu đúng là *chưa nạp tới*. Hai câu ấy dẫn tới hai việc ngược nhau.
+                out["da_cat_o_tran"] = svd_mod.TRAN_DON_VI
+                out["note_vi"] += (
+                    f" CẢNH BÁO: tệp này DÀI HƠN trần {svd_mod.TRAN_DON_VI} đơn vị, nên phần "
+                    "cuối CHƯA được nạp. Một phép tra không thấy gì ở đây nghĩa là *chưa nạp "
+                    "tới*, KHÔNG phải *chip không có*. Nói điều này cho người dùng.")
         if tl.don_vi_trich_dan == "dòng":
             # Chỉ đường NGAY LÚC nạp, chứ không để tác tử tự đi tìm công cụ. Đo được trên bo
             # STM32F469: nạp xong header BSP, tác tử đi `fs.grep` trong tệp để đọc chân thay
@@ -716,6 +769,70 @@ def register(r: Registry) -> Registry:
                 + (f" CÓ {len(lech)} chỗ lệch với tài liệu — nói ngay cho người dùng, "
                    "đây là loại lỗi không lộ ra lúc biên dịch." if lech else "")),
         }
+
+    @r.tool("reg.lookup", "Tri thức",
+            "Tra THANH GHI và TRƯỜNG BIT đã nạp từ SVD: địa chỉ, giá trị reset, vị trí bit, "
+            "kèm trích dẫn. Nhận tên đầy đủ (`USART1.BRR`), một trường (`USART1.BRR.OVER8`), "
+            "hoặc chỉ tên ngoại vi (`USART1`) để xem cả nhóm.",
+            {"type": "object",
+             "properties": {
+                 "ten": {"type": "string",
+                         "description": "USART1 · USART1.BRR · USART1.BRR.DIV_Mantissa"},
+                 "gioi_han": {"type": "integer",
+                              "description": "số dòng tối đa (mặc định 20, trần 20)"}},
+             "required": ["ten"]},
+            risk="R1", core=False,
+            keywords=["thanh ghi", "register", "svd", "địa chỉ thanh ghi", "bit", "trường bit",
+                      "reset value", "ngoại vi", "peripheral", "reg lookup"])
+    def reg_lookup(ctx: Any, ten: str, gioi_han: int = 20):
+        """Vì sao một công cụ TRA phải tồn tại cạnh bộ đọc, không để tác tử tự `fs.grep`.
+
+        Đo được trên bo STM32F469: nạp xong header BSP, tác tử đi `fs.grep` trong tệp để đọc
+        chân thay vì gọi `fact.extract_pinout` — nên bản đồ chân vào được **mắt** nó mà không
+        vào **kho**, và firmware sau đó dùng số không có Fact nào đứng sau (N1). Một tệp SVD
+        rơi vào đúng cái bẫy ấy, và nặng hơn: nó là XML dài hàng chục nghìn dòng, nên `fs.grep`
+        trả về những mảnh thẻ không mang theo `baseAddress` của ngoại vi — tức tác tử đọc được
+        `addressOffset` rồi tự cộng, và phép cộng ấy không có nguồn nào kiểm lại được.
+
+        Trả tối đa 20 dòng và **nói ra** tổng số khớp. 20 dòng im lặng đọc như toàn bộ.
+        """
+        t = (ten or "").strip()
+        if not t:
+            return ToolResult(False, error=EideError(
+                "E5006", "Thiếu `ten` để tra.",
+                hint_for_agent="Nêu tên ngoại vi, thanh ghi, hoặc trường bit.",
+                alternatives=["fact.query"], blame="agent"))
+        gioi_han = max(1, min(int(gioi_han or 20), 20))
+
+        # Hai tiền tố, một phép tra: `reg:` và `field:`. Gom theo CHỦ THỂ để một thanh ghi là
+        # một dòng — một thanh ghi tãi ra bốn dòng (địa chỉ, reset, size, access) thì trần 20
+        # dòng chỉ còn đủ cho năm thanh ghi.
+        gom: dict[str, dict[str, Any]] = {}
+        for tien_to in ("reg:", "field:"):
+            for f in ctx.store.query_facts(subject=f"{tien_to}{t}", limit=500):
+                d = gom.setdefault(f["subject"], {"ten": f["subject"], "khoa": {}})
+                d["khoa"][f["key"]] = f["value"]
+                if not d.get("cite"):
+                    import json as _json
+                    src = _json.loads(f["source"] or "{}")
+                    d["cite"] = src.get("cite", "")
+                    d["doc_id"] = src.get("doc_id", "")
+                    d["tang"] = f["tier"]
+        # Thanh ghi trước, trường bit sau, mỗi nhóm theo tên — để một ngoại vi đọc theo thứ tự
+        # người ta đọc datasheet, không theo thứ tự SQLite trả về.
+        ds = sorted(gom.values(), key=lambda d: (d["ten"].startswith("field:"), d["ten"]))
+        return {
+            "ten_tra": t, "so_khop": len(ds), "dong": ds[:gioi_han],
+            "note_vi": (
+                (f"{len(ds)} chỗ khớp"
+                 + (f", hiện {gioi_han} dòng đầu — nêu tên hẹp hơn để thấy phần còn lại."
+                    if len(ds) > gioi_han else ".")
+                 + " Mỗi dòng có `cite` để mở SVD ra đối chiếu.")
+                if ds else
+                "Không có thanh ghi nào khớp. Kho CHƯA NẠP tệp SVD nào khớp tên này — hai "
+                "chuyện khác nhau: *chip không có thanh ghi ấy* và *chưa ai nạp register "
+                "map*. Gọi `doc.load` với tệp `.svd` của chip, hoặc nói thẳng với người dùng "
+                "là chưa có tài liệu thanh ghi — đừng nhớ địa chỉ hộ.")}
 
     @r.tool("fact.cross_check", "Tri thức",
             "Tìm những thông số mà NHIỀU NGUỒN cho số khác nhau. Gọi sau khi nạp từ hai "

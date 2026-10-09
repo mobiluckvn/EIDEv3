@@ -40,7 +40,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 
 ## 1 · Nhìn một lượt: EIDE làm được gì
 
-Agent có **131 công cụ** (121 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch và 1 công cụ tự nâng
+Agent có **132 công cụ** (121 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch và 1 công cụ tự nâng
 bộ kiểm bật bằng cờ), **8 Agent con**, **8 bộ hướng dẫn nạp theo việc**, **11 cửa duyệt**, và **11 tab** để người xem
 việc đang tới đâu.
 
@@ -67,7 +67,7 @@ lời gọi, không nói về tệp nằm trên đĩa.
 
 **Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà trong kho chưa có
 công cụ nào làm được, nó tự viết một công cụ mới kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ
-đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 131 công cụ kể ở trên — nó sinh
+đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 132 công cụ kể ở trên — nó sinh
 ra lúc chạy, trong đúng dự án đang làm. Việc này đã chạy thật, không phải tính năng trên giấy.
 
 ---
@@ -467,7 +467,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 18 tệp | `tools/kiem_tai_lieu.py` |
 | Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/`](docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/) |
-| Công cụ đã được dùng thật | **115/131** | rà toàn bộ sổ ghi việc |
+| Công cụ đã được dùng thật | **115/132** | rà toàn bộ sổ ghi việc |
 
 Mỗi ca kiểm có một tệp log riêng, trong đó có **bảng từng lời gọi công cụ kèm tham số đầy đủ
 và mã lỗi**: [`ket-qua-chay-lai/nhat-ky/`](docs/review-v3/test/ket-qua-chay-lai/nhat-ky/).
@@ -480,7 +480,7 @@ nhau, nên gộp vào một cột là nói sai về sản phẩm.
 
 Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào** (số
 đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 130). Bảy công cụ có đường dẫn tới chúng
-bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/131 đã được dùng
+bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/132 đã được dùng
 thật**.
 
 Một công cụ không bao giờ được dùng thì bằng không có nó.
@@ -1121,12 +1121,12 @@ là chỗ hay đứt nhất. Nay mỗi khối có một ca đi qua đúng đư�
 
 Nói ra để người đọc không phải tự tìm:
 
-- **16 trong 131 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
-  bo, chưa viết xong. Và ba công cụ mới nhất — `hdl.sensitivity` (DEV-344),
-  `hdl.constraints_check` (DEV-345) và `test.criteria` (DEV-346): mã của cả ba đã chạy trên
-  hiện vật thật, nhưng chưa lượt Agent nào *gọi công cụ* ấy, nên chúng vẫn tính là chưa dùng.
-  "Mã đã chạy" và "tác tử đã gọi" là hai chuyện, và gộp chúng lại là cách đếm ra một con số
-  đẹp hơn sự thật.
+- **17 trong 132 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
+  bo, chưa viết xong. Và bốn công cụ mới nhất — `hdl.sensitivity` (DEV-344),
+  `hdl.constraints_check` (DEV-345), `test.criteria` (DEV-346) và `reg.lookup` (DEV-355): mã
+  của cả bốn đã chạy trên hiện vật thật, nhưng chưa lượt Agent nào *gọi công cụ* ấy, nên chúng
+  vẫn tính là chưa dùng. "Mã đã chạy" và "tác tử đã gọi" là hai chuyện, và gộp chúng lại là
+  cách đếm ra một con số đẹp hơn sự thật.
 - **Chưa dự án firmware nào trong repo có một con số độ nhạy đáng tin.** Đo 08/10/2026 trên cả
   ba dự án có cả `test/` lẫn `firmware/`: `rtos-sinhvien` **0 trong 12 tệp** đo được (4 tệp
   font bộ kiểm không chạm tới, `control_rtos.c` trùng ký hiệu vì tệp test tự định nghĩa lại
@@ -1290,7 +1290,7 @@ bản kể lại nào.
 ```
 src/eide/
 ├── loop.py            vòng lặp Agent
-├── tools/             131 công cụ, chia theo nhóm
+├── tools/             132 công cụ, chia theo nhóm
 ├── policy/            luật chặn và cửa duyệt
 ├── knowledge/         đọc tài liệu, rút con số, chữ trong hình
 ├── store/             kho dữ liệu dựa trên sổ ghi việc + git

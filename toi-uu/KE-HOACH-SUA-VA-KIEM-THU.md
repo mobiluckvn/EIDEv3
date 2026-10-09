@@ -160,7 +160,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 25 | [M4-11](#m4-11) | Hồi quy tự động sau khi sửa mã + STALE chính xác theo tệp | P0 | M | M2-01 | HOI_QUY_NEN | DEV-354 | ☑ |
 | 26 | [M2-09](#m2-09) | Phân tích tĩnh chiều sâu: call graph, ngăn xếp, luật ngữ cảnh ISR (`code.static`) | P1 | L | M2-08 | — | kéo lên từ GĐ3 vì là tiền đề của M4-13 | ☐ |
 | 27 | [M4-13](#m4-13) | Kiểm "nối" tĩnh sau biên dịch (vector table, hàm không ai gọi, return hằng) | P0 | M | M2-09 | KIEM_NOI |  | ☐ |
-| 28 | [M5-03](#m5-03) | Bộ đọc SVD: nạp register map thành Fact `reg:`/`field:` + `reg.lookup` | P0 | M | — | — |  | ☐ |
+| 28 | [M5-03](#m5-03) | Bộ đọc SVD: nạp register map thành Fact `reg:`/`field:` + `reg.lookup` | P0 | M | — | — | DEV-355 | ☑ |
 | 29 | [M5-05](#m5-05) | Kiểm thứ nguyên đơn vị + thống nhất khoá khoảng hợp lý + kiểm cả đường bảng | P0 | S | — | — |  | ☐ |
 | 30 | [M5-07](#m5-07) | `fact.from_doc`: kiểm giá trị theo ranh giới token và câu trích nguyên văn | P0 | S | — | — |  | ☐ |
 | 31 | [M5-13](#m5-13) | Chính sách phong bì cho `doc.read`/`fact.query`/`fact.extract`; sửa `_cat_chung` cắt phần tử dài | P0 | S | — | — |  | ☐ |
@@ -2038,10 +2038,13 @@ Sau khi thêm hai ca: **36/36**.
 - Netlist/schematic/eagle vẫn bị `doc.load` từ chối như cũ (`test_netlist_khong_bi_nap_thanh_van_ban_tho`).
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Nạp được SVD thật STM32F469 (đánh dấu `@pytest.mark.nha_that`), ghi số thanh ghi vào DEV-LOG.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ": **34/34** (lượt đầu 28/34 — sáu chỗ LỌT đều là lỗ
+      THẬT, không chỗ nào vô hiệu; hai trong sáu xanh vì dàn dựng làm hai vế trùng nhau).
+- [x] Toàn bộ `pytest -q` xanh: 1 942 → **1 950**, 1 skip, 0 đỏ.
+- [ ] **CHƯA ĐẠT** — quét cả máy 09/10/2026 **không có tệp `.svd` thật nào**. Ca
+      `test_nap_duoc_SVD_THAT` đã viết, đánh `nha_that` + `skipif`, dò bốn chỗ hay có và SKIP.
+      Không tự viết một SVD lớn rồi gọi nó là *thật*.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md — DEV-355.
 
 **Hoàn tác:** revert commit (Fact đã nạp có thể xoá theo `source.doc_id`).
 
