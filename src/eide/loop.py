@@ -106,6 +106,11 @@ class TurnContext:
     # *"`task.run` có trong lượt không"* — nên giao việc cho `firmware` rồi tuyên xong là
     # một đường đi vòng hàng rào N6. Cờ này đặt ở đúng chỗ đọc `args.subagent`.
     da_goi_verifier: bool = False
+    # M4-11 — lượt này đã chạy hồi quy nhẹ chưa. Trần một lần mỗi lượt: một lượt sửa bảy
+    # tệp thì bảy lượt biên dịch là tiền, và là thời gian người dùng đang chờ.
+    da_chay_hoi_quy: bool = False
+    # M4-11 — lượt này đã nhắc "còn kết quả lỗi thời" chưa. Vòng hai là vòng đang trả lời.
+    da_nhac_stale: bool = False
     # Tệp tác tử đã ĐỌC trong lượt này — `fs.write` đòi đọc trước khi đè (§E4, N9).
     da_doc: set[str] = field(default_factory=set)
     # Lời NGƯỜI đã nói trong phiên — constant-guard coi con số họ tự nói là có nguồn.
@@ -1027,6 +1032,8 @@ class Agent:
                 ctx._nhac_sau_batch.append({"role": "user", "_he_thong": True,
                                             "text": nhac_nho(call.tool, ly_do)})
 
+        self._hoi_quy_nen(call, res, ctx)
+
         # MEM-42 §5.1 — kết quả KHÔNG đi nguyên văn vào transcript. Phần vượt trần nằm
         # ở blob và mô hình đọc lại bằng `blob.read`. Đây là chỗ rẻ nhất để giữ cửa sổ.
         env = boc_ket_qua(tool=call.tool, call_id=call.id, ket_qua=res,
@@ -1036,6 +1043,82 @@ class Agent:
         self.messages.append({"role": "tool", "tool_call_id": call.id,
                               "tool": call.tool, "result": env.to_model(),
                               "envelope": env.to_ledger()})
+
+    # Trần của một lượt hồi quy nhẹ. 20 s là con số của kế hoạch, và nó là một TRẦN chứ
+    # không phải một kỳ vọng: quá trần thì nói ra "chưa chạy xong", không im lặng bỏ.
+    GIAY_HOI_QUY = 20.0
+
+    def _hoi_quy_nen(self, call: Any, res: Any, ctx: TurnContext) -> None:
+        """M4-11 — vừa ghi một tệp mà bộ kiểm DỊCH CÙNG thì chạy lại bộ kiểm ngay, một lần.
+
+        Vì sao đáng làm: vòng *sửa mã → biết mình vừa phá cái gì* hiện dài bằng một lượt tác
+        tử. Nó phải tự nhớ gọi `test.run`, và đo được trên phiên FreeRTOS là nó không nhớ —
+        nên cái sai đi tiếp vài bước nữa mới lộ.
+
+        Hai chỗ **cố ý không làm**:
+
+        * Không ghi lại hiện vật, nên nhãn STALE **vẫn còn**. §E5.4 nói "không tự chạy lại";
+          lượt này chỉ *mách* con số, còn hiện vật đợi một `test.run` thật — thứ có tiêu chí,
+          có `explain`, có người đọc. Tự ghi đè thì chính cái cơ chế đánh dấu lỗi thời bị
+          một đường tự động xoá mất.
+        * Không chạy `sim.run`: mô phỏng có thể lâu, và kế hoạch cấm đúng chỗ này.
+
+        Điều kiện nổ đọc `deps.upstream` của bộ kiểm — **cùng một phép đọc** mà STALE dùng,
+        không phải một phép so tên thư mục. Nhờ thế một dự án đặt mã ở `src/` thay vì
+        `firmware/` vẫn được, và một tệp bộ kiểm không hề dịch tới thì không tiêu một lượt
+        biên dịch nào.
+        """
+        if call.tool not in ("fs.write", "fs.edit") or not res.ok:
+            return
+        if getattr(ctx, "da_chay_hoi_quy", False):
+            return
+        try:
+            if not ctx.config.features.bat("hoi_quy_nen"):
+                return
+        except Exception:                                    # noqa: BLE001
+            return
+        duong = str((call.args or {}).get("path") or "").strip()
+        if not duong:
+            return
+        a = self.store.get("sim_result:unit-test")
+        if a is None or duong not in ((a.get("deps") or {}).get("upstream") or []):
+            return
+
+        from pathlib import Path as _P
+
+        from .build import mo_phong as MP
+
+        goc = self.config.paths.project_root
+        nguon = [_P(goc) / x for x in ((a.get("deps") or {}).get("upstream") or [])]
+        nguon = [p for p in nguon if p.suffix.lower() in (".c", ".cpp", ".cc") and p.is_file()]
+        if not nguon:
+            return
+        ctx.da_chay_hoi_quy = True
+        try:
+            kq = MP.chay_test(goc=goc, nguon=nguon, giay_toi_da=self.GIAY_HOI_QUY,
+                              do_phu=False)
+        except Exception as e:                               # noqa: BLE001
+            self.ledger.append("note", {"run_id": ctx.run_id, "hoi_quy_do": str(e)[:200]})
+            return
+        if kq.chay_duoc and kq.so_ca:
+            chu = (f"hồi quy: {kq.so_dat}/{kq.so_ca} ca đạt sau khi bạn sửa `{duong}`"
+                   + (f" — {kq.vi_sao_khong_dat}" if kq.so_hong else ""))
+        else:
+            chu = (f"hồi quy: CHƯA chạy được sau khi bạn sửa `{duong}` — "
+                   + (kq.vi_sao_khong_dat or "không rõ vì sao")
+                   + (f"\n{kq.loi_bien_dich[-600:]}" if kq.loi_bien_dich else ""))
+        self.ledger.append("hook", {"run_id": ctx.run_id, "hook": "hoi_quy_nen",
+                                    "tep": duong, "so_dat": kq.so_dat, "so_ca": kq.so_ca,
+                                    "chay_duoc": kq.chay_duoc})
+        # HOÃN tới sau batch, cùng lý do với lời nhắc `ket_qua_rong` (M1-01): một message
+        # `role=user` chen vào giữa lời gọi và kết quả của chính nó cắt đôi cặp mà
+        # `kiem_cap_goi_tra` canh.
+        ctx._nhac_sau_batch.append({
+            "role": "user", "_he_thong": True,
+            "text": ("<system-reminder>\n" + chu + "\n\nCon số này là một phép chạy NHẸ do "
+                     "EIDE tự làm: không tiêu chí, không ghi hiện vật, nên hiện vật "
+                     "`sim_result:unit-test` **vẫn đang lỗi thời**. Nó để bạn biết ngay mình "
+                     "vừa phá cái gì; muốn chốt thì gọi `test.run`.\n</system-reminder>")})
 
     def _do_luoc_do(self, decls: list[dict[str, Any]], ctx: TurnContext) -> int:
         """M1-02 — đo lược đồ công cụ vừa dựng, và NÓI RA khi nó vượt trần.

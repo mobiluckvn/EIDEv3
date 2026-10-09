@@ -9025,3 +9025,158 @@ Hai chỗ LỌT còn lại **không đổi hành vi**, và đã kiểm lại ch�
   chứa chuỗi ấy, và tên lạ đã bị `task_run` chặn bằng `E5004` trước khi tới đây.
 
 Bộ kiểm 1 896 → **1 901 xanh**, 0 đỏ (5 ca mới). `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.
+
+## [DEV-354] [M4-11] STALE theo TỆP, chặn tuyên xong khi còn STALE, và hồi quy nhẹ sau khi sửa mã
+
+Nhiệm vụ #25. Hai phần **sửa lỗi thuần** (khai `deps.upstream`, hook `ket_qua_stale`) và một
+phần **đổi hành vi** sau cờ `HOI_QUY_NEN` (mặc định TẮT). Tiền đề M2-01 đã xong.
+
+### Kế hoạch chỉ sai chỗ, và chỉ biết bằng cách đo
+
+Kế hoạch ghi: *"`deps.ha_nguon_cua`: với loại đích `sim_result` mà hiện vật có `deps.upstream`
+thì CHỈ lấy khi `artefact_id in upstream`"*. Tôi viết ba ca kiểm đầu của bảng TC theo đúng mô
+tả ấy — và **cả ba xanh sẵn** trên mã trước M4-11. Lớp đọc đã đúng từ M2-01: `ha_nguon_cua` có
+nhánh `khai_ro` loại một hiện vật khỏi chuỗi mặc định khi nó đã khai nguồn **cùng loại**.
+
+Chỗ đứt nằm ở lớp **GHI**: `test.run` và `sim.run` — hai công cụ mọi dự án đi qua — gọi
+`store.apply(...)` **không có tham số `deps`**. Nên hiện vật của chúng không khai gì, và chuỗi
+mặc định §E5.4 (`"code" → ("build", "sim_result", "target")`) đánh STALE **mọi** kết quả
+test/sim khi sửa **bất kỳ** tệp mã nào. M4-06 đã làm đúng việc này cho
+`sim_result:test-sensitivity`; hai đường chính thì chưa.
+
+Lần thứ bảy đúng hình dạng ấy trong đợt: **cơ chế có sẵn, đường dẫn tới nó đứt.** Ba ca kiểm
+kia giữ lại làm hàng rào cho lớp mà bản sửa dựa vào, và docstring nói rõ chúng xanh sẵn — một
+ca kiểm xanh sẵn mà không nói ra thì lần sau ai đọc cũng tưởng nó đo bản sửa.
+
+### Làm đúng CHỮ của kế hoạch thì tự đẻ ra một ô "còn tươi" GIẢ
+
+Kế hoạch ghi bước 1: *"test.run/sim.run ghi thêm `deps.upstream = tep_nguon`"*. Đem thử trên
+kho thật thì thấy không được:
+
+* `du-lieu/robot-sinhvien2` lưu `sim_result:can-bang` với `tep_nguon = ['sim/test_balance.c']`
+  — **một** tệp. Mà chính tệp ấy `#include "../firmware/pid.c"`, `"../firmware/motor.c"`,
+  `"../firmware/filter.c"`.
+* Lấy `tep_nguon` làm `upstream` thì sửa `firmware/pid.c` — tệp mà phép mô phỏng **dịch trực
+  tiếp vào** — không còn làm kết quả lỗi thời. Hẹp đúng chỗ không nên hẹp.
+
+Và `tep_nguon` hẹp vì một lý do có thật: `test.run`/`sim.run` nêu `nguon` tường minh thì chúng
+dịch **đúng** các tệp ấy, còn phần sản phẩm vào bằng `#include`.
+
+Nên `upstream` là **bao đóng `#include "..."` cục bộ** (`_khep_include`), không phải danh sách
+tệp đưa cho trình biên dịch. Trên `robot-sinhvien2`, bao đóng ra đúng 5 mắt:
+`sim/test_balance.c` · `firmware/filter.c` · `firmware/motor.c` · `firmware/pid.c` ·
+`firmware/config.h`.
+
+Chỉ `"..."`, không `<...>`: header hệ thống không phải phụ thuộc của dự án. Chỗ này có bẫy thật
+— `du-lieu/rtos-sinhvien/firmware/` có một `stdio.h` riêng của bo, đúng tệp đã làm 11/12 tệp bị
+xếp sai ở M4-19 (DEV-349) — nên ca kiểm canh `<...>` phải dựng một `stdio.h` giả **có thật**
+trong dự án, không thì nó xanh vì tệp không tồn tại chứ không vì phép lọc chạy.
+
+### Số đo: 107 → 49 trên chín kho thật
+
+Bán kính STALE của *kết quả test/sim* khi sửa một tệp mã, đếm bằng `ha_nguon_cua` trên kho
+thật, hai lần — một lần với kho như nó đang là, một lần sau khi khai `upstream` do
+`_khep_include` dựng:
+
+| Dự án | tệp mã × kết quả | trước | sau |
+|---|---|---|---|
+| `robot-canbang` | 6 × 1 | 6 | **3** |
+| `robot-sinhvien` | 14 × 1 | 14 | **10** |
+| `robot-sinhvien2` | 14 × 1 | 14 | **5** |
+| `robot-tu-can-bang` | 24 × 1 | 24 | **13** |
+| `rtos-sinhvien` | 30 × 1 | 30 | **8** |
+| `stm32f469-freertos` | 6 × 2 | 12 | **6** |
+| `usecase/uc03` | 3 × 1 | 3 | **1** |
+| `usecase/uc11` | 4 × 1 | 4 | **3** |
+| **TỔNG** | | **107** | **49** |
+
+**58 trong 107 lần đánh STALE là cáo buộc oan** (54 %). Một băng cảnh báo lúc nào cũng sáng là
+băng cảnh báo không ai đọc.
+
+### Nhãn STALE phải chặn được lời tuyên xong, không thì nó là trang trí
+
+`mark_stale` của §E5.4 chỉ *đánh dấu và nói lý do* — có chủ ý: không tự xoá, không tự chạy lại,
+người quyết. Nhưng không chỗ nào **đọc** cái nhãn ấy lúc kết lượt, nên nó rơi đúng hình dạng đã
+gặp bốn lần trong đợt này: phép đo đúng, con số đúng, rồi con số không đi tới đâu.
+
+Hook Stop `ket_qua_stale` (không cờ — sửa lỗi thuần theo N6) nhắc một vòng khi lượt đã tuyên mà
+còn kết quả lỗi thời, kèm **mã changeset** làm lý do và **tên công cụ** chạy lại. Ba cửa thoát:
+lượt thuần đọc, chưa trả lượt về, và nhắc đúng một lần mỗi lượt. Nó **mở khoá** `test.run` /
+`sim.run` trước khi bảo gọi — bài học DEV-351: hook nổ hai lượt liền mà tác tử không gọi lần
+nào, vì công cụ `core=False` không nằm trong danh sách nó nhìn thấy.
+
+`sim_result:test-sensitivity` cố ý không tính ở đây: nó đã có hook riêng và hook ấy so
+`version_test`, một phép đo chính xác hơn nhãn stale.
+
+### Hồi quy nhẹ: mách con số, KHÔNG xoá nhãn
+
+Sau cờ `HOI_QUY_NEN`. Vừa ghi một tệp nằm trong `deps.upstream` của bộ kiểm thì chạy lại bộ
+kiểm ngay — trần 20 s, **một lần mỗi lượt**, không đo độ phủ — rồi tiêm `hồi quy: x/y ca đạt`
+vào transcript.
+
+Hai chỗ cố ý không làm: **không ghi lại hiện vật** (nhãn STALE vẫn còn; §E5.4 nói "không tự
+chạy lại", và một đường tự động ghi đè sẽ xoá mất chính cơ chế đánh dấu), và **không chạy
+`sim.run`** (mô phỏng có thể lâu).
+
+Điều kiện nổ đọc `deps.upstream` — **cùng một phép đọc** mà STALE dùng, không phải một phép so
+tên thư mục. Nhờ thế một dự án đặt mã ở `src/` thay vì `firmware/` vẫn được, và một tệp bộ kiểm
+không hề dịch tới thì không tiêu một lượt biên dịch nào. Phép chọn tệp để dịch **lọc theo đuôi**
+`.c/.cpp/.cc`: bao đóng kéo cả `firmware/config.h` vào upstream (đúng cho STALE), mà đưa một
+`.h` cho trình biên dịch là một lượt dịch đổ — và lúc ấy hồi quy báo "CHƯA chạy được" cho một bộ
+kiểm vẫn chạy tốt.
+
+### Tập phá tìm ra một lỗi trong chính mã tôi vừa viết
+
+`_khep_include` có `tran = 200`, và vòng lặp viết `while hang_doi and len(xong) < tran`. Hai tệp
+`#include` lẫn nhau làm hàng đợi tự nuôi chính nó trong khi `len(xong)` dừng ở hai — nên **cái
+trần không chặn gì cả**. Phép phá *"bỏ phép dedupe"* không ra chữ ĐỎ, nó làm bộ kiểm **treo 900
+giây** và cả script đổ. Nay trần đếm **lượt** (`for _ in range(tran)`), và tập phá biến một lượt
+treo thành một chữ ĐỎ thay vì để nó giết cả phép đo.
+
+Ba chỗ nữa tập phá chỉ ra là *phép đo* yếu, không phải sản phẩm:
+
+* Nhãn của tôi nói *"bỏ CẢ HAI lớp lọc"* mà mã chỉ tháo **một** — hai lớp phòng
+  (`p.is_file()` canh tệp mầm, `ung.is_file()` canh tệp được include) nằm cách nhau 15 dòng, và
+  một phép thay chuỗi không tháo được cả hai. Đúng bài học M4-02. Nay khuôn script nhận một
+  **danh sách cặp** để áp nhiều chỗ cùng lúc.
+* Ca canh `#include <...>` xanh vì `stdio.h` không tồn tại, không vì phép lọc chạy.
+* Dedupe không chỉ để chạy nhanh — nó là thứ giữ cho trần còn nghĩa. Dựng được ca phân biệt
+  bằng phép đo chứ không bằng ước lượng: vòng `a ↔ b` cộng chuỗi `a → c → d → e`, với
+  `tran = 6` thì có dedupe ra **5** tệp, không có ra **4**.
+
+Và hai chỗ LỌT còn lại **không đổi hành vi**: bỏ `res.ok` khỏi điều kiện hồi quy (`_one_tool`
+đã `return self._tool_error(...)` trước đó, và không `ToolResult(False)` nào trong `src/eide`
+thiếu `error=`), đúng cái guard chết đã gặp ở M4-09.
+
+### Phá lại thì đỏ: 24/32 lượt đầu → **31/34**
+
+Tập dựng từ `git diff`, bốn mảng: bao đóng `#include`, hai chỗ ghi `deps`, hook
+`ket_qua_stale`, đường hồi quy sau cờ. Lượt đầu **24/32**; sau khi thêm bảy ca kiểm cho các
+chỗ LỌT (tệp mầm không tồn tại · dedupe tiêu hết trần · vòng `#include` chạy trong luồng có
+đồng hồ · lý do ca đỏ trong lời nhắc hồi quy · `0/0` không được đọc thành đã đo · trần 20 s
+tới được `chay_test` · `<...>` với một `stdio.h` giả có thật) và thêm hai phép phá **gộp**:
+**31/34**.
+
+Ba chỗ LỌT còn lại **không đổi hành vi**, và đã kiểm lại từng cái trước khi tin chữ LỌT:
+
+* *bỏ `ung.is_file()`* — `p.is_file()` ở đầu vòng vẫn lọc. Hai lớp phòng ở hai chỗ, tháo một
+  lớp thì không đổi gì; phép phá **gộp cả hai** thì ĐỎ.
+* *trần quay lại đếm `len(xong)`* — phép dedupe vẫn làm hàng đợi cạn, nên nó vẫn dừng và vẫn
+  ra đúng kết quả. Phép phá **gộp** (tháo cả dedupe lẫn trần-đếm-lượt) thì vòng lặp không dừng
+  — và ca luồng-có-đồng-hồ biến nó thành **một chữ ĐỎ trong 8 giây** thay vì một lượt treo 120
+  giây. Đây là chỗ đáng nhất của cả tập phá: hai lớp phòng độc lập thì chỉ phép phá gộp nói
+  được có ca canh hay không.
+* *bỏ `res.ok`* — guard chết: `_one_tool` đã `return self._tool_error(...)` trước đó, và không
+  `ToolResult(False)` nào trong `src/eide` thiếu `error=`. Cùng chỗ đã gặp ở M4-09.
+
+Bộ kiểm 1 901 → **1 929 xanh**, 0 đỏ (28 ca mới trong `tests/test_hoi_quy.py`).
+`kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN. Cờ `HOI_QUY_NEN` giữ **TẮT**.
+
+### Tiêu chí còn mở
+
+Kế hoạch đòi *"số lần tuyên xong với kết quả STALE trong sổ cái phiên mẫu = 0"*. Con số ấy
+**chưa đóng được**: sổ cái ghi lời gọi công cụ và `checks` của hook, nhưng không ghi trạng thái
+kho tại thời điểm ấy, nên không soát lại được phiên đã lưu như các phép đo khác của đợt này.
+Đóng nó cần **phát lại** các phiên mẫu với hook mới — tức lời gọi mô hình thật, mà §3.0 bắt hỏi
+anh Công trước. Thay vào đó phép đo trên kho thật ở trên (107 → 49) nói về đúng cơ chế mà tiêu
+chí ấy nhắm tới, và nói bằng dữ liệu đã có.

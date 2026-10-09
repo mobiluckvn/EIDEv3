@@ -366,6 +366,16 @@ class Features:
     # luan `chua_du_du_kien` o nhung luot truoc day no noi `dat`. Mac dinh TAT cho toi khi bo
     # ca gai loi (M4-22) do duoc ti le bac dung khong giam.
     verifier_goi_bang_chung: bool = False
+    # M4-11 — sau khi GHI mot tep ma nam trong `deps.upstream` cua bo kiem, EIDE tu chay lai
+    # bo kiem ay mot lan (tran 20 s, mot lan moi luot) va TIEM con so vao transcript.
+    #
+    # Sau co vi no doi thu mo hinh doc moi luot va tieu thoi gian nguoi dung dang cho (N-4).
+    #
+    # Phan KHONG sau co: `test.run`/`sim.run` ghi `deps.upstream`, va hook Stop `ket_qua_stale`
+    # chan loi tuyen xong khi con ket qua loi thoi. Ca hai la sua loi thuan — chuoi mac dinh
+    # §E5.4 danh STALE moi ket qua khi sua bat ky tep ma nao, va mot nhan STALE khong ai doc
+    # luc ket luot thi chi la trang tri.
+    hoi_quy_nen: bool = False
 
     @classmethod
     def load(cls) -> "Features":
