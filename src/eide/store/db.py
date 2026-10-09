@@ -237,6 +237,58 @@ DROP INDEX IF EXISTS ix_sch_sheet_path;
 DROP TABLE IF EXISTS sch_sheets;
 """
 
+# M5-01 — chỉ mục tìm kiếm tài liệu, LƯU BỀN.
+#
+# Hai bảng, hai việc khác nhau:
+#
+# * `doc_chunks` giữ **nội dung** từng đơn vị trích dẫn. Nó là thứ làm chỉ mục sống qua lần
+#   mở lại dự án: trước M5-01, `_lay_tai_lieu` gọi lại bộ đọc mỗi lần, tức chạy lại pypdf
+#   trên toàn bộ PDF chỉ để trả lời một phép tìm.
+# * `doc_fts` là chỉ mục FTS5 để xếp hạng BM25. Nó **không** giữ nội dung gốc (`chu` ở đây là
+#   bản đã tách từ), nên bảng kia vẫn là nguồn.
+#
+# `remove_diacritics 2` để `dien ap` khớp `điện áp`: tài liệu tiếng Việt và truy vấn của người
+# dùng rất hay lệch nhau đúng ở dấu, và một phép tìm trượt vì dấu đọc như *"không có"*.
+SCHEMA_CHI_MUC = """
+CREATE TABLE IF NOT EXISTS doc_chunks(
+  doc_id TEXT NOT NULL,
+  so INTEGER NOT NULL,
+  nhan TEXT NOT NULL DEFAULT '',
+  loai_bang TEXT NOT NULL DEFAULT '',
+  chu TEXT NOT NULL DEFAULT '',
+  hash TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY(doc_id, so)
+);
+CREATE INDEX IF NOT EXISTS ix_chunk_doc ON doc_chunks(doc_id);
+"""
+
+SCHEMA_CHI_MUC_FTS = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS doc_fts USING fts5("
+    "chu, doc_id UNINDEXED, so UNINDEXED, "
+    "tokenize='unicode61 remove_diacritics 2')"
+)
+
+SCHEMA_CHI_MUC_DOWN = """
+DROP TABLE IF EXISTS doc_fts;
+DROP INDEX IF EXISTS ix_chunk_doc;
+DROP TABLE IF EXISTS doc_chunks;
+"""
+
+
+def _them_chi_muc(db: sqlite3.Connection) -> None:
+    """Tạo `doc_chunks`, rồi `doc_fts` **nếu SQLite có FTS5**.
+
+    FTS5 là một module **biên dịch tuỳ chọn** của SQLite, không phải thứ chắc chắn có ở mọi
+    nơi. Một migration đổ vì thiếu nó là biến một tính năng tìm kiếm thành một dự án không mở
+    được — nên thiếu thì tạo bảng nội dung thôi, đặt `co_fts = False`, và lớp trên xếp hạng
+    bằng số từ khoá khớp (N-10: thiếu công cụ thì nói rõ và rơi về đường cũ).
+    """
+    db.executescript(SCHEMA_CHI_MUC)
+    try:
+        db.execute(SCHEMA_CHI_MUC_FTS)
+    except sqlite3.OperationalError:
+        pass
+
 
 # --------------------------------------------------------------------------- migration
 # EIDE-SCH-44 §2.1 lop bao ve so 4 va SCH-18: "luoc do chi cong them; migration co
@@ -307,6 +359,12 @@ MIGRATIONS: list[Migration] = [
         up=SCHEMA_SCH,
         down=SCHEMA_SCH_DOWN,
     ),
+    Migration(
+        phien_ban=5,
+        mo_ta="Chỉ mục tìm kiếm tài liệu — M5-01: doc_chunks + doc_fts (BM25, FTS5 tuỳ chọn)",
+        up=_them_chi_muc,
+        down=SCHEMA_CHI_MUC_DOWN,
+    ),
 ]
 
 SCHEMA_VERSION = MIGRATIONS[-1].phien_ban
@@ -337,6 +395,10 @@ class Store:
         self._db = sqlite3.connect(self.path, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self.nang_cap()
+        # M5-01 — máy này có FTS5 không. Hỏi KHO, không hỏi `sqlite3.sqlite_version`: hai
+        # chuyện khác nhau, và một kho cũ có thể đã tạo bảng trước khi ai đó đổi bản SQLite.
+        self.co_fts: bool = bool(self._db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='doc_fts'").fetchone())
 
     def close(self) -> None:
         self._db.close()

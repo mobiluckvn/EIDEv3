@@ -9649,3 +9649,118 @@ dòng mã nó nói nó canh không — và khẳng định điều đó bằng m
 
 Bộ kiểm 2 015 → **2 030 xanh**, 1 skip, 0 đỏ (18 ca mới trong `tests/test_mem_c.py`).
 Cờ 11 → **12**, cái mới giữ TẮT. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.
+
+## [DEV-360] [M5-01] Cả hệ thống chỉ có MỘT phép `in` để tìm trong tài liệu
+
+Nhiệm vụ #33, P0 đầu của Giai đoạn 2. **Công cụ mới** `doc.search` (`core=False`, R1) + **hạ
+tầng lưu trữ** (migration v5). Không tiền đề, không cờ — phần embedding để sau, như kế hoạch
+ghi.
+
+### Ba câu hỏi mà `doc.read` không trả lời được
+
+`doc.read(tim=…)` lọc `tk in t.chu.lower()` — một phép chứa, không xếp hạng, và **chỉ trên một
+`doc_id`**. Nên:
+
+* *"tài liệu nào nói về pull-up I2C"* → phải gọi `doc.read` từng tài liệu một rồi tự so;
+* *"tìm `VCC`"* trên một datasheet viết `Supply voltage` → **rỗng**. Và rỗng ở đây đọc như
+  *"tài liệu không có"* — một câu trả lời sai mà N1 **không bắt được**, vì nó không bịa gì cả;
+* *"đoạn nào liên quan NHẤT"* → không có khái niệm đó.
+
+`grep -i "fts5|bm25|embedd|rerank"` trong `src/` trước M5-01 ra **0 kết quả**. Và có một dấu
+vết của việc tính năng này từng được nghĩ tới rồi bỏ dở: `memory/envelope.py` khai chính sách
+phong bì cho `"rag.ask"` — **một công cụ không tồn tại**. Nó nằm đúng chỗ dễ làm người đọc mã
+tin là đã có RAG.
+
+### Hai bảng, hai việc
+
+Migration **v5**: `doc_chunks` (nội dung từng đơn vị trích dẫn) + `doc_fts` (FTS5,
+`unicode61 remove_diacritics 2` để `dien ap` khớp `điện áp`).
+
+`doc_chunks` là thứ làm chỉ mục **sống qua lần mở lại dự án**. Trước M5-01, `_lay_tai_lieu` gọi
+lại bộ đọc mỗi lần mở lại — tức **chạy lại pypdf trên toàn bộ PDF** chỉ để trả lời một phép
+tìm. Ca `test_chi_muc_song_qua_mo_lai` monkeypatch cho `nap_tai_lieu` **nổ**, nên *"không phân
+tích lại"* là một phép đo chứ không phải một lời hứa.
+
+FTS5 là module **biên dịch tuỳ chọn** của SQLite. Thiếu nó thì migration chỉ tạo bảng nội
+dung, `Store.co_fts = False`, và xếp hạng rơi về đếm từ khoá khớp (N-10). Không lỗi cứng — một
+migration đổ vì thiếu FTS5 là biến một tính năng tìm kiếm thành một dự án không mở được.
+
+### Số đo: recall@5 trên TÀI LIỆU THẬT
+
+Kế hoạch đòi *"recall@5 trên bộ vàng của M5-21"*. M5-21 chưa làm, nên không có bộ vàng — và
+tự viết câu truy vấn rồi tự chọn trang đáp án là đo **trí nhớ của tôi**, không đo chỉ mục (bài
+học `bai-kiem-nhay-nhung-chinh-sai-moc`: mốc lấy từ mã thì nó bảo vệ cái lỗi).
+
+Nên bộ vàng dựng **cơ học**: **7 PDF thật trên máy → 92 trang trong một kho** (datasheet
+ATmega `DS40002061B`, `TMP-5V0`, tài liệu kiến trúc C4 của dự án FreeRTOS, một bài báo, và ba
+bài arXiv trong `tai-lieu-tham-khao/`).
+
+| Phép đo | Cách dựng | recall@1 | recall@5 |
+|---|---|---|---|
+| **A** | truy vấn = 3 từ mà MÃ xác nhận chỉ có ở **đúng một** trang trong cả kho | **34/34 = 100 %** | **34/34 = 100 %** |
+| **B** | trang chỉ có MỘT cách gọi; truy vấn dùng **cách gọi còn lại** | 3/5 = 60 % | **5/5 = 100 %** |
+
+Và con số để so: phép `in` của `doc.read` cũ trên **cùng** bộ vàng B — **0/5 = 0 %**, mà nó còn
+phải biết **trước** là tìm ở tài liệu nào.
+
+Nói đúng mức của hai con số: **A dễ** (từ khoá lấy từ chính trang đáp án), nó chỉ chứng minh
+chỉ mục chọn đúng trang trong 92 trang khi được cho từ đặc trưng — không chứng minh gì về tìm
+theo nghĩa. **B là phép đo thật sự khó**, và nó chỉ có **5 ca** vì điều kiện dựng rất chặt
+(trang phải là trang duy nhất trong kho chứa cách gọi ấy). Năm ca không phải một bộ eval; nó
+là một mốc để so khi bật embedding.
+
+Ví dụ ca B, đọc được: truy vấn `fmax` → trang 1 của datasheet ATmega (trang ấy viết
+`operating frequency`); truy vấn `dong tieu thu` → trang 2 (trang ấy viết `supply current`).
+
+### Hai lỗ tìm ra bằng tập phá, cả hai là IM LẶNG XUỐNG CẤP
+
+**`pull-up` chưa bọc nháy kép làm FTS5 nổ.** `-` trong một bareword bị đọc là tên cột:
+`no such column: up`. Mã bắt `OperationalError` rồi rơi về đường thô — **nhưng `note_vi` vẫn
+khai là BM25**, nên tác tử đọc một thứ tự xếp hạng thô mà tin là xếp hạng tốt. Nay `doc.search`
+trả `duong_xep_hang` ∈ `{bm25, khong_fts, loi_cu_phap, khong_khop}` và nói thẳng lý do.
+
+**Một câu tiếng Việt đầy đủ khớp mọi trang.** Tác tử gọi `doc.search` bằng **lời của người
+dùng**, nên truy vấn là một câu, không phải vài từ khoá. Và `khong` · `co` · `trong` · `nao`
+khớp gần như mọi trang, nên `ket_qua` **không bao giờ rỗng**. Đó mới là chỗ đau: *"không khớp
+đoạn nào"* là tín hiệu **duy nhất** bảo tác tử dừng đoán và nói với người dùng rằng tài liệu
+không có phần đó — một tín hiệu không bao giờ nổ thì bằng không có. Nay có bảng từ chức năng,
+kèm cửa lui (lọc xong thành rỗng thì giữ nguyên, để truy vấn `V` hay `ta` vẫn chạy).
+
+### Một ca kiểm CŨ phải sửa, và sửa cách viết chứ không sửa con số
+
+`test_luoc_do_v2_go_duoc_va_khong_cham_bang_cu` khẳng định `ha_cap(1) == [4, 3, 2]` — một danh
+sách **gõ tay**. Thêm v5 làm nó đỏ vì một lý do **không liên quan** tới thứ nó canh, và người
+sửa sẽ chỉ việc cập nhật con số — tức ca kiểm dạy một phản xạ sai.
+
+Nay nó lấy danh sách bậc **từ `MIGRATIONS`**, đúng bài học DEV-352
+(`test_co_moi_co_trong_ten_co_va_to_dict` canh "mọi cờ phải có trong `ten_co()`" bằng cách kiểm
+**một** tên cờ, nên cờ thứ mười vô hình). Một bất biến dạng *"mọi bậc đều lui được"* phải viết
+thành phép so hai danh sách.
+
+### Phá lại thì đỏ: 21/30 lượt đầu → **30/30**
+
+Chín chỗ LỌT. **Một** là lỗ thật (`duong_xep_hang` im lặng, mục trên), **tám** còn lại là dàn
+dựng của ca kiểm không phân biệt được — và đây là **lần thứ năm liền** đúng hình dạng ấy
+(M5-03 · M5-07 · M5-13 · M5-17 · M5-01):
+
+* *"trả thẳng bm25"* — ca cũ chỉ kiểm điểm **đơn điệu giảm**. `bm25()` âm, nên đảo chiều xếp
+  hạng mà danh sách **vẫn** giảm dần: một phép kiểm đơn điệu không thấy gì. Phải kiểm **chiều
+  liên quan** (trang nhắc nhiều lần, ngắn hơn, phải đứng trước).
+* *"bỏ trần `k`"* — kho dàn dựng chỉ có 7 trang, nên bỏ trần 20 cũng không đổi gì.
+* *"đường thô không chia theo độ dài"* — hai điểm bằng nhau thì phép sắp xếp phụ (theo số
+  trang) đưa trang ngắn lên đầu, nên ca xanh mà không đo được phép chia nào. Phải đặt trang
+  **dài** trước.
+* *"migration không tạo `doc_fts`"* — ca `skipif(not store.co_fts)` **tự vô hiệu hoá chính
+  nó**: phép phá làm `co_fts` thành False, nên ca **skip** thay vì **đỏ**. Nay nó hỏi SQLite
+  trực tiếp.
+* *"`co_fts` đặt cứng True"* — trên máy này bảng có thật nên True là đúng. Phải dựng tình
+  huống phân biệt: gỡ bảng rồi mở lại kho.
+* *"ghi chỉ mục không xoá bản cũ"* — `doc_chunks` có khoá chính nên `INSERT OR REPLACE` tự
+  dọn; `doc_fts` **không có**. Ca cũ đếm sai bảng.
+* *"mở rộng chỉ theo token, bỏ dò cụm"* — ca `VCC` là một token đơn nên nó khớp kiểu nào cũng
+  được. Phải truy vấn **chỉ bằng cụm** `supply voltage`.
+* *"cửa sổ lấy đầu đoạn"* — mọi trang dàn dựng ngắn hơn 600 ký tự, nên cắt kiểu nào cũng ra cả
+  trang.
+
+Bộ kiểm 2 046 → **2 060 xanh**, 1 skip, 0 đỏ (30 ca mới trong `tests/test_chi_muc.py`).
+Công cụ 132 → **133**. Lược đồ kho v4 → **v5**, có đường lùi. `kiem_tai_lieu` 0 chỗ LỆCH.

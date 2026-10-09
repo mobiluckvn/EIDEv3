@@ -184,14 +184,25 @@ def test_ghi_lai_cung_canh_khong_nhan_doi(kho):
 
 
 def test_luoc_do_v2_go_duoc_va_khong_cham_bang_cu(kho):
-    """SCH-18: migration cộng thêm phải có đường lui, và lui không được xoá dữ liệu cũ."""
+    """SCH-18: migration cộng thêm phải có đường lui, và lui không được xoá dữ liệu cũ.
+
+    Danh sách bậc lấy TỪ `MIGRATIONS`, không gõ tay. Bản trước viết `== [4, 3, 2]`, nên mỗi
+    migration thêm sau làm ca này đỏ vì một lý do **không liên quan** tới thứ nó canh — và
+    người sửa sẽ chỉ việc cập nhật con số, tức ca kiểm dạy một phản xạ sai. Đây là cùng bài
+    học với `test_co_moi_co_trong_ten_co_va_to_dict` (DEV-352): một bất biến dạng *"mọi bậc
+    đều lui được"* phải viết thành phép so hai danh sách, không thành một hằng số gõ sẵn.
+    """
+    from eide.store.db import MIGRATIONS
+
+    bac = [m.phien_ban for m in MIGRATIONS if m.phien_ban >= 2]
     kho.ckm_dat_nut(node_id="pin:X.1", loai="pin", ten="1", canonical={})
-    assert kho.ha_cap(1) == [4, 3, 2], ("hạ tới v1 phải gỡ từ bậc cao xuống: sổ sheet (v4), "
-                                       "cây (v3), rồi CKM (v2)")
+    assert kho.ha_cap(1) == sorted(bac, reverse=True), (
+        "hạ tới v1 phải gỡ từ bậc CAO xuống thấp — gỡ xuôi thì một migration dưới có thể "
+        "kéo mất bảng mà migration trên còn dùng")
     assert kho.query_facts(limit=5), "hạ CKM không được chạm bảng facts"
     with pytest.raises(sqlite3.OperationalError):
         kho.ckm_cac_nut()
-    assert kho.nang_cap() == [2, 3, 4]
+    assert kho.nang_cap() == sorted(bac)
     assert kho.ckm_cac_nut() == [], "lên lại thì bảng rỗng, không phải dữ liệu cũ"
 
 
