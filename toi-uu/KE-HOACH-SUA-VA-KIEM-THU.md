@@ -158,7 +158,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 23 | [M4-07](#m4-07) | Verifier nhận gói bằng chứng do EIDE dựng từ sổ cái, không nhận đề bài tác tử chính tự viết | P0 | M | — | VERIFIER_GOI_BANG_CHUNG | DEV-352 · một tiêu chí còn mở (cần M4-22) | ☑ |
 | 24 | [M4-09](#m4-09) | Stop hook không được coi `task.run` với subagent khác là "đã kiểm chứng" | P0 | S | — | — | DEV-353 | ☑ |
 | 25 | [M4-11](#m4-11) | Hồi quy tự động sau khi sửa mã + STALE chính xác theo tệp | P0 | M | M2-01 | HOI_QUY_NEN | DEV-354 | ☑ |
-| 26 | [M2-09](#m2-09) | Phân tích tĩnh chiều sâu: call graph, ngăn xếp, luật ngữ cảnh ISR (`code.static`) | P1 | L | M2-08 | — | kéo lên từ GĐ3 vì là tiền đề của M4-13 | ☐ |
+| 26 | [M2-09](#m2-09) | Phân tích tĩnh chiều sâu: call graph, ngăn xếp, luật ngữ cảnh ISR (`code.static`) | P1 | L | M2-08 | — | DEV-361 · kéo lên từ GĐ3 vì là tiền đề của M4-13 | ☑ |
 | 27 | [M4-13](#m4-13) | Kiểm "nối" tĩnh sau biên dịch (vector table, hàm không ai gọi, return hằng) | P0 | M | M2-09 | KIEM_NOI |  | ☐ |
 | 28 | [M5-03](#m5-03) | Bộ đọc SVD: nạp register map thành Fact `reg:`/`field:` + `reg.lookup` | P0 | M | — | — | DEV-355 | ☑ |
 | 29 | [M5-05](#m5-05) | Kiểm thứ nguyên đơn vị + thống nhất khoá khoảng hợp lý + kiểm cả đường bảng | P0 | S | — | — | DEV-356 | ☑ |
@@ -1940,10 +1940,20 @@ Sau khi thêm hai ca: **36/36**.
 - `.venv/bin/python -m pytest -q tests/test_xay_dung.py tests/test_quy_trinh_lap_trinh.py tests/test_arm_bien_dich.py tests/test_tai_lieu_khop_ma.py`
 
 **Tiêu chí xong:**
-- [ ] TC xanh, "phá lại thì đỏ".
-- [ ] `pytest -q` xanh. Ca cần avr-gcc thật thì đánh `@pytest.mark.nha_that`.
-- [ ] Trên firmware robot: ước lượng stack được đối chiếu với đo stack-painting, ghi con số vào DEV-LOG.
-- [ ] DEV-LOG.
+- [x] TC xanh; "phá lại thì đỏ" **35/35** (lượt đầu 29/35 — hai chỗ LỌT là lỗ THẬT, bốn chỗ là
+      dàn dựng ca kiểm không phân biệt được; và một phép phá hoá ra là mã chết nên đã bỏ nhánh).
+- [x] `pytest -q` xanh: 2 060 → **2 096**, 1 skip. Ca cần `arm-none-eabi-gcc` đánh `nha_that`.
+- [ ] **CHƯA ĐẠT — và lý do nằm trong repo.** `grep -rn "0xA5A5A5A5"` ra **0 kết quả**: phép
+      sơn ngăn xếp CHƯA BAO GIỜ được chạy ở dự án này (chính `DANH-GIA-NGUOI-VS-AGENT-2-VIEC.md`
+      §3.2 đã ghi thế). Con số painting duy nhất trong repo — *"Đo thật: 65 word"* (§3.3) — nằm
+      trong **văn xuôi**, không hiện vật nào đứng sau, không nói rõ tác vụ nào trên bản mã nào.
+      Ghép con số tĩnh với một con số không truy nguồn được là đúng cái bài học *"hằng số phần
+      cứng phải tra, không được dựng lại"* cấm. Đóng tiêu chí này cần chạy painting thật trên
+      bo — tức một phiên có bo cắm.
+      **Đã đo được** trên firmware thật: `rtos-tu-viet` (ARM, arm-none-eabi-gcc) 13 hàm + có đồ
+      thị + 3 ISR + 0 vi phạm; `robot-sinhvien2` (AVR) 3 ISR + 0 vi phạm, và con số 0 ấy đã
+      KIỂM CHÉO (8 hàm dùng số thực, không hàm nào ISR gọi tới được).
+- [x] DEV-LOG — DEV-361.
 
 **Hoàn tác:** revert commit (công cụ `core=False` nên không ảnh hưởng lược đồ mặc định).
 
