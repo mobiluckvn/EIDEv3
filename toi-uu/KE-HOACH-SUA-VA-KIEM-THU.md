@@ -163,7 +163,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 28 | [M5-03](#m5-03) | Bộ đọc SVD: nạp register map thành Fact `reg:`/`field:` + `reg.lookup` | P0 | M | — | — | DEV-355 | ☑ |
 | 29 | [M5-05](#m5-05) | Kiểm thứ nguyên đơn vị + thống nhất khoá khoảng hợp lý + kiểm cả đường bảng | P0 | S | — | — | DEV-356 | ☑ |
 | 30 | [M5-07](#m5-07) | `fact.from_doc`: kiểm giá trị theo ranh giới token và câu trích nguyên văn | P0 | S | — | — | DEV-357 | ☑ |
-| 31 | [M5-13](#m5-13) | Chính sách phong bì cho `doc.read`/`fact.query`/`fact.extract`; sửa `_cat_chung` cắt phần tử dài | P0 | S | — | — |  | ☐ |
+| 31 | [M5-13](#m5-13) | Chính sách phong bì cho `doc.read`/`fact.query`/`fact.extract`; sửa `_cat_chung` cắt phần tử dài | P0 | S | — | — | DEV-358 | ☑ |
 | 32 | [M5-17](#m5-17) | Resume nạp lại bản tóm tắt C2 từ sổ cái; tường thuật cơ học phiên trước | P0 | S | — | RESUME_TUONG_THUAT |  | ☐ |
 
 ### Giai đoạn 2 — Ngắn hạn: P0 công sức lớn và P1 công sức nhỏ
@@ -2194,9 +2194,12 @@ Sau khi thêm hai ca: **36/36**.
 - `test_cong_cu_khong_co_chinh_sach_van_co_tran_chung`, `test_loi_KHONG_bi_cat`, `test_tep_ngan_di_qua_nguyen_ven_khong_boc_giay` giữ xanh.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ": **23/23** (lượt đầu 20/23 — cả ba chỗ LỌT là
+      **dàn dựng** làm phép phá vô hiệu, không phải mã đúng).
+- [x] Toàn bộ `pytest -q` xanh: 2 012 → **2 015**, 0 đỏ.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md — DEV-358.
+- [x] **Đo trên 23 kho THẬT**: một lời gọi `fact.query` không tham số đưa **67 635 → 32 560
+      token** vào ngữ cảnh (giảm 51 %). `robot-sinhvien` một mình: 12 076 → 4 579.
 
 **Hoàn tác:** revert commit.
 

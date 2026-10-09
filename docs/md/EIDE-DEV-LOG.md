@@ -9467,3 +9467,92 @@ LỌT thành bảy chữ ĐỎ.
 
 Bộ kiểm 1 993 → **2 000 xanh**, 1 skip, 0 đỏ (20 ca mới trong `tests/test_fact_from_doc.py`).
 `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.
+
+## [DEV-358] [M5-13] Trần ngữ cảnh bị LÁCH bởi chính phép cắt dựng ra để giữ nó
+
+Nhiệm vụ #31. **Sửa lỗi thuần**, không cờ, không tiền đề.
+
+### Ba công cụ đọc tri thức không có chính sách, và trần chung không đỡ được
+
+`CHINH_SACH` của phong bì không có `doc.read`, `fact.query`, `fact.extract`, nên cả ba rơi vào
+trần chung 4 000 token. Mà trần chung **bị lách**: `_cat_chung` cắt *số* phần tử của một list
+(`d[:30]`) và không cắt từng phần tử.
+
+Hai con số của chuyện này:
+
+* Một `doc.read` **mặc định** trả 40 đoạn × 2 000 ký tự ≈ 60 000 ký tự ≈ **20 000 token** — và
+  30 phần tử đầu của nó vẫn là 60 000 ký tự. Đây không phải ca bất thường mà trần chung sinh
+  ra để đỡ: nó là đường đọc tài liệu CHÍNH.
+* `{"ds": ["y" * 20000] * 5}` có 5 phần tử, nên `d[:30]` không cắt gì, rồi mỗi chuỗi được cắt
+  theo trần **của cả kết quả** (12 000 ký tự) → 5 × 12 000 = 60 000 ký tự. Một cái trần
+  4 000 token ra **20 000 token**, bằng chính phép cắt đáng ra phải chặn nó.
+
+### Ngân sách phải đi xuống theo
+
+`_cat_chung(d, tran)` nay mang theo ngân sách, và chia nó cho các nhánh con (sàn
+`TRAN_PHAN_TU_TOKEN = 400`, vì một mảnh 100 ký tự thì mô hình không đọc ra được gì ngoài *"có
+thứ gì ở đây"*). Phần tử nhỏ không tiêu gì nên chỗ dư không mất — chỉ phần tử to bị kẹp.
+
+Và chỗ gọi chừa lại một phần tư trần cho **vỏ JSON**: `_cat_chung` tiêu đúng ngân sách nó được
+giao, nên giao cả trần thì `shown_tokens` nhảy lên **4 024** vì mấy chục token dấu ngoặc và tên
+khoá. Một cái trần bị vượt bởi chính phép cắt dựng ra để giữ nó.
+
+### `doc.read`: cửa sổ đi theo TỪ KHOÁ, không lấy đầu đoạn
+
+≤ 8 đoạn, mỗi đoạn 600 ký tự **quanh chỗ khớp `tim`**. Nửa sau là cả giá trị của chính sách:
+tác tử gọi `doc.read(tim="throttle")` vì nó cần đúng chỗ ấy. Trả 600 ký tự đầu của một đoạn
+5 000 ký tự là trả về phần nó **không** hỏi — rồi nó gọi lại, hoặc tệ hơn, kết luận tài liệu
+không có phần đó.
+
+`so_khop` giữ nguyên (không ghi đè bằng số đoạn đang hiện), và `note_vi` chỉ đường đọc tiếp
+bằng `tu` hoặc `blob.read`. Một trần cắt im lặng thì 8 đoạn đọc như toàn bộ tài liệu.
+
+### `fact.query` / `fact.extract`: bỏ `explain`, GIỮ `source`
+
+`explain` của một Fact là một chuỗi JSON cỡ 1 KB, và mô hình **không cần** nó để dùng con số:
+nó cần `value`, `unit`, `tier`, và chỗ tra lại. `source` thì giữ — nhưng gọn còn
+`doc_id`/`page`/`cite`. Cắt luôn cả `source` là lấy mất đúng thứ làm một Fact khác với một con
+số nhớ được.
+
+Chính sách chỉ nổ khi kết quả > 800 token. Dưới đó đi nguyên: một dấu *"đã cắt"* xuất hiện ở
+**mọi** lời gọi thì không còn nói gì.
+
+### Số đo trên 23 kho THẬT
+
+Một lời gọi `fact.query` không tham số, bọc hai lần — một lần với chính sách mới, một lần với
+bảng chính sách đã bỏ `fact.query` ra (tức hành vi trước M5-13):
+
+| Dự án | Fact | trước | sau |
+|---|---|---|---|
+| `robot-sinhvien` | 30 | **12 076** | 4 579 |
+| `robot-canbang` | 100 | 10 171 | **4 381** |
+| `robot-tu-can-bang` | 100 | 9 548 | 4 213 |
+| `rtos-sinhvien` | 17 | 4 502 | 2 062 |
+| `stm32f469-disco` | 14 | 4 541 | 1 791 |
+| … 18 kho nữa | | | |
+| **TỔNG** | | **67 635** | **32 560** |
+
+Giảm **35 075 token, tức 51 %**. Và chỗ đáng chú ý hơn tỉ lệ: `robot-sinhvien` đưa **12 076
+token vào ngữ cảnh cho MỘT lời gọi** — bốn lời gọi như thế là hết một cửa sổ 48k.
+
+Bốn kho nhỏ (1–2 Fact) ra con số **y nguyên**, đúng như ca âm đòi.
+
+### Phá lại thì đỏ: 20/23 lượt đầu → **23/23**
+
+Ba chỗ LỌT, và cả ba cùng một hình dạng: **dàn dựng của ca kiểm làm phép phá thành vô hiệu**,
+không phải mã đúng.
+
+1. *không cắt `o[:10]`* — không ca nào có hàng bảng nhiều ô.
+2. *hạ trần kích hoạt về 0* — ca âm của tôi dựng `source` **đã đúng** hình dạng `_gon` trả về,
+   nên hạ trần cũng không đổi gì. Ca âm đúng phải có `explain` để `_gon` *có thể* cắt, rồi đòi
+   nó **đừng** cắt.
+3. *ngân sách dict không chia theo số khoá* — ca `{"ds": [...]}` có **một** khoá, nên chia cho
+   một là phép đồng nhất.
+
+Đây là lần thứ ba trong ba nhiệm vụ liền (M5-03 · M5-07 · M5-13) mà chỗ LỌT nằm ở **bộ dàn
+dựng**, không ở mã sản phẩm: hai vế tình cờ bằng nhau, một hình dạng tình cờ đã đúng, một tập
+hợp tình cờ có một phần tử. Bài học gom lại: *khi dựng ca kiểm cho một phép chia hay một phép
+cắt, dàn dựng phải có **ít nhất hai** phần tử và chúng phải **khác nhau**.*
+
+Bộ kiểm 2 012 → **2 015 xanh**, 1 skip, 0 đỏ (tổng 15 ca mới trong `tests/test_mem_a.py`).
+`kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.

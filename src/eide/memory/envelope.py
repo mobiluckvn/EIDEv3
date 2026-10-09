@@ -250,7 +250,121 @@ def _cs_web(d: Any, args: dict[str, Any]) -> tuple[Any, str, bool]:
     return d, "", False
 
 
+# M5-13 — ba công cụ ĐỌC TRI THỨC không có chính sách riêng, nên chúng rơi vào trần chung —
+# và trần chung bị lách: `_cat_chung` cắt SỐ phần tử của một list (`d[:30]`) mà không cắt từng
+# phần tử. Một `doc.read` **mặc định** trả 40 đoạn × 2 000 ký tự ≈ 60 000 ký tự ≈ 20 000 token,
+# và 30 phần tử đầu của nó vẫn là 60 000 ký tự.
+#
+# Đây không phải ca bất thường mà trần chung sinh ra để đỡ: nó là đường đọc tài liệu CHÍNH.
+_DOC_SO_DOAN = 8
+_DOC_KY_TU = 600
+_FACT_SO = 30
+
+
+def _cs_doc_read(d: Any, args: dict[str, Any]) -> tuple[Any, str, bool]:
+    """`doc.read`: ≤ 8 đoạn, mỗi đoạn 600 ký tự **quanh chỗ khớp từ khoá**.
+
+    Cửa sổ đi theo `tim` chứ không lấy đầu đoạn, và đó là cả nửa giá trị của chính sách này:
+    tác tử gọi `doc.read(tim="throttle")` vì nó cần đúng chỗ ấy. Trả 600 ký tự đầu của một
+    đoạn 5 000 ký tự là trả về phần nó **không** hỏi — rồi nó gọi lại, hoặc tệ hơn, kết luận
+    tài liệu không có phần đó.
+    """
+    if not isinstance(d, dict) or not isinstance(d.get("doan"), list):
+        return d, "", False
+    ds = d["doan"]
+    tim = str(args.get("tim") or "").strip().lower()
+
+    def _cua_so(chu: str) -> str:
+        if len(chu) <= _DOC_KY_TU:
+            return chu
+        i = chu.lower().find(tim) if tim else -1
+        if i < 0:
+            return chu[:_DOC_KY_TU] + "…"
+        dau = max(0, i - _DOC_KY_TU // 2)
+        return ("…" if dau else "") + chu[dau:dau + _DOC_KY_TU] + "…"
+
+    giu = []
+    doi = False
+    for t in ds[:_DOC_SO_DOAN]:
+        if not isinstance(t, dict):
+            giu.append(t)
+            continue
+        chu = str(t.get("chu") or "")
+        o = list(t.get("o") or [])
+        m = {**t, "chu": _cua_so(chu), "o": o[:10]}
+        if m["chu"] != chu or len(o) > 10:
+            doi = True
+        giu.append(m)
+    con = len(ds) - len(giu)
+    if not doi and con <= 0:
+        return d, "", False
+
+    moi = {**d, "doan": giu, "so_tra_ve": len(giu), "bi_cat": True,
+           "note_vi": ((d.get("note_vi") or "") + " ").strip()
+           + (f"Phong bì chỉ hiện {len(giu)}/{d.get('so_khop', len(ds))} đoạn"
+              + (f", còn {con} đoạn nữa" if con > 0 else "")
+              + ". Gọi lại với `tu` = "
+              + str((giu[-1].get("so") if isinstance(giu[-1], dict) else len(giu)) or len(giu))
+              + " để đọc tiếp, hoặc `blob.read` để lấy nguyên văn phần dư.")}
+    return (moi,
+            f"doc.read {d.get('doc_id', '?')}: {d.get('so_khop', len(ds))} khớp, "
+            f"hiện {len(giu)}", True)
+
+
+def _cs_fact(d: Any, args: dict[str, Any]) -> tuple[Any, str, bool]:
+    """`fact.query` / `fact.extract`: ≤ 30 Fact, bỏ `explain`, gọn `source`.
+
+    `explain` của một Fact là một chuỗi JSON cỡ 1 KB, và mô hình KHÔNG cần nó để dùng con số:
+    nó cần `value`, `unit`, `tier`, và **chỗ tra lại**. 100 Fact × 1 KB là hơn 30 000 token
+    cho một phép tra.
+
+    `source` thì giữ — nhưng chỉ `doc_id`/`page`/`cite`. Cắt luôn cả `source` là lấy mất đúng
+    thứ làm một Fact khác với một con số nhớ được.
+    """
+    if not isinstance(d, dict):
+        return d, "", False
+    khoa = "facts" if isinstance(d.get("facts"), list) else (
+        "fact" if isinstance(d.get("fact"), list) else "")
+    if not khoa:
+        return d, "", False
+    ds = d[khoa]
+    # Kết quả nhỏ đi NGUYÊN qua. Bỏ `explain` của ba Fact tiết kiệm được chút ít, nhưng nó
+    # đánh dấu `truncated` lên **mọi** lời gọi — và một dấu "đã cắt" xuất hiện ở mọi nơi thì
+    # không còn nói gì. Trần đặt ở mức một phép tra bình thường không chạm tới.
+    if uoc_token(d) <= 800:
+        return d, "", False
+
+    def _gon(f: Any) -> Any:
+        if not isinstance(f, dict):
+            return f
+        ra = {k: v for k, v in f.items() if k != "explain"}
+        src = f.get("source")
+        if isinstance(src, str):
+            try:
+                src = json.loads(src)
+            except (ValueError, TypeError):
+                src = None
+        if isinstance(src, dict):
+            ra["source"] = {k: src[k] for k in ("doc_id", "page", "cite") if k in src}
+        return ra
+
+    giu = [_gon(f) for f in ds[:_FACT_SO]]
+    if giu == ds:
+        return d, "", False
+    con = len(ds) - len(giu)
+    moi = {**d, khoa: giu,
+           "note_vi": ((d.get("note_vi") or "") + " ").strip()
+           + (f"Phong bì hiện {len(giu)}/{len(ds)} Fact"
+              + (f" (còn {con})" if con > 0 else "")
+              + ", đã bỏ trường `explain` để giữ cửa sổ. Nguyên văn ở `blob.read`; lý do "
+                "từng Fact đọc bằng `fact.review` hoặc `store.get`.")}
+    return moi, f"{khoa}: {len(ds)} Fact, hiện {len(giu)} (bỏ explain)", True
+
+
 CHINH_SACH: dict[str, Callable[[Any, dict[str, Any]], tuple[Any, str, bool]]] = {
+    "doc.read": _cs_doc_read,
+    "fact.query": _cs_fact,
+    "fact.extract": _cs_fact,
     "fs.read": _cs_fs_read,
     "fs.grep": _cs_tim_kiem,
     "fs.glob": _cs_tim_kiem,
@@ -310,7 +424,10 @@ def boc_ket_qua(*, tool: str, call_id: str, ket_qua: Any, args: dict[str, Any] |
     else:
         hien, dong, con_nua = tho, "", False
         if env.full_tokens > TRAN_CHUNG_TOKEN:
-            hien = _cat_chung(tho)
+            # Chừa chỗ cho phần vỏ JSON. `_cat_chung` tiêu đúng ngân sách nó được giao, nên
+            # giao cả trần thì `shown_tokens` nhảy lên trên trần vì mấy chục token dấu ngoặc
+            # và tên khoá — một cái trần bị vượt bởi chính phép cắt dựng ra để giữ nó.
+            hien = _cat_chung(tho, TRAN_CHUNG_TOKEN * 3 // 4)
             con_nua = True
             dong = f"{tool}: kết quả {env.full_tokens} token, đã thu gọn"
 
@@ -328,16 +445,35 @@ def boc_ket_qua(*, tool: str, call_id: str, ket_qua: Any, args: dict[str, Any] |
     return env
 
 
-def _cat_chung(d: Any) -> Any:
-    """Thu gọn một kết quả không có chính sách riêng, giữ hình dạng để mô hình còn hiểu."""
+# Trần cho MỘT phần tử bên trong một kết quả đã phải thu gọn. Không để một phần tử tiêu hết
+# ngân sách của cả kết quả — và không hạ xuống quá thấp, vì một mảnh 100 ký tự thì mô hình
+# không đọc ra được gì ngoài việc "có thứ gì ở đây".
+TRAN_PHAN_TU_TOKEN = 400
+
+
+def _cat_chung(d: Any, tran: int = TRAN_CHUNG_TOKEN) -> Any:
+    """Thu gọn một kết quả không có chính sách riêng, giữ hình dạng để mô hình còn hiểu.
+
+    `tran` là NGÂN SÁCH của nhánh này, và nó phải đi xuống theo. Bản trước chỉ cắt *số* phần
+    tử của một list (`d[:30]`) rồi cắt mỗi chuỗi theo trần **của cả kết quả** — nên
+    `{"ds": ["y"*20000]*5}` ra 5 × 12 000 ký tự: một cái trần 4 000 token bị lách thành
+    20 000 token, bằng chính cái phép cắt đáng ra phải chặn nó.
+    """
     if isinstance(d, str):
-        return d[: int(TRAN_CHUNG_TOKEN * KY_TU_MOI_TOKEN)] + "\n… (đã cắt)"
+        n = int(max(tran, 100) * KY_TU_MOI_TOKEN)
+        return d if len(d) <= n else d[:n] + "\n… (đã cắt)"
     if isinstance(d, list):
-        return d[:30] + ["… (đã cắt)"] if len(d) > 30 else d
+        giu = d[:30]
+        # Chia ngân sách cho các phần tử còn giữ. Phần tử nhỏ không tiêu gì, nên chỗ dư
+        # không bị mất — chỉ phần tử to bị kẹp.
+        moi = max(TRAN_PHAN_TU_TOKEN, tran // max(1, len(giu)))
+        ds = [_cat_chung(x, moi) if uoc_token(x) > moi else x for x in giu]
+        return ds + ["… (đã cắt)"] if len(d) > 30 else ds
     if isinstance(d, dict):
         ra: dict[str, Any] = {}
+        moi = max(TRAN_PHAN_TU_TOKEN, tran // max(1, len(d)))
         for k, v in d.items():
-            ra[k] = _cat_chung(v) if uoc_token(v) > 500 else v
+            ra[k] = _cat_chung(v, moi) if uoc_token(v) > moi else v
         ra["truncated"] = True
         return ra
     return d
