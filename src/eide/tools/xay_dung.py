@@ -487,7 +487,82 @@ def dang_ky(r: Registry) -> None:
                    "trình biên dịch tự sinh memcpy/memset cho phép gán cấu trúc và khởi tạo "
                    "mảng. Viết mã không dùng thư viện chuẩn, hoặc nhờ người dùng cài newlib "
                    "qua tool.install."
-                   if kq.thieu_libc else ""))}
+                   if kq.thieu_libc else "")
+                + _note_kiem_noi(ctx.config, p, str((hc or {}).get("isa") or ""),
+                                 "\n".join(
+                                     x.read_text("utf-8", errors="replace")
+                                     for x in sorted(Path(p).glob("firmware/*.c"))),
+                                 kq.nguyen_van))}
+
+    @r.tool("build.wiring", "Mã nguồn",
+            "Kiểm NỐI của ảnh vừa dựng: ô vector ngắt nào còn trỏ `Default_Handler` dù mã có "
+            "handler tên gần giống, hàm nào bị linker loại vì không ai gọi, hàm nào chỉ trả "
+            "một hằng. Ba thứ ấy đều biên dịch SẠCH.",
+            {"type": "object",
+             "properties": {"explain": EXPLAIN_SCHEMA},
+             "required": ["explain"]},
+            risk="R1", core=False, needs_explain=True, produces=["analysis"],
+            writes_artefact=True,
+            keywords=["vector", "isr", "default_handler", "nối", "linker", "gc-sections",
+                      "hàm không ai gọi", "wiring", "stub"])
+    def build_wiring(ctx: Any, explain: dict[str, Any]):
+        """Bảy lần một hình dạng, và **không lần nào có lỗi báo ra**.
+
+        `DANH-GIA-NGUOI-VS-AGENT-2-VIEC.md` §3.1 ghi bảy lần *"cơ chế viết đúng, đường dẫn tới
+        nó đứt"*; ba trong bảy nằm ở bước nối firmware. Agent viết đúng phần khó — bộ lập lịch,
+        chuyển ngữ cảnh bằng hợp ngữ naked, hàng đợi tĩnh — rồi quên nối nó vào hệ.
+
+        Và cả ba **biên dịch sạch**: một handler viết sai tên một chữ thì linker giữ ô vector
+        trỏ `Default_Handler`, rồi `--gc-sections` xoá hẳn hàm người viết. Ảnh nạp vào chip
+        không có mã ấy, mà `build.compile` báo đạt.
+        """
+        from ..build import kiem_noi as KN
+
+        goc = ctx.config.paths.project_root
+        a = ctx.store.get(MA_BUILD)
+        elf = next(iter(sorted((goc / ".eide" / "build").glob("*.elf"))), None)
+        if a is None or elf is None:
+            return ToolResult(False, error=EideError(
+                "E4001", "Chưa có ảnh `.elf` nào để kiểm nối.",
+                hint_for_agent=("Gọi `build.compile` trước. Phép kiểm này đọc ảnh ĐÃ DỰNG — "
+                                "nó không dựng lại gì, nên không có ảnh thì không có gì để "
+                                "đọc."),
+                alternatives=["build.compile"], blame="agent"))
+
+        hc = (ctx.store.get("passport:chip") or {}).get("canonical") or {}
+        nguon = "\n".join(x.read_text("utf-8", errors="replace")
+                          for x in sorted(goc.glob("firmware/*.c")))
+        log = str(((a.get("canonical") or {}).get("nguyen_van")) or "")
+        kq = KN.kiem_noi_tu_elf(elf, isa=str(hc.get("isa") or "arm"),
+                                nguon_chu=nguon, log_link=log)
+        if not kq["ho_tro"]:
+            # `ok` vẫn True, nhưng nói rõ là CHƯA kiểm được. Trả ba danh sách rỗng mà không
+            # nói gì sẽ được đọc là "nối đúng hết" — đúng cái N6 cấm.
+            return {**kq, "note_vi": ("CHƯA kiểm nối được: " + kq["vi_sao"]
+                                      + ". Đây KHÔNG phải “nối đúng hết”.")}
+
+        ctx.store.apply(
+            artefact_id="analysis:wiring", type="analysis",
+            op="update" if ctx.store.get("analysis:wiring") else "create",
+            author=f"agent:{ctx.run_id}", explain=explain, canonical=kq,
+            view_hint={"kind": "table", "path": "wiring"})
+        bq, bl, th = kq["isr_bo_quen"], kq["ham_bi_loai"], kq["ham_tra_hang"]
+        return {
+            **kq, "so_phat_hien": len(bq) + len(bl) + len(th),
+            "note_vi": (
+                (f"{len(bq)} ô vector trỏ `Default_Handler` dù mã có handler tên gần giống"
+                 + (": " + "; ".join(f"ô {x['o']} `{x['ten']}` ← mã có `{x['gan_giong']}`"
+                                     for x in bq[:4]) if bq else "")
+                 + f" · {len(bl)} hàm bị linker loại"
+                 + (": " + ", ".join(f"`{t}`" for t in bl[:6]) if bl else "")
+                 + f" · {len(th)} hàm chỉ trả hằng"
+                 + (": " + ", ".join(f"`{x['ten']}`" for x in th[:6]) if th else "")
+                 + ". Ba thứ này đều biên dịch SẠCH — đừng báo đạt trước khi xử lý."
+                 if (bq or bl or th) else
+                 f"{kq['so_o_vector']} ô vector, không thấy chỗ nào không nối. Lưu ý phạm vi: "
+                 "phép kiểm này soi bảng vector, danh sách hàm bị loại, và hàm chỉ trả hằng — "
+                 "nó KHÔNG kiểm được chuyện “không ai đặt `PENDSVSET`” hay “không ai tạo tác "
+                 "vụ rỗi”, là hai trong bảy ca của DANH-GIA §3.1."))}
 
     @r.tool("code.static", "Mã nguồn",
             "Phân tích TĨNH chiều sâu firmware: ngăn xếp sâu nhất theo chuỗi gọi từ `main` và "
@@ -1524,6 +1599,57 @@ def _ho_chieu(ctx: Any) -> dict[str, Any] | None:
     for a in ctx.store.list("passport", limit=5):
         return a.get("canonical") or {}
     return None
+
+
+def _note_kiem_noi(config: Any, goc: Any, isa: str, nguon_chu: str, log_link: str) -> str:
+    """Phần "kiểm NỐI" nối vào `note_vi` của `build.compile` — M4-13, sau cờ `kiem_noi`.
+
+    Sau cờ vì nó đổi thứ mô hình đọc sau **mỗi** lần biên dịch (N-4), và biên dịch là hành
+    động hay nhất trong một phiên firmware. Cờ TẮT thì hàm này trả `""` và **không gọi** phép
+    kiểm nào — không chỉ bỏ phần chữ.
+
+    Kiến trúc chưa hỗ trợ thì NÓI RÕ. Im lặng ở đó sẽ được đọc là *"nối đúng hết"*: đúng cái
+    N6 cấm, và đúng cái hình dạng mà bảy ca của DANH-GIA §3.1 đã trả giá.
+    """
+    try:
+        if not config.features.bat("kiem_noi"):
+            return ""
+    except Exception:                                        # noqa: BLE001
+        return ""
+    from ..build import kiem_noi as KN
+    from pathlib import Path as _P
+
+    elf = next(iter(sorted((_P(goc) / ".eide" / "build").glob("*.elf"))), None)
+    try:
+        kq = KN.kiem_noi_tu_elf(elf or _P(goc) / ".eide" / "build" / "khong-co.elf",
+                                isa=isa or "arm", nguon_chu=nguon_chu, log_link=log_link)
+    except Exception as e:                                   # noqa: BLE001
+        return f"\n\n**Kiểm nối:** không chạy được ({e}) — chưa biết ảnh có nối đúng không."
+    if not kq.get("ho_tro"):
+        return ("\n\n**Kiểm nối: KHÔNG chạy được** — " + (kq.get("vi_sao") or "không rõ")
+                + ". Đây KHÔNG phải “nối đúng hết”: phép kiểm chưa chạy.")
+
+    bq, bl, th = kq["isr_bo_quen"], kq["ham_bi_loai"], kq["ham_tra_hang"]
+    if not (bq or bl or th):
+        return (f"\n\n**Kiểm nối:** {kq['so_o_vector']} ô vector, không thấy ô nào trỏ "
+                "`Default_Handler` mà mã nguồn lại có handler tên gần giống; không hàm nào bị "
+                "linker loại; không hàm nào chỉ trả hằng.")
+    L = ["\n\n**⚠︎ Kiểm nối — biên dịch SẠCH nhưng có chỗ không nối:**"]
+    for x in bq:
+        # Nêu THẲNG hai cái tên ở dòng này, không chỉ dựa vào `vi_sao`: `vi_sao` là một câu
+        # giải thích có thể đổi cách viết, còn hai cái tên là thứ người đọc cần để sửa.
+        L.append(f"* **ô {x['o']} → `Default_Handler`**: `{x['ten']}` chưa nối, mã nguồn có "
+                 f"`{x['gan_giong']}`. {x['vi_sao']}")
+    if bl:
+        L.append("* **hàm bị linker loại vì không ai gọi**: "
+                 + ", ".join(f"`{t}`" for t in bl[:8])
+                 + (f" …+{len(bl) - 8}" if len(bl) > 8 else "")
+                 + " — mã ấy KHÔNG có trong ảnh nạp chip.")
+    if th:
+        L.append("* **hàm chỉ trả một hằng** (chưa viết xong?): "
+                 + ", ".join(f"`{x['ten']}` → {x['gia_tri']}" for x in th[:8]))
+    L.append("Ba thứ trên đều biên dịch sạch, nên ĐỪNG báo đạt trước khi xử lý chúng.")
+    return "\n".join(L)
 
 
 def _tom_tat_tinh(ctx: Any, tep: list[str]) -> str:

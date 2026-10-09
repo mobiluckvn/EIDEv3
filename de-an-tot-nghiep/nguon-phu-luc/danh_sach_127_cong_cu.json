@@ -1,0 +1,2254 @@
+[
+{
+"name": "fs.read",
+"group": "Tệp & lệnh",
+"summary": "Đọc nội dung một tệp văn bản trong dự án. Dùng khi cần biết tệp có gì — không bao giờ đoán nội dung tệp.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"path",
+"offset",
+"limit"
+]
+},
+{
+"name": "fs.glob",
+"group": "Tệp & lệnh",
+"summary": "Tìm tệp theo mẫu tên (ví dụ '**/*.c', 'du-lieu/**'). Dùng khi chưa chắc đường dẫn — TUYỆT ĐỐI không tự bịa một đường dẫn rồi gọi tool khác lên nó.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"pattern",
+"limit"
+]
+},
+{
+"name": "fs.grep",
+"group": "Tệp & lệnh",
+"summary": "Tìm chuỗi/biểu thức chính quy trong các tệp của dự án.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"pattern",
+"glob",
+"limit"
+]
+},
+{
+"name": "fs.stat",
+"group": "Tệp & lệnh",
+"summary": "Xem một đường dẫn có tồn tại không và là gì (tệp/thư mục, kích thước, đuôi). Gọi cái này trước khi dùng một đường dẫn bạn không chắc.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"path"
+]
+},
+{
+"name": "store.list",
+"group": "Store",
+"summary": "Liệt kê hiện vật trong kho theo loại (req, option, adr, passport, netlist, pinout, bom, code, build, criteria, sim_result…).",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"type",
+"stale_only",
+"limit"
+]
+},
+{
+"name": "store.get",
+"group": "Store",
+"summary": "Đọc đầy đủ một hiện vật: dạng máy (canonical), lớp giải thích, phụ thuộc.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"id"
+]
+},
+{
+"name": "fact.query",
+"group": "Tri thức",
+"summary": "Tra Fact theo thực thể/khoá/tầng. Mọi con số dùng để so sánh, quyết định hay sinh mã phải đến từ đây (N1). Không có Fact thì KHÔNG có số.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"subject",
+"key",
+"tier"
+]
+},
+{
+"name": "inventory.get",
+"group": "Store",
+"summary": "Đọc lại bảng kiểm kê dự án (dạng có cấu trúc). Bảng này do mã dựng, là sự thật về dự án đang có gì.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": []
+},
+{
+"name": "memory.read",
+"group": "Store",
+"summary": "Đọc EIDE.md — bộ nhớ dài hạn của dự án (mục tiêu, chip, quyết định, giả định, quy ước, §Đừng, §Người vừa sửa).",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"section"
+]
+},
+{
+"name": "history.list",
+"group": "Lịch sử",
+"summary": "Liệt kê các lượt đã chạy và sự kiện trong sổ cái. Dùng để trả lời 'lần trước mình làm gì', thay vì nhớ.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"contains",
+"limit"
+]
+},
+{
+"name": "blob.read",
+"group": "Tệp & lệnh",
+"summary": "Đọc lại phần kết quả đã bị cắt khỏi ngữ cảnh. Khi một kết quả công cụ có trường `_cat`, dùng `ref` trong đó để lấy nguyên văn theo khoảng ký tự.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ref",
+"tu",
+"den"
+]
+},
+{
+"name": "ledger.query",
+"group": "Lịch sử",
+"summary": "TRA sổ cái để trả lời câu hỏi về quá khứ: 'ban đầu anh nói gì về…', 'vì sao chọn MTP', 'lần trước lỗi gì'. Dùng cái này TRƯỚC khi trả lời bất kỳ câu hỏi nào về những gì đã xảy ra — đừng kể lại từ trí nhớ.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"chua",
+"loai",
+"run_id",
+"limit"
+]
+},
+{
+"name": "ledger.verify",
+"group": "Lịch sử",
+"summary": "Kiểm tính toàn vẹn của sổ cái (chuỗi hash). Gọi khi nghi ngờ lịch sử bị sửa.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": []
+},
+{
+"name": "ask_user",
+"group": "Người & UI",
+"summary": "Hỏi người dùng MỘT CỤM câu hỏi (nhiều mục trong một thẻ). Dùng khi thiếu thông tin mà không công cụ nào lấy được. KHÔNG dùng cho cổng an toàn — cổng là thẻ riêng do lớp cấp quyền phát. Tối đa 2 lần mỗi lượt (N4).",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"intro",
+"questions",
+"assumption_if_skipped"
+]
+},
+{
+"name": "ui.notice",
+"group": "Người & UI",
+"summary": "Gửi một thông báo ngắn cho người dùng (thông tin/cảnh báo), không tạo thay đổi nào.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"text",
+"level"
+]
+},
+{
+"name": "history.undo_30s",
+"group": "Lịch sử",
+"summary": "Hoàn tác lượt vừa xong trong cửa sổ 30 giây, không cần thẻ cổng (§E5.2). Chỉ dùng khi người dùng vừa bảo 'thôi, bỏ đi' ngay sau một lượt.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"run_id"
+]
+},
+{
+"name": "tool.search",
+"group": "Điều phối",
+"summary": "Tìm công cụ theo việc muốn làm. Công cụ tìm được sẽ mở khoá để gọi ở lượt sau.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"query"
+]
+},
+{
+"name": "fs.write",
+"group": "Tệp & lệnh",
+"summary": "Ghi một tệp trong dự án (tạo mới hoặc thay toàn bộ nội dung). Sinh changeset hoàn tác được. Đọc tệp trước bằng fs.read nếu nó đã tồn tại.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"code"
+],
+"params": [
+"path",
+"content",
+"explain"
+]
+},
+{
+"name": "fs.edit",
+"group": "Tệp & lệnh",
+"summary": "Thay một đoạn văn bản trong tệp bằng đoạn khác. Đoạn cũ phải khớp CHÍNH XÁC và xuất hiện đúng một lần — nếu không, đọc lại tệp bằng fs.read. Sửa MÃ mà người khác đang dùng thì chạy `code.analyze` trước: nó trả lời câu `fs.read` không trả lời được — ai đang gọi hàm này, tức chỗ nào sẽ gãy.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [],
+"params": [
+"path",
+"old_string",
+"new_string",
+"explain"
+]
+},
+{
+"name": "store.req_create",
+"group": "Store",
+"summary": "Ghi một yêu cầu MỚI (REQ) vào kho. BẮT BUỘC trích đúng lời người dùng vào source_quote — không trích được câu nào thì đó không phải yêu cầu của họ (N7: chỉ thị cho bạn và rủi ro bạn tự thấy đều KHÔNG thành yêu cầu). Yêu cầu ĐÃ CÓ mà người dùng đổi ý thì dùng `store.req_update` để ra bản v2, ĐỪNG tạo một REQ mới — hai REQ nói cùng một việc thì không ai biết cái nào đang có hiệu lực.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"req"
+],
+"params": [
+"id",
+"loai",
+"text",
+"criteria",
+"source_quote",
+"risk",
+"explain"
+]
+},
+{
+"name": "store.req_update",
+"group": "Store",
+"summary": "Sửa một yêu cầu đã có. Hạ nguồn của nó sẽ được đánh dấu cần cập nhật.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [],
+"params": [
+"id",
+"text",
+"criteria",
+"explain"
+]
+},
+{
+"name": "memory.note",
+"group": "Store",
+"summary": "Ghi vào EIDE.md — bộ nhớ dài hạn của dự án. Dùng cho quyết định, giả định, quy ước, hoặc điều người dùng bảo 'đừng làm nữa'.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [],
+"params": [
+"section",
+"line",
+"explain"
+]
+},
+{
+"name": "memory.forget",
+"group": "Store",
+"summary": "Xoá một dòng khỏi bộ nhớ dài hạn. Dùng khi người dùng bảo quên một điều đã ghi. Dòng đã quên KHÔNG được sống lại từ transcript cũ.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [],
+"params": [
+"section",
+"chua",
+"explain"
+]
+},
+{
+"name": "memory.remember_user",
+"group": "Store",
+"summary": "ĐỀ XUẤT ghi một sở thích của người dùng vào bộ nhớ xuyên dự án. Chỉ dùng khi họ lặp lại một sở thích từ hai lần trở lên, hoặc nói thẳng 'nhớ là…'. Bạn KHÔNG tự ghi — công cụ này dựng thẻ để họ đồng ý.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"chu_de",
+"noi_dung",
+"vi_sao"
+]
+},
+{
+"name": "memory.compact",
+"group": "Store",
+"summary": "Thu gọn ngữ cảnh ngay. BẮT BUỘC nêu mức: `C1` là thu gọn cơ học, 0 token, không mất gì — dùng thoải mái. `C2` gọi mô hình tóm tắt phần cũ rồi tự kiểm lại, chỉ làm khi người dùng bảo. Người dùng nói “C2” hay “tóm tắt” thì truyền đúng muc=\"C2\", đừng hạ xuống C1.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"muc"
+]
+},
+{
+"name": "memory.undo_compact",
+"group": "Store",
+"summary": "Huỷ lần nén gần nhất và khôi phục ngữ cảnh như trước. Dùng được trong 24 giờ.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": []
+},
+{
+"name": "memory.gc",
+"group": "Store",
+"summary": "Dọn blob không còn ai trỏ tới và quá hạn giữ. Mặc định chỉ ĐỀ XUẤT — `thuc_hien=true` mới xoá thật.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"thuc_hien"
+]
+},
+{
+"name": "memory.metrics",
+"group": "Store",
+"summary": "Sáu chỉ số đo bộ nhớ của §13: token mỗi lượt, tần suất nén, tỉ lệ kiểm đạt lần đầu, chi phí nén. Tính từ SỔ CÁI nên đúng qua nhiều phiên.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": []
+},
+{
+"name": "memory.status",
+"group": "Store",
+"summary": "Xem bộ nhớ đang chứa gì: EIDE.md bao nhiêu token trên trần, có gì nên lược, đã quên những gì, ngữ cảnh đang dùng bao nhiêu.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": []
+},
+{
+"name": "history.diff",
+"group": "Lịch sử",
+"summary": "Xem một changeset đã đổi những gì.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"changeset"
+]
+},
+{
+"name": "history.undo",
+"group": "Lịch sử",
+"summary": "Hoàn tác một changeset hoặc cả một lượt chạy. Không xoá lịch sử — tạo một thay đổi mới lùi lại. Thao tác không đảo ngược được (nạp chip, cài công cụ) sẽ được giữ nguyên kèm cảnh báo.",
+"risk": "R2",
+"gate": "G-HIST",
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"scope",
+"target"
+]
+},
+{
+"name": "ui.explain",
+"group": "Người & UI",
+"summary": "Giải thích một hiện vật cho người dùng khi họ bấm 'Giải thích thêm'. Trả lời trong Console và tô sáng chỗ liên quan. KHÔNG tạo changeset — đây là giải thích, không phải thay đổi.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"artefact",
+"giai_thich",
+"to_sang",
+"be_mat"
+]
+},
+{
+"name": "stale.accept",
+"group": "Lịch sử",
+"summary": "Đánh dấu 'chấp nhận STALE': lỗi thời nhưng người dùng quyết định giữ nguyên. Nhận mã hiện vật, HOẶC đường dẫn một nút trong cây khối (/board/mcu) — thêm ca_nhanh=true thì áp cho cả nhánh dưới nút đó. Phải nêu lý do.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"id",
+"why",
+"ca_nhanh"
+]
+},
+{
+"name": "plan.enter",
+"group": "Điều phối",
+"summary": "VÀO CHẾ ĐỘ KẾ HOẠCH cho một việc lớn. Khoá mọi công cụ GHI lại: từ lúc này bạn chỉ đọc, đo và nghĩ, cho tới khi kế hoạch được người dùng duyệt. Dùng khi việc cần nhiều bước, chạm phần cứng, hoặc bạn chưa chắc cách làm — rẻ hơn nhiều so với đi sai rồi quay lại.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"viec"
+]
+},
+{
+"name": "plan.exit",
+"group": "Điều phối",
+"summary": "NỘP KẾ HOẠCH để người dùng duyệt. Kế hoạch được kiểm bằng mã trước (tên công cụ có thật không, bước nào thiếu hiện vật); việc lớn thì dựng thẻ G-SCOPE. Duyệt xong mới mở lại công cụ ghi.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"buoc",
+"gia_dinh",
+"ngoai_pham_vi"
+]
+},
+{
+"name": "plan.step_done",
+"group": "Điều phối",
+"summary": "Đánh dấu một bước của kế hoạch đã xong. Nói rõ hiện vật nó để lại.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"so",
+"hien_vat"
+]
+},
+{
+"name": "plan.merge",
+"group": "Điều phối",
+"summary": "GỘP kết quả các bước thành MỘT sản phẩm. Dùng khi việc lớn được chia nhỏ ra làm nhiều lần — mỗi bước để lại một phần, và cuối cùng người dùng cần một tệp hoàn chỉnh. Chỉ gộp được khi mọi bước đã xong, và nó NÓI RA phần nào không gộp được.",
+"risk": "R2",
+"gate": "G-FILE",
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [],
+"params": [
+"ra",
+"tieu_de",
+"mo_dau",
+"explain"
+]
+},
+{
+"name": "plan.cancel",
+"group": "Điều phối",
+"summary": "Bỏ kế hoạch đang soạn hoặc đang chạy, mở lại công cụ ghi. Nói rõ vì sao bỏ.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"vi_sao"
+]
+},
+{
+"name": "tool.propose",
+"group": "Điều phối",
+"summary": "XIN TỰ VIẾT một công cụ mới cho chính mình, khi EIDE thiếu một năng lực — vì cày tay quá tốn, HOẶC vì không công cụ nào làm được việc ấy (ví dụ: người dùng cần một định dạng tệp EIDE chưa sinh ra được). Nói rõ: công cụ trả lời câu hỏi nào, bằng chứng (số đo cày tay, hoặc tên các công cụ đã kiểm và vì sao từng cái không làm được), và sẽ kiểm bằng ca nào. Người dùng duyệt thì bạn viết mã + bộ kiểm, rồi `tool.reload`.",
+"risk": "R3",
+"gate": "G-TOOL",
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ten",
+"nhom",
+"viec",
+"vi_sao",
+"test",
+"explain"
+]
+},
+{
+"name": "tool.reload",
+"group": "Điều phối",
+"summary": "NẠP công cụ bạn vừa tự viết. Nó CHẠY bộ kiểm của công cụ ấy trước: xanh thì đăng ký và dùng được ngay, đỏ thì từ chối và trả lại đúng chỗ hỏng.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ten"
+]
+},
+{
+"name": "store.option_create",
+"group": "Store",
+"summary": "Ghi một phương án kiến trúc vào kho. Gọi nhiều lần để có 2–4 phương án rồi mới so sánh. Số nào là ước lượng của bạn thì đánh dấu tầng ĐỒNG.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"option"
+],
+"params": [
+"id",
+"ten",
+"kien_truc",
+"linh_kien_chinh",
+"chi_phi_uoc",
+"do_kho",
+"rui_ro",
+"dap_ung_req",
+"khong_dap_ung",
+"explain"
+]
+},
+{
+"name": "store.option_choose",
+"group": "Store",
+"summary": "Chốt một phương án. Sinh kèm một ADR (quyết định kiến trúc) ghi lại: chọn gì, thay cho gì, hệ quả, và AI quyết. Đây là việc phải làm ngay khi người dùng nói họ chọn — đừng để quyết định chỉ nằm trong lời nói.",
+"risk": "R2",
+"gate": "G-DESIGN",
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"adr"
+],
+"params": [
+"id",
+"quyet_boi",
+"trich_loi_nguoi",
+"he_qua",
+"explain"
+]
+},
+{
+"name": "store.adr_create",
+"group": "Store",
+"summary": "Ghi một quyết định kỹ thuật không gắn với phương án nào (chọn giao thức, chọn thư viện, chọn cách làm). Mọi quyết định có hệ quả đều phải vào đây, không để nằm trong văn xuôi.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"adr"
+],
+"params": [
+"id",
+"tieu_de",
+"boi_canh",
+"phuong_an_xet",
+"chon",
+"he_qua",
+"quyet_boi",
+"trich_loi_nguoi",
+"explain"
+]
+},
+{
+"name": "store.bom_set",
+"group": "Thiết kế",
+"summary": "Ghi danh sách linh kiện đã chốt (BOM). Dùng khi người dùng nói họ sẽ mua gì. Mỗi dòng phải có lý do chọn; linh kiện chưa có datasheet thì nói thẳng.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"bom"
+],
+"params": [
+"dong",
+"explain"
+]
+},
+{
+"name": "store.procedure_set",
+"group": "Store",
+"summary": "Ghi một QUY TRÌNH TỪNG BƯỚC cho người làm theo (cài đặt, triển khai, đo kiểm, nạp firmware). Đây là hiện vật có cấu trúc, KHÔNG phải một tệp markdown: mỗi bước có lệnh, kết quả mong đợi, cách kiểm, và có thể đánh dấu đã làm xong. Dùng cái này thay vì fs.write một tệp hướng dẫn.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"procedure"
+],
+"params": [
+"id",
+"tieu_de",
+"muc_dich",
+"chay_o_dau",
+"can_truoc",
+"buoc",
+"explain"
+]
+},
+{
+"name": "store.procedure_progress",
+"group": "Store",
+"summary": "Đánh dấu một bước trong quy trình đã làm xong hoặc thất bại. Dùng khi người dùng báo kết quả từng bước.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"id",
+"buoc",
+"trang_thai",
+"ghi_chu"
+]
+},
+{
+"name": "fact.assert_human",
+"group": "Tri thức",
+"summary": "Ghi một con số do CHÍNH NGƯỜI DÙNG nói ra thành Fact tầng NGƯỜI. Dùng khi bạn cần một con số để sinh mã mà nó chưa có trong tài liệu nào — nhưng người dùng đã nói nó. BẮT BUỘC trích nguyên văn lời họ. Fact tầng NGƯỜI dùng được như VÀNG, nhưng mọi nơi dùng đều phải ghi '(anh cho, chưa có tài liệu)'.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"subject",
+"key",
+"value",
+"unit",
+"trich_loi_nguoi",
+"dieu_kien"
+]
+},
+{
+"name": "ingest.file",
+"group": "Tri thức",
+"summary": "Nhận diện một tệp theo NỘI DUNG (magic bytes), không theo đuôi. Trả về loại tệp, đọc được hay không, và nếu không thì LÝ DO ĐÚNG kèm cách xử lý. Gọi cái này TRƯỚC khi làm gì với một tệp người dùng vừa đưa vào.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [
+"classification"
+],
+"params": [
+"path"
+]
+},
+{
+"name": "doc.load",
+"group": "Tri thức",
+"summary": "Nạp một tài liệu vào kho để mọi con số trích ra đều truy vết được tới chỗ cụ thể. Nhận PDF có lớp chữ, .docx, .xlsx, .pptx, và định dạng Office đời cũ (.doc/.xls/.ppt/.odt) nếu máy có LibreOffice. BẮT BUỘC nêu `nguon` — tầng tin cậy của mọi Fact trích ra phụ thuộc vào nó.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"doc"
+],
+"params": [
+"path",
+"doc_id",
+"nguon",
+"phien_ban",
+"nha_phat_hanh",
+"explain"
+]
+},
+{
+"name": "doc.read",
+"group": "Tri thức",
+"summary": "ĐỌC nội dung một tài liệu đã nạp: theo từ khoá, theo mục, hoặc theo khoảng đơn vị. Trả nguyên văn kèm trích dẫn từng đoạn. Đây là cách duy nhất để biết tài liệu VIẾT GÌ — đừng nhớ hộ nó.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"doc_id",
+"tim",
+"muc",
+"tu",
+"gioi_han"
+]
+},
+{
+"name": "doc.to_pdf",
+"group": "Tri thức",
+"summary": "Sinh bản PDF PHÁI SINH của một tài liệu Word đã nạp, để có số trang khi người dùng cần in hoặc đối chiếu bản giấy. Cùng doc_id với bản gốc.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"doc_id"
+]
+},
+{
+"name": "doc.figures",
+"group": "Tri thức",
+"summary": "Rút hình trong một PDF thành các đoạn tri thức 'figure': ảnh + chú thích + chữ OCR. Kết quả đọc HÌNH là tầng ĐỒNG — nó là suy đoán từ ảnh.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"doc_id",
+"ocr"
+]
+},
+{
+"name": "doc.language",
+"group": "Tri thức",
+"summary": "Nhận diện ngôn ngữ của một tài liệu đã nạp và cho biết máy có gói OCR tương ứng chưa.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"doc_id"
+]
+},
+{
+"name": "eda.netlist",
+"group": "Thiết kế",
+"summary": "Đọc netlist KiCad (.net) hoặc sơ đồ (.kicad_sch) thành cấu trúc: linh kiện, net, chân. Dùng trước khi kiểm mạch hoặc đối chiếu với BOM.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"netlist"
+],
+"params": [
+"path",
+"explain"
+]
+},
+{
+"name": "eda.bom_check",
+"group": "Thiết kế",
+"summary": "Đối chiếu BOM (.csv) với netlist đã đọc: linh kiện thiếu, thừa, và giá trị khác nhau. Loại lệch nguy hiểm nhất là giá trị khác — mạch hàn xong CHẠY nhưng sai.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"bom",
+"netlist"
+]
+},
+{
+"name": "config.load",
+"group": "Tri thức",
+"summary": "Đọc một tệp cấu hình của dự án (.ioc, sdkconfig, .dts, .ld, .map) thành Fact tầng CẤU HÌNH. Tầng này nói dự án ĐANG ĐẶT gì, KHÔNG nói chip chịu được gì — nên nó không bao giờ được dùng làm vế giới hạn vật lý.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"fact"
+],
+"params": [
+"path",
+"explain"
+]
+},
+{
+"name": "fact.cross_check",
+"group": "Tri thức",
+"summary": "Tìm những thông số mà NHIỀU NGUỒN cho số khác nhau. Gọi sau khi nạp từ hai tài liệu trở lên, hoặc khi người dùng hỏi 'tin bản nào'. Công cụ ĐỀ XUẤT một bên kèm lý do — người chọn, bạn không tự chọn.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"thuc_the"
+]
+},
+{
+"name": "fact.extract",
+"group": "Tri thức",
+"summary": "Trích Fact ứng viên từ một tài liệu đã nạp. Giá trị được đọc BẰNG MÃ từ trang PDF, kèm số trang và trích đoạn nguyên văn. Fact ra ở tầng BẠC — chỉ lên VÀNG khi người xác nhận từng dòng.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [
+"fact"
+],
+"params": [
+"doc_id",
+"thuc_the",
+"gioi_han"
+]
+},
+{
+"name": "fact.extract_pinout",
+"group": "Tri thức",
+"summary": "Trích BẢN ĐỒ CHÂN từ bảng trong tài liệu ra Fact `pin:<chip>.<chân>`: tên cổng, net nối vào, hướng, ghi chú. Mã đọc bảng, không qua mô hình. Mỗi chân mang theo trích dẫn tới đúng dòng bảng.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [
+"fact"
+],
+"params": [
+"doc_id",
+"chip",
+"gioi_han"
+]
+},
+{
+"name": "fact.from_doc",
+"group": "Tri thức",
+"summary": "Ghi một Fact từ MỘT ĐOẠN cụ thể của tài liệu đã đọc. Bạn chọn đoạn và đặt tên khoá; MÃ kiểm rằng giá trị đúng là có mặt trong đoạn đó rồi mới ghi. Dùng cho những số không phải dạng “số kèm đơn vị” — giá trị thanh ghi, địa chỉ I2C, hệ số.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [
+"fact"
+],
+"params": [
+"doc_id",
+"don_vi",
+"thuc_the",
+"khoa",
+"gia_tri",
+"don_vi_do"
+]
+},
+{
+"name": "fact.review",
+"group": "Tri thức",
+"summary": "Người xác nhận Fact: BẠC → VÀNG. Chỉ gọi khi người dùng đã thật sự xem và đồng ý. Không tự xác nhận hộ họ.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"fact_ids",
+"xac_nhan",
+"nguoi_xac_nhan"
+]
+},
+{
+"name": "fact.compare",
+"group": "Tri thức",
+"summary": "So sánh hai Fact theo một luật kỹ thuật, trả kết luận KÈM BẰNG CHỨNG. Từ chối kết luận nếu một vế ở tầng ĐỒNG (N2) — khi đó nói rõ là chưa kiểm chứng thay vì đưa ra một kết luận nghe đúng.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"luat",
+"fact_a",
+"fact_b"
+]
+},
+{
+"name": "passport.isa",
+"group": "Tri thức",
+"summary": "Tra kiến trúc lệnh (ISA) và toolchain của một chip. Nếu kho chưa có manifest cho kiến trúc đó, nói thẳng — KHÔNG chọn một kiến trúc gần giống thay thế, vì làm vậy sẽ sinh mã mang lệnh chip không chạy được.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"chip"
+]
+},
+{
+"name": "passport.pin",
+"group": "Tri thức",
+"summary": "Ghim hộ chiếu chip (ns.part@semver). CHỈ ghim được khi đã có tài liệu cho chip đó — ghim một cái tên trần sẽ tạo ra hiện vật tra đâu cũng rỗng.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"passport"
+],
+"params": [
+"chip",
+"doc_ids",
+"explain"
+]
+},
+{
+"name": "doc.search_web",
+"group": "Tri thức",
+"summary": "Tìm datasheet trên mạng qua SearXNG, ưu tiên tên miền nhà sản xuất. Kết quả là ỨNG VIÊN — người dùng phải duyệt nguồn (cổng G-DATA) trước khi nạp.",
+"risk": "R3",
+"gate": "G-DATA",
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"truy_van",
+"so_luong"
+]
+},
+{
+"name": "doc.fetch",
+"group": "Tri thức",
+"summary": "Tải một tài liệu từ URL về thư mục `tai-lieu/` của dự án. Việc này CHƯA nạp tài liệu vào kho — tải xong phải gọi doc.load và khai `nguon` mới có tầng tin cậy. Nếu URL trả về trang HTML (trang giới thiệu, tường cookie), công cụ KHÔNG lưu mà liệt kê các liên kết PDF trên trang đó làm ứng viên.",
+"risk": "R3",
+"gate": "G-DATA",
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"url",
+"ten_tep",
+"nhan_html"
+]
+},
+{
+"name": "code.vendor_fetch",
+"group": "Mã nguồn",
+"summary": "Lấy NHIỀU tệp MÃ NGUỒN của hãng từ một repo GitHub vào dự án, một lượt. Khác doc.fetch: tệp lấy về đây là mã sẽ được BIÊN DỊCH vào firmware, không phải tài liệu để trích dẫn. Chỉ nhận tệp văn bản (.c/.h/.s/.ld…).",
+"risk": "R3",
+"gate": "G-DATA",
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"repo",
+"tep",
+"nhanh",
+"dich",
+"phang",
+"doi_ten",
+"explain"
+]
+},
+{
+"name": "code.vendor_list",
+"group": "Mã nguồn",
+"summary": "Liệt kê tệp có THẬT trong một repo của hãng, lọc theo mẫu. Dùng TRƯỚC code.vendor_fetch để biết đường dẫn thật thay vì đoán — nhiều SDK tách thành nhiều repo (submodule) nên bố cục quen thuộc có thể không còn đúng.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"repo",
+"mau",
+"nhanh",
+"gioi_han"
+]
+},
+{
+"name": "asset.image_to_c",
+"group": "Mã nguồn",
+"summary": "Đổi một tệp ảnh thành cặp .c/.h chứa mảng điểm ảnh để firmware vẽ thẳng lên màn. Chip không có trình đọc PNG — muốn hiện ảnh thì nó phải nằm trong Flash dưới dạng mảng đã giải nén.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"anh",
+"ten_bien",
+"dinh_dang",
+"rong_toi_da",
+"cao_toi_da",
+"dich",
+"explain"
+]
+},
+{
+"name": "doc.render",
+"group": "Tri thức",
+"summary": "Làm ra một tệp tài liệu cho NGƯỜI ĐỌC — Word (.docx), PowerPoint (.pptx), Excel (.xlsx) hoặc PDF — từ một tệp Markdown bạn đã viết bằng fs.write. Dùng khi người dùng cần một tệp gửi đi, in ra hoặc nộp, chứ không phải chữ trong khung chat. Khối ```mermaid trong nguồn được VẼ THÀNH HÌNH trong tệp (sequenceDiagram và graph/flowchart), không in ra cú pháp. Công thức LaTeX `$…$` giữa dòng, `$$…$$` nguyên đoạn và khối ```math được đổi sang ký hiệu toán đọc được (× ≤ ∈ τ Ω…) ở MỌI chỗ — kể cả trong bảng, gạch đầu dòng và trích dẫn. PowerPoint: mỗi tiêu đề một slide.",
+"risk": "R2",
+"gate": "G-FILE",
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"doc"
+],
+"params": [
+"nguon",
+"ra",
+"dinh_dang",
+"tieu_de",
+"explain"
+]
+},
+{
+"name": "snapshot.list",
+"group": "Lịch sử",
+"summary": "Liệt kê các bản ưng ý đã ghi, kèm khoảng cách (bao nhiêu changeset kể từ đó).",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"gom_checkpoint"
+]
+},
+{
+"name": "snapshot.propose",
+"group": "Lịch sử",
+"summary": "Đề xuất ghi một bản ưng ý sau một mốc đáng nhớ. Bạn KHÔNG tự đặt tên — công cụ này dựng thẻ để người dùng đặt tên và ghi chú, hoặc từ chối.",
+"risk": "R2",
+"gate": "G-SNAP",
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ly_do",
+"ten_goi_y",
+"passed"
+]
+},
+{
+"name": "project.export",
+"group": "Lịch sử",
+"summary": "Đóng gói CẢ dự án thành một tệp .zip để mang sang máy khác hoặc gửi đi. Mặc định bỏ thứ dựng lại được (bản biên dịch) — gói nhỏ hơn nhiều mà không mất gì. Dùng khi người dùng nói muốn sao lưu, bàn giao, chuyển máy.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ra",
+"gon",
+"explain"
+]
+},
+{
+"name": "snapshot.create",
+"group": "Lịch sử",
+"summary": "Ghi một bản ưng ý với cái tên NGƯỜI DÙNG đã nói ra. Chỉ dùng khi họ đã đặt tên trong câu của họ — nếu chưa, dùng snapshot.propose để hỏi. Bạn không được nghĩ ra tên.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ten",
+"ghi_chu",
+"passed"
+]
+},
+{
+"name": "snapshot.compare",
+"group": "Lịch sử",
+"summary": "So sánh hai bản ưng ý theo loại hiện vật: yêu cầu thêm/bớt, Fact đổi, mã khác, tài liệu. Dùng 'hien_tai' cho vế thứ hai để so với trạng thái bây giờ.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"a",
+"b"
+]
+},
+{
+"name": "snapshot.restore",
+"group": "Lịch sử",
+"summary": "Khôi phục dự án về một bản ưng ý. KHÔNG xoá lịch sử — tạo một changeset mới. Trước khi gọi, hãy gọi snapshot.compare để biết sẽ mất gì và nói cho người dùng.",
+"risk": "R2",
+"gate": "G-HIST",
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"snapshot",
+"giu_ban_hien_tai"
+]
+},
+{
+"name": "snapshot.release",
+"group": "Lịch sử",
+"summary": "Đánh dấu một bản ưng ý là RELEASE. Release là điều kiện cho các thao tác khoá vĩnh viễn (RDP, eFuse) — vì sau khi khoá thì không còn đường lùi, nên phải có một bản đã biết là chạy được.",
+"risk": "R2",
+"gate": "G-SNAP",
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"snapshot"
+]
+},
+{
+"name": "branch.create",
+"group": "Lịch sử",
+"summary": "Rẽ một nhánh để thử phương án khác song song, không đụng tới nhánh hiện tại. Dùng khi người dùng muốn thử hai hướng mà chưa chốt hướng nào.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ten"
+]
+},
+{
+"name": "branch.switch",
+"group": "Lịch sử",
+"summary": "Chuyển sang một nhánh khác. Trạng thái hiện tại được ghi checkpoint ngầm trước khi chuyển.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ten"
+]
+},
+{
+"name": "branch.merge",
+"group": "Lịch sử",
+"summary": "GỘP một nhánh vào nhánh đang đứng. Tệp gộp bằng git; hiện vật thì chỉ lấy phần MỘT bên đổi — cả hai bên cùng đổi thì để nguyên và kê ra cho người quyết. Xung đột tệp thì HUỶ phép gộp, không để lại cây làm việc dở dang.",
+"risk": "R3",
+"gate": "G-HIST",
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [],
+"params": [
+"tu",
+"explain"
+]
+},
+{
+"name": "branch.list",
+"group": "Lịch sử",
+"summary": "Liệt kê các nhánh và cho biết đang ở nhánh nào.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": []
+},
+{
+"name": "ckm.chip_add",
+"group": "Thiết kế",
+"summary": "Đưa một chip và bảng chân của nó vào Bản đồ tri thức mạch. Chân lấy từ Fact đã có trong kho — công cụ này KHÔNG tạo chân, nên nếu chưa nạp bảng chân thì nó nói thẳng là chưa có gì để đưa vào.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"ckm"
+],
+"params": [
+"chip",
+"ref",
+"explain"
+]
+},
+{
+"name": "ckm.module_set",
+"group": "Thiết kế",
+"summary": "Ghi một KHỐI của mạch: nó làm gì, gồm linh kiện nào, nhận tín hiệu gì và ra tín hiệu gì. Gọi nhiều lần, mỗi khối một lần. Mã tự nối các khối theo tên tín hiệu và tự vẽ sơ đồ — bạn không cần vẽ mũi tên.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"block_diagram"
+],
+"params": [
+"ma",
+"ten",
+"muc_dich",
+"linh_kien",
+"tin_hieu_vao",
+"tin_hieu_ra",
+"rail",
+"dap_ung_req",
+"cha",
+"explain"
+]
+},
+{
+"name": "diagram.render",
+"group": "Thiết kế",
+"summary": "Lấy sơ đồ khối để cho người xem: hình mermaid và bảng khối. Mã vẽ, không phải bạn vẽ — nên hình luôn khớp bản đồ hiện tại.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"dang"
+]
+},
+{
+"name": "ckm.port_set",
+"group": "Thiết kế",
+"summary": "Khai một PORT ở biên một khối — tức hợp đồng của khối với bên ngoài: tên, hướng (vào/ra/hai chiều/nguồn), và ràng buộc. Chỉ khối mới cần khai Port; Port của linh kiện là chân của nó, sinh sẵn từ Fact.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"block_diagram"
+],
+"params": [
+"khoi",
+"ten",
+"huong",
+"loai",
+"members",
+"rang_buoc",
+"explain"
+]
+},
+{
+"name": "ckm.pinout_set",
+"group": "Thiết kế",
+"summary": "Gán MỘT chân của chip cho MỘT chức năng. Chân phải có trong Fact đã nạp — công cụ từ chối chân không có trong bảng chân, và từ chối gán lại một chân đã gán. Mỗi lần gán là một quyết định thiết kế, nên đi từng chân.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"pinout"
+],
+"params": [
+"chip",
+"chan",
+"chuc_nang",
+"net",
+"thay_the",
+"vi_sao",
+"explain"
+]
+},
+{
+"name": "ckm.net_set",
+"group": "Thiết kế",
+"summary": "Ghi một NET của mạch: tên, loại, điện áp danh định, và những chân nó nối. Nếu chân thuộc một chip đã có trong bản đồ thì chân đó phải tồn tại thật.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"netlist"
+],
+"params": [
+"ten",
+"loai",
+"ap_danh_dinh",
+"chan",
+"bus",
+"trong_khoi",
+"noi_port",
+"explain"
+]
+},
+{
+"name": "ckm.from_pinout",
+"group": "Thiết kế",
+"summary": "Dựng bản đồ mạch TỪ Fact chân đã trích: mỗi giá trị `net` thành một net, mỗi `khoi` thành một khối, chân vi điều khiển thành đầu nối. MÃ dựng, không phải bạn chép tay — bạn chỉ rà lại kết quả.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"netlist",
+"block_diagram"
+],
+"params": [
+"chip",
+"ref",
+"xem_truoc",
+"explain"
+]
+},
+{
+"name": "ckm.import_netlist",
+"group": "Thiết kế",
+"summary": "Đưa một netlist đã đọc (bằng eda.netlist) vào Bản đồ tri thức mạch. Dùng khi người dùng đã có sơ đồ trong KiCad — khỏi phải khai lại từng net.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"ckm",
+"netlist"
+],
+"params": [
+"netlist_id",
+"explain"
+]
+},
+{
+"name": "board.check",
+"group": "Thiết kế",
+"summary": "Kiểm mạch bằng bốn ràng buộc tính được từ Fact: ngân sách dòng theo cây, mức logic hai đầu net, trùng địa chỉ I2C, pull-up của bus. Mỗi phát hiện nói rõ Ở KHỐI NÀO. Thiếu Fact thì trả 'chưa đủ dữ kiện' — không đoán.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"khoi"
+]
+},
+{
+"name": "ckm.graph",
+"group": "Thiết kế",
+"summary": "Tra Bản đồ tri thức mạch: có bao nhiêu chip/chân/net/khối, chân nào gán gì, chỗ nào còn hở. Gọi cái này trước khi gán chân hoặc trước khi hỏi người dùng — đừng đoán bản đồ đang có gì.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"loai",
+"chip"
+]
+},
+{
+"name": "ckm.build",
+"group": "Thiết kế",
+"summary": "Gộp bản đồ thành MỘT hiện vật CKM: khối, net, pinout, BOM, hộ chiếu. Nói rõ còn thiếu gì và chỗ nào hở. Đây là thứ mà việc sinh sơ đồ nguyên lý cần.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"ckm"
+],
+"params": [
+"explain"
+]
+},
+{
+"name": "khoi.list",
+"group": "Thiết kế",
+"summary": "Xem thư viện khối tái dùng đang có (LDO, pull-up, reset RC, dao động…). Ba tầng: dự án trước, rồi thư viện người dùng. Gọi cái này TRƯỚC khi vẽ tay một cụm quen.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ten"
+]
+},
+{
+"name": "khoi.place",
+"group": "Thiết kế",
+"summary": "Đặt một khối thư viện vào cây với tham số cụ thể. Mã tính các giá trị dẫn xuất (điện trở chia áp, tụ lọc…) từ công thức, và MỌI tham số phải nói được nó ở đâu ra — thiếu nguồn thì không đặt, chứ không điền số.",
+"risk": "R2",
+"gate": "G-DESIGN",
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"block_diagram",
+"netlist"
+],
+"params": [
+"ma",
+"khoi",
+"tham_so",
+"nguon",
+"explain"
+]
+},
+{
+"name": "khoi.extract",
+"group": "Thiết kế",
+"summary": "Lưu một khối đang có trong mạch thành khối thư viện dùng lại được. Công cụ kiểm khối có KHÉP KÍN không (chỉ giao tiếp qua Port) — không kín thì từ chối và nói rõ chỗ hở.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"report"
+],
+"params": [
+"khoi",
+"ten",
+"phien_ban",
+"mo_ta",
+"dung_chung",
+"explain"
+]
+},
+{
+"name": "khoi.upgrade",
+"group": "Thiết kế",
+"summary": "Nâng một khối đang dùng trong mạch lên phiên bản khác của khối thư viện. Nói rõ Port có đổi không — đổi Port thì STALE lan ra ngoài khối, không đổi thì không.",
+"risk": "R2",
+"gate": "G-DESIGN",
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"block_diagram"
+],
+"params": [
+"khoi",
+"ma",
+"explain"
+]
+},
+{
+"name": "env.check",
+"group": "Mã nguồn",
+"summary": "Kiểm MÁY NÀY có đủ chuỗi công cụ cho chip của dự án không: cái nào có (kèm phiên bản đọc được), cái nào thiếu, thiếu thì hỏng việc gì. Không bao giờ tự kết luận “sẵn sàng biên dịch”.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"isa"
+]
+},
+{
+"name": "tool.install",
+"group": "Mã nguồn",
+"summary": "Cài một công cụ còn thiếu vào máy. Chạy đúng lệnh mà env.check đã nêu, và chỉ chạy sau khi người dùng duyệt — EIDE không tự cài gì.",
+"risk": "R3",
+"gate": "G-TOOL",
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"cong_cu",
+"isa",
+"explain"
+]
+},
+{
+"name": "code.analyze",
+"group": "Mã nguồn",
+"summary": "PHÂN TÍCH MÃ ĐANG CÓ trước khi sửa nó: tệp có những ký hiệu gì, phụ thuộc gì, và AI ĐANG DÙNG chúng — tức chỗ nào sẽ phải xem lại sau khi sửa. Bắt buộc nói rõ SẼ ĐỔI GÌ. Sinh ra một tài liệu `.md` để người đọc trước khi duyệt cho sửa.",
+"risk": "R2",
+"gate": "G-FILE",
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [],
+"params": [
+"tep",
+"doi_gi",
+"vi_sao",
+"ra",
+"explain"
+]
+},
+{
+"name": "build.compile",
+"group": "Mã nguồn",
+"summary": "Biên dịch firmware bằng chuỗi công cụ THẬT trên máy (arduino-cli hoặc avr-gcc). Trả lỗi kèm tệp:dòng:cột, và kích thước Flash/SRAM đọc từ avr-size. Không có tệp ảnh thì KHÔNG coi là xong.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"build"
+],
+"params": [
+"sketch",
+"isa",
+"fpu",
+"explain"
+]
+},
+{
+"name": "build.map",
+"group": "Mã nguồn",
+"summary": "Đọc bản đồ bộ nhớ của tệp ảnh vừa biên dịch: từng section chiếm bao nhiêu, symbol nào to nhất, có vừa ngân sách Flash/RAM không, và nếu tràn thì bỏ gì trước khi nghĩ tới đổi chip.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"analysis"
+],
+"params": [
+"explain"
+]
+},
+{
+"name": "sim.criteria",
+"group": "Mô phỏng",
+"summary": "Nêu TIÊU CHÍ trước khi chạy mô phỏng: từng assert đo gì, ngưỡng bao nhiêu, ngưỡng lấy từ đâu, đo YÊU CẦU nào — và phần nào KHÔNG mô phỏng được. Người dùng xác nhận rồi mới chạy được sim.run.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"criteria"
+],
+"params": [
+"ma",
+"ten",
+"assert",
+"khong_mo_phong_duoc",
+"timeout_s",
+"trich_loi",
+"explain"
+]
+},
+{
+"name": "sim.run",
+"group": "Mô phỏng",
+"summary": "Chạy mô phỏng vòng điều khiển bằng CHÍNH mã logic của firmware (biên dịch cho máy chủ) trong một mô hình vật lý. Kết luận đạt/không do chương trình mô phỏng in ra dạng JSON, không do lời văn.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"sim_result"
+],
+"params": [
+"nguon",
+"tham_so",
+"explain"
+]
+},
+{
+"name": "test.sensitivity",
+"group": "Mô phỏng",
+"summary": "ĐO XEM BỘ KIỂM CÓ ĐO GÌ KHÔNG: phá mã sản phẩm rồi chạy lại test. Không ca nào đỏ nghĩa là bộ kiểm không nhìn thấy tệp ấy — dù báo cáo có bao nhiêu ô xanh. Gọi nó SAU khi test.run xanh, trước khi nói với người dùng rằng đã kiểm xong.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"nguon",
+"test"
+]
+},
+{
+"name": "test.run",
+"group": "Mô phỏng",
+"summary": "Chạy unit test của firmware trên MÁY CHỦ (phần cứng thay bằng mock): bao nhiêu ca đạt, ca nào hỏng và vì sao, và độ phủ nếu đo được.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"sim_result"
+],
+"params": [
+"nguon",
+"explain"
+]
+},
+{
+"name": "target.detect",
+"group": "Mạch thật",
+"summary": "Dò xem máy này đang cắm bo nào: ổ đĩa của bộ nạp, cổng nối tiếp, và ID chip đọc qua SWD nếu có công cụ. Nói rõ từng thứ biết được BẰNG CÁCH NÀO, và phân biệt “mã chip suy từ nhãn ổ đĩa” với “ID chip đọc từ silicon”. Với bo AVR nạp qua bootloader (Arduino Nano/Uno), đặt `doc_chu_ky_avr=true` để ĐỌC CHỮ KÝ TỪ SILICON — nhưng việc đó RESET bo, nên phải nói trước cho người dùng.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"doc_chu_ky_avr",
+"cong",
+"baud_bootloader"
+]
+},
+{
+"name": "target.flash",
+"group": "Mạch thật",
+"summary": "NẠP firmware vào bo thật. Không hoàn tác được: bản đang chạy trên chip bị ghi đè. Đối chiếu chip trước khi nạp; nếu không đọc được ID chip thì phải có `dong_y_khong_doi_chieu_chip=true` mới nạp.",
+"risk": "R4",
+"gate": "G-FLASH",
+"core": true,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"target"
+],
+"params": [
+"tep",
+"cach",
+"cong",
+"baud_bootloader",
+"ma_chip_avrdude",
+"bo_kit_fpga",
+"giu_sau_tat",
+"bat_log_giay",
+"cong_log",
+"dong_y_khong_doi_chieu_chip",
+"explain"
+]
+},
+{
+"name": "target.verify",
+"group": "Mạch thật",
+"summary": "ĐỌC NGƯỢC Flash từ chip rồi so từng byte với tệp đã nạp. Đây là bằng chứng độc lập: `st-flash write` tự nói “verified”, nhưng đó là lời của chính công cụ vừa ghi. Công cụ này đi hỏi silicon con chip đang chứa bản nào.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"tep"
+]
+},
+{
+"name": "target.screen",
+"group": "Mạch thật",
+"summary": "ĐỌC BỘ NHỚ KHUNG ẢNH của bo và ghi ra PNG để XEM chương trình đã vẽ được gì. Dùng khi người dùng nói màn hình đen/sai: nó tách được hai nguyên nhân hoàn toàn khác nhau — chương trình vẽ sai, hay nó vẽ đúng mà tấm panel không hiện. Bỏ trống tham số thì tự đọc địa chỉ/kích thước/định dạng từ thanh ghi LTDC.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"dia_chi",
+"rong",
+"cao",
+"dinh_dang",
+"tep"
+]
+},
+{
+"name": "target.debug",
+"group": "Mạch thật",
+"summary": "SOI chip đang chạy: dừng nó lại, xem nó đang ở đâu (mã thường hay trong một ngắt), đọc PC/xPSR/MSP, ĐỌC THANH GHI LỖI CFSR/HFSR và dịch từng bit thành lời, ĐỔI ĐỊA CHỈ THÀNH TÊN HÀM + tệp:dòng, rồi cho chạy tiếp. Dùng khi firmware dịch sạch và nạp đúng MÀ hành vi vẫn sai — đừng đi đọc cả cây mã nguồn để đoán hàm nào ở địa chỉ nào, công cụ này trả lời sẵn.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"dia_chi",
+"so_tu",
+"bien",
+"lay_mau"
+]
+},
+{
+"name": "target.log",
+"group": "Mạch thật",
+"summary": "Đọc log từ cổng nối tiếp của bo trong một khoảng thời gian. Cổng im lặng thì nói là im lặng — đó KHÔNG phải bằng chứng firmware sai.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"cong",
+"baud",
+"giay"
+]
+},
+{
+"name": "hdl.lint",
+"group": "Mạch thật",
+"summary": "Soát cú pháp và lỗi cấu trúc trong Verilog bằng Verilator, KHÔNG tổng hợp và KHÔNG chạy. Rẻ (vài giây) và bắt được phần lớn lỗi mà nếu để tới chặng tổng hợp thì phải chờ vài phút mới biết.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"nguon",
+"dinh",
+"explain"
+]
+},
+{
+"name": "hdl.sim",
+"group": "Mô phỏng",
+"summary": "Chạy testbench Verilog và đọc PASS/FAIL mà CHÍNH testbench in ra. Không kết luận từ việc chương trình chạy xong: testbench không in gì thì KHÔNG đạt. `bo_may=verilator` cho bài đo số chu kỳ (nhanh hơn Icarus nhiều bậc).",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [],
+"params": [
+"nguon",
+"dinh",
+"bo_may",
+"dinh_nghia",
+"do_nhay",
+"explain"
+]
+},
+{
+"name": "hdl.synth",
+"group": "Mạch thật",
+"summary": "Tổng hợp Verilog thành mạng cổng cho chip Gowin (Yosys `synth_gowin`). Báo số LUT, FF, BSRAM, DSP ĐỌC TỪ bảng thống kê của Yosys — không ước lượng. Đạt chỉ khi có tệp mạng cổng trên đĩa và tệp ấy không rỗng.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"build"
+],
+"params": [
+"nguon",
+"dinh",
+"bo_kit",
+"explain"
+]
+},
+{
+"name": "hdl.pnr",
+"group": "Mạch thật",
+"summary": "Đặt-đi dây mạng cổng lên chip thật (nextpnr-himbaechel) và báo **Fmax thật đo được**. KHÔNG đạt nếu Fmax thấp hơn tần số định chạy: bitstream dựng từ một thiết kế không đạt định thời vẫn nạp được và vẫn chạy sai — sai kiểu lúc được lúc không, khó tìm nhất.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"build"
+],
+"params": [
+"dinh",
+"cst",
+"tan_so_mhz",
+"bo_kit",
+"explain"
+]
+},
+{
+"name": "hdl.bitstream",
+"group": "Mạch thật",
+"summary": "Đóng gói bố trí đã đi dây thành tệp `.fs` nạp được vào FPGA (gowin_pack). Tên chip đọc THẲNG từ tệp bố trí, không lấy từ bảng — nên không có đường nào sinh ra bitstream cho nhầm chip.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": true,
+"req": [],
+"produces": [
+"build"
+],
+"params": [
+"dinh",
+"bo_kit",
+"explain"
+]
+},
+{
+"name": "task.run",
+"group": "Điều phối",
+"summary": "Giao một việc cho TÁC TỬ CON chuyên trách: nó chạy với ngữ cảnh sạch, tập công cụ giới hạn, và trả về báo cáo có lược đồ. Ai tuyên “đạt” thì tự động qua verifier độc lập.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"subagent",
+"viec",
+"explain"
+]
+},
+{
+"name": "skill.load",
+"group": "Điều phối",
+"summary": "Nạp một SKILL — hướng dẫn viết sẵn cho một loại việc (nêu tiêu chí trước, viết AVR bare-metal, phân tích hardfault…). Nạp rồi thì làm theo, đừng làm theo trí nhớ chung.",
+"risk": "R1",
+"gate": null,
+"core": false,
+"feature": null,
+"writes": false,
+"req": [],
+"produces": [],
+"params": [
+"ten",
+"tim"
+]
+},
+{
+"name": "sch.compose",
+"group": "Thiết kế",
+"summary": "Soạn tệp SKiDL mô tả mạch từ cây khối: mỗi khối thành một hàm, Port thành tham số, linh kiện thành Part. Mã sinh tệp — bạn chỉ chọn style. Chân dùng phải có trong Fact pinout, nên nó không bịa được chân.",
+"risk": "R2",
+"gate": null,
+"core": true,
+"feature": "schematic",
+"writes": true,
+"req": [],
+"produces": [
+"skidl_src"
+],
+"params": [
+"style",
+"explain"
+]
+},
+{
+"name": "sch.netlist",
+"group": "Thiết kế",
+"summary": "Sinh netlist KiCad (.net) từ tệp SKiDL, và KIỂM nó khớp bản đồ mạch. Lệch thì dừng kèm diff — một net không có trong bản đồ nghĩa là mạch sắp vẽ có một đường dây không ai quyết.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": "schematic",
+"writes": true,
+"req": [
+"tệp SKiDL (sch.compose)"
+],
+"produces": [
+"netlist_kicad"
+],
+"params": [
+"explain"
+]
+},
+{
+"name": "sch.symbols",
+"group": "Thiết kế",
+"summary": "Chọn ký hiệu cho từng linh kiện: thư viện chính thức nếu có và KHỚP Fact pinout, không thì sinh ký hiệu từ Fact. Ký hiệu sinh ra ghi rõ nó lấy chân từ đâu.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": "schematic",
+"writes": true,
+"req": [],
+"produces": [
+"symbol_map"
+],
+"params": [
+"uu_tien",
+"explain"
+]
+},
+{
+"name": "sch.symbol_confirm",
+"group": "Thiết kế",
+"summary": "Ghi lại việc NGƯỜI đã xem một ký hiệu sinh từ Fact và xác nhận nó, hoặc sửa kiểu chân. Đòi lời của chính người dùng — bạn không xác nhận hộ họ được.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": "schematic",
+"writes": true,
+"req": [],
+"produces": [
+"symbol_map"
+],
+"params": [
+"ref",
+"trich_loi",
+"kieu_chan",
+"explain"
+]
+},
+{
+"name": "sch.place",
+"group": "Thiết kế",
+"summary": "Tính bố cục sơ đồ: vùng cho từng khối theo luồng tín hiệu, vị trí từng ký hiệu, nhãn net. MÃ tính toạ độ — bạn chỉ chọn khổ giấy. Tiêu chí nghiệm thu đo bằng SỐ (không ký hiệu nào chồng nhau, không dây cắt thân, ≤ 70 % net dùng nhãn).",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": "schematic",
+"writes": true,
+"req": [],
+"produces": [
+"layout"
+],
+"params": [
+"kho",
+"explain"
+]
+},
+{
+"name": "sch.write",
+"group": "Thiết kế",
+"summary": "Ghi tệp .kicad_sch (+ .kicad_pro) từ bố cục. uuid sinh theo ref nên lần sinh lại KHÔNG làm mất thứ người dùng đã sửa trong KiCad. Ghi xong đọc lại bằng chính thư viện để chắc tệp mở được.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": "schematic",
+"writes": true,
+"req": [],
+"produces": [
+"code"
+],
+"params": [
+"ten_sheet",
+"style",
+"explain"
+]
+},
+{
+"name": "sch.render",
+"group": "Thiết kế",
+"summary": "Vẽ sơ đồ thành ảnh SVG bằng bộ vẽ nội bộ (máy không cài KiCad). Kiểm luôn ba điều: ảnh có ký hiệu, số ký hiệu khớp số ref, và chữ không đè nhau.",
+"risk": "R1",
+"gate": null,
+"core": true,
+"feature": "schematic",
+"writes": true,
+"req": [],
+"produces": [
+"report"
+],
+"params": [
+"explain"
+]
+},
+{
+"name": "sch.export",
+"group": "Thiết kế",
+"summary": "Xuất gói sơ đồ (.kicad_sch + .kicad_sym + .net + SVG + .kicad_pro) vào một thư mục để người mở ở máy KHÁC đã có KiCad. Máy này không cài KiCad.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": "schematic",
+"writes": true,
+"req": [],
+"produces": [
+"report"
+],
+"params": [
+"explain"
+]
+},
+{
+"name": "sch.import",
+"group": "Thiết kế",
+"summary": "Nạp lại sơ đồ người dùng đã sửa trong KiCad. So với bản đồ mạch rồi phân loại: chỉ bố cục · đổi giá trị linh kiện · đổi CẤU TRÚC. Cấu trúc đổi thì HỎI, không bao giờ tự ghi đè bản đồ.",
+"risk": "R2",
+"gate": null,
+"core": false,
+"feature": "schematic",
+"writes": true,
+"req": [],
+"produces": [
+"report"
+],
+"params": [
+"thu_muc",
+"explain"
+]
+}
+]

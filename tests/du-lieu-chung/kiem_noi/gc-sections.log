@@ -1,0 +1,1 @@
+/opt/homebrew/opt/arm-none-eabi-binutils/bin/arm-none-eabi-ld: removing unused section '.text.SysTick_handler' in file '/var/folders/k4/4fgy070s0qbfk79wxsgn69qm0000gn/T//ccJ0Xg4M.o'
