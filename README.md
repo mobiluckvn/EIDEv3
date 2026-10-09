@@ -40,9 +40,10 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 
 ## 1 · Nhìn một lượt: EIDE làm được gì
 
-Agent có **132 công cụ** (121 bật mặc định, thêm 9 công cụ vẽ sơ đồ mạch và 1 công cụ tự nâng
-bộ kiểm bật bằng cờ), **8 Agent con**, **8 bộ hướng dẫn nạp theo việc**, **11 cửa duyệt**, và **11 tab** để người xem
-việc đang tới đâu.
+Agent có **132 công cụ**: **122 đăng ký mặc định** — trong đó 73 nằm sẵn trong lược đồ mỗi lượt,
+số còn lại hiện ra sau khi Agent gọi `tool.search` — cộng **10 công cụ chỉ đăng ký khi bật cờ**
+(9 công cụ vẽ sơ đồ mạch và 1 công cụ tự nâng bộ kiểm). Thêm **8 Agent con**, **8 bộ hướng dẫn
+nạp theo việc**, **11 cửa duyệt**, và **11 tab** để người xem việc đang tới đâu.
 
 Bảng dưới xếp theo *việc người cần làm*, không theo cách chia mã:
 
@@ -479,7 +480,7 @@ nhau, nên gộp vào một cột là nói sai về sản phẩm.
 ### Một việc không thêm tính năng nào nhưng đáng kể
 
 Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào** (số
-đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 130). Bảy công cụ có đường dẫn tới chúng
+đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 132). Bảy công cụ có đường dẫn tới chúng
 bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **115/132 đã được dùng
 thật**.
 
@@ -492,9 +493,14 @@ có 106 việc; **30 việc đã xong** (DEV-330 → DEV-359). Mỗi việc tìm
 không nhìn tới, và mỗi việc đều đo lại được trên dữ liệu phiên đã chạy chứ không chỉ trên ca
 kiểm. Bộ kiểm 1 610 → **2 030 ca**, không ca cũ nào đỏ ở bất kỳ bước nào.
 
-Giai đoạn 1 có 32 việc; **30 việc xong**. Hai việc còn lại là một tiền đề P1 cỡ lớn (phân tích
-tĩnh chiều sâu) và việc P0 phụ thuộc nó — nên **mọi việc P0 của Giai đoạn 1 mà không bị chặn
-đều đã xong**.
+Giai đoạn 1 có 32 việc; **30 việc xong**, và **mọi việc P0 của Giai đoạn 1 mà không bị chặn đều
+đã xong**. Hai việc còn lại của giai đoạn là một tiền đề **P1 cỡ lớn** (phân tích tĩnh chiều
+sâu: đồ thị gọi hàm, ngăn xếp theo chuỗi gọi, luật ngữ cảnh ngắt) và việc **P0** phụ thuộc cứng
+vào nó.
+
+Nói cho đủ: còn **hai việc P0 nữa ở Giai đoạn 2** và cả hai đã hết bị chặn — chỉ mục tìm kiếm
+tài liệu, và trích bảng có cấu trúc từ PDF datasheet. Cả hai cỡ **L**, và việc thứ hai cần một
+phụ thuộc mới, nên theo luật của chính dự án thì phải hỏi chủ sản phẩm trước khi cài.
 
 Và một con số nữa về chính đợt này: với mỗi việc, phép **"phá lại thì đỏ"** được dựng từ
 `git diff` rồi chạy lại cho tới khi mọi chỗ sửa đều có ca canh. Chín việc trước bắt
