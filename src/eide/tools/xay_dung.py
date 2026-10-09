@@ -720,10 +720,12 @@ def dang_ky(r: Registry) -> None:
         canon = {**kq.to_dict(), "ma_tieu_chi": tc.ma, "xet": xet, "so_do": do,
                  "khong_mo_phong_duoc": tc.khong_mo_phong_duoc,
                  "dat": bool(kq.chay_duoc and xet["dat"])}
+        # M4-11 — cùng chỗ đứt với `test.run`: xem ghi chú ở đó.
         ctx.store.apply(
             artefact_id=MA_SIM, type="sim_result",
             op="update" if ctx.store.get(MA_SIM) else "create",
             author=f"agent:{ctx.run_id}", canonical=canon, explain=explain,
+            deps={"upstream": _khep_include(goc, ds)},
             view_hint={"kind": "table", "path": "sim"})
 
         if not kq.chay_duoc:
@@ -1305,10 +1307,18 @@ def dang_ky(r: Registry) -> None:
                          "tep_nguon": kq.tep_nguon},
                 alternatives=["test.criteria", "test.run"], blame="agent"))
 
+        # M4-11 — KHAI `deps.upstream`, và khai bằng bao đóng `#include`, không chỉ bằng
+        # danh sách tệp đưa cho trình biên dịch.
+        #
+        # Thiếu khai thì chuỗi mặc định §E5.4 (`"code" → sim_result`) đánh STALE **mọi** kết
+        # quả test khi sửa **bất kỳ** tệp mã nào — sửa một tệp vẽ LCD làm con số unit test
+        # sáng đèn lỗi thời. Một băng cảnh báo lúc nào cũng sáng là băng cảnh báo không ai
+        # đọc. Lớp đọc (`deps.ha_nguon_cua`) đã đúng từ M2-01; chỗ đứt là lớp GHI này.
         ctx.store.apply(
             artefact_id=MA_TEST, type="sim_result",
             op="update" if ctx.store.get(MA_TEST) else "create",
             author=f"agent:{ctx.run_id}", canonical=kq.to_dict(), explain=explain,
+            deps={"upstream": _khep_include(goc, ds)},
             view_hint={"kind": "table", "path": "test"})
 
         if not kq.chay_duoc:
@@ -1431,6 +1441,60 @@ def _han_muc(ctx: Any, hc: dict[str, Any] | None) -> tuple[int, int]:
 # kiểm thành ra xanh mãi mãi. Một cái tên tệp đoán sẵn đã đẻ ra một ô xanh giả.
 _HEADER_CUA_BO = ("stm32", "stm32469i_discovery", "cmsis", "core_cm", "FreeRTOS.h", "bsp",
                   "hal_", "nrf", "esp_", "driverlib")
+
+
+def _khep_include(goc: Any, ds: list[Any], tran: int = 200) -> list[str]:
+    """Bao đóng `#include "..."` CỤC BỘ của các tệp vừa dịch — đường tương đối với `goc`.
+
+    Vì sao `deps.upstream` không thể chỉ là danh sách tệp đưa cho trình biên dịch: `test.run`
+    nêu `nguon` tường minh thì nó dịch **đúng** các tệp ấy, nhưng một tệp test
+    `#include "../firmware/pid.c"` vẫn phụ thuộc vào `pid.c` thật. Hẹp `upstream` lại mà bỏ
+    bao đóng này thì bản sửa M4-11 tự đẻ ra một ô *"còn tươi"* GIẢ — đúng loại sai nó đi vá.
+    Thiếu một mắt trong `upstream` không kêu lên; nó chỉ im lặng bảo rằng một con số cũ còn
+    đúng.
+
+    Chỉ `#include "..."`, không `<...>`: header hệ thống không phải phụ thuộc của dự án, và
+    kéo chúng vào làm đồ thị rộng ra mà không nói thêm gì. Cùng lý do, một tệp **không tồn
+    tại** thì bỏ: một id không có hiện vật nào ứng với nó chỉ là tiếng ồn trong đồ thị.
+    """
+    import re as _re
+    from pathlib import Path as _P
+
+    goc = _P(goc)
+    hang_doi = [_P(x) for x in ds]
+    xong: set[_P] = set()
+    ra: list[str] = []
+    # Trần đếm LƯỢT, không đếm số tệp đã xong. Hai tệp `#include` lẫn nhau làm hàng đợi dài
+    # mãi trong khi `xong` dừng ở hai phần tử — nên một trần đặt trên `len(xong)` không chặn
+    # gì cả. Tìm ra bằng chính tập phá của nhiệm vụ này: phép phá "bỏ dedupe" treo 900 giây
+    # thay vì đỏ, và cái treo ấy nói rằng `xong` đang gánh một việc mà trần tưởng mình gánh.
+    for _ in range(tran):
+        if not hang_doi:
+            break
+        p = hang_doi.pop(0)
+        try:
+            p = p.resolve()
+        except OSError:
+            continue
+        if p in xong or not p.is_file():
+            continue
+        xong.add(p)
+        try:
+            rel = str(p.relative_to(goc.resolve()))
+        except ValueError:
+            continue                  # ngoài dự án: không phải hiện vật của kho này
+        if rel not in ra:
+            ra.append(rel)
+        try:
+            van = p.read_text("utf-8", errors="replace")
+        except OSError:
+            continue
+        for h in _re.findall(r'^\s*#\s*include\s*"([^"]+)"', van, _re.M):
+            for ung in (p.parent / h, goc / h):
+                if ung.is_file():
+                    hang_doi.append(ung)
+                    break
+    return ra
 
 
 def _logic_dich_duoc_tren_may(goc: Any) -> list[Any]:

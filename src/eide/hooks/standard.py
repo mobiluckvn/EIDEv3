@@ -849,6 +849,74 @@ def register_standard_hooks(bus: HookBus) -> HookBus:
                        "Verifier bảo `khong_dat` hay `chua_du_du_kien` thì NÓI RA điều đó "
                        "với người dùng, đừng giữ lại kết luận cũ.\n</system-reminder>"))
 
+    # Kết quả đo đã lỗi thời thì không được đứng im trong một lời tuyên xong.
+    #
+    # `mark_stale` của §E5.4 chỉ *đánh dấu và nói lý do* — có chủ ý: không tự xoá, không tự
+    # chạy lại, người quyết. Nhưng nếu không chỗ nào ĐỌC cái nhãn ấy lúc kết lượt thì nó là
+    # trang trí: đúng hình dạng lỗi gặp bốn lần trong đợt này (DANG-LAM #9) — phép đo đúng,
+    # con số đúng, rồi con số không đi tới đâu.
+    #
+    # Không cờ: đây là sửa lỗi thuần theo N6 (không báo đạt giả), không phải một thói quen
+    # mới của tác tử.
+    _TOOL_CHAY_LAI = {"sim_result:unit-test": "test.run", "sim_result:can-bang": "sim.run"}
+
+    @bus.on_stop
+    def ket_qua_stale(ctx: Any) -> StopResult:
+        """Lượt tuyên xong mà còn kết quả test/sim LỖI THỜI thì nhắc một vòng.
+
+        Ba cửa thoát, và mỗi cửa có lý do riêng:
+
+        * **Lượt thuần đọc** (`da_ghi_gi_do` False) thường là lượt trả lời một câu hỏi. Bắt
+          nó chạy lại test là dựng thủ tục quanh một cuộc trò chuyện — cùng lý do với
+          `kiem_viec_chua_ai_kiem`.
+        * **Chưa trả lượt về** thì chưa tới lúc.
+        * **Nhắc đúng một lần mỗi lượt**: vòng thứ hai là vòng tác tử đang TRẢ LỜI lời nhắc.
+
+        `sim_result:test-sensitivity` KHÔNG tính ở đây: nó đã có hook riêng
+        (`test_xanh_chua_do_nhay`), và hook ấy so `version_test` — một phép đo chính xác hơn
+        "nhãn stale". Hai hook cùng nhắc một việc thì lời nhắc thứ hai chỉ là tiếng ồn.
+        """
+        if not getattr(ctx, "said_anything", False):
+            return StopResult()
+        if not getattr(ctx, "da_ghi_gi_do", False):
+            return StopResult()
+        if getattr(ctx, "da_nhac_stale", False):
+            return StopResult()
+        try:
+            ds = ctx.store.list("sim_result", limit=50)
+        except Exception:                                    # noqa: BLE001
+            return StopResult()
+        cu = [a for a in (ds or [])
+              if a.get("stale") and a.get("id") != "sim_result:test-sensitivity"]
+        if not cu:
+            return StopResult()
+        ctx.da_nhac_stale = True
+
+        # MỞ KHOÁ công cụ chạy lại trước khi bảo nó chạy. `test.run`/`sim.run` là
+        # `core=False`, tức tác tử chỉ thấy chúng sau `tool.search` — bảo ai đó dùng một
+        # thứ họ không nhìn thấy thì không phải là bảo (bài học M4-06, DEV-351).
+        r_ = getattr(ctx, "registry", None)
+        goi = sorted({_TOOL_CHAY_LAI.get(a["id"], "test.run") for a in cu})
+        if r_ is not None and hasattr(r_, "_unlocked"):
+            for t in goi:
+                r_._unlocked.add(t)
+
+        dong = "\n".join(
+            f"* `{a['id']}` — {a.get('stale_reason') or 'không ghi lý do'} → chạy lại bằng "
+            f"`{_TOOL_CHAY_LAI.get(a['id'], 'test.run')}`" for a in cu[:6])
+        return StopResult(
+            another_round=True, reason_vi="còn kết quả đo đã lỗi thời",
+            fired=["ket_qua_stale"],
+            injection=("<system-reminder>\nBạn đang trả lượt về, mà có kết quả đo đã **lỗi "
+                       "thời** vì mã đã đổi sau lần đo:\n\n" + dong + "\n\n"
+                       "Con số cũ KHÔNG còn nói về mã hiện tại. Chạy lại phép đo trước khi "
+                       "báo, hoặc nói thẳng với người dùng rằng con số bạn đang kể là con số "
+                       "của bản trước và chưa đo lại.\n\n"
+                       "Đo được trên một phiên bo thật: “dịch sạch + nạp đúng từng byte” đều "
+                       "ĐÚNG trong khi chương trình đang chạy vẫn là bản cũ. Một con số đã "
+                       "lỗi thời mà không ai đánh dấu thì tệ hơn không có con số, vì nó dừng "
+                       "việc đo lại.\n</system-reminder>"))
+
     @bus.on_stop
     def req_chua_phu(ctx: Any) -> StopResult:
         """M2-02 — còn YÊU CẦU chưa ai đo mà lượt đã kết thúc thì nhắc một vòng.

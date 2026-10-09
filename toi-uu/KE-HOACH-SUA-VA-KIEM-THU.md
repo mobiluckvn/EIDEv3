@@ -157,7 +157,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | 22 | [M4-06](#m4-06) | Vòng tự nâng test khi đột biến sống (Evaluator–Optimizer) | P0 | M | M4-04, M4-05 | TEST_HARDEN — TẮT | xong 09/10/2026 · DEV-351 · 1862→1878 ca · phá lại 22/22 (lượt đầu 18/22) · **một tiêu chí CHƯA đạt**: "mutation score tăng sau harden" cần lời gọi mô hình (§3.0 bắt hỏi trước), và dự án mẫu không có chỗ để đo | ☑ |
 | 23 | [M4-07](#m4-07) | Verifier nhận gói bằng chứng do EIDE dựng từ sổ cái, không nhận đề bài tác tử chính tự viết | P0 | M | — | VERIFIER_GOI_BANG_CHUNG | DEV-352 · một tiêu chí còn mở (cần M4-22) | ☑ |
 | 24 | [M4-09](#m4-09) | Stop hook không được coi `task.run` với subagent khác là "đã kiểm chứng" | P0 | S | — | — | DEV-353 | ☑ |
-| 25 | [M4-11](#m4-11) | Hồi quy tự động sau khi sửa mã + STALE chính xác theo tệp | P0 | M | M2-01 | HOI_QUY_NEN |  | ☐ |
+| 25 | [M4-11](#m4-11) | Hồi quy tự động sau khi sửa mã + STALE chính xác theo tệp | P0 | M | M2-01 | HOI_QUY_NEN | DEV-354 | ☑ |
 | 26 | [M2-09](#m2-09) | Phân tích tĩnh chiều sâu: call graph, ngăn xếp, luật ngữ cảnh ISR (`code.static`) | P1 | L | M2-08 | — | kéo lên từ GĐ3 vì là tiền đề của M4-13 | ☐ |
 | 27 | [M4-13](#m4-13) | Kiểm "nối" tĩnh sau biên dịch (vector table, hàm không ai gọi, return hằng) | P0 | M | M2-09 | KIEM_NOI |  | ☐ |
 | 28 | [M5-03](#m5-03) | Bộ đọc SVD: nạp register map thành Fact `reg:`/`field:` + `reg.lookup` | P0 | M | — | — |  | ☐ |
@@ -1885,10 +1885,14 @@ Sau khi thêm hai ca: **36/36**.
 - test_nguoi_sua_NGUONG_tren_bang_thi_ket_qua_cu_thanh_LOI_THOI giữ nguyên.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Chỉ số: số lần tuyên xong với kết quả STALE trong sổ cái phiên mẫu = 0.
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ": **31/34** (lượt đầu 24/32). Ba chỗ LỌT còn lại đã
+      kiểm lại là **không đổi hành vi** — xem DEV-354.
+- [x] Toàn bộ `pytest -q` xanh: 1 901 → **1 929**, 0 đỏ.
+- [ ] **CHƯA ĐẠT** — *"số lần tuyên xong với kết quả STALE = 0"* cần **phát lại** phiên mẫu với
+      hook mới (sổ cái không ghi trạng thái kho tại thời điểm ấy), tức lời gọi mô hình thật, mà
+      §3.0 bắt hỏi người dùng trước. Thay vào đó đã đo trên **9 kho thật**: bán kính STALE của
+      kết quả test/sim khi sửa một tệp mã **107 → 49 lần** (58/107 là cáo buộc oan).
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md — DEV-354.
 
 **Hoàn tác:** tắt cờ cho phần tự chạy; revert commit cho phần STALE và hook.
 
