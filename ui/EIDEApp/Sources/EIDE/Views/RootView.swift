@@ -198,12 +198,17 @@ struct RootView: View {
 
 /// Thanh 11 tab.
 ///
-/// Trên cửa sổ hẹp, thanh này là chỗ đầu tiên "mất control bên phải": 11 tên đầy đủ cần hơn
-/// 1.100 pt, còn khổ cửa sổ tối thiểu chỉ có ngần ấy cho CẢ cửa sổ. Nó vẫn cuộn ngang được,
-/// nhưng một tab phải cuộn mới thấy là một tab người dùng sẽ không bấm.
+/// Trên cửa sổ hẹp, thanh này là chỗ đầu tiên "mất control bên phải": tên đầy đủ của tất cả
+/// các tab cần hơn 1.100 pt, còn khổ cửa sổ tối thiểu chỉ có ngần ấy cho CẢ cửa sổ. Nó vẫn
+/// cuộn ngang được, nhưng một tab phải cuộn mới thấy là một tab người dùng sẽ không bấm.
 ///
-/// Nên: chật thì rút gọn tên (`Yêu cầu & Giải pháp` → `Yêu cầu`) và thu nhỏ đệm, để cả 11
-/// tab cùng nằm trong khung. Vẫn giữ cuộn ngang làm lưới an toàn cho khổ còn hẹp hơn nữa.
+/// Nên: chật thì rút gọn tên (`Yêu cầu & Giải pháp` → `Yêu cầu`) và thu nhỏ đệm, để cả thanh
+/// cùng nằm trong khung. Vẫn giữ cuộn ngang làm lưới an toàn cho khổ còn hẹp hơn nữa.
+///
+/// Số tab KHÔNG viết cứng trong chú thích này nữa: 10/10/2026 thêm tab "Màn hình" (A15) thành
+/// 12 tab, và một con số viết trong chú thích là một con số sẽ lỗi thời lặng lẽ. `surfaceOrder`
+/// do lõi cấp, nên thanh này tự dài ra — và ngưỡng 1180 pt dưới đây là ngưỡng ĐO trên 11 tab,
+/// chưa đo lại cho 12. Nói ra để ai mở cửa sổ hẹp mà thấy chật thì biết chỗ sửa.
 struct TabBar: View {
     @EnvironmentObject var state: AppState
 
@@ -212,7 +217,7 @@ struct TabBar: View {
         "requirements": "Yêu cầu", "documents": "Tài liệu", "knowledge": "Tri thức",
         "design": "Thiết kế", "tools": "Công cụ", "code": "Mã nguồn",
         "simulation": "Mô phỏng", "hardware": "Mạch thật", "journal": "Nhật ký",
-        "history": "Lịch sử", "project": "Dự án",
+        "history": "Lịch sử", "project": "Dự án", "screen": "Màn hình",
     ]
 
     var body: some View {

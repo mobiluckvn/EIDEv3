@@ -40,10 +40,10 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 
 ## 1 · Nhìn một lượt: EIDE làm được gì
 
-Agent có **135 công cụ**: **125 đăng ký mặc định** — trong đó 73 nằm sẵn trong lược đồ mỗi lượt,
+Agent có **140 công cụ**: **130 đăng ký mặc định** — trong đó 73 nằm sẵn trong lược đồ mỗi lượt,
 số còn lại hiện ra sau khi Agent gọi `tool.search` — cộng **10 công cụ chỉ đăng ký khi bật cờ**
 (9 công cụ vẽ sơ đồ mạch và 1 công cụ tự nâng bộ kiểm). Thêm **8 Agent con**, **8 bộ hướng dẫn
-nạp theo việc**, **11 cửa duyệt**, và **11 tab** để người xem việc đang tới đâu.
+nạp theo việc**, **11 cửa duyệt**, và **12 tab** để người xem việc đang tới đâu.
 
 Bảng dưới xếp theo *việc người cần làm*, không theo cách chia mã:
 
@@ -66,9 +66,24 @@ Bảng dưới xếp theo *việc người cần làm*, không theo cách chia m
 mở tệp đó ra, đếm số đoạn, số bảng, số hình, rồi mới báo. Vì câu "ghi thành công" chỉ nói về
 lời gọi, không nói về tệp nằm trên đĩa.
 
+**Nó thiết kế được giao diện cho màn hình của bo, và dùng cấu hình màn hình THẬT.** Một số kit
+có cả LCD. Agent đọc cấu hình panel từ **tài liệu của bo** — độ phân giải, hệ màu, đường chéo,
+driver, bus, cảm ứng — mỗi trường kèm trích dẫn nguyên văn, và trường tài liệu không nói thì để
+trống chứ không điền mặc định. Rồi nó thiết kế màn hình bằng **toạ độ pixel thật của panel**,
+xem được ở tab **Màn hình** (tỉ lệ 1:1), và sinh ra tệp C `BSP_LCD_*` **dịch được bằng
+`arm-none-eabi-gcc`**.
+
+Phần đáng nói không phải bản vẽ, mà là năm thứ nó bắt được — cả năm đều **dịch sạch, nạp trót
+lọt, và màn hình thật thì sai**: phần tử ra ngoài biên panel; chữ dài hơn ô chứa nó (tính theo
+bảng font thật của bo — `Font24` rộng 17 px/ký tự); cỡ chữ không có trong thư viện BSP; hai màu
+khác nhau thành **một** màu sau khi hệ màu RGB565 cắt bit; và một nhãn tiếng Việt có dấu, thứ
+**không phải "mất dấu"** mà là một phép **đọc ra ngoài bảng font** — bảng font của bo có đúng
+95 ký tự ASCII và `BSP_LCD_DisplayChar` không kiểm biên, nên `'ộ'` đọc hơn 7 KB quá bảng và vẽ
+ra pixel rác.
+
 **Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà trong kho chưa có
 công cụ nào làm được, nó tự viết một công cụ mới kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ
-đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 135 công cụ kể ở trên — nó sinh
+đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 140 công cụ kể ở trên — nó sinh
 ra lúc chạy, trong đúng dự án đang làm. Việc này đã chạy thật, không phải tính năng trên giấy.
 
 ---
@@ -340,7 +355,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **2 160 ca Python + 43 ca giao diện**
+### Mức 1 — Ca đơn vị: **2 232 ca Python + 43 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -458,8 +473,8 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 | Phép đo | Kết quả | Xem ở |
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
-| Quét 11 tab giao diện | **124/124 ô** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **2 160** | `pytest -q` |
+| Quét giao diện | **124/124 ô** trên 11 tab · tab thứ 12 (Màn hình, A15) **chưa quét** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
+| Ca đơn vị Python | **2 232** | `pytest -q` |
 | Ca đơn vị giao diện | **43** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -468,7 +483,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 18 tệp | `tools/kiem_tai_lieu.py` |
 | Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/`](docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/) |
-| Công cụ đã được dùng thật | **118/135** | rà 77 tệp sổ cái · 201 774 bản ghi (10/10/2026) |
+| Công cụ đã được dùng thật | **118/140** | rà 77 tệp sổ cái · 201 774 bản ghi (10/10/2026) |
 
 Mỗi ca kiểm có một tệp log riêng, trong đó có **bảng từng lời gọi công cụ kèm tham số đầy đủ
 và mã lỗi**: [`ket-qua-chay-lai/nhat-ky/`](docs/review-v3/test/ket-qua-chay-lai/nhat-ky/).
@@ -480,8 +495,8 @@ nhau, nên gộp vào một cột là nói sai về sản phẩm.
 ### Một việc không thêm tính năng nào nhưng đáng kể
 
 Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào** (số
-đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 135). Bảy công cụ có đường dẫn tới chúng
-bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **118/135 đã được dùng
+đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 140). Bảy công cụ có đường dẫn tới chúng
+bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **118/140 đã được dùng
 thật** — đo lại 10/10/2026 trên 77 tệp sổ cái, 201 774 bản ghi.
 
 > Con số này từng ghi là *115/134*, và nó sai vì **phép lọc**, không vì dữ liệu: lần quét ấy dùng
@@ -605,7 +620,7 @@ Cả năm đều chỉ lộ ra vì một con số trông lạ. Đó là lý do m
 không chỉ ghi "đã xong".
 
 Kế hoạch đầy đủ 106 việc nằm ở [`toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md`](toi-uu/KE-HOACH-SUA-VA-KIEM-THU.md);
-nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-363).
+nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-330 → DEV-364).
 
 ---
 
@@ -1142,8 +1157,10 @@ là chỗ hay đứt nhất. Nay mỗi khối có một ca đi qua đúng đư�
 
 Nói ra để người đọc không phải tự tìm:
 
-- **17 trong 135 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
-  bo, chưa viết xong. Và bảy công cụ mới nhất — `hdl.sensitivity` (DEV-344),
+- **22 trong 140 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
+  bo, chưa viết xong; và **năm công cụ thiết kế giao diện nhúng** vừa thêm (DEV-364) — mã của
+  chúng đã chạy trên tài liệu và trình dịch thật, nhưng chưa lượt Agent nào *gọi* chúng.
+  Và bảy công cụ trước đó — `hdl.sensitivity` (DEV-344),
   `hdl.constraints_check` (DEV-345), `test.criteria` (DEV-346), `reg.lookup` (DEV-355),
   `doc.search` (DEV-360), `code.static` (DEV-361) và `build.wiring` (DEV-362): mã của cả bảy đã
   chạy trên hiện vật thật, nhưng chưa lượt Agent nào *gọi công cụ* ấy, nên chúng vẫn tính là chưa
@@ -1323,7 +1340,7 @@ bản kể lại nào.
 ```
 src/eide/
 ├── loop.py            vòng lặp Agent
-├── tools/             135 công cụ, chia theo nhóm
+├── tools/             140 công cụ, chia theo nhóm
 ├── policy/            luật chặn và cửa duyệt
 ├── knowledge/         đọc tài liệu, rút con số, chữ trong hình
 ├── store/             kho dữ liệu dựa trên sổ ghi việc + git

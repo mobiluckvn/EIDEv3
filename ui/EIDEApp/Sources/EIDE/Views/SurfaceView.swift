@@ -181,6 +181,7 @@ struct BlockView: View {
         case "kv":       KhoiKV(block: block)
         case "table":    KhoiBang(block: block)
         case "svg":      KhoiSoDo(block: block)
+        case "html":     KhoiHTML(block: block)
         case "cay":      KhoiCay(block: block)
         case "timeline": KhoiDongThoiGian(block: block)
         case "changesets": KhoiChangeset(block: block)
@@ -1468,6 +1469,100 @@ struct KhoiSoDo: View {
 /// Vì sao WebKit chứ không phải `NSImage`: `NSImage` vẽ được SVG nhưng không cho biết người
 /// bấm vào ĐÂU, và "bấm ký hiệu → Fact" là chính nội dung của SCH-07. Trang chạy từ tệp cục
 /// bộ, không có mạng, không có script nào ngoài đoạn gắn sự kiện dưới đây.
+/// Khối `html` — trang do lõi dựng ra, mở từ TỆP trong thư mục dự án.
+///
+/// Dùng cho bản xem màn hình nhúng (A15): trang ấy vẽ khung panel đúng tỉ lệ 1:1 bằng `px`,
+/// nên nó phải được cho đúng bề rộng nó xin — khác hẳn SVG sơ đồ, thứ cần co vừa khung.
+/// `WKWebView` không nhường bề rộng, nên cuộn ngang nằm Ở TRONG khối, không ở tab.
+///
+/// Vì sao nạp từ tệp chứ không truyền chuỗi HTML qua giao thức: một trang 800×480 kèm bảng hồ
+/// sơ và bảng lỗi là vài chục KB, và nhồi nó vào mỗi `surface.set` sẽ làm mọi lượt nặng thêm
+/// kể cả khi không ai mở tab này. Lõi ghi tệp, giao diện mở tệp — cùng cách `KhoiSoDo` làm.
+struct KhoiHTML: View {
+    @EnvironmentObject var state: AppState
+    let block: SurfaceBlock
+
+    private var duongDan: URL? {
+        guard let goc = state.duAnDir, let t = block.str("tep"), !t.isEmpty else { return nil }
+        let u = goc.appendingPathComponent(t)
+        return FileManager.default.fileExists(atPath: u.path) ? u : nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let url = duongDan {
+                TrangHTML(url: url, onBam: bam)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 360, maxHeight: 760)
+                    .background(Color(nsColor: .textBackgroundColor),
+                                in: RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.secondary.opacity(0.25)))
+                if block.str("bam_phan_tu") != nil {
+                    Text("Bấm một phần tử trong khung để hỏi tác tử về nó.")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            } else {
+                // Nói đúng cái hỏng: tệp không có, chứ không phải "chưa thiết kế".
+                Label("Không mở được tệp \(block.str("tep") ?? "—") trong thư mục dự án. "
+                      + "Hiện vật có khai tệp này, nhưng tệp không còn ở đó — nhờ tác tử dựng lại.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 11)).foregroundStyle(Color.staleAmber)
+            }
+        }
+    }
+
+    /// Câu hỏi do LÕI soạn (`bam_phan_tu` trong khối), nên nội dung không nằm rải trong Swift.
+    private func bam(_ loai: String, _ gia: String) {
+        let mau = block.str("bam_phan_tu") ?? "Cho tôi xem phần tử `{ref}`"
+        state.gui(HumanAct(kind: .say,
+                           text: mau.replacingOccurrences(of: "{ref}", with: gia),
+                           origin: .init(surface: "screen", block: block.code, row: gia)))
+    }
+}
+
+/// `WKWebView` mở một trang HTML cục bộ và báo về khi người bấm vào phần tử có `data-id`.
+///
+/// Không mạng: trang do lõi sinh, CSS nội tuyến, không tài nguyên ngoài. Script duy nhất là
+/// đoạn gắn sự kiện dưới đây.
+struct TrangHTML: NSViewRepresentable {
+    let url: URL
+    let onBam: (String, String) -> Void
+
+    func makeCoordinator() -> AnhSVG.Coordinator { AnhSVG.Coordinator(onBam: onBam) }
+
+    func makeNSView(context: Context) -> WKWebView {
+        let cfg = WKWebViewConfiguration()
+        cfg.userContentController.addUserScript(
+            WKUserScript(source: Self.gan, injectionTime: .atDocumentEnd,
+                         forMainFrameOnly: true))
+        cfg.userContentController.add(context.coordinator, name: "eide")
+        let w = WKWebView(frame: .zero, configuration: cfg)
+        nap(w)
+        return w
+    }
+
+    func updateNSView(_ w: WKWebView, context: Context) {
+        if context.coordinator.dangHien != url { nap(w) }
+        context.coordinator.dangHien = url
+    }
+
+    private func nap(_ w: WKWebView) {
+        w.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+    }
+
+    private static let gan = """
+    document.addEventListener('click', function (e) {
+      var n = e.target;
+      while (n && n !== document) {
+        var r = n.getAttribute && n.getAttribute('data-id');
+        if (r) { window.webkit.messageHandlers.eide.postMessage({loai: 'ref', gia: r}); return; }
+        n = n.parentNode;
+      }
+    }, true);
+    """
+}
+
 struct AnhSVG: NSViewRepresentable {
     let url: URL
     let onBam: (String, String) -> Void

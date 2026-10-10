@@ -10115,3 +10115,175 @@ trên — nói được vế precision (0/109 nhận bừa) và nói được ch
 nói được vế recall. Không lấy bảng ấy làm tiêu chí đã đạt.
 
 **Hết P0: 30/30.**
+
+## [DEV-364] Thiết kế GIAO DIỆN cho màn hình của bo — tab A15, năm công cụ, hai bản dựng
+
+Yêu cầu của chủ sản phẩm ngày 10/10/2026: *"một số KIT hoặc phần cứng có cả màn hình, do đó
+chúng ta sẽ cần thêm tính năng thiết kế UI… và màn hình trên UI để render màn hình UI do Agent
+thiết kế. Lưu ý là khi thiết kế UI thì cần sử dụng các cấu hình của màn hình thật theo tài liệu
+hoặc thiết kế KIT/phần cứng… output của thiết kế nên là HTML."*
+
+Hai quyết định của chủ sản phẩm sau khi tôi hỏi: **đích sinh code là `BSP_LCD_*` của kit** (vì
+tài liệu kiến trúc ghi bo dùng `stm32469i_discovery_lcd` + LTDC, không có LVGL/TouchGFX, nên
+code sinh ra dịch thử được bằng trình dịch thật); và **hồ sơ màn hình rút từ tài liệu đã có
+trong repo**.
+
+### Một chỗ tôi làm khác yêu cầu đúng một nhịp, và vì sao
+
+Yêu cầu nói output nên là HTML. Nếu HTML là **bản gốc** thì bước "chuyển thành code" phải đọc
+lại HTML để suy ra ý định, và đó là việc mất thông tin: `<div>` không nói nó là nhãn hay nút,
+`left: 37%` không nói toạ độ pixel nào trên panel 800×480.
+
+Nên: hiện vật gốc là **mô hình có cấu trúc** (`ui_screen:*`, JSON trong kho, hoàn tác được, có
+STALE); HTML và code C đều là bản **dựng ra** từ nó. Chủ sản phẩm vẫn có đúng thứ đã yêu cầu —
+HTML để render và để chuyển thành code — nhưng cả hai sinh từ một nguồn, nên chúng không lệch
+nhau được. Toạ độ trong mô hình là **pixel thật của panel**, nên HTML render 1:1.
+
+### Chỗ hổng phải vá TRƯỚC khi làm phần thiết kế
+
+`grep` cả kho ngày 10/10/2026 không ra **một** Fact nào về màn hình: `KHOA_CHUAN` không có khoá
+`lcd.*` nào, `HoChieu` của linh kiện cũng không có trường nào cho màn hình. Làm phần thiết kế
+trước thì tác tử sẽ **tự nhớ ra** `800×480` — và dự án này đã trả giá ba lần cho đúng chuyện ấy
+(`hang-so-phan-cung-phai-tra-khong-duoc-dung-lai`). Một bản thiết kế vẽ đẹp trên độ phân giải
+SAI thì mọi toạ độ trong nó đều sai, màn hình thật cắt mất một phần, và **không lỗi nào kêu**.
+
+Nên `knowledge/man_hinh.py` đi trước, và `screen.set` **không có tham số độ phân giải** —
+nhận `rong`/`cao` từ mô hình là mở lại đúng cửa vừa dựng ra để đóng.
+
+### Bảy hằng số TRA từ mã thật trong repo, không nhớ lại
+
+| hằng số | giá trị | tra ở đâu |
+|---|---|---|
+| độ phân giải panel | 800×480 | `du-lieu/stm32f469-freertos/tai-lieu-kien-truc-c4.md` |
+| hệ màu | ARGB8888 / RGB565 | cùng tệp, dòng `FrameBuffer đồ hoạ LCD` |
+| driver · bus · đường chéo | OTM8009A · MIPI-DSI · 4" | cùng tệp |
+| RAM nội · RAM ngoài | 324 KB · 16 MB SDRAM | cùng tệp |
+| kích thước 5 font BSP | 5×8 · 7×12 · 11×16 · 14×20 · 17×24 | `firmware-chay-duoc/font*.c`, trường `Width`/`Height` của `sFONT` |
+| phạm vi ký tự bảng font | **đúng 95 ký tự, ASCII 0x20–0x7E** | số byte bảng ÷ `Height × ((Width+7)/8)` |
+| định dạng màu của BSP | `0xFFRRGGBB` | `LCD_COLOR_WHITE 0xFFFFFFFF` trong header |
+
+### Năm chỗ "trình biên dịch im lặng tuyệt đối" của riêng phần giao diện
+
+Mỗi mã lỗi dưới đây là một thứ **dịch sạch, nạp trót lọt, và màn hình thật thì sai**:
+
+* **E1101** phần tử ra ngoài biên panel — LTDC cắt, không ai kêu.
+* **E1102** chữ dài hơn ô chứa nó. `BSP_LCD_DisplayStringAt` **không** tự ngắt dòng và
+  **không** tự thu nhỏ. Font BSP là font bitmap **đơn cách**, nên phép kiểm này là một **phép
+  đo** chứ không phải phỏng đoán: `Font24` rộng 17 px/ký tự, nên 12 ký tự = 204 px.
+* **E1103** cỡ chữ không có trong BSP — `BSP_LCD_SetFont(&Font14)` là một lỗi **dịch**, tức
+  lỗi người dùng chỉ gặp sau khi đã vẽ xong cả màn hình.
+* **E1104** chữ trùng màu nền **sau** lượng hoá — chữ không hiện.
+* **E1108** ký tự ngoài bảng font. Đây là phát hiện đáng giá nhất của việc này, và nó chỉ ra
+  từ việc đọc mã BSP: `BSP_LCD_DisplayChar` tra `table[(Ascii - ' ') * …]` và **không kiểm
+  biên**. Nên một nhãn tiếng Việt có dấu **không phải "mất dấu"** — `'ộ'` cho chỉ số
+  `0xE1 - 0x20 = 193`, và `193 × 72 = 13 896` byte vào một bảng dài **6 840** byte: đọc hơn
+  7 KB quá bảng, vẽ ra pixel rác. Bằng chứng thứ hai, từ firmware **đang chạy** trên bo:
+  `main.c` viết `"Hoc vien: Vu Tri Cong"` — người viết nó đã biết điều này.
+
+Và **W1101**: gần như mọi màu đều lệch một chút khi xuống RGB565, nên kêu vì "có lệch" sẽ kêu
+ở mọi thiết kế và mất nghĩa. Chỗ thật sự hỏng là khi **hai màu khác nhau trong thiết kế thành
+một màu trên panel** — một thiết kế hai tông thành một tông.
+
+Mã lỗi dùng họ **E11xx**. Bản đầu dùng `E9001`–`E9006` và suýt đi qua: dải ấy **đã bị chiếm**
+bởi sáu bất biến của cây phân cấp (`knowledge/cay.py` ghi rõ *"bất biến cây là E9001–E9006"*).
+
+### Ba chi tiết của BSP mà chỉ đọc mã nguồn mới biết, và cả ba đổi cách sinh code
+
+Đọc `stm32469i_discovery_lcd.c`, hàm `BSP_LCD_DisplayStringAt` (dòng 832–880):
+
+1. **`CENTER_MODE` căn giữa theo CẢ MÀN HÌNH, không theo ô chứa chữ** — dòng 848:
+   `refcolumn = Xpos + ((xsize - size) * Width) / 2` với `xsize = BSP_LCD_GetXSize()/Width`.
+   Một nhãn căn giữa trong ô `x=100, w=300` mà sinh `CENTER_MODE` sẽ nằm **sai chỗ**, và bản
+   render HTML **không báo gì** vì HTML căn giữa đúng trong ô. Đó là lý do `main.c` của bo
+   truyền `Xpos = 0` mỗi lần dùng `CENTER_MODE`.
+2. **`RIGHT_MODE` lấy ÂM `Xpos`** — dòng 858. Truyền `Xpos` dương vào đó dịch chữ sang trái.
+3. **`Xpos = 0` thành `Xpos = 1`** — dòng 869.
+
+Nên bộ sinh code **luôn** dùng `LEFT_MODE` và **tự tính** x cho mọi kiểu căn lề, kẹp xuống tối
+thiểu 1. Và nó **không** sinh phần khởi tạo LCD: phần ấy phụ thuộc script liên kết và cấu hình
+xung nhịp từng dự án, nên một bản "có vẻ đúng" cho nó là một tệp người dùng tưởng dùng được.
+Tệp sinh ra tự khai tiền đề ở đầu.
+
+### Phép đo của cả việc này
+
+**Code sinh ra DỊCH ĐƯỢC bằng trình dịch thật.** `arm-none-eabi-gcc -mcpu=cortex-m4 -mthumb
+-ffreestanding -Wall -Wextra -Werror` trên chính header BSP trong repo: `.o` 1 304 byte, `nm`
+thấy `T ui_ve_chinh` cùng 7 ký hiệu BSP chưa định nghĩa. Kèm một **phép phá của chính ca ấy**:
+một tệp gọi `BSP_LCD_FillRect(1,2,3)` thiếu tham số phải ĐỎ — không có nó thì ô xanh ở trên
+nói về cách tôi gọi `subprocess`, không nói về sản phẩm.
+
+Bộ đệm khung: `800×480 ARGB8888` cần **1 536 000 byte**, còn SRAM nội của bo là **324 KB** theo
+tài liệu. **Không vừa** — phải nằm ở SDRAM ngoài, và script liên kết phải đặt nó ở đó. Đặt sai
+vùng thì màn hình nhiễu **không báo lỗi**.
+
+### Phá lại thì đỏ: 67/67
+
+Lượt đầu **61/67**. Sáu chỗ LỌT chia hai loại, và cả hai đều là bài học cũ lặp lại:
+
+**Bốn lỗ trong bản mẫu của tôi.** Ba chỗ có **hai lớp chặn độc lập** nên tháo một lớp không đổi
+gì: `60 x 40 mm` bị cửa ngưỡng-pixel loại trước khi tới cửa đơn-vị-đứng-sau (phải đổi mẫu thành
+`100 x 80 mm`); và một đoạn chỉ có **một** cặp số nên phép phá "lấy khớp đầu tiên" không đổi
+được gì. Chỗ thứ tư: `#FF8040` cho **cùng** kết quả ở cả phép mở rộng phần cứng và phép nhân tỉ
+lệ, nên phép phá đổi công thức LỌT — phải dùng `#181818` (`0x18>>3 = 3`; phần cứng cho 24, nhân
+tỉ lệ cho 25).
+
+**Hai phép phá dựng SAI, và đây là một cơ chế mới.** Tôi thay **dòng đầu** của một chuỗi nối
+ngầm nhiều dòng. Python nối các literal liền nhau, nên các dòng còn lại dính vào biểu thức mới
+và câu chữ **vẫn còn nguyên** trong trang — phép phá báo LỌT oan. Phép phá vào một chuỗi nhiều
+dòng phải thay **cả biểu thức**.
+
+### Hai ca kiểm CŨ đỏ, và cả hai khoá một CON SỐ chứ không khoá một hành vi
+
+`test_UP07_ui_sync_ve_du_11_be_mat` liệt kê 11 tên bề mặt bằng tay, và `_so_lenh_ve_be_mat` trả
+về hằng `13`. Thêm tab thứ 12 làm cả hai đỏ. Theo §3.2: chúng không sai về hành vi, chúng chỉ
+viết cứng một con số — nên sửa để **suy từ `surfaces.SURFACES`**. Phép kiểm vẫn bắt được điều
+nó muốn bắt (một bề mặt khai trong `SURFACES` mà `ui.sync` không gửi; một lệnh vẽ không vào
+sổ), và không đỏ oan khi thêm tab. Cùng bài học với `test_luoc_do_v2` (DEV-355), nơi mức
+migration từng viết cứng `[4, 3, 2]`.
+
+### Tab A15, và vì sao một tab riêng
+
+`docs/review-v3/ui/ui_model.py` là tài liệu thiết kế giao diện, và nó là **chân lý** — nên A15
+vào đó trước, rồi mã mới theo. Tự kiểm của chính tệp ấy: 16 vùng · 71 khối · 256 mục · 0 chỗ
+lệch.
+
+Vì sao không gộp vào A5 "Thiết kế": A5 là thiết kế **mạch** (sơ đồ khối, pinout, netlist, BOM,
+ERC, cây phân cấp, chuẩn bị sản xuất) — khác hẳn chủ thể. Và khối chính của A15 là một khung vẽ
+1:1 với panel, tức một khối cần bề rộng riêng.
+
+Giao diện: khối `html` mới trong `SurfaceView.swift` (`KhoiHTML` + `TrangHTML`), mở trang từ
+**tệp** trong thư mục dự án — không truyền chuỗi HTML qua giao thức, vì một trang vài chục KB
+trong mỗi `surface.set` sẽ làm nặng mọi lượt kể cả khi không ai mở tab này. Cùng cách
+`KhoiSoDo` làm cho SVG. Bấm một phần tử → câu hỏi do **lõi** soạn (`bam_phan_tu`), nên nội
+dung câu hỏi không nằm rải trong mã Swift.
+
+### Bốn chỗ bản render HTML có thể nói dối, và cách chặn từng chỗ
+
+1. **tỉ lệ** — `px` tuyệt đối, khung đúng `800px × 480px`; render theo phần trăm cho một bản
+   xem đẹp mà không đối chiếu được với màn hình thật.
+2. **màu** — vẽ bằng màu **panel sẽ hiện** sau lượng hoá, không bằng màu gõ vào. Vẽ `#FF8040`
+   khi panel RGB565 hiện `#FF8242` là làm bản xem **đẹp hơn** màn hình thật.
+3. **nguồn** — trang tự khai độ phân giải, driver, và **trích dẫn nguyên văn** của từng trường
+   cấu hình.
+4. **phạm vi** — trang tự khai nó **không** kiểm được gì (độ sáng ngoài trời, tốc độ vẽ lại,
+   bố cục có hợp lý với người dùng). Một phần tử tràn biên vẫn vẽ bình thường trong trình
+   duyệt, nên không tự khai thì trang đẹp hơn thiết bị.
+
+### Số
+
+Bộ kiểm 2 160 → **2 232 xanh**, 1 skip, 0 đỏ (72 ca mới: 23 trong `tests/test_man_hinh.py`,
+49 trong `tests/test_thiet_ke_ui.py`). Công cụ 135 → **140** (130 thấy mặc định, 73 `core`,
+10 sau cờ). Bề mặt 11 → **12**. Cờ vẫn **14** — năm công cụ mới `core=False` nên chúng không
+đổi lược đồ mỗi lượt của dự án không có màn hình, và chúng không đổi hành vi đường nào đang có.
+App Swift dịch sạch, 43 ca giao diện xanh. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.
+
+### Chưa làm, nói ra để không ai đọc thành đã làm
+
+* **Chưa chạy trên bo thật.** Code dịch được là bằng chứng nó **dịch được**, không phải bằng
+  chứng màn hình hiện đúng. Bước ấy cần nạp firmware lên kit và nhìn.
+* **Chưa có bảng font tiếng Việt.** E1108 chặn chữ có dấu và khuyên chuỗi không dấu; sinh thêm
+  một bảng font có dấu là một việc khác.
+* **Chỉ `BSP_LCD_*`.** Chưa sinh LVGL. Mô hình màn hình không phụ thuộc đích sinh code, nên
+  thêm LVGL sau không phải làm lại mô hình — nhưng hiện chưa có.
+* **Màn hình ký tự (HD44780) có hồ sơ mà không vẽ được.** `16x2` được nhận đúng là cột × dòng
+  chứ không phải pixel, và hồ sơ ấy **tự khai** là chưa làm cho loại màn hình này.
