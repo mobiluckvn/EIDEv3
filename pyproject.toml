@@ -28,6 +28,14 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# M5-04 — đọc BẢNG của PDF (cờ EIDE_FEATURE_PDF_BANG). TUỲ CHỌN: thiếu nó thì bộ đọc tài liệu
+# xuống đường theo dòng chữ và NÓI RA rằng nó đang ở đường dự phòng.
+#
+# Giấy phép cả chuỗi kéo theo, tra ngày 10/10/2026: pdfplumber MIT · pdfminer.six MIT ·
+# pillow MIT-CMU · pypdfium2 BSD-3-Clause/Apache-2.0 · cryptography Apache-2.0 OR BSD-3-Clause ·
+# charset-normalizer MIT. Không gói nào AGPL — kế hoạch cấm pymupdf chính vì giấy phép ấy, nên
+# chuỗi kéo theo cũng phải tra, không chỉ gói ở ngọn.
+pdf = ["pdfplumber>=0.11"]
 
 [project.scripts]
 eide-core = "eide.__main__:main"
