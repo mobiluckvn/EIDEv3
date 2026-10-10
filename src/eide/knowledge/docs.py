@@ -35,11 +35,29 @@ from typing import Any
 KHOA_CHUAN = {
     "vdd.min": "Điện áp cấp tối thiểu", "vdd.max": "Điện áp cấp tối đa",
     "vdd.typ": "Điện áp cấp danh định",
+    # M5-04 — "max tuyệt đối" và "max khi chạy" là HAI thông số, không phải một cách gọi khác
+    # của cùng một thông số. `Absolute maximum ratings` là ngưỡng **phá hỏng chip**;
+    # `Recommended operating conditions` là ngưỡng **chạy đúng**. Gộp vào cùng khoá thì hoặc
+    # hệ thống báo hai tài liệu mâu thuẫn trong khi cả hai đều đúng, hoặc 4,0 V ghi đè 3,6 V
+    # và mọi phép kiểm sau đó cho chip chạy ngoài vùng nhà sản xuất bảo đảm.
+    "vdd.abs_max": "Điện áp cấp tối đa TUYỆT ĐỐI (ngưỡng phá hỏng, không phải ngưỡng chạy)",
+    "vdd.abs_min": "Điện áp cấp tối thiểu TUYỆT ĐỐI (ngưỡng phá hỏng phía dưới, "
+                   "thường là một điện áp ÂM)",
     "vih.min": "Mức logic cao tối thiểu ở đầu vào",
     "vil.max": "Mức logic thấp tối đa ở đầu vào",
     "voh.min": "Mức logic cao tối thiểu ở đầu ra",
     "vol.max": "Mức logic thấp tối đa ở đầu ra",
     "vddio.max": "Điện áp tối đa của chân I/O",
+    # M5-04 — các khoá mà đường BẢNG mới với tới được: một hàng `VIH | 2.0 | 5.5 | V`
+    # cho cả hai cột, và trước đây không cột nào tới được vì tên trần không khớp mẫu.
+    "vih.max": "Mức logic cao tối đa ở đầu vào",
+    "vil.min": "Mức logic thấp tối thiểu ở đầu vào",
+    "voh.max": "Mức logic cao tối đa ở đầu ra",
+    "vol.min": "Mức logic thấp tối thiểu ở đầu ra",
+    "vddio.min": "Điện áp tối thiểu của chân I/O",
+    "iout.max": "Dòng ra tối đa", "icc.min": "Dòng tiêu thụ tối thiểu",
+    "i2c.pullup.min": "Điện trở kéo lên I2C tối thiểu",
+    "i2c.pullup.max": "Điện trở kéo lên I2C tối đa",
     "icc.typ": "Dòng tiêu thụ danh định", "icc.max": "Dòng tiêu thụ tối đa",
     "iol.max": "Dòng hút tối đa mỗi chân", "ioh.max": "Dòng đẩy tối đa mỗi chân",
     "flash.size": "Dung lượng Flash", "ram.size": "Dung lượng RAM",
@@ -132,6 +150,10 @@ class TaiLieu:
     don_vi_trich_dan: str = "trang"    # trang | mục | ô | slide
     chuyen_doi_tu: str = ""        # ING-43 §4.2 — "đã chuyển đổi" phải nói ra
     pdf_phai_sinh: str = ""        # bản PDF sinh ra để có số trang, cùng doc_id
+    # Những chuyện người nạp tài liệu CẦN BIẾT mà không phải lỗi: đường dự phòng đã
+    # dùng, trần đã chạm. Một cờ bật mà đường của nó không chạy thì phải nói ra —
+    # không thì cả người bật cờ lẫn hệ thống đều báo `ok` về hai chuyện khác nhau (N6).
+    ghi_chu: list[str] = field(default_factory=list)
 
     def to_canonical(self) -> dict[str, Any]:
         return {"doc_id": self.doc_id, "title": self.ten, "path": self.duong_dan,
@@ -180,13 +202,53 @@ def nap_tai_lieu(path: Path, *, doc_id: str, phien_ban: str = "",
                 canh.append(f"trang {t.so}: “{m.group(0)[:60]}”")
                 break
 
+    # M5-04 — hàng bảng NỐI THÊM, không thay trang chữ. Đường theo dòng là đường dự phòng
+    # thật: `find_tables()` dò theo nét vẽ, nên một datasheet xuất từ Word (bảng không viền)
+    # cho 0 bảng, và lúc ấy đường cũ là đường duy nhất còn đọc được.
+    ghi_chu: list[str] = []
+    so_trang_chu = len(trang)
+    if _bat_pdf_bang():
+        from . import bang_pdf
+
+        try:
+            hang = bang_pdf.bang_tu_tai_lieu(path)
+        except ImportError:
+            # Phụ thuộc TUỲ CHỌN (N-10) thiếu thì xuống đường cũ — và NÓI RA. Im lặng ở đây
+            # là ca N6: người bật cờ nghĩ đang đọc bảng, hệ thống đang đọc dòng chữ.
+            hang = []
+            ghi_chu.append("cờ `pdf_bang` đang BẬT nhưng máy này không có `pdfplumber` — "
+                           "đã đọc theo DÒNG CHỮ, không đọc theo bảng. Cài: "
+                           "`pip install 'eide[pdf]'`.")
+        except Exception as e:                               # noqa: BLE001
+            hang = []
+            ghi_chu.append(f"đọc bảng PDF không chạy được ({type(e).__name__}) — đã đọc theo "
+                           "DÒNG CHỮ. Đây KHÔNG phải “tệp không có bảng”.")
+        if len(hang) >= bang_pdf.TRAN_HANG:
+            ghi_chu.append(f"chạm trần {bang_pdf.TRAN_HANG} hàng bảng — phần sau của tài liệu "
+                           "CHƯA đọc theo bảng.")
+        trang = trang + hang
+
     meta = r.metadata or {}
     return TaiLieu(
         doc_id=doc_id, ten=path.name, duong_dan=str(path), hash=h,
-        so_trang=len(trang), trang=trang,
+        so_trang=so_trang_chu, trang=trang,
         phien_ban=phien_ban or str(meta.get("/Title", "") or "")[:60],
         nha_phat_hanh=nha_phat_hanh or str(meta.get("/Author", "") or "")[:60],
-        canh_bao_tiem_lenh=canh)
+        canh_bao_tiem_lenh=canh, ghi_chu=ghi_chu)
+
+
+def _bat_pdf_bang() -> bool:
+    """Cờ `pdf_bang`. Đọc qua `Features.load()` để biến môi trường có hiệu lực ngay.
+
+    `docs.py` là lớp tri thức, không giữ `config` — nên nó hỏi cờ chứ không nhận cờ. Lỗi ở
+    đây thì coi như TẮT: một tệp cấu hình hỏng không được làm `doc.load` mất cả tài liệu.
+    """
+    try:
+        from ..config import Features
+
+        return bool(Features.load().bat("pdf_bang"))
+    except Exception:                                        # noqa: BLE001
+        return False
 
 
 # Bao nhiêu dòng thành một đơn vị trích dẫn cho tài liệu văn bản. 40 dòng vừa một màn hình
@@ -375,6 +437,41 @@ _MAU_THONG_SO: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\boperating\s+temperature\b", re.I), "ta.max"),
 ]
 
+# M5-04 — mẫu tên thông số cho ĐƯỜNG BẢNG. Đây là một chỗ nữa mà kế hoạch nói sai, và chỉ
+# phép đo chỉ ra: `_MAU_THONG_SO` ở trên đòi tên **đã kèm** hậu tố (`V DD (max)`), vì nó sinh
+# ra cho đường theo DÒNG CHỮ, nơi `VDD (max)   5.5 V` nằm trọn trên một dòng.
+#
+# Trong một BẢNG thì hậu tố nằm ở **tiêu đề cột**, và ô `Parameter` ghi `VDD` trần — đúng dạng
+# mọi datasheet thật dùng. Nên trước việc này `_tu_hang_bang` **không khớp nổi một hàng
+# datasheet nào**: nó chỉ chạy trên bảng mà ô tên tự ghi `VDD max`, một dạng do chính bản mẫu
+# của bộ kiểm dựng ra. Cơ chế có sẵn, đường dẫn tới nó đứt — lần thứ mười trong dự án này.
+#
+# Neo `^` là cố ý: ô tên của một hàng bảng là một ô riêng, nên khớp từ đầu ô tránh được chuyện
+# một chữ `VDD` trong câu `Conditions` biến cả hàng thành một hàng điện áp.
+_MAU_THONG_SO_BANG: list[tuple[re.Pattern[str], str, bool]] = [
+    (re.compile(r"^\s*V\s*DDIO\b", re.I), "vddio", False),
+    (re.compile(r"^\s*V\s*DD\b|^\s*supply\s+voltage\b", re.I), "vdd", False),
+    (re.compile(r"^\s*V\s*IH\b", re.I), "vih", False),
+    (re.compile(r"^\s*V\s*IL\b", re.I), "vil", False),
+    (re.compile(r"^\s*V\s*OH\b", re.I), "voh", False),
+    (re.compile(r"^\s*V\s*OL\b", re.I), "vol", False),
+    (re.compile(r"^\s*I\s*CC\b|^\s*supply\s+current\b", re.I), "icc", False),
+    (re.compile(r"^\s*I\s*OL\b", re.I), "iol", False),
+    (re.compile(r"^\s*I\s*OH\b", re.I), "ioh", False),
+    (re.compile(r"^\s*I\s*OUT\b|^\s*output\s+current\b", re.I), "iout", False),
+    (re.compile(r"^\s*T\s*A\b|^\s*(?:ambient\s+|operating\s+)?temperature\b", re.I),
+     "ta", False),
+    (re.compile(r"^\s*pull-?up\b", re.I), "i2c.pullup", False),
+    # Bốn khoá CỐ ĐỊNH: cột Min/Typ/Max của chúng không đổi nghĩa khoá. "Flash 32 KB" ở cột
+    # Max vẫn là `flash.size` — đây là bài học M5-05, nơi đường bảng từng sinh `flash.max`,
+    # một khoá không chỗ nào đọc.
+    (re.compile(r"^\s*flash\b", re.I), "flash.size", True),
+    (re.compile(r"^\s*(?:S?RAM)\b", re.I), "ram.size", True),
+    (re.compile(r"^\s*EEPROM\b", re.I), "eeprom.size", True),
+    (re.compile(r"^\s*(?:f\s*max|max(?:imum)?\s+(?:operating\s+)?frequency"
+                r"|(?:operating\s+)?frequency)\b", re.I), "fmax", True),
+]
+
 _SO_DON_VI = re.compile(
     r"(-?\d+(?:[.,]\d+)?)\s*"
     r"(kΩ|MΩ|Ω|ohm|mV|kV|µV|uV|V|mA|µA|uA|nA|A|GHz|MHz|kHz|Hz|"
@@ -485,6 +582,7 @@ PHAM_VI_HOP_LY: dict[str, tuple[float, float]] = {
     "sram.size": (64, 64 * 1024 * 1024),
     "eeprom.size": (16, 1024 * 1024),
     "vdd.min": (0.5, 60), "vdd.max": (0.5, 60), "vdd.typ": (0.5, 60),
+    "vdd.abs_max": (0.5, 60),
     "vih.min": (0.3, 60), "vil.max": (0.0, 60),
     # Dòng ra của một bộ cấp: từ 1 mA (tham chiếu điện áp) tới 50 A (module nguồn lớn).
     # Có khoảng này là cái phanh cuối cho vế CẤP — một Fact sai ở vế ấy làm ngân sách dòng
@@ -500,6 +598,71 @@ PHAM_VI_HOP_LY: dict[str, tuple[float, float]] = {
     "i2c.fmax": (1_000, 1e8), "spi.fmax": (1_000, 1e9),
     "ta.min": (-100, 200), "ta.max": (-100, 200),
 }
+
+# M5-04 — khoảng hợp lý theo GỐC khoá, tra theo tiền tố DÀI NHẤT. Chỉ dùng khi `PHAM_VI_HOP_LY`
+# không có khoá CHÍNH XÁC, nên mọi dòng đã khai ở trên vẫn thắng.
+#
+# Vì sao cần: bảng trên khai theo khoá đầy đủ (`vdd.max`), và đường BẢNG sinh ra hậu tố theo
+# **tiêu đề cột** — nên nó cho ra `vddio.max`, `vol.min`, `icc.max`, `iol.max`… những khoá mà
+# bảng trên không có dòng nào. Đo ngày 10/10/2026: **tám gốc khoá có thứ nguyên mà không có
+# khoảng nào** — `vddio` · `voh` · `vol` · `icc` · `iol` · `ioh` · `vref` · `i2c.pullup`. Với
+# chúng, `hop_ly` chỉ còn kiểm thứ nguyên, nên `vddio = 6 000 V` đi qua: đúng volt, sai chip.
+#
+# Đây là chỗ RỘNG HƠN phạm vi kế hoạch nêu cho M5-04, và nó là hệ quả trực tiếp: đường bảng
+# làm những khoá ấy với tới được lần đầu. Ghi ra để không ai đọc thành "kế hoạch có nói".
+#
+# Mỗi khoảng là một phanh "có thể là thứ ấy không", không phải thông số của một chip cụ thể —
+# cùng loại với các dòng đã có. Nguồn của từng con số:
+#   · điện áp (vdd/vddio/vref/vih/vil/voh/vol): 0–60 V — trên 60 V là mạch công suất, không
+#     phải chân logic; và `hop_ly` chỉ cần chặn thứ **không thể**, không cần chặn thứ hiếm.
+#   · dòng (icc/iol/ioh): biên trên lấy đúng của `iout.max` đã có; biên dưới để ở mức dòng
+#     RỈ (pA) chứ không ở mức dòng lái (mA) — xem ghi chú dưới.
+#   · điện trở: 0,1 Ω tới 10 MΩ.
+#
+# Biên DƯỚI của ba dòng và của điện trở từng bị tôi đặt theo **thói quen** — "pull-up I2C
+# thường 1–10 kΩ" nên biên dưới 10 Ω, "dòng lái tính bằng mA" nên biên dưới 1 µA. Ca kiểm
+# `test_ING09_ky_hieu_ky_thuat_trong_o_bang` (có từ trước) bác ngay: ô bảng ghi `4R7`, tức
+# **4,7 Ω**, và 4,7 Ω là một giá trị điện trở có thật. Phanh này chỉ được chặn thứ KHÔNG THỂ;
+# chặn thứ hiếm là bỏ mất Fact thật, và lúc ấy tác tử phải hỏi người dùng một con số đang nằm
+# sẵn trong datasheet. Ghi lại vì đây đúng là lỗi mà N1 nói tới: con số tự nhớ, không tra.
+PHAM_VI_GOC: dict[str, tuple[float, float]] = {
+    "vdd": (0.0, 60), "vddio": (0.0, 60), "vref": (0.0, 60),
+    "vih": (0.0, 60), "vil": (0.0, 60), "voh": (0.0, 60), "vol": (0.0, 60),
+    "icc": (1e-12, 50), "iol": (1e-12, 10), "ioh": (1e-12, 10), "iout": (1e-3, 50),
+    "i2c.pullup": (0.1, 1e7),
+    "flash": (1024, 64 * 1024 * 1024), "ram": (64, 64 * 1024 * 1024),
+    "sram": (64, 64 * 1024 * 1024), "eeprom": (16, 1024 * 1024),
+    "fmax": (1_000, 2_000_000_000), "f": (1_000, 2_000_000_000),
+    "ta": (-100, 200), "temp": (-100, 200),
+}
+
+
+def pham_vi_cua(khoa: str) -> tuple[float, float] | None:
+    """Khoảng hợp lý của một khoá: khoá chính xác trước, rồi gốc khoá theo tiền tố dài nhất.
+
+    Hậu tố `abs_` (ngưỡng PHÁ HỎNG, M5-04) tra theo khoá không có nó — `vdd.abs_max` dùng
+    khoảng của `vdd`. Và `abs_min` được mở xuống phía âm: ngưỡng phá hỏng phía dưới của một
+    chân **là** một điện áp âm (`VDD min = −0,5 V` trong bảng Absolute maximum của gần như mọi
+    datasheet). Biên âm lấy ĐỐI của biên trên, không phải một con số mới: nó nói *"độ lớn của
+    một ngưỡng phá hỏng không vượt quá độ lớn hợp lý của thứ nguyên ấy"* — không nói chip này
+    chịu được bao nhiêu.
+    """
+    pv = PHAM_VI_HOP_LY.get(khoa)
+    if pv is not None:
+        return pv
+    am = ".abs_min" in khoa
+    sach = khoa.replace(".abs_max", ".max").replace(".abs_min", ".min")
+    pv = PHAM_VI_HOP_LY.get(sach)
+    if pv is None:
+        phan = sach.split(".")
+        for i in range(len(phan) - 1, 0, -1):
+            pv = PHAM_VI_GOC.get(".".join(phan[:i]))
+            if pv:
+                break
+    if pv is None:
+        return None
+    return (-abs(pv[1]), pv[1]) if am else pv
+
 
 # M5-05 — THỨ NGUYÊN của một khoá, tra theo tiền tố DÀI NHẤT khớp trước.
 #
@@ -622,7 +785,7 @@ def hop_ly(khoa: str, gia_tri: float, don_vi: str) -> bool:
                 return False
         elif co_ban_dv != tn:
             return False
-    pv = PHAM_VI_HOP_LY.get(khoa)
+    pv = pham_vi_cua(khoa)
     if pv is None:
         return True                       # chưa có khoảng cho khoá này thì không chặn
     if not isinstance(gia_tri, (int, float)) or isinstance(gia_tri, bool):
@@ -642,6 +805,8 @@ _HAU_TO_COT = {
     "max": "max", "maximum": "max", "lớn nhất": "max", "rating": "max",
 }
 _COT_DON_VI = {"unit", "units", "đơn vị"}
+# Chỉ nhãn mục mới nói được một hàng thuộc bảng "max tuyệt đối" hay bảng "max khi chạy".
+_LA_ABS_MAX = re.compile(r"absolute\s+maximum", re.I)
 _COT_TEN = {"parameter", "symbol", "thông số", "ký hiệu", "tên"}
 
 
@@ -682,14 +847,22 @@ def _tu_hang_bang(t: "Trang", thuc_the: str) -> list["FactUngVien"]:
     # không làm lệch Fact cũ nào đang khớp với ai.
     khoa_goc = None
     khoa_co_dinh = False
-    for mau, k in _MAU_THONG_SO:
+    # M5-04 — mẫu dành riêng cho BẢNG đi TRƯỚC: ô tên của bảng ghi tên trần, và hậu tố do
+    # cột cấp. Mẫu của đường dòng chữ giữ làm vế dự phòng, cho những bảng mà ô tên tự ghi
+    # luôn hậu tố (`VDD max`) — dạng ấy có thật trong tài liệu nội bộ.
+    for mau, k, co_dinh in _MAU_THONG_SO_BANG:
         if mau.search(ten):
-            dau, _, cuoi = k.rpartition(".")
-            if dau and cuoi in ("min", "typ", "max"):
-                khoa_goc = dau
-            else:
-                khoa_goc, khoa_co_dinh = k, True
+            khoa_goc, khoa_co_dinh = k, co_dinh
             break
+    if khoa_goc is None:
+        for mau, k in _MAU_THONG_SO:
+            if mau.search(ten):
+                dau, _, cuoi = k.rpartition(".")
+                if dau and cuoi in ("min", "typ", "max"):
+                    khoa_goc = dau
+                else:
+                    khoa_goc, khoa_co_dinh = k, True
+                break
     if khoa_goc is None:
         return []
 
@@ -724,6 +897,15 @@ def _tu_hang_bang(t: "Trang", thuc_the: str) -> list["FactUngVien"]:
             cap.append((hau_to, g.gia_tri))
 
         for ht, v in cap:
+            # M5-04 — bảng `Absolute maximum ratings` cho một khoá KHÁC. Nhãn của hàng là
+            # thứ duy nhất phân biệt được hai bảng ấy: nội dung hàng của chúng giống nhau
+            # tới từng ô (`VDD | 4.0 | V` so với `VDD | 3.6 | V`).
+            # Cả HAI biên của bảng "max tuyệt đối" đều là ngưỡng phá hỏng, không chỉ biên
+            # trên. Cột Min của bảng ấy ghi thứ như `VDD = −0,5 V` — một điện áp ÂM, và đọc
+            # nó thành `vdd.min` (điện áp cấp tối thiểu khi chạy) là sai nghĩa hoàn toàn:
+            # nó sẽ nói chip chạy được từ −0,5 V.
+            if ht in ("min", "max") and _LA_ABS_MAX.search(t.nhan or ""):
+                ht = "abs_" + ht
             khoa = khoa_goc if khoa_co_dinh else f"{khoa_goc}.{ht}"
             # M5-05 — đường HÀNG BẢNG cũng phải qua `hop_ly`, và nó là đường duy nhất trước
             # đây không qua. Mà bảng là đường CHÍNH của datasheet: `_tu_hang_bang` tồn tại

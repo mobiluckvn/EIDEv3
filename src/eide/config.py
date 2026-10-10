@@ -394,6 +394,11 @@ class Features:
     # la mot viec tac tu tu chon.
     kiem_noi: bool = False
 
+    # M5-04 — doc BANG cua PDF thanh hang bang (`o`/`cot`), de `_tu_hang_bang` chay duoc tren
+    # PDF nhu tren Office. Sau co vi no doi TAP FACT tac tu nhin thay: mot datasheet 3 trang
+    # cho thêm hang chuc don vi trich dan, va moi don vi ay co the sinh Fact moi.
+    pdf_bang: bool = False
+
     @classmethod
     def load(cls) -> "Features":
         import json

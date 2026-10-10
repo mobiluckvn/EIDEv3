@@ -9982,3 +9982,136 @@ Công cụ 134 → **135** (125 thấy mặc định, 73 `core`, 10 sau cờ). C
 bằng `arm-none-eabi-gcc` trên máy, không viết tay.
 
 **Giai đoạn 1 đóng ở 32/32.**
+
+## [DEV-363] [M5-04] Bộ đọc bảng đã có, mà PDF chưa bao giờ đi qua nó
+
+Nhiệm vụ #34, P0 · L — **việc P0 cuối cùng** trong cả 106 việc. Module mới
+`knowledge/bang_pdf.py`, cờ `pdf_bang` (mặc định **TẮT**: nó đổi tập Fact tác tử nhìn thấy),
+và phụ thuộc **tuỳ chọn** `pdfplumber` trong nhóm `[pdf]` của `pyproject.toml`.
+
+Anh Công duyệt cài phụ thuộc ngày 10/10/2026 — N-10 bắt hỏi trước, nên đây là một quyết định
+của chủ sản phẩm, không phải một lần tôi tự cài.
+
+### Giấy phép, tra chứ không nhớ
+
+Kế hoạch cấm `pymupdf` vì AGPL. Nhưng `pdfplumber` kéo theo năm gói nữa, và một chuỗi phụ
+thuộc chỉ sạch khi **cả chuỗi** sạch:
+
+| gói | giấy phép | tra bằng |
+|---|---|---|
+| `pdfplumber` 0.11.10 | MIT | classifier của gói |
+| `pdfminer.six` 20260107 | MIT | `License-Expression` |
+| `pillow` 12.3.0 | MIT-CMU | `License-Expression` |
+| `pypdfium2` 5.14.0 | BSD-3-Clause, Apache-2.0 | `License` |
+| `cryptography` 50.0.1 | Apache-2.0 OR BSD-3-Clause | `License-Expression` |
+| `charset-normalizer` 3.5.1 | MIT | `License` |
+
+Không gói nào AGPL.
+
+### Chỗ hổng
+
+`_tu_hang_bang` có trong `docs.py` từ trước, và docstring của nó nói rõ vì sao nó tồn tại:
+datasheet đặt **đơn vị ở cột riêng** (`VDD | 1.8 | 5.5 | V`), nên nối cả hàng thành một dòng
+chữ rồi tìm "số kèm đơn vị" thì `5.5` và `V` cách nhau một dấu gạch và không bao giờ khớp.
+
+Nhưng đường duy nhất cấp `o`/`cot` cho nó là Office. `nap_tai_lieu` của PDF dựng
+`Trang(i + 1, p.extract_text())` và **không bao giờ** đặt `o`/`cot` — nên bộ đọc bảng chưa
+chạy trên một PDF nào. Hình dạng "cơ chế có sẵn, đường dẫn tới nó đứt", lần thứ mười.
+
+### Và kế hoạch nói sai hai chỗ, cả hai chỉ phép đo chỉ ra
+
+**Một.** Kế hoạch coi `_tu_hang_bang` đã chạy được trên bảng datasheet, và chỉ xin thêm hậu tố
+`abs_max`. Đo ra: `_MAU_THONG_SO` đòi tên **đã kèm** hậu tố (`V DD (max)`), vì nó sinh cho
+đường theo **dòng chữ**. Trong một BẢNG thì hậu tố ở **tiêu đề cột**, và ô `Parameter` ghi
+`VDD` trần — nên nó **không khớp nổi một hàng datasheet nào**. Bộ đọc bảng trước đây chỉ chạy
+trên bảng mà ô tên tự ghi `VDD max`, một dạng do chính bản mẫu của bộ kiểm dựng ra. Thêm
+`_MAU_THONG_SO_BANG`: tên trần, neo `^` (ô tên là một ô riêng), hậu tố do cột cấp.
+
+**Hai.** Kế hoạch chỉ nói tới `abs_max`. Bảng `Absolute maximum ratings` cũng có **cột Min**,
+và nó ghi thứ như `VDD = −0,5 V`. Đọc nó thành `vdd.min` là nói *"chip chạy được từ −0,5 V"*.
+Nên cả hai biên đều mang tiền tố `abs_`, và `vdd.abs_min` có khoảng riêng mở xuống phía âm.
+
+### Một chỗ RỘNG hơn kế hoạch nêu, và nó là hệ quả trực tiếp
+
+Đường bảng sinh hậu tố theo tiêu đề cột, nên nó cho ra `vddio.max`, `vol.min`, `icc.max`,
+`iol.max` — những khoá mà `PHAM_VI_HOP_LY` không có dòng nào. Đo ngày 10/10/2026: **tám gốc
+khoá có thứ nguyên mà không có khoảng nào** — `vddio` · `voh` · `vol` · `icc` · `iol` · `ioh` ·
+`vref` · `i2c.pullup`. Với chúng `hop_ly` chỉ còn kiểm thứ nguyên, nên `vddio = 6 000 V` đi
+qua: đúng volt, sai chip. Thêm `PHAM_VI_GOC` + `pham_vi_cua()` (khoá chính xác trước, rồi gốc
+theo tiền tố dài nhất).
+
+**Và phép đo bác đúng con số tôi tự đặt.** Tôi cho `i2c.pullup` biên dưới 10 Ω theo thói quen
+*"pull-up I2C thường 1–10 kΩ"*. Ca `test_ING09_ky_hieu_ky_thuat_trong_o_bang` — có từ trước —
+đỏ ngay: ô bảng ghi `4R7`, tức **4,7 Ω**, một giá trị điện trở có thật. Phanh này chỉ được chặn
+thứ **không thể**; chặn thứ hiếm là bỏ mất Fact thật rồi bắt tác tử đi hỏi người dùng một con
+số đang nằm sẵn trong datasheet. Nới biên dưới của ba dòng và của điện trở về mức dòng rỉ /
+0,1 Ω. Đây đúng là lỗi N1 nói tới: con số tự nhớ, không tra.
+
+### Đo trên 21 PDF THẬT của repo (293 trang), 10/10/2026
+
+| | cờ TẮT | cờ BẬT |
+|---|---|---|
+| hàng bảng | 0 | **109** |
+| Fact trích được | 18 | 18 |
+| tệp có bảng | 0 | 3 |
+| hàng bị nhận là bảng thông số | — | **0** |
+| thời gian nạp (3 lượt) | 5,0 · 5,5 · 5,4 s | 23,8 · 23,6 · 23,9 s (**×4,3–4,7**) |
+
+Hai con số đáng nói hơn cả, và cả hai là tin xấu nói thẳng:
+
+* **Fact không tăng**, vì **không tệp nào trong repo là datasheet** — 21 tệp đều là bài báo và
+  báo cáo. Cờ này chưa chứng minh được gì về recall trên dữ liệu thật của repo.
+* **0 trong 109 hàng** bị nhận là bảng thông số / bảng chân / bảng thanh ghi. Đó là vế
+  **precision**, và nó là con số ĐÚNG: hàng của một bảng `Revision history` cũng có số, nên
+  nhận bừa là cách sinh Fact rác **mang trích dẫn thật** — thứ khó phát hiện hơn hẳn Fact
+  không có trích dẫn.
+
+Phép đo cũng chỉ ra hai lỗi thật trong bản đầu:
+
+* **41 trong 150 hàng là rác `(cid:NN)`** — mã glyph thô mà `pdfplumber` trả về khi phông của
+  trang không có bảng `ToUnicode`. Để chúng vào kho thì chúng thành **đơn vị trích dẫn**, và
+  tác tử sẽ trích dẫn một đoạn không ai đọc được. Thêm `_la_rac` ở cả hai mức (tiêu đề cột và
+  hàng): 150 → **109**.
+* **"Bảng" có tiêu đề `['', '', '', 'Green)', 'Sáng, 1: Tắt)']`** — một khung trình bày có
+  viền. `find_tables()` dò theo nét vẽ nên nó cũng ra "bảng". Thêm `COT_TOI_THIEU = 2`.
+
+### Phá lại thì đỏ: 37/37
+
+Lượt đầu **17/29**, mười hai chỗ LỌT. Mười một là lỗ thật trong tập ca kiểm, một VÔ HIỆU
+(*"bảng một hàng cũng nhận"*: `hang[1:]` rỗng nên vòng lặp hàng không chạy lần nào — cửa
+`len(hang) < 2` chỉ tiết kiệm việc tính `cot`, không đổi được kết quả nào).
+
+Ba chỗ LỌT ở lượt hai cùng **một** hình dạng, và nó là hình dạng mạnh nhất của chiến dịch này:
+chúng thăm dò ba luật thứ tự khác nhau của `pham_vi_cua`, mà hai bảng số thật **trùng nhau ở
+mọi khoá** (`vdd.abs_max` bằng `vdd.max`; `PHAM_VI_GOC["ta"]` bằng `PHAM_VI_HOP_LY["ta.max"]`;
+`PHAM_VI_GOC` phủ đúng những gốc mà `PHAM_VI_HOP_LY` phủ). Trên dữ liệu trùng như thế, tháo ba
+luật khác nhau đều cho **cùng một con số** — ba luật ấy đang được một sự tình cờ bảo vệ, không
+được một ca kiểm nào bảo vệ. Chữa bằng một ca dựng **bảng riêng** để ba luật phân biệt được
+nhau, trong đó có một khoá (`y.min`) có dòng chính xác mà **không có gốc** — chỗ duy nhất phân
+biệt được luật "rút `abs_` rồi tra chính xác lần nữa".
+
+Và một chỗ LỌT nữa là **bản mẫu của tôi sai**: phép phá "bỏ neo `^` của mẫu VDD" không đổi được
+gì vì tôi đặt điều kiện ở **cột `Conditions`**, trong khi ô tên lấy từ cột `Parameter` — nên
+cột ấy không tham gia phép khớp tên lần nào. Datasheet thật viết điều kiện **vào trong ô tên**
+(`VOL (VDD = 5 V)`), và với dạng ấy thì bỏ neo đi làm 0,9 V vào kho thành `vdd.max`: đúng thứ
+nguyên, đúng khoảng, **sai thông số** — cả hai phanh của `hop_ly` đều không bắt được.
+
+Thêm một ca kiểm cũ của tôi xanh vì **lý do sai**: nó dựng một hàm nổ `AssertionError` để canh
+cửa cờ, mà `nap_tai_lieu` bắt `except Exception` nên nuốt luôn ngoại lệ ấy rồi ghi một dòng
+`ghi_chu`. Đo đúng chỗ: cờ TẮT thì `ghi_chu` phải **RỖNG**.
+
+### Số
+
+Bộ kiểm 2 125 → **2 160 xanh**, 1 skip, 0 đỏ (35 ca mới trong `tests/test_bang_pdf.py`).
+Công cụ vẫn **135** (việc này không thêm công cụ — nó mở rộng `doc.load`). Cờ 13 → **14**, cả
+14 TẮT. `kiem_tai_lieu` 0 chỗ LỆCH CHẮC CHẮN.
+
+### CHƯA ĐẠT, ghi nguyên văn
+
+Tiêu chí *"precision/recall trích Fact trên bộ vàng M5-21 khi cờ bật tốt hơn khi tắt"* **chưa
+đạt**, vì hai lẽ: **bộ vàng M5-21 chưa tồn tại** (nó là việc #85, P1, chưa làm), và **repo
+không có một datasheet PDF nào** để con số recall nói được điều gì. Thay vào đó là bảng đo ở
+trên — nói được vế precision (0/109 nhận bừa) và nói được chi phí (×4,3–4,7), nhưng **không**
+nói được vế recall. Không lấy bảng ấy làm tiêu chí đã đạt.
+
+**Hết P0: 30/30.**

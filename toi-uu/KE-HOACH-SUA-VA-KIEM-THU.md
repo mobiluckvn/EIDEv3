@@ -171,7 +171,7 @@ Làm theo đúng thứ tự `#`. Cột **Tiền đề** là phụ thuộc cứng
 | # | Mã | Nhiệm vụ | Ưu tiên | Công sức | Tiền đề | Cờ tính năng | Ghi chú | Trạng thái |
 |---|---|---|---|---|---|---|---|---|
 | 33 | [M5-01](#m5-01) | Chỉ mục tìm kiếm tài liệu BM25 (FTS5) lưu bền + công cụ `doc.search` | P0 | L | — | DOC_EMBED | DEV-360 | ☑ |
-| 34 | [M5-04](#m5-04) | Trích bảng có cấu trúc từ PDF datasheet (hàng bảng + ngữ cảnh mục) | P0 | L | M5-05 | PDF_BANG |  | ☐ |
+| 34 | [M5-04](#m5-04) | Trích bảng có cấu trúc từ PDF datasheet (hàng bảng + ngữ cảnh mục) | P0 | L | M5-05 | PDF_BANG |  | DEV-363 · kế hoạch nói sai 2 chỗ; một tiêu chí CHƯA ĐẠT (xem §tiêu chí) | ☑ |
 | 35 | [M1-05](#m1-05) | Ngân sách, cắt kết quả và lượt buộc nộp cho tác tử con | P1 | M | M1-03 | SUBAGENT_NOP | kéo lên từ GĐ3 vì là tiền đề của M1-07 | ☐ |
 | 36 | [M1-06](#m1-06) | Thi hành tính độc lập của verifier | P1 | S | — | — |  | ☐ |
 | 37 | [M1-07](#m1-07) | Báo cáo subagent nộp bằng lời gọi công cụ có lược đồ | P1 | S | M1-05 | BAO_CAO_CONG_CU |  | ☐ |
@@ -2392,12 +2392,39 @@ không đọc ra được từ bảng vector.
 - `test_TC008_trich_fact_co_so_trang_va_trich_doan` vẫn xanh với `ds_atmega`.
 
 **Tiêu chí xong:**
-- [ ] Các TC mới xanh; đã "phá lại thì đỏ" từng TC.
-- [ ] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa.
-- [ ] Precision/recall trích Fact trên bộ vàng M5-21 khi cờ bật tốt hơn khi tắt (ghi số).
-- [ ] Ghi một mục vào docs/md/EIDE-DEV-LOG.md.
+- [x] Các TC mới xanh; đã "phá lại thì đỏ" từng TC. — 35 ca trong `tests/test_bang_pdf.py`;
+      tập phá dựng từ `git diff`: lượt đầu **17/29** → **37/37**. Mười hai chỗ LỌT ở lượt đầu:
+      mười một lỗ thật trong tập ca kiểm, một VÔ HIỆU (đã rút, ghi lý do trong DEV-363).
+- [x] Toàn bộ `pytest -q` xanh, số ca xanh ≥ mốc trước khi sửa. — 2 125 → **2 160**, 1 skip.
+- [ ] **CHƯA ĐẠT** — Precision/recall trên bộ vàng M5-21 khi cờ bật tốt hơn khi tắt.
+      Hai lý do, cả hai nằm ngoài việc này: **bộ vàng M5-21 chưa tồn tại** (việc #85, P1, chưa
+      làm), và **repo không có một datasheet PDF nào** — 21 tệp PDF thật trong repo đều là bài
+      báo và báo cáo. Đo được thay vào đó (10/10/2026, 21 tệp · 293 trang): hàng bảng 0 →
+      **109**; Fact **18 → 18** (không tăng vì không tệp nào là datasheet); **0 trong 109** hàng
+      bị nhận là bảng thông số — đó là vế **precision** và nó là con số đúng; thời gian nạp
+      **×4,3–4,7** (5,0 s → 23,8 s, ba lượt). Bảng này **không** nói được vế recall, nên không
+      lấy nó làm tiêu chí đã đạt.
+- [x] Ghi một mục vào docs/md/EIDE-DEV-LOG.md. — DEV-363.
 
-**Hoàn tác:** tắt cờ `EIDE_FEATURE_PDF_BANG`; revert commit.
+**Hai chỗ kế hoạch nói SAI, ghi lại nguyên văn:**
+
+1. **Bước 4 coi `_tu_hang_bang` đã chạy được trên bảng datasheet.** Đo ra là không:
+   `_MAU_THONG_SO` đòi tên **đã kèm** hậu tố (`V DD (max)`) vì nó sinh cho đường theo dòng chữ,
+   còn ô `Parameter` của một bảng ghi `VDD` trần — nên nó **không khớp nổi một hàng datasheet
+   nào**. Thêm `_MAU_THONG_SO_BANG` (tên trần, neo `^`, hậu tố do cột cấp).
+2. **Bước 4 chỉ nói tới `abs_max`.** Bảng `Absolute maximum ratings` cũng có cột **Min** (ghi
+   `VDD = −0,5 V`), và đọc nó thành `vdd.min` là nói *"chip chạy được từ −0,5 V"*. Cả hai biên
+   mang tiền tố `abs_`; `vdd.abs_min` có khoảng riêng mở xuống phía âm.
+
+**Một việc NGOÀI phạm vi kế hoạch nêu, làm vì nó là hệ quả trực tiếp:** `PHAM_VI_GOC` +
+`pham_vi_cua()`. Đường bảng sinh hậu tố theo tiêu đề cột, nên nó cho ra `vddio.max`, `vol.min`,
+`icc.max`… — và đo ra **tám gốc khoá có thứ nguyên mà không có khoảng nào**, nên `vddio =
+6 000 V` đi qua. Chi tiết trong DEV-363, gồm cả chuyện một ca kiểm có từ trước bác đúng con số
+tôi tự đặt (`4R7` = 4,7 Ω).
+
+**Hoàn tác:** tắt cờ `EIDE_FEATURE_PDF_BANG`; revert commit. Gỡ phụ thuộc: `pdfplumber` chỉ
+nằm trong nhóm tuỳ chọn `[pdf]`, và thiếu nó thì `doc.load` xuống đường theo dòng chữ **và nói
+ra** điều đó.
 
 <!-- TASK M1-05 -->
 <a id="m1-05"></a>
