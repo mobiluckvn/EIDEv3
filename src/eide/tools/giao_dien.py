@@ -115,7 +115,20 @@ _S_PHAN_TU = {
                     "description": ("CHỈ ASCII 0x20..0x7E — bảng font của BSP có đúng 95 ký "
                                     "tự ấy, và ký tự ngoài khoảng đó làm BSP đọc RA NGOÀI "
                                     "bảng font. Viết không dấu.")},
-            "co_chu": {"type": "integer", "enum": sorted(MO.FONT_BSP)},
+            # KHÔNG dùng `enum` ở đây, dù năm cỡ chữ là một tập đóng. SDK của mô hình đòi
+            # mọi giá trị `enum` phải là CHUỖI, và `{"type": "integer", "enum": [8, 12, …]}`
+            # làm cả lược đồ công cụ không serialize nổi — tức MỌI lời gọi mô hình đổ
+            # `ValidationError` kể từ lúc `tool.search` mở khoá công cụ này.
+            #
+            # Đo được 11/10/2026 trong một phiên thật: Agent tê liệt hoàn toàn, không lượt nào
+            # chạy nổi. Và 2 232 ca kiểm không bắt được vì không ca nào đưa lược đồ qua SDK
+            # với công cụ `core=False` đã mở khoá.
+            #
+            # Phép kiểm cỡ chữ vẫn còn, và nó TỐT HƠN một `enum`: E1103 nói cỡ nào có thật và
+            # cỡ gần nhất là bao nhiêu, còn `enum` chỉ từ chối.
+            "co_chu": {"type": "integer",
+                       "description": "cỡ chữ của BSP: "
+                                      + " | ".join(str(c) for c in sorted(MO.FONT_BSP))},
             "mau_chu": {"type": "string", "description": "#RRGGBB"},
             "mau_nen": {"type": "string", "description": "#RRGGBB; rỗng = trong suốt"},
             "can_le": {"type": "string", "enum": list(MO.CAN_LE)},
