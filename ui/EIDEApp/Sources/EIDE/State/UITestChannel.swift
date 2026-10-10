@@ -58,6 +58,17 @@ final class UITestChannel {
     /// vẫn phải do người đặt thư mục vào — app không bao giờ tự mở kênh.
     private var daTungBat = false
 
+    /// Tệp inbox mà `daDoc` đang nói về.
+    ///
+    /// Con trỏ đọc thuộc về một TỆP, không thuộc về trạng thái bật/tắt của kênh. Bản trước
+    /// suy nó từ `thuMuc`, và `tat()` xoá `thuMuc` — nên một lần đóng/mở lại CÙNG dự án bị
+    /// coi là "đổi dự án", con trỏ về 0, và kênh đọc lại cả inbox.
+    ///
+    /// Chỗ ấy thành một VÒNG TỰ KÍCH, đo được 11/10/2026: lệnh `mo_gan_day` làm app đóng rồi
+    /// mở dự án → kênh bật lại → con trỏ về 0 → đọc lại `mo_gan_day` → đóng/mở lần nữa. Một
+    /// lệnh chạy ba lần, và với lệnh `say` thì ba lần ấy là ba lượt mô hình.
+    private var duongDaDoc: URL?
+
     /// Bật kênh: thư mục `ui-test/` có sẵn trong dự án, hoặc kênh đã bật ở dự án trước.
     func batNeuCo(duAn: URL, state: AppState) {
         let d = duAn.appendingPathComponent(".eide/ui-test")
@@ -66,15 +77,37 @@ final class UITestChannel {
             try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         }
         daTungBat = true
-        // Con trỏ đọc thuộc về MỘT tệp inbox. Sang dự án khác là sang một tệp khác, mà con
-        // trỏ vẫn đứng ở dòng thứ N của tệp cũ — kênh sẽ bỏ qua N lệnh đầu của dự án mới.
-        daDoc = 0
+
+        // ĐÃ mở trên ĐÚNG thư mục này rồi thì không làm gì nữa.
+        //
+        // Hai lỗi đã trả giá bằng tiền mô hình thật, 11/10/2026: `batNeuCo` được gọi khoảng
+        // BA MƯƠI lần trong một phiên (SwiftUI dựng lại khung nhìn), và mỗi lần nó
+        //   (a) đặt `daDoc = 0`, nên kênh đọc LẠI cả inbox và chạy lại mọi lệnh cũ;
+        //   (b) gán `timer` mới mà KHÔNG huỷ timer cũ, nên N timer cùng gọi `doc()`.
+        // Hậu quả đo được: một câu người gõ đi vào lõi **sáu lần** — sáu lượt mô hình, sáu
+        // lượt chạy bị ngắt giữa chừng, và một bộ đo qua giao diện không còn đáng tin vì nó
+        // âm thầm gửi cùng một câu nhiều lần.
+        //
+        // `daDoc = 0` vẫn ĐÚNG khi ĐỔI dự án — sang một tệp inbox khác thì con trỏ của tệp cũ
+        // vô nghĩa. Nên điều kiện là "đổi thư mục", không phải "mỗi lần gọi".
+        if thuMuc == d, timer != nil {
+            self.state = state
+            return
+        }
+
+        timer?.invalidate()
+        timer = nil
         self.thuMuc = d
         self.state = state
 
         let inbox = d.appendingPathComponent("inbox.jsonl")
         if !FileManager.default.fileExists(atPath: inbox.path) {
             FileManager.default.createFile(atPath: inbox.path, contents: nil)
+        }
+        // Chỉ đặt lại con trỏ khi sang một TỆP inbox khác — xem ghi chú ở `duongDaDoc`.
+        if duongDaDoc != inbox {
+            daDoc = 0
+            duongDaDoc = inbox
         }
         ghi(["su_kien": "kenh_mo", "ghi_chu": "Giao diện sẵn sàng nhận lệnh kiểm thử"])
 

@@ -142,6 +142,17 @@ class GiaoDien:
         return ra if (o.get("tep") == str(ra) and ra.exists()) else None
 
     # ------------------------------------------------------------------ nhận
+    def _tat_ca(self) -> list[dict]:
+        """MỌI dòng outbox từ đầu phiên — không đụng con trỏ `_da_doc`.
+
+        Cần cho phép đo "một lệnh chạy đúng một lần": `_dong_moi()` tiêu dòng đi, nên đếm
+        bằng nó sẽ đếm thiếu đúng những dòng một phép đợi trước đó đã đọc.
+        """
+        if not self.outbox.exists():
+            return []
+        return [json.loads(l) for l in self.outbox.read_text("utf-8").splitlines()
+                if l.strip()]
+
     def _dong_moi(self) -> list[dict]:
         if not self.outbox.exists():
             return []
@@ -292,6 +303,23 @@ def chay(du_an: pathlib.Path) -> int:
     rong = [k for k in a["khoi_tren_tab"] if k["type"] == "empty"]
     b.kiem("Tab Thiết kế hiện khối 'chưa có gì' thay vì trống trơn", bool(rong),
            f"{len(a['khoi_tren_tab'])} khối, {len(rong)} khối rỗng")
+
+    # ------------------------------------------------------------- A2
+    b.phan("A2 · MỘT LỆNH VÀO KÊNH CHẠY ĐÚNG MỘT LẦN")
+    #
+    # Phép đo này có từ một lỗi đã trả giá bằng tiền mô hình thật (11/10/2026): `batNeuCo`
+    # được gọi khoảng ba mươi lần trong một phiên, và mỗi lần nó đặt `daDoc = 0` rồi gán một
+    # `Timer` mới mà không huỷ timer cũ. Kênh đọc lại cả inbox, nên MỘT câu người gõ đi vào
+    # lõi **sáu lần** — sáu lượt mô hình, sáu lượt chạy bị ngắt giữa chừng.
+    #
+    # Và nó còn tệ hơn một lỗi tốn tiền: một bộ đo qua giao diện âm thầm gửi cùng một câu
+    # nhiều lần thì MỌI con số nó báo đều không đáng tin.
+    n0 = len([x for x in g._tat_ca() if x.get("su_kien") == "anh_chup"])
+    for i in range(3):
+        g.chup(f"dem-{i}")
+    n1 = len([x for x in g._tat_ca() if x.get("su_kien") == "anh_chup"])
+    b.kiem("3 lệnh dump → đúng 3 lần thực hiện (không đọc lại inbox)",
+           n1 - n0 == 3, f"{n1 - n0} lần cho 3 lệnh")
 
     # ------------------------------------------------------------- B
     b.phan("B · GÕ VÀO Ô NHẬP NHƯ NGƯỜI THẬT")
