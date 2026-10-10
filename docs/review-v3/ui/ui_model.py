@@ -471,6 +471,32 @@ k = K(a, 4, "Sandbox & ngân sách", reqs=["CX-budget", "UC18"])
 W(k, 1, "Thư mục cho phép; mạng theo tool; tool/lượt; giây/lượt", "edit", ["CX-budget", "HA-set", "UC18"])
 W(k, 2, "Cờ tính năng: features.schematic (mặc định tắt)", "edit", ["SCH-17", "HA-set"])
 
+# --- A15 Màn hình & Giao diện nhúng
+#
+# Tab MỚI, thêm 10/10/2026 theo yêu cầu của chủ sản phẩm: "một số KIT hoặc phần cứng có cả màn
+# hình, cần thêm năng lực thiết kế UI và màn hình trên UI để render màn hình do Agent thiết kế;
+# khi thiết kế thì phải dùng cấu hình màn hình THẬT theo tài liệu/thiết kế KIT".
+#
+# Vì sao một tab RIÊNG chứ không phải một nhóm trong A5 "Thiết kế": A5 là thiết kế MẠCH (sơ đồ
+# khối, pinout, netlist, BOM, ERC, cây phân cấp, chuẩn bị sản xuất) — khác hẳn chủ thể. Và khối
+# chính của tab này là một khung vẽ tỉ lệ 1:1 với panel, tức một khối cần bề rộng riêng.
+a = A("A15", "Màn hình & Giao diện nhúng", "tab")
+k = K(a, 1, "Hồ sơ panel — đọc từ tài liệu, KHÔNG tự đặt", reqs=["N1", "PR2"])
+W(k, 1, "Bảng: độ phân giải, hệ màu, đường chéo, DPI, driver, bus, cảm ứng — mỗi dòng kèm TRÍCH DẪN nguyên văn", "display", ["N1", "EX-sources"])
+W(k, 2, "Trường tài liệu KHÔNG nói thì để trống và nói ra; không điền mặc định", "display", ["N2", "PR5"])
+W(k, 3, "Bộ đệm khung cần bao nhiêu byte, có vừa RAM nội / RAM ngoài không", "display", ["N1"])
+k = K(a, 2, "Bản thiết kế màn hình", reqs=["N6"])
+W(k, 1, "Khung vẽ HTML tỉ lệ 1:1 với panel; màu là màu PANEL SẼ HIỆN sau lượng hoá, không phải màu gõ vào", "display", ["N6", "PR5"])
+W(k, 2, "Bấm một phần tử → hỏi lõi về phần tử ấy", "action", ["HA-say"])
+W(k, 3, "Bảng phần tử: id, loại, toạ độ, cỡ chữ", "display", ["PR2"])
+k = K(a, 3, "Phép kiểm trên phần cứng THẬT", reqs=["N6", "PR5"])
+W(k, 1, "Lỗi E11xx: ra ngoài biên · chữ dài hơn ô · cỡ chữ không có trong BSP · ký tự ngoài bảng font · chữ trùng màu nền sau lượng hoá", "display", ["N6"])
+W(k, 2, "Cảnh báo W11xx: hai màu thành một màu trên panel · vùng chạm nhỏ hơn hướng dẫn nhân trắc (TỰ KHAI là hướng dẫn, không phải số đo)", "display", ["N1"])
+W(k, 3, "'Không lỗi' luôn kèm danh sách ĐÃ KIỂM GÌ và KHÔNG kiểm được gì", "display", ["N6", "PR5"])
+k = K(a, 4, "Tệp C sinh ra", reqs=["N6"])
+W(k, 1, "Đường dẫn tệp + tên hàm vẽ; tệp tự khai TIỀN ĐỀ (BSP_LCD_Init…) và những gì nó KHÔNG sinh", "display", ["PR5"])
+W(k, 2, "Nút 'Dịch thử' → build.compile; dịch được mới là bằng chứng", "action", ["HA-say", "N6"])
+
 # --- A14 Dự án & bộ nhớ tác tử
 a = A("A14", "Dự án & Bộ nhớ tác tử", "panel")
 k = K(a, 1, "Dự án", reqs=["UC17"])

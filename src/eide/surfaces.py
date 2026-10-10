@@ -37,6 +37,7 @@ SURFACES: list[tuple[str, str, str]] = [
     ("journal", "A10", "Nhật ký"),
     ("history", "A11", "Lịch sử"),
     ("project", "A14", "Dự án & Bộ nhớ"),
+    ("screen", "A15", "Màn hình"),
 ]
 
 
@@ -1890,6 +1891,187 @@ def dong_ho_ngu_canh(asm: Any, messages: list[Any], cfg: Any) -> dict[str, Any]:
             "kha_dung": cb.kha_dung(cua_so)}
 
 
+def screen(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
+    """A15 — MÀN HÌNH & GIAO DIỆN NHÚNG.
+
+    Tab này tồn tại vì một số bo có cả màn hình, và thiết kế giao diện cho màn hình ấy là một
+    việc khác hẳn thiết kế mạch. Nó dựng từ bốn hiện vật: `display:*` (hồ sơ panel),
+    `ui_screen:*` (bản thiết kế), `ui_render:*` (trang HTML), `ui_code:*` (tệp C).
+
+    Trạng thái rỗng ở đây đặc biệt dễ nói dối, vì một khung vẽ trống trông y như một màn hình
+    đen hợp lệ. Nên mỗi khối rỗng nói đủ ba thứ theo E3.2 §5: chưa có gì, vì sao, cần gì.
+    """
+    khoi: list[dict[str, Any]] = []
+
+    # ---------------------------------------------------------------- A15.1 hồ sơ panel
+    ho_so = [a for a in store.list(type="display", limit=20) or []]
+    if ho_so:
+        hs = store.get(ho_so[0]["id"]) or {}
+        c = hs.get("canonical") or {}
+        dong = [
+            ("Độ phân giải",
+             f"{c.get('rong', 0)} × {c.get('cao', 0)} px" if c.get("rong") else "— chưa có",
+             (c.get("nguon") or {}).get("lcd.width", "")),
+            ("Hệ màu", str(c.get("he_mau") or "— tài liệu không nói")
+             + (f"  (panel cũng nhận {', '.join(c.get('he_mau_khac') or [])})"
+                if c.get("he_mau_khac") else ""),
+             (c.get("nguon") or {}).get("lcd.format", "")),
+            ("Đường chéo", f"{c['inch']:g}\"" if c.get("inch") else "— tài liệu không nói",
+             (c.get("nguon") or {}).get("lcd.inch", "")),
+            ("DPI", (f"{c['dpi']:.0f}" + (" — TÍNH ra, không đọc được"
+                                          if c.get("dpi_la_tinh_ra") else ""))
+             if c.get("dpi") else "— chưa tính được (thiếu đường chéo)", ""),
+            ("Driver panel", str(c.get("driver") or "— tài liệu không nói"),
+             (c.get("nguon") or {}).get("lcd.driver", "")),
+            ("Bus", str(c.get("bus") or "— tài liệu không nói"),
+             (c.get("nguon") or {}).get("lcd.bus", "")),
+            ("Cảm ứng", {True: "có", False: "KHÔNG", None: "— tài liệu không nói"}.get(
+                c.get("cam_ung"), "— tài liệu không nói"),
+             (c.get("nguon") or {}).get("lcd.touch", "")),
+        ]
+        thieu = c.get("thieu") or []
+        khoi.append(khoi_hien_vat(
+            "A15.1", "Hồ sơ panel — đọc từ tài liệu, không tự đặt", "table", hs,
+            summary=(f"{c.get('rong', 0)}×{c.get('cao', 0)} · {c.get('he_mau') or '?'}"
+                     + (f" · {len(thieu)} trường tài liệu KHÔNG nói" if thieu else "")),
+            columns=["Trường", "Giá trị", "Trích dẫn nguyên văn"],
+            rows=[[a, b, (d[:140] if d else "— không có trích dẫn")] for a, b, d in dong]))
+        if (c.get("dem_khung") or {}).get("note_vi"):
+            khoi.append(block("A15.1b", "Bộ đệm khung", "text",
+                              text=c["dem_khung"]["note_vi"]))
+        if not c.get("rong"):
+            khoi.append(block(
+                "A15.1c", "Hồ sơ này CHƯA dùng được để thiết kế", "text",
+                text=str(c.get("vi_sao_khong_hop_le") or "")))
+    else:
+        khoi.append(empty(
+            "A15.1", "Hồ sơ panel — đọc từ tài liệu, không tự đặt",
+            chua_co="Chưa có hồ sơ màn hình nào.",
+            vi_sao="Không có hồ sơ thì mọi toạ độ của một bản thiết kế là toạ độ trên một màn "
+                   "hình không ai biết — và tác tử sẽ tự nhớ ra một độ phân giải. Dự án này đã "
+                   "trả giá ba lần cho hằng số phần cứng tự nhớ.",
+            can_gi="Nạp tài liệu của bo (`doc.load`) rồi bảo tác tử đọc cấu hình màn hình "
+                   "(`display.profile`)."))
+
+    # ---------------------------------------------------------------- A15.2 bản thiết kế
+    ds_man = store.list(type="ui_screen", limit=20) or []
+    ds_render = {}
+    for a in store.list(type="ui_render", limit=20) or []:
+        full = store.get(a["id"]) or {}
+        ds_render[(full.get("canonical") or {}).get("ten", "")] = full
+    if ds_man:
+        for m in ds_man:
+            full = store.get(m["id"]) or {}
+            c = full.get("canonical") or {}
+            ten = c.get("ten") or m["id"].split(":", 1)[-1]
+            pt = c.get("phan_tu") or []
+            rd = ds_render.get(ten)
+            tep = ((rd or {}).get("canonical") or {}).get("tep", "")
+            if tep:
+                khoi.append(khoi_hien_vat(
+                    f"A15.2.{ten}", f"Màn hình “{ten}” — tỉ lệ 1:1 với panel", "html",
+                    rd or full,
+                    summary=(f"{c.get('rong', 0)}×{c.get('cao', 0)} px · {len(pt)} phần tử"),
+                    tep=tep,
+                    bam_phan_tu=("Cho tôi xem phần tử `{ref}` của màn hình “" + ten + "”")))
+            else:
+                khoi.append(empty(
+                    f"A15.2.{ten}", f"Màn hình “{ten}” — chưa dựng bản xem",
+                    chua_co=f"Bản thiết kế “{ten}” có {len(pt)} phần tử, nhưng chưa có trang "
+                            "HTML để xem.",
+                    vi_sao="Bản xem là một tệp do mã dựng ra từ hiện vật, không phải một ảnh "
+                           "lưu kèm — nên nó chỉ có sau khi ai đó yêu cầu dựng.",
+                    can_gi=f"Bảo tác tử dựng bản xem màn hình “{ten}” (`screen.render`)."))
+            khoi.append(block(
+                f"A15.2.{ten}.pt", f"Phần tử của “{ten}”", "table",
+                columns=["Mã", "Loại", "x", "y", "w", "h", "Cỡ chữ", "Chữ"],
+                rows=[[p.get("id", ""), p.get("loai", ""), p.get("x", 0), p.get("y", 0),
+                       p.get("w", 0), p.get("h", 0), p.get("co_chu", ""),
+                       (p.get("chu") or "")[:40]] for p in pt],
+                stale=[m["id"]] if m.get("stale") else []))
+    else:
+        khoi.append(empty(
+            "A15.2", "Bản thiết kế màn hình",
+            chua_co="Chưa có bản thiết kế màn hình nào.",
+            vi_sao="Bản thiết kế là một hiện vật trong kho (toạ độ bằng pixel thật của panel), "
+                   "không phải một tệp ảnh — nên nó chỉ có khi tác tử đã thiết kế.",
+            can_gi="Nói cho tác tử màn hình cần hiện những gì, rồi để nó gọi `screen.set`."))
+
+    # ---------------------------------------------------------------- A15.3 phép kiểm
+    hang: list[list[Any]] = []
+    for m in ds_man:
+        full = store.get(m["id"]) or {}
+        c = full.get("canonical") or {}
+        k = c.get("kiem") or {}
+        ten = c.get("ten") or ""
+        for x in k.get("loi") or []:
+            hang.append(["LỖI", x.get("ma", ""), ten, x.get("phan_tu", ""),
+                         x.get("vi_sao", ""), x.get("cach_sua", "")])
+        for x in k.get("canh_bao") or []:
+            hang.append(["cảnh báo", x.get("ma", ""), ten, x.get("phan_tu", ""),
+                         x.get("vi_sao", ""), x.get("cach_sua", "")])
+        for x in k.get("chua_kiem") or []:
+            hang.append(["chưa đủ dữ kiện", x.get("ma", ""), ten, "",
+                         x.get("vi_sao", ""), ""])
+    if ds_man:
+        khoi.append(block(
+            "A15.3", "Phép kiểm trên phần cứng thật", "table",
+            summary=(f"{sum(1 for h in hang if h[0] == 'LỖI')} lỗi · "
+                     f"{sum(1 for h in hang if h[0] == 'cảnh báo')} cảnh báo"
+                     if hang else "không phát hiện nào ở những chỗ phép kiểm chạm tới"),
+            columns=["Mức", "Mã", "Màn hình", "Phần tử", "Vì sao", "Cách sửa"],
+            rows=hang))
+        # "Không lỗi" KHÔNG được đứng một mình: nó sẽ được đọc thành "thiết kế đúng hết".
+        from .man_hinh.mo_hinh import NGOAI_PHAM_VI
+
+        khoi.append(block(
+            "A15.3b", "Phép kiểm này chạm tới gì, và KHÔNG chạm tới gì", "sections",
+            sections=[
+                {"title": "Đã chạm tới",
+                 "items": ["biên panel — mọi phần tử có nằm trong khung không",
+                           "cỡ chữ — có trong thư viện BSP không, và chữ có vừa ô không "
+                           "(bề rộng tính theo bảng font thật của bo)",
+                           "ký tự — có nằm trong bảng font không (BSP chỉ có ASCII 0x20..0x7E)",
+                           "hệ màu — hai màu khác nhau có thành một màu trên panel không",
+                           "bộ đệm khung — có vừa RAM không"]},
+                {"title": "KHÔNG kiểm được", "items": list(NGOAI_PHAM_VI)}]))
+
+    # ---------------------------------------------------------------- A15.4 tệp C
+    ds_code = store.list(type="ui_code", limit=20) or []
+    if ds_code:
+        hang_c = []
+        for a in ds_code:
+            full = store.get(a["id"]) or {}
+            c = full.get("canonical") or {}
+            hang_c.append([c.get("ten", ""), c.get("tep", ""), c.get("ham", ""),
+                           ", ".join(c.get("bo_qua") or []) or "—",
+                           (c.get("kiem") or {}).get("so_loi", 0)])
+        khoi.append(block(
+            "A15.4", "Tệp C sinh ra", "table",
+            summary=f"{len(hang_c)} tệp",
+            columns=["Màn hình", "Tệp", "Hàm vẽ", "Phần tử bị bỏ qua", "Lỗi còn lại"],
+            rows=hang_c))
+        khoi.append(block(
+            "A15.4b", "Tệp này chỉ VẼ", "text",
+            text=("Hàm sinh ra không khởi tạo LCD. Trước khi gọi nó, dự án phải đã chạy "
+                  "`BSP_LCD_Init()`, `BSP_LCD_LayerDefaultInit(0, <địa chỉ bộ đệm khung>)`, "
+                  "`BSP_LCD_SelectLayer(0)`, `BSP_LCD_DisplayOn()`. Phần ấy phụ thuộc script "
+                  "liên kết và cấu hình xung nhịp của từng dự án, nên bộ sinh code **không** "
+                  "sinh nó — một bản “có vẻ đúng” cho nó là một tệp người dùng tưởng dùng "
+                  "được.\n\n**Dịch được mới là bằng chứng.** Bảo tác tử gọi `build.compile` "
+                  "trên tệp này; tới lúc đó thì “sinh xong” chỉ nói về một tệp trên đĩa.")))
+    elif ds_man:
+        khoi.append(empty(
+            "A15.4", "Tệp C sinh ra",
+            chua_co="Chưa sinh tệp C nào.",
+            vi_sao="Code là bản dựng thứ hai từ cùng bản thiết kế (bản thứ nhất là trang HTML). "
+                   "Nó chỉ có khi ai đó yêu cầu, vì nó ghi một tệp vào dự án.",
+            can_gi="Bảo tác tử sinh code vẽ màn hình (`screen.codegen`), rồi dịch thử bằng "
+                   "`build.compile`."))
+
+    return _don_gian("screen", "A15", "Màn hình", khoi)
+
+
 def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
              assumptions: list[str] | None = None, run: dict[str, Any] | None = None,
              only: list[str] | None = None, hist: Any = None,
@@ -1908,6 +2090,7 @@ def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
         "journal": lambda: journal(ledger),
         "history": lambda: history(store, inv, hist),
         "project": lambda: project(eide_md, inv, assumptions or [], **(bo_nho_kw or {})),
+        "screen": lambda: screen(store, inv, _goc_du_an(cfg)),
     }
     n = 0
     for ten, dung in models.items():

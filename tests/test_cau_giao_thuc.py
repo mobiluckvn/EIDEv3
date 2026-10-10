@@ -150,13 +150,24 @@ def test_UP06_resume_phat_lai(cau):
     assert [c["seq"] for c in r["commands"]] == [truoc - 2, truoc - 1, truoc]
 
 
-def test_UP07_ui_sync_ve_du_11_be_mat(cau):
-    """I3 — giao diện chỉ render thứ lõi gửi, nên lõi phải gửi đủ."""
+def test_UP07_ui_sync_ve_du_MOI_be_mat(cau):
+    """I3 — giao diện chỉ render thứ lõi gửi, nên lõi phải gửi ĐỦ.
+
+    Danh sách mong đợi suy từ `surfaces.SURFACES`, không viết tay. Bản trước liệt kê 11 tên và
+    vì thế đỏ ngay khi thêm tab "Màn hình" (A15) ngày 10/10/2026 — một ca kiểm khoá **con số**
+    thay vì khoá **hành vi**. Suy từ nguồn sự thật thì nó vẫn bắt được chuyện đáng bắt (một bề
+    mặt khai trong `SURFACES` mà `ui.sync` không gửi) và không đỏ oan khi thêm tab.
+
+    Cùng bài học với `test_luoc_do_v2_go_duoc_va_khong_cham_bang_cu` (DEV-355), nơi mức
+    migration từng viết cứng `[4, 3, 2]`.
+    """
+    from eide.surfaces import SURFACES
+
     cau.goi("hello")
     cau.goi("ui.sync")
     ten = [c["params"]["surface"] for c in cau.cua("surface.set")]
-    assert set(ten) == {"requirements", "documents", "knowledge", "design", "tools",
-                        "code", "simulation", "hardware", "journal", "history", "project"}
+    assert set(ten) == {s[0] for s in SURFACES}, sorted(set(ten) ^ {s[0] for s in SURFACES})
+    assert len(ten) == len(SURFACES), "mỗi bề mặt đúng một lệnh vẽ"
     assert cau.cua("ui.set"), "phải gửi thanh trạng thái"
 
 
@@ -279,8 +290,15 @@ def _doc_so_cai(cau):
 
 
 def _so_lenh_ve_be_mat(cau):
-    """11 surface.set + 1 ui.set + 1 history.update = 13 lệnh vẽ, đều được ghi sổ."""
-    return 13
+    """Mỗi bề mặt một `surface.set`, cộng 1 `ui.set` (thanh trạng thái) + 1 `history.update`.
+
+    Suy từ `surfaces.SURFACES` thay vì viết cứng `13`: con số ấy đỏ ngay khi thêm một tab, mà
+    "thêm một tab" không phải một lỗi. Phép kiểm vẫn giữ được điều nó muốn giữ — mọi lệnh vẽ
+    đều được ghi sổ — vì nó so TỔNG, và một lệnh vẽ không vào sổ sẽ làm tổng lệch.
+    """
+    from eide.surfaces import SURFACES
+
+    return len(SURFACES) + 2
 
 
 def test_ledger_query_noi_ra_khi_da_cat(tmp_path):
