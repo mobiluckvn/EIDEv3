@@ -1,0 +1,13 @@
+{
+  "ten": "gameover",
+  "tep": "firmware/ui_gameover.c",
+  "ham": "ui_ve_gameover",
+  "bo_qua": [],
+  "kiem": {
+    "loi": [],
+    "canh_bao": [],
+    "chua_kiem": [],
+    "so_loi": 0,
+    "so_canh_bao": 0
+  }
+}

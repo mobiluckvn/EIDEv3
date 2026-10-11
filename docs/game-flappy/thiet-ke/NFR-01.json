@@ -1,0 +1,9 @@
+{
+  "loai": "NFR",
+  "text": "Hệ thống sử dụng nhân RTOS tự viết cho ARM Cortex-M4, không dùng FreeRTOS có sẵn.",
+  "criteria": "Nhân RTOS tự viết quản lý được đa tác vụ độc lập (Task Stack, TCB, chuyển ngữ cảnh Context Switch) mà không nhúng mã nguồn FreeRTOS",
+  "source_quote": "viết một nhân RTOS để chạy game — tự viết nhân, không dùng FreeRTOS có sẵn",
+  "risk": [
+    "Chuyển ngữ cảnh trên Cortex-M4F cần lưu/phục hồi đúng thanh ghi FPU để tránh lỗi HardFault"
+  ]
+}

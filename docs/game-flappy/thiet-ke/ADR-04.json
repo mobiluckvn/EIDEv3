@@ -1,0 +1,16 @@
+{
+  "tieu_de": "Đặc tả bảng 5 tác vụ RTOS và phân quyền vẽ ba màn hình (batdau, choi, gameover)",
+  "boi_canh": "Xác định bảng phân chia tác vụ định kỳ của RTOS, kích thước ngăn xếp theo word cho từng tác vụ và phân định trách nhiệm vẽ ba màn hình đồ họa 800x480 (batdau, choi, gameover) trong bộ đệm FrameBuffer SDRAM 16 MB.",
+  "phuong_an_xet": [
+    "Cho Task_GameLogic vẽ luôn màn hình (khiến logic game bị nghẽn bởi thời gian quét LCD)",
+    "Cho Task_Render độc quyền vẽ 3 màn hình theo snapshot trạng thái game từ Task_GameLogic (chọn phương án này)"
+  ],
+  "chon": "Bảng 5 tác vụ: (1) Task_Input: ưu tiên 3, chu kỳ 20 ms, stack 256 words (1024 B), quét nút PA0 và cảm ứng FT6206 phát sự kiện Jump/Tap; (2) Task_GameLogic: ưu tiên 2, chu kỳ 20 ms, stack 512 words (2048 B), máy trạng thái game, tính quỹ đạo chim, toạ độ cọc, va chạm, điểm số; (3) Task_Render: ưu tiên 1, chu kỳ 33 ms (~30 FPS), stack 1024 words (4096 B), độc quyền vẽ màn hình ra FrameBuffer SDRAM: vẽ 'batdau' khi STATE_START, vẽ 'choi' khi STATE_PLAY/STATE_PAUSE, vẽ 'gameover' khi STATE_GAMEOVER; (4) Task_Heartbeat: ưu tiên 1, chu kỳ 500 ms, stack 128 words (512 B), chớp LED1 PG6 và LED4 PK3; (5) Task_Idle: ưu tiên 0, liên tục, stack 128 words (512 B), thực thi lệnh WFI. Tổng stack: 2048 words (8192 B).",
+  "he_qua": [
+    "Tổng stack 2048 words chỉ chiếm ~2.5% của 324 KB SRAM nội",
+    "Duy nhất Task_Render tương tác với FrameBuffer SDRAM loại trừ hoàn toàn race condition",
+    "Phân định rạch ròi 3 trạng thái ứng với 3 màn hình đã thiết kế trong kho"
+  ],
+  "quyet_boi": "nguoi",
+  "trich_loi_nguoi": "bảng tác vụ (tên, ưu tiên, chu kỳ ms, kích thước ngăn xếp word, việc nó làm)... và tác vụ nào vẽ màn hình nào trong ba màn đã thiết kế"
+}

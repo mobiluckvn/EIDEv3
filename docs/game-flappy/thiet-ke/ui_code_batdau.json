@@ -1,0 +1,13 @@
+{
+  "ten": "batdau",
+  "tep": "firmware/ui_batdau.c",
+  "ham": "ui_ve_batdau",
+  "bo_qua": [],
+  "kiem": {
+    "loi": [],
+    "canh_bao": [],
+    "chua_kiem": [],
+    "so_loi": 0,
+    "so_canh_bao": 0
+  }
+}

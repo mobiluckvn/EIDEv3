@@ -174,6 +174,15 @@ def sinh_c(mh: ManHinh, hs: HoSoManHinh, *, kq: KetQuaKiem | None = None) -> str
         " * Bộ sinh code KHÔNG sinh phần ấy: nó phụ thuộc script liên kết và cấu hình xung",
         " * nhịp của từng dự án, nên một bản “có vẻ đúng” cho nó là một tệp người dùng tưởng",
         " * dùng được.",
+        " *",
+        " * VÀ HÀM NÀY VẼ MỘT LẦN — nó là một BỨC TRANH TĨNH, không phải một vòng hoạt hình.",
+        " * Mọi toạ độ trong đây là toạ độ trong bản thiết kế; không gì ở đây đọc trạng thái",
+        " * chương trình. Muốn phần tử nào CHUYỂN ĐỘNG thì phải tự viết lớp vẽ từng khung:",
+        " * dùng hàm này làm NỀN (gọi một lần), rồi mỗi khung xoá vị trí cũ của phần tử động",
+        " * bằng màu nền và vẽ lại ở vị trí mới theo trạng thái.",
+        " *",
+        " * Nói ra vì nó đã gây hiểu nhầm thật (11/10/2026): một game nạp lên bo, màn chơi hiện",
+        " * đúng thiết kế rồi ĐỨNG IM — vật lý vẫn chạy, mà không ai vẽ lại.",
     ]
     if kq is not None and kq.loi:
         d += [" *",

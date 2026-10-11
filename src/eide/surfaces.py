@@ -2076,7 +2076,13 @@ def screen(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
                   "`BSP_LCD_SelectLayer(0)`, `BSP_LCD_DisplayOn()`. Phần ấy phụ thuộc script "
                   "liên kết và cấu hình xung nhịp của từng dự án, nên bộ sinh code **không** "
                   "sinh nó — một bản “có vẻ đúng” cho nó là một tệp người dùng tưởng dùng "
-                  "được.\n\n**Dịch được mới là bằng chứng.** Bảo tác tử gọi `build.compile` "
+                  "được.\n\n**Và nó vẽ MỘT LẦN.** Hàm sinh ra là một **bức tranh tĩnh**: mọi "
+                  "toạ độ trong đó là toạ độ của bản thiết kế, không gì đọc trạng thái chương "
+                  "trình. Muốn phần tử nào chuyển động thì phải tự viết lớp vẽ từng khung — "
+                  "dùng hàm này làm nền, rồi mỗi khung xoá vị trí cũ và vẽ lại vị trí mới. "
+                  "Chuyện này đã gây hiểu nhầm thật: một game nạp lên bo, màn chơi hiện đúng "
+                  "thiết kế rồi **đứng im**, trong khi vật lý vẫn chạy.\n\n"
+                  "**Dịch được mới là bằng chứng.** Bảo tác tử gọi `build.compile` "
                   "trên tệp này; tới lúc đó thì “sinh xong” chỉ nói về một tệp trên đĩa.")))
     elif ds_man:
         khoi.append(empty(

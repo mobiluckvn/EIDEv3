@@ -1,0 +1,17 @@
+{
+  "tieu_de": "Phân bổ tác vụ RTOS, ngân sách ngăn xếp và cơ chế vẽ màn hình tập trung",
+  "boi_canh": "Phân chia các luồng xử lý đa tác vụ trong game Flappy Bird và giải quyết nguy cơ xung đột truy cập bộ nhớ FrameBuffer SDRAM 800x480 qua bộ điều khiển LTDC/FMC.",
+  "phuong_an_xet": [
+    "Mỗi tác vụ tự gọi hàm vẽ trực tiếp ra LCD khi có sự kiện (dễ xung đột bus FMC và xé hình)",
+    "Vẽ đồ họa trong ngắt định thời (gây nghẽn hệ thống vì thời gian vẽ đồ họa kéo dài)",
+    "Tập trung hoá quyền vẽ FrameBuffer vào một tác vụ Task_Render chuyên trách (chọn phương án này)"
+  ],
+  "chon": "Tổ chức 5 tác vụ: Task_Input (20 ms, stack 1024 B, ưu tiên 3), Task_GameLogic (20 ms, stack 2048 B, ưu tiên 2), Task_Render (33 ms, stack 4096 B, ưu tiên 1), Task_Heartbeat (500 ms, stack 512 B, ưu tiên 1), Task_Idle (stack 512 B, ưu tiên 0). Giao toàn quyền vẽ màn hình (batdau, choi, gameover) duy nhất cho Task_Render.",
+  "he_qua": [
+    "Task_Render độc quyền ghi bộ đệm FrameBuffer SDRAM tại 0xC0000000 nên không cần khóa bảo vệ phức tạp cho màn hình",
+    "Task_GameLogic hoạt động độc lập với tốc độ khung hình, truyền trạng thái qua State Snapshot",
+    "Tổng bộ nhớ stack 8 KB tối ưu an toàn tuyệt đối trên 324 KB SRAM nội"
+  ],
+  "quyet_boi": "tac_tu",
+  "trich_loi_nguoi": "Trước khi viết mã, hãy ghi thiết kế kiến trúc nhân ra hiện vật: danh sách tác vụ và chu kỳ, cơ chế chuyển ngữ cảnh, kích thước ngăn xếp mỗi tác vụ, và tác vụ nào vẽ màn hình nào. Báo mình bản thiết kế trước khi code."
+}

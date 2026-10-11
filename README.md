@@ -31,7 +31,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 4. [Từng nhóm việc, chi tiết](#4--từng-nhóm-việc-chi-tiết)
 5. [Cách thử: bốn mức](#5--cách-thử-bốn-mức)
 6. [Kết quả thử đến nay](#6--kết-quả-thử-đến-nay)
-7. [Ba việc thật đã làm xong](#7--ba-việc-thật)
+7. [Bốn việc thật đã làm xong](#7--bốn-việc-thật)
 8. [Những chỗ chưa làm được](#8--những-chỗ-chưa-làm-được)
 9. [Cài và chạy](#9--cài-và-chạy)
 10. [Mã nguồn bày thế nào](#10--mã-nguồn-bày-thế-nào)
@@ -285,7 +285,65 @@ Khối ```mermaid được **vẽ ra hình** — trên màn hình chat (kèm nú
 cả bốn định dạng tệp. Bộ vẽ **tự viết**, không nhúng thư viện ngoài, vì EIDE không mở cổng mạng
 nào. Kiểu sơ đồ nào chưa vẽ được thì hiện mã **kèm câu nói rõ là chưa vẽ được**.
 
-### 4.5 · Viết mã: đọc trước, đánh mốc trước, chọn cấu trúc trước
+### 4.5 · Thiết kế giao diện cho màn hình của bo
+
+Một số kit có cả LCD, và thiết kế màn hình cho chúng là một việc khác hẳn thiết kế mạch. Năm
+công cụ, đi theo một đường bắt buộc **theo dữ liệu** — mỗi công cụ tự kiểm tiền đề và khi thiếu
+thì nói phải gọi gì trước, không có planner nào xếp hộ:
+
+```
+display.profile ──► screen.set ──► screen.check ──► screen.render ──► screen.codegen
+ (hồ sơ panel)     (bản thiết kế)   (chạy được?)      (HTML 1:1)      (tệp C BSP_LCD_*)
+```
+
+**Hồ sơ panel đọc từ TÀI LIỆU, không tự đặt.** Độ phân giải, hệ màu, đường chéo, driver, bus,
+cảm ứng — mỗi trường kèm **trích dẫn nguyên văn** một dòng của tài liệu, và trường nào tài liệu
+không nói thì **để trống** chứ không điền mặc định. `cam_ung = None` khác `cam_ung = False`:
+một cái là *"tài liệu không nói"*, một cái là *"panel không có cảm ứng"*, và gộp chúng là cách
+một bản thiết kế có nút bấm được duyệt cho một màn hình không ai bấm được.
+
+Cửa này có vì một lý do đo được: `grep` cả kho ngày 10/10/2026 **không ra một Fact nào về màn
+hình**. Làm phần thiết kế trước thì Agent sẽ *tự nhớ ra* `800×480` — và dự án này đã trả giá ba
+lần cho hằng số phần cứng tự nhớ. Nên `screen.set` **cố ý không có tham số độ phân giải**.
+
+**Hiện vật gốc là mô hình có cấu trúc; HTML và C đều là bản dựng ra từ nó.** Nếu HTML là bản
+gốc thì bước chuyển thành code phải đọc lại HTML để suy ra ý định — `<div>` không nói nó là
+nhãn hay nút, `left: 37%` không nói toạ độ pixel nào. Một nguồn, hai bản dựng.
+
+**Năm chỗ nó bắt được, và cả năm đều dịch sạch rồi sai trên bo:**
+
+| mã | chỗ hỏng | vì sao không ai thấy |
+|---|---|---|
+| `E1101` | phần tử ra ngoài biên panel | LTDC cắt phần tràn, không lỗi nào kêu |
+| `E1102` | chữ dài hơn ô chứa nó | `BSP_LCD_DisplayStringAt` không ngắt dòng, không thu nhỏ — nó vẽ tràn ra ngoài |
+| `E1103` | cỡ chữ không có trong thư viện BSP | là một lỗi **dịch**, tức chỉ gặp sau khi đã vẽ xong cả màn hình |
+| `E1104` | chữ trùng màu nền **sau lượng hoá** | hai màu khác nhau trong thiết kế thành một màu trên panel RGB565 |
+| `E1108` | ký tự ngoài bảng font | **không phải "mất dấu"** — xem dưới |
+
+`E1108` là chỗ đáng kể nhất. Bảng font của bo có **đúng 95 ký tự ASCII 0x20–0x7E** (đo từ
+`font*.c`: số byte bảng chia cho `Height × ((Width+7)/8)`), và `BSP_LCD_DisplayChar` tra
+`table[(Ascii - ' ') * …]` mà **không kiểm biên**. Nên một nhãn tiếng Việt có dấu là một phép
+**đọc ra ngoài bảng**: `'ộ'` cho chỉ số 193, tức đọc tới ~13 896 byte trong một bảng dài 6 840
+byte. Mã vẫn dịch, vẫn nạp, màn hình hiện pixel rác.
+
+Bề rộng chữ là một **phép đo** chứ không phải phỏng đoán, vì font của BSP là font bitmap **đơn
+cách** — kích thước tra từ chính bảng font trong repo: `Font8` 5×8 · `Font12` 7×12 · `Font16`
+11×16 · `Font20` 14×20 · `Font24` 17×24.
+
+**Bản render HTML cố ý không làm đẹp hơn thiết bị.** Nó vẽ 1:1 bằng `px` tuyệt đối; nó vẽ bằng
+**màu panel sẽ hiện sau lượng hoá**, không bằng màu gõ vào; nó tự khai cấu hình panel kèm trích
+dẫn nguồn; và nó tự khai những gì phép kiểm **không** chạm tới (độ sáng ngoài trời, tốc độ vẽ
+lại, bố cục có hợp lý với người dùng hay không).
+
+Xem ở **tab Màn hình (A15)**: hồ sơ panel kèm trích dẫn, khung thiết bị 1:1 bấm được từng phần
+tử, bảng phần tử để sửa, bảng phép kiểm, và bảng tệp C sinh ra.
+
+**Điều nó KHÔNG làm, nói ra để không ai đọc nhầm:** tệp C sinh ra vẽ **một lần** — nó là một
+bức tranh tĩnh, không phải vòng hoạt hình; muốn phần tử nào chuyển động thì phải tự viết lớp vẽ
+từng khung. Nó cũng **không** sinh phần khởi tạo LCD, vì phần ấy phụ thuộc script liên kết và
+cấu hình xung nhịp của từng dự án. Và nó chỉ sinh `BSP_LCD_*`, chưa sinh LVGL.
+
+### 4.6 · Viết mã: đọc trước, đánh mốc trước, chọn cấu trúc trước
 
 Ba luật chặn, mỗi luật có mã lỗi riêng:
 
@@ -298,7 +356,7 @@ Bước đọc hiểu mã tách rõ hai thứ: **dữ kiện** (mã quét ra: h�
 định** (Agent con đọc rồi đánh giá). Trộn hai thứ này vào một chỗ thì người đọc không biết đâu
 là đo, đâu là đoán.
 
-### 4.6 · Chạy thử trên máy: nêu mức đo trước
+### 4.7 · Chạy thử trên máy: nêu mức đo trước
 
 Thứ tự bắt buộc: **nêu mức đo → chạy → đối chiếu**. Và thứ chấm kết quả là **bộ mức đo**,
 không phải chương trình mô phỏng — chương trình chỉ in số ra. Nếu để chương trình tự in
@@ -317,7 +375,7 @@ việc người phải duyệt. Và từ DEV-347, **làm yếu tệp đo** cũng
 bỏ dòng in `FAIL` sau khi đã có kết quả đỏ là một đường đi tới chữ "đạt" rộng hơn đường đổi
 ngưỡng, và trước đó không luật nào thấy nó.
 
-### 4.7 · Làm việc với bo thật
+### 4.8 · Làm việc với bo thật
 
 | Công cụ | Làm gì |
 |---|---|
@@ -334,13 +392,13 @@ sai tệp thì nó vẫn báo "verified, 0 byte lệch". Trong phiên robot, Age
 bản trong khi trên chip là bản khác, và cả ba dấu hiệu (`ok`, `verified`, `0 byte lệch`) đều
 xanh.
 
-### 4.8 · Việc lớn: chia chặng, mỗi chặng để lại thứ mở ra xem được
+### 4.9 · Việc lớn: chia chặng, mỗi chặng để lại thứ mở ra xem được
 
 Mỗi bước xong phải có **thứ mở ra xem được** — một tệp, một mục trong kho, một lần sửa. Một
 câu kể lại thì không nhận. Xong cả kế hoạch thì ráp các phần theo đúng thứ tự bước, sinh mục
 lục, hạ cấp tiêu đề, và **kê rõ phần nào không ráp được ngay trong tài liệu**.
 
-### 4.9 · Nhớ lâu, và nhớ có kiểm lại
+### 4.10 · Nhớ lâu, và nhớ có kiểm lại
 
 Ngữ cảnh chia 10 khối, mỗi khối có trần riêng, và có đồng hồ cho người xem khối nào đang gần
 trần. Khi phải thu gọn, EIDE hỏi lại 3 câu kiểm xem bản thu gọn có mất gì không — thu gọn mà
@@ -624,7 +682,7 @@ nhật ký từng việc ở [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) (DEV-3
 
 ---
 
-## 7 · Ba việc thật
+## 7 · Bốn việc thật
 
 ### 7.1 · Viết một hệ điều hành thời gian thực, thay hẳn FreeRTOS
 
@@ -1071,18 +1129,91 @@ bước kèm 54 ảnh cửa sổ EIDE, và sổ cái lời gọi công cụ kèm
 Phiên cũ của việc này — làm trước khi có bo, mọi con số là số mô phỏng — giữ lại trong
 [`docs/riscv-tn20k/`](docs/riscv-tn20k/) để so hai lần làm.
 
-### 7.4 · Đặt ba việc đã xong cạnh nhau: thời gian và tiền
+### 7.4 · Game Flappy Bird — thiết kế giao diện ra HTML, rồi ra mã chạy trên LCD
 
-| | Hệ điều hành tự viết | Robot hai bánh tự đứng | Robot — **làm lại 04/10** | Lõi RISC-V trên FPGA |
-|---|---|---|---|---|
-| Phần mềm giao ra | 689 dòng lõi + 340 dòng ứng dụng | 1 820 dòng, 10 mô-đun | **1 124 dòng**, 10 mô-đun | 2 020 dòng Verilog + C + hợp ngữ |
-| **Phiên Agent — thời gian** | **81,2 phút** | **7,4 giờ** | **4,53 giờ** | **khoảng 14 giờ, hai ngày** |
-| **Phiên Agent — lời gọi mô hình** | 351 | 1 415 | **670** | **1 307** |
-| **Phiên Agent — tiền mô hình** | — | 340 nghìn đồng | **34 nghìn đồng** | — |
-| **Nếu người làm tay — ngày công** | **31,7 ±2,3** | **31,0 ±2,6** | **32,1 ±2,6** | chưa dựng ước lượng |
-| **Nếu người làm tay — tiền** | **≈ 111 triệu đồng** | **≈ 105 triệu đồng** | **≈ 112 triệu đồng** | — |
-| Chênh về tiền | **khoảng 3 300 lần** | **khoảng 300 lần** | **khoảng 3 300 lần** | — |
-| Chạy thật trên bo | LCD 800×480 + cảm ứng + 6 việc | robot đứng được | **robot đứng được** | **96/96 ô đo trên silicon** |
+Đề bài ngày 11/10/2026: *"game Flappy Bird đơn giản trên LCD của kit STM32F469I-DISCO; phân
+tích và thiết kế đầy đủ TRƯỚC khi viết mã; thiết kế màn hình phải render ra được đúng độ phân
+giải thật và sửa được từng phần tử; và viết một nhân RTOS để chạy game — tự viết, không dùng
+FreeRTOS."*
+
+Việc này khác ba việc trên ở một điểm: nó là việc đầu tiên đi hết đường **tài liệu → hồ sơ
+panel → thiết kế màn hình → HTML xem được → mã C → ảnh nạp → chạy trên bo**. Và nó được giao
+**qua chính giao diện EIDE**, không qua dòng lệnh.
+
+Bộ thiết kế, mã, ảnh nạp và nhật ký từng lượt: [`docs/game-flappy/`](docs/game-flappy/) — bốn
+bản render HTML mở bằng trình duyệt là **đúng cái hiện trên tab Màn hình**, tỉ lệ 1:1 với panel.
+
+| | |
+|---|---|
+| Mã Agent **tự viết** | **1 084 dòng** — nhân RTOS, game, khởi tạo, lớp vẽ động |
+| Mã **sinh từ bản thiết kế** | **296 dòng** `BSP_LCD_*`, ba màn hình |
+| Mã **lấy của hãng**, không sửa | 94 877 dòng — HAL, CMSIS, BSP LCD/SDRAM/cảm ứng, OTM8009A, FT6x06, phông |
+| Hiện vật trong kho | **44** — 5 yêu cầu, 4 ADR, 1 hồ sơ panel, 4 bản thiết kế màn hình, 4 bản render, 3 tệp C sinh ra, 13 tệp mã |
+| Ảnh nạp chip | `text 37 912 · data 548 · bss 9 284` |
+| Phiên | 430 lời gọi công cụ · 366 lượt mô hình · 46 changeset |
+| **Nhịp nhân đo trên chip** | bộ đếm `+2 005` trong 2 s = **1 000 Hz**, đúng thiết kế |
+| **Đọc ngược Flash** | **khớp từng byte**, cùng SHA-256, mỗi lần nạp |
+| Chạy thật trên bo | màn start lên, chạm màn hình vào game, vòng START→PLAY→GAMEOVER→PLAY đo được qua SWD |
+
+#### Phần đáng kể không phải cái game, mà là năm chỗ nó làm lộ ra
+
+Không chỗ nào trong năm chỗ dưới đây có một dòng lỗi ở bất kỳ bước nào. Tất cả đều **dịch
+sạch, nạp trót lọt**, và sai trên bo:
+
+1. **Cả một lớp driver là vỏ rỗng.** Agent tự khai một header BSP với tám hàm `BSP_LCD_*`,
+   mỗi hàm đúng **một lệnh `bx lr`**. Firmware liên kết sạch, màn hình trống. Phép kiểm
+   `ham_tra_hang` (DEV-362) viết ra chính để bắt chuyện này đã **bỏ sót**, vì nó tìm *hai*
+   lệnh (`mov r0,#N` + `bx lr`) còn hàm `void` rỗng chỉ có *một*.
+2. **Bản dựng lỗi thời đọc thành bản mới.** `build.compile` không khai tệp nguồn nên kho
+   không đánh dấu STALE; Agent sửa `main.c` lúc 09:37 rồi báo *"dịch sạch"* từ hiện vật 09:00.
+   Bắt được bằng cách so `mtime`, không bằng cách hỏi hệ.
+3. **Bản xem HTML và mã C vẽ khác nhau.** Nút trong thiết kế tô kín màu da cam; trên bo chỉ
+   thấy màu sau mấy chữ. Bộ sinh mã chỉ vẽ viền rồi dùng `SetBackColor`, mà BSP chỉ tô nền
+   **sau từng ký tự**. Đây đúng chỗ mà "một nguồn, hai bản dựng" sinh ra để chặn — và nó
+   không chặn được, vì hai bản dựng viết độc lập mà không có phép kiểm nào bắt chúng nói cùng
+   một thứ.
+4. **Một tác vụ chạy 50 lần/giây mà không làm gì.** `task_input_fn` được tạo, được lập lịch,
+   có ngăn xếp riêng, chú thích phía trên ghi *"Đọc nút bấm vật lý PA0"* — thân hàm là
+   `while(1){ os_delay(20); }`.
+5. **Mã không khớp bản thiết kế.** Mặt đất `400` trong mã so với `420` trong bản vẽ, chim
+   `200` so với `210`, cọc `400` so với `380`. Và vật lý sai tỉ lệ: một cú vỗ cánh nâng
+   **18 px** trong khi cả sân cao 170 px và rơi hết sân mất **360 ms**. Sau khi sửa theo
+   thiết kế và chuyển sang số cố định 1/8 pixel: rơi hết sân **1 080 ms**, một cú vỗ nâng
+   **102 px**.
+
+Và một chỗ thứ sáu, là giới hạn của chính bộ sinh mã: **`screen.codegen` sinh một bức tranh
+tĩnh**, mà không chỗ nào nói ra. Agent đọc nó như "hàm vẽ màn chơi" nên chỉ gọi khi trạng thái
+đổi — màn chơi hiện **đúng thiết kế** rồi đứng im, trong khi vật lý vẫn chạy và chim vẫn chết.
+Nay tệp sinh ra tự khai điều đó kèm cách làm phần động.
+
+#### Ba lỗi của chính công cụ, lộ ra vì dùng thật
+
+* **Kênh kiểm giao diện đọc LẠI inbox** — một câu người gõ đi vào lõi **sáu lần**, tức sáu
+  lượt mô hình. Tệ hơn chuyện tốn tiền: một bộ đo qua giao diện âm thầm gửi trùng thì mọi con
+  số nó báo đều không đáng tin.
+* **Một `enum` số trong lược đồ công cụ làm Agent TÊ LIỆT** — SDK mô hình đòi `enum` phải là
+  chuỗi, nên **mọi** lời gọi mô hình đổ lỗi kể từ lúc `tool.search` mở khoá công cụ ấy.
+  2 232 ca kiểm không bắt được vì không ca nào đưa lược đồ qua SDK.
+* **Tab Màn hình không hiện trong app** — danh sách tab viết cứng ở phía Swift, và ca kiểm chỉ
+  đọc phía Python nên vẫn xanh.
+
+### 7.5 · Đặt các việc đã xong cạnh nhau: thời gian và tiền
+
+| | Hệ điều hành tự viết | Robot hai bánh | Robot — **làm lại 04/10** | Lõi RISC-V trên FPGA | **Game Flappy Bird** |
+|---|---|---|---|---|---|
+| Phần mềm giao ra | 689 dòng lõi + 340 dòng ứng dụng | 1 820 dòng, 10 mô-đun | **1 124 dòng**, 10 mô-đun | 2 020 dòng Verilog + C + hợp ngữ | **1 084 dòng tự viết + 296 dòng sinh từ thiết kế** |
+| **Phiên Agent — thời gian** | **81,2 phút** | **7,4 giờ** | **4,53 giờ** | **khoảng 14 giờ, hai ngày** | ~3 giờ |
+| **Phiên Agent — lời gọi mô hình** | 351 | 1 415 | **670** | **1 307** | **366** |
+| **Phiên Agent — tiền mô hình** | — | 340 nghìn đồng | **34 nghìn đồng** | — | chưa đo riêng |
+| **Nếu người làm tay — ngày công** | **31,7 ±2,3** | **31,0 ±2,6** | **32,1 ±2,6** | chưa dựng ước lượng | chưa dựng ước lượng |
+| **Nếu người làm tay — tiền** | **≈ 111 triệu đồng** | **≈ 105 triệu đồng** | **≈ 112 triệu đồng** | — | — |
+| Chênh về tiền | **khoảng 3 300 lần** | **khoảng 300 lần** | **khoảng 3 300 lần** | — | — |
+| Chạy thật trên bo | LCD 800×480 + cảm ứng + 6 việc | robot đứng được | **robot đứng được** | **96/96 ô đo trên silicon** | **màn hình lên, chạm chơi được, nhịp nhân 1 kHz đo qua SWD** |
+
+Cột cuối là việc **đầu tiên giao qua chính giao diện EIDE** thay vì qua dòng lệnh, và là việc
+đầu tiên đi hết đường *tài liệu → thiết kế màn hình → HTML → mã C → ảnh nạp → bo*. Nó chưa có
+ước lượng ngày công vì phần lớn thời gian của nó là **vá chính EIDE** (ba lỗi công cụ, mục 7.4),
+không phải làm game — đem so với một người đã có sẵn công cụ thì so sai, đúng như cột FPGA.
 
 Cột thứ ba là **cùng đề bài với cột thứ hai**, làm lại từ dự án trống bằng Agent đã vá bảy lỗi.
 Nó rẻ hơn **10 lần** và nhanh hơn **1,6 lần** cho cùng kết quả — nhưng chênh ấy phần lớn đến từ
@@ -1105,7 +1236,7 @@ phía nào.
 Nói cách khác: **mức lợi của Agent tỉ lệ với phần việc nằm trong máy tính.** Việc nào càng dính
 vào vật thật thì khoảng chênh càng hẹp.
 
-### 7.5 · Rút ra được gì từ ba việc này
+### 7.6 · Rút ra được gì từ những việc này
 
 Chỗ Agent thật sự giúp được nhiều nhất **không phải là tốc độ gõ mã**. Là chỗ này: nó làm những
 phép đo mà người sẽ bỏ. Đọc ngược chip đủ 32 lần trong một phiên. Dựng bảng 109 điều kiện rồi

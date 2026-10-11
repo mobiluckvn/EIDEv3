@@ -1,0 +1,17 @@
+{
+  "tieu_de": "Kiến trúc nhân RTOS Preemptive tự viết trên vi điều khiển ARM Cortex-M4F",
+  "boi_canh": "Đề bài yêu cầu tự viết nhân RTOS cho STM32F469I-DISCO (ARM Cortex-M4F) thay vì dùng FreeRTOS có sẵn (NFR-01) để vận hành trò chơi Flappy Bird đa tác vụ.",
+  "phuong_an_xet": [
+    "Nhân RTOS Preemptive dùng SysTick + PendSV",
+    "Nhân Cooperative (hợp tác) chỉ chuyển task khi gọi hàm nhường CPU",
+    "Nhân chạy vòng lặp lớn (Super-loop / Polling) không dùng RTOS"
+  ],
+  "chon": "Xây dựng nhân RTOS Preemptive tự viết dùng ngắt SysTick (1 ms) làm nhịp hệ thống, ngắt PendSV (ưu tiên thấp nhất 0xFF) để chuyển ngữ cảnh giữa các tác vụ (PSP), ngắt SVC để khởi chạy tác vụ đầu tiên, hỗ trợ lưu/phục hồi context FPU.",
+  "he_qua": [
+    "Tách biệt rõ ràng MSP cho ngắt hệ thống và PSP cho từng tác vụ riêng biệt",
+    "Đảm bảo không bị lỗi HardFault khi thực hiện phép tính dấu phẩy động trên Cortex-M4F",
+    "Cần viết một đoạn hợp ngữ nhỏ cho SVC_Handler và PendSV_Handler"
+  ],
+  "quyet_boi": "nguoi",
+  "trich_loi_nguoi": "viết một nhân RTOS để chạy game — không dùng FreeRTOS có sẵn, tự viết nhân"
+}

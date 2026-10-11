@@ -1,0 +1,9 @@
+{
+  "loai": "NFR",
+  "text": "Các văn bản hiển thị trên màn hình LCD phải sử dụng chữ không dấu do BSP chỉ hỗ trợ font ASCII.",
+  "criteria": "Toàn bộ chuỗi hiển thị trên LCD chỉ dùng bảng mã ASCII (Font16, Font20, Font24) không có ký tự dấu tiếng Việt",
+  "source_quote": "Chữ trên màn hình viết không dấu: bảng font của BSP chỉ có ASCII.",
+  "risk": [
+    "Nếu chuỗi ký tự chứa UTF-8 có dấu sẽ gây lỗi hiển thị ký tự lạ trên màn hình"
+  ]
+}

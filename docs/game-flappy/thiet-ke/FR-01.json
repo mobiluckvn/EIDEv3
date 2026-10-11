@@ -1,0 +1,9 @@
+{
+  "loai": "FR",
+  "text": "Hệ thống vận hành trò chơi Flappy Bird đơn giản hiển thị trên màn hình LCD của kit STM32F469I-DISCO.",
+  "criteria": "Game Flappy Bird hiển thị trên màn hình LCD và điều khiển được chim bay qua khe cọc bằng chạm cảm ứng hoặc nút bấm",
+  "source_quote": "Mình muốn làm một game Flappy Bird đơn giản chạy trên màn hình LCD của kit STM32F469I-DISCO.",
+  "risk": [
+    "Tốc độ khung hình bị giật nếu cơ chế render không tối ưu trên màn hình 800x480"
+  ]
+}

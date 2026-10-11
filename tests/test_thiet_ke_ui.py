@@ -1013,3 +1013,23 @@ def test_phan_tu_KHONG_co_mau_nen_thi_C_khong_to():
                        mau_chu="#FFFFFF"))
     c = SC.sinh_c(mh, _hs())
     assert "BSP_LCD_FillRect(10, 10, 300, 30);" not in c, c
+
+
+def test_tep_C_TU_KHAI_rang_no_ve_MOT_LAN():
+    """Tệp sinh ra phải nói nó là một BỨC TRANH TĨNH, không phải vòng hoạt hình.
+
+    Không nói thì người đọc có quyền hiểu là nó vẽ được màn hình — và nó vẽ được thật, đúng
+    một lần. Chuyện này đã gây hiểu nhầm thật ngày 11/10/2026: một game Flappy Bird nạp lên
+    bo, màn chơi hiện **đúng thiết kế** rồi đứng im; vật lý vẫn chạy, chim vẫn chết, mà không
+    ai vẽ lại. Tác vụ vẽ chỉ gọi hàm sinh ra **khi trạng thái đổi**.
+
+    Một hiện vật phải nói nó KHÔNG làm gì, không chỉ nói nó làm gì (N6).
+    """
+    from eide.man_hinh import sinh_c as SC
+
+    c = SC.sinh_c(_mh(MO.PhanTu(id="t", loai="text", x=10, y=10, w=200, h=24, chu="X",
+                                co_chu=16)), _hs())
+    thap = c.lower()
+    assert "một lần" in thap or "MỘT LẦN" in c, c[:600]
+    assert "tĩnh" in thap, c[:600]
+    assert "từng khung" in thap, "phải nói CÁCH làm phần động, không chỉ nói là nó không làm"

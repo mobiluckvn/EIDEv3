@@ -1,0 +1,9 @@
+{
+  "loai": "UR",
+  "text": "Thiết kế màn hình game có khả năng hiển thị trực quan trên tab Màn hình đúng độ phân giải phần cứng và cho phép chỉnh sửa từng phần tử.",
+  "criteria": "Tab Màn hình hiển thị đúng giao diện game ở độ phân giải 800x480 và người dùng có thể chỉnh sửa cấu trúc từng phần tử UI",
+  "source_quote": "thiết kế màn hình phải render ra được trên tab Màn hình, đúng độ phân giải THẬT của panel đọc từ tài liệu, và đủ chi tiết để mình mở ra chỉnh sửa được từng phần tử",
+  "risk": [
+    "Độ phân giải 800x480 lớn cần bố cục tỉ lệ hợp lý để thao tác chỉnh sửa không bị tràn khung"
+  ]
+}

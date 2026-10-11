@@ -1,0 +1,36 @@
+{
+  "ten": "main",
+  "rong": 800,
+  "cao": 480,
+  "he_mau": "ARGB8888",
+  "he_mau_khac": [
+    "RGB565"
+  ],
+  "inch": 4.0,
+  "dpi": 233.23807579381202,
+  "dpi_la_tinh_ra": true,
+  "driver": "OTM8009A",
+  "bus": "MIPI-DSI",
+  "cam_ung": true,
+  "loai": "do_hoa",
+  "cot": 0,
+  "dong": 0,
+  "nguon": {
+    "lcd.width": "Device -- \"Hiển thị giao diện màu 800x480 (MIPI-DSI OTM8009A)\" --> User",
+    "lcd.height": "Device -- \"Hiển thị giao diện màu 800x480 (MIPI-DSI OTM8009A)\" --> User",
+    "lcd.format": "Ext_SDRAM[\"SDRAM ngoài 16 MB (MT48LC4M32B2 @ 0xC0000000)<br/>FrameBuffer đồ hoạ LCD 800x480 (ARGB8888 / RGB565)\"]",
+    "lcd.inch": "DSI_Display[\"Màn hình màu LCD 4 inch 800x480<br/>Driver OTM8009A kết nối bus 2-lane MIPI-DSI\"]",
+    "lcd.driver": "Device -- \"Hiển thị giao diện màu 800x480 (MIPI-DSI OTM8009A)\" --> User",
+    "lcd.bus": "Device -- \"Hiển thị giao diện màu 800x480 (MIPI-DSI OTM8009A)\" --> User",
+    "lcd.touch": "| **Người dùng / Kỹ sư** | Vận hành, điều khiển, quan sát hoạt động | Nhấn phím PA0, chạm màn hình cảm ứng điện dung | Nhận phản hồi thị giác trên màn hình LCD và dàn LED | Tương tác trực tiếp thời gian thực |"
+  },
+  "thieu": [],
+  "doc_id": "DOC-ARCH-STM32F469",
+  "vi_sao_khong_hop_le": "",
+  "dem_khung": {
+    "can_byte": 1536000,
+    "vua_ram_noi": null,
+    "vua_ram_ngoai": null,
+    "note_vi": "Bộ đệm khung 800×480 ARGB8888 cần **1 536 000 byte** (1 500.0 KB). Chưa biết dung lượng RAM của bo, nên **chưa kết luận** được nó có vừa không — nạp Fact `ram.size` rồi gọi lại."
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "tieu_de": "Cấu trúc TCB và đặc tả khung ngăn xếp lưu/phục hồi thanh ghi ARM Cortex-M4F",
+  "boi_canh": "Cần xác định chính xác cấu trúc dữ liệu TCB (Task Control Block) và cơ chế lưu/phục hồi thanh ghi phần cứng, phần mềm và FPU trong ngắt PendSV nhằm đảm bảo chuyển ngữ cảnh không lỗi và bảo vệ vùng ngăn xếp cho ARM Cortex-M4F.",
+  "phuong_an_xet": [
+    "TCB tối giản chỉ lưu sp (không hỗ trợ debug, không kiểm tra được tràn stack)",
+    "TCB đầy đủ có sp, priority, state, delay, stack_base, stack_size, name (chọn phương án này)"
+  ],
+  "chon": "Cấu trúc TCB gồm: con trỏ đỉnh stack sp (PSP), priority, task_state, delay_ticks, stack_base (kiểm tra tràn), stack_size_words, name. Khi chuyển ngữ cảnh: CPU tự động lưu 8 thanh ghi phần cứng (r0-r3, r12, LR, PC, xPSR); mã hợp ngữ PendSV lưu 8 thanh ghi phần mềm (r4-r11); nếu FPU đang dùng (EXC_RETURN bit 4 = 0), lưu tiếp 16 thanh ghi số thực (s16-s31) ngoài s0-s15 và FPSCR.",
+  "he_qua": [
+    "Ngăn xếp mỗi tác vụ cần cấp phát đủ chỗ cho khung chuẩn 16 từ (64 bytes) hoặc khung mở rộng FPU 50 từ (200 bytes)",
+    "Bộ lập lịch điều khiển chuyển ngữ cảnh chỉ cần hoán đổi con trỏ sp trong TCB",
+    "Hỗ trợ kiểm tra tràn stack dựa trên stack_base"
+  ],
+  "quyet_boi": "nguoi",
+  "trich_loi_nguoi": "cơ chế chuyển ngữ cảnh (SysTick + PendSV, lưu/phục hồi thanh ghi nào, xử lý FPU), cấu trúc TCB"
+}

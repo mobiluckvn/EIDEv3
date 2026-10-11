@@ -1,0 +1,9 @@
+{
+  "loai": "NFR",
+  "text": "Cấu hình ngoại vi hiển thị phải tuân thủ chính xác tài liệu kiến trúc bo STM32F469I-DISCO.",
+  "criteria": "Cấu hình màn hình khớp đúng thông số LCD 4 inch 800x480, IC OTM8009A, bus MIPI-DSI 2-lane, FrameBuffer trên SDRAM 16 MB @ 0xC0000000 trong tài liệu bo",
+  "source_quote": "Cấu hình màn hình phải đọc từ tài liệu của bo, không tự đặt.",
+  "risk": [
+    "Cấu hình sai timing DSI/LTDC có thể làm màn hình không khởi động được hoặc nhấp nháy"
+  ]
+}
