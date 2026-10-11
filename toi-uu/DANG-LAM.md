@@ -3,20 +3,37 @@
 > Tệp này trả lời đúng một câu: **mở phiên mới thì làm gì tiếp.**
 > Đọc nó TRƯỚC khi mở `KE-HOACH-SUA-VA-KIEM-THU.md`.
 
-## Trạng thái — 10/10/2026
+## Trạng thái — 11/10/2026
 
 | | |
 |---|---|
-| Việc xong | **34/106** (DEV-330 → DEV-363) |
+| Việc xong | **34/106** (DEV-330 → **DEV-364**) |
 | **P0** | **30/30 — HẾT ưu tiên cao nhất** |
 | Giai đoạn 1 | 32/32 — đóng |
 | P1 | 3/54 · P2 1/20 · P3 0/2 |
-| Bộ kiểm | **2 160 xanh**, 1 skip, 0 đỏ |
-| Công cụ | **135** (125 thấy mặc định · 73 `core` · 10 sau cờ) |
+| Bộ kiểm | **2 244 xanh**, 2 skip (theo môi trường), 0 đỏ |
+| Công cụ | **140** (130 thấy mặc định · 73 `core` · 10 sau cờ) |
+| Bề mặt | **12** — thêm A15 Màn hình |
 | Cờ | **14**, cả 14 TẮT |
 | Phụ thuộc tuỳ chọn | `pdfplumber>=0.11`, nhóm `[pdf]` — anh Công duyệt cài 10/10/2026 |
 | `kiem_tai_lieu` | 0 chỗ LỆCH CHẮC CHẮN |
 | Việc dở | **không có** — việc #34 đã cất trọn |
+
+## Đã rẽ sang việc khác — 10–11/10/2026
+
+Sau khi hết P0, anh Công giao hai việc **ngoài** chiến dịch này, và cả hai đã xong:
+
+1. **Năng lực thiết kế giao diện cho màn hình của bo** (DEV-364) — tab A15, năm công cụ
+   `display.profile` / `screen.set` / `screen.check` / `screen.render` / `screen.codegen`.
+2. **Phiên giao việc thật qua GUI**: game Flappy Bird + nhân RTOS, đã chạy trên bo — README
+   §7.4, và bản bàn giao riêng ở [`../docs/game-flappy/DANG-LAM.md`](../docs/game-flappy/DANG-LAM.md).
+3. **Ước lượng PERT** cho việc FPGA và việc game, bằng `tools/uoc_luong_pert.py` (script tự
+   kiểm bằng cách tính lại bảng robot).
+
+Hai việc ấy làm lộ ra **chín lỗi của chính sản phẩm**, đều đã vá kèm ca kiểm — trong đó có ba
+lỗi của công cụ (kênh GUI gửi trùng sáu lần · một `enum` số làm Agent tê liệt · tab A15 không
+hiện trong app) và ba lỗi của chính bộ thiết kế UI tôi vừa viết. Số mốc nay: bộ kiểm **2 244
+xanh**, công cụ **140**, bề mặt **12**, cờ **14**, DEV-330 → **DEV-364**.
 
 ## Làm gì tiếp — chỗ này phải HỎI, không tự đi
 
