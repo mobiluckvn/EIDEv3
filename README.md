@@ -1041,6 +1041,8 @@ không có bộ nhân còn **24** lời gọi `__mulsi3` / `__udivdi3`, hai cấ
 
 **Agent tự viết 2 020 dòng** — Verilog, C, hợp ngữ, linker script, Python, ràng buộc chân.
 
+Nếu một đội người làm tay: **47,2 ngày công ±3,5** · ≈ 170 triệu đồng · ~6 tuần lịch — việc lớn nhất trong bốn việc, và có tỉ lệ Senior cao nhất (63 %). Phiên Agent tốn **≈ 55 nghìn đồng** tiền mô hình. Bảng đầy đủ kèm phần *điều nó không chứng minh*: [so với người làm tay](docs/riscv-tn20k/SO-SANH-VOI-NGUOI.md).
+
 #### Sáu lỗi của Agent, và ba lỗi của người
 
 Lỗi nào của Agent cũng bị bắt bằng cách **mở mã hoặc mở sổ cái ra đối chiếu**, không bằng đọc
@@ -1150,7 +1152,9 @@ bản render HTML mở bằng trình duyệt là **đúng cái hiện trên tab 
 | Mã **lấy của hãng**, không sửa | 94 877 dòng — HAL, CMSIS, BSP LCD/SDRAM/cảm ứng, OTM8009A, FT6x06, phông |
 | Hiện vật trong kho | **44** — 5 yêu cầu, 4 ADR, 1 hồ sơ panel, 4 bản thiết kế màn hình, 4 bản render, 3 tệp C sinh ra, 13 tệp mã |
 | Ảnh nạp chip | `text 37 912 · data 548 · bss 9 284` |
-| Phiên | 430 lời gọi công cụ · 366 lượt mô hình · 46 changeset |
+| Phiên | **5,09 giờ** · 430 lời gọi công cụ · 366 lượt mô hình · 46 changeset |
+| Tiền mô hình | **≈ 43 nghìn đồng** (kịch bản đơn giá giữa) |
+| Nếu người làm tay | **28,8 ngày công ±2,6** · ≈ 97 triệu đồng — [bảng PERT](docs/game-flappy/SO-SANH-VOI-NGUOI.md) |
 | **Nhịp nhân đo trên chip** | bộ đếm `+2 005` trong 2 s = **1 000 Hz**, đúng thiết kế |
 | **Đọc ngược Flash** | **khớp từng byte**, cùng SHA-256, mỗi lần nạp |
 | Chạy thật trên bo | màn start lên, chạm màn hình vào game, vòng START→PLAY→GAMEOVER→PLAY đo được qua SWD |
@@ -1202,18 +1206,31 @@ Nay tệp sinh ra tự khai điều đó kèm cách làm phần động.
 | | Hệ điều hành tự viết | Robot hai bánh | Robot — **làm lại 04/10** | Lõi RISC-V trên FPGA | **Game Flappy Bird** |
 |---|---|---|---|---|---|
 | Phần mềm giao ra | 689 dòng lõi + 340 dòng ứng dụng | 1 820 dòng, 10 mô-đun | **1 124 dòng**, 10 mô-đun | 2 020 dòng Verilog + C + hợp ngữ | **1 084 dòng tự viết + 296 dòng sinh từ thiết kế** |
-| **Phiên Agent — thời gian** | **81,2 phút** | **7,4 giờ** | **4,53 giờ** | **khoảng 14 giờ, hai ngày** | ~3 giờ |
+| **Phiên Agent — thời gian** | **81,2 phút** | **7,4 giờ** | **4,53 giờ** | **khoảng 14 giờ, hai ngày** | **5,09 giờ** |
 | **Phiên Agent — lời gọi mô hình** | 351 | 1 415 | **670** | **1 307** | **366** |
-| **Phiên Agent — tiền mô hình** | — | 340 nghìn đồng | **34 nghìn đồng** | — | chưa đo riêng |
-| **Nếu người làm tay — ngày công** | **31,7 ±2,3** | **31,0 ±2,6** | **32,1 ±2,6** | chưa dựng ước lượng | chưa dựng ước lượng |
-| **Nếu người làm tay — tiền** | **≈ 111 triệu đồng** | **≈ 105 triệu đồng** | **≈ 112 triệu đồng** | — | — |
-| Chênh về tiền | **khoảng 3 300 lần** | **khoảng 300 lần** | **khoảng 3 300 lần** | — | — |
+| **Phiên Agent — tiền mô hình** | — | 340 nghìn đồng | **34 nghìn đồng** | **55 nghìn đồng** | **43 nghìn đồng** |
+| **Nếu người làm tay — ngày công** | **31,7 ±2,3** | **31,0 ±2,6** | **32,1 ±2,6** | **47,2 ±3,5** | **28,8 ±2,6** |
+| **Nếu người làm tay — tiền** | **≈ 111 triệu đồng** | **≈ 105 triệu đồng** | **≈ 112 triệu đồng** | **≈ 170 triệu đồng** | **≈ 97 triệu đồng** |
+| Chênh về tiền | **khoảng 3 300 lần** | **khoảng 300 lần** | **khoảng 3 300 lần** | **khoảng 3 100 lần** | **khoảng 2 300 lần** |
+| Chênh về giờ | — | — | **≈ 57 lần** | **≈ 27 lần** | **≈ 45 lần** |
 | Chạy thật trên bo | LCD 800×480 + cảm ứng + 6 việc | robot đứng được | **robot đứng được** | **96/96 ô đo trên silicon** | **màn hình lên, chạm chơi được, nhịp nhân 1 kHz đo qua SWD** |
 
-Cột cuối là việc **đầu tiên giao qua chính giao diện EIDE** thay vì qua dòng lệnh, và là việc
-đầu tiên đi hết đường *tài liệu → thiết kế màn hình → HTML → mã C → ảnh nạp → bo*. Nó chưa có
-ước lượng ngày công vì phần lớn thời gian của nó là **vá chính EIDE** (ba lỗi công cụ, mục 7.4),
-không phải làm game — đem so với một người đã có sẵn công cụ thì so sai, đúng như cột FPGA.
+Hai cột cuối nay **đã có ước lượng**, dựng bằng `tools/uoc_luong_pert.py` — cùng phương pháp
+PERT với ba cột đầu, và script **tự kiểm** bằng cách tính lại bảng robot rồi so với con số đã
+in: lệch một chữ số là nó kêu. Nên năm cột dùng **chung một thước**.
+Chi tiết: [FPGA](docs/riscv-tn20k/SO-SANH-VOI-NGUOI.md) ·
+[game](docs/game-flappy/SO-SANH-VOI-NGUOI.md).
+
+Việc FPGA là việc **lớn nhất** trong bốn việc — 47,2 ngày công, hơn bài robot 15 ngày — và nó
+có tỉ lệ Senior **cao nhất** (63 %, so với 48–57 % ở ba việc kia). Đó là đặc điểm của thiết kế
+phần cứng số: phải có vi kiến trúc rồi mới viết RTL, có RTL rồi mới có bitstream, có bitstream
+rồi mới gỡ lỗi trên bo — thêm người thứ ba không rút ngắn chuỗi ấy.
+
+**Và hai cột cuối có một chỗ so sai, nói ra ở đây chứ không giấu trong tài liệu con.** Cả hai
+phiên Agent dành phần lớn thời gian để **vá chính EIDE** — bốn lỗi ở phiên FPGA (`DEV-330`
+đến `DEV-333`), sáu lỗi ở phiên game (mục 7.4) — trong khi cột người chỉ tính phần làm bài.
+Chênh thật **có lợi cho Agent hơn** con số in trong bảng. Tôi không dựng một con số "đã hiệu
+chỉnh" vì tách giờ nào cho việc nào trong một phiên đan xen là một phép chia không đo được.
 
 Cột thứ ba là **cùng đề bài với cột thứ hai**, làm lại từ dự án trống bằng Agent đã vá bảy lỗi.
 Nó rẻ hơn **10 lần** và nhanh hơn **1,6 lần** cho cùng kết quả — nhưng chênh ấy phần lớn đến từ
