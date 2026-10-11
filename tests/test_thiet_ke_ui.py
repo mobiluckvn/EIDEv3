@@ -911,3 +911,62 @@ def test_luong_hoa_dung_phep_PHAN_CUNG_khong_dung_nhan_ti_le():
     assert MO.luong_hoa("#181818", "RGB565") != "#191819", "đây là kết quả của NHÂN TỈ LỆ"
     # Và một giá trị nữa cho chắc, ở kênh lục 6 bit.
     assert MO.luong_hoa("#000C00", "RGB565") == "#000C00"
+
+
+def test_thanh_tab_Swift_KHOP_danh_sach_be_mat_cua_loi():
+    """Danh sách tab viết cứng ở HAI phía bằng hai ngôn ngữ — chúng phải khớp.
+
+    Thiếu một dòng trong `AppState.surfaceOrder` thì lõi vẫn gửi `surface.set` cho bề mặt
+    ấy, mà giao diện **không có tab nào nhận** — cả bề mặt trở thành vô hình và không lỗi nào
+    kêu lên.
+
+    Đã xảy ra thật 11/10/2026: tôi thêm bề mặt `screen` (A15) ở phía Python, ca
+    `test_be_mat_A15_co_trong_danh_sach` xanh (nó chỉ đọc `SURFACES`), và anh Công mở app lên
+    thì không thấy tab Màn hình. Một ca kiểm chỉ đọc một phía của hợp đồng thì nó nói về một
+    phía, không nói về sản phẩm.
+    """
+    import re
+
+    from eide.surfaces import SURFACES
+
+    sw = (GOC / "ui/EIDEApp/Sources/EIDE/State/AppState.swift").read_text("utf-8")
+    m = re.search(r"var surfaceOrder[^\[]*\[(.*?)\]\s*\}", sw, re.S)
+    assert m, "không tìm thấy `surfaceOrder` trong AppState.swift"
+    swift = re.findall(r'\(\s*"([a-z_]+)"\s*,\s*"(A\d+)"\s*,\s*"([^"]+)"\s*\)', m.group(1))
+    assert [x[0] for x in swift] == [s[0] for s in SURFACES], (
+        "thanh tab Swift lệch danh sách bề mặt của lõi:\n"
+        f"  Swift:  {[x[0] for x in swift]}\n"
+        f"  Python: {[s[0] for s in SURFACES]}")
+    # Và mã vùng phải khớp — một tab mang mã sai sẽ trỏ sai dòng trong ma trận truy vết.
+    assert [x[1] for x in swift] == [s[1] for s in SURFACES], (
+        f"mã vùng lệch:\n  Swift: {[x[1] for x in swift]}\n"
+        f"  Python: {[s[1] for s in SURFACES]}")
+
+
+def test_cot_TRICH_DAN_duoc_khai_la_NGUYEN_VAN(bo):
+    """Cột trích dẫn phải được khai `cot_nguyen_van` để giao diện KHÔNG diễn giải markdown.
+
+    Không khai thì nó đi qua bộ markdown nội dòng và bị diễn giải **nửa vời**: `**x**` thành
+    chữ đậm, còn `<br/>`, cú pháp nút mermaid `Id["…"]` và dấu `|` của bảng thì vẫn thô. Lúc
+    ấy cột ngừng là "nguyên văn" — mà nguyên văn chính là thứ người dùng dùng để TÌM LẠI dòng
+    ấy trong tệp (N1).
+
+    Anh Công thấy chỗ này khi mở tab lên ngày 11/10/2026.
+    """
+    from eide import surfaces
+
+    ag, ctx = bo
+    assert ag.registry.run("doc.load", {"path": "bo.md", "doc_id": "B",
+                                        "nguon": "noi_bo", "explain": EX}, ctx).ok
+    assert ag.registry.run("display.profile", {"doc_id": "B", "explain": EX}, ctx).ok
+    m = surfaces.screen(ag.store, None, str(ag.config.paths.project_root))
+    hs = next(b for b in m["blocks"] if b["code"] == "A15.1")
+    assert hs["columns"][2] == "Trích dẫn nguyên văn"
+    assert hs.get("cot_nguyen_van") == [2], hs.get("cot_nguyen_van")
+
+
+def test_giao_dien_TON_TRONG_cot_nguyen_van():
+    """Và phía Swift phải đọc khai báo ấy — hợp đồng hai phía, hai ngôn ngữ."""
+    sw = (GOC / "ui/EIDEApp/Sources/EIDE/Views/SurfaceView.swift").read_text("utf-8")
+    assert "cot_nguyen_van" in sw, "giao diện chưa đọc `cot_nguyen_van`"
+    assert "nguyenVan: Bool" in sw and "design: .monospaced" in sw

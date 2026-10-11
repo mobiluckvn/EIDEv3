@@ -1935,6 +1935,15 @@ def screen(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
             summary=(f"{c.get('rong', 0)}×{c.get('cao', 0)} · {c.get('he_mau') or '?'}"
                      + (f" · {len(thieu)} trường tài liệu KHÔNG nói" if thieu else "")),
             columns=["Trường", "Giá trị", "Trích dẫn nguyên văn"],
+            # Cột 2 là NGUYÊN VĂN một dòng của tài liệu — giao diện không được diễn giải
+            # markdown trong đó.
+            #
+            # Bản trước để nó đi qua bộ markdown nội dòng, và kết quả là **nửa vời**:
+            # `**Người dùng / Kỹ sư**` thành chữ đậm (tức đã diễn giải), trong khi `<br/>`,
+            # cú pháp nút mermaid `Ext_SDRAM["…"]` và dấu `|` của bảng vẫn thô. Một cột tên là
+            # "nguyên văn" mà bị diễn giải một nửa thì không còn là nguyên văn — và nguyên văn
+            # chính là thứ người dùng dùng để TÌM LẠI dòng ấy trong tệp (N1).
+            cot_nguyen_van=[2],
             rows=[[a, b, (d[:140] if d else "— không có trích dẫn")] for a, b, d in dong]))
         if (c.get("dem_khung") or {}).get("note_vi"):
             khoi.append(block("A15.1b", "Bộ đệm khung", "text",
@@ -1968,11 +1977,20 @@ def screen(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
             rd = ds_render.get(ten)
             tep = ((rd or {}).get("canonical") or {}).get("tep", "")
             if tep:
+                # Chiều cao do LÕI nói, vì lõi là chỗ biết panel cao bao nhiêu pixel.
+                #
+                # Không nói thì giao diện dùng một trần cố định, và với panel 480 px thì khung
+                # thiết bị bị CẮT — cái người dùng nhìn thấy trong khối là phần báo cáo kiểm ở
+                # dưới, không phải màn hình họ vừa thiết kế. Đo được 11/10/2026 khi anh Công
+                # mở tab lên: khối cao 452 px cho một panel 480 px.
+                #
+                # `+ 150`: khung thiết bị có viền 14 px mỗi bên, cộng dòng tiêu đề và dòng
+                # nhãn của trang. Đo trên trang thật, không ước.
                 khoi.append(khoi_hien_vat(
                     f"A15.2.{ten}", f"Màn hình “{ten}” — tỉ lệ 1:1 với panel", "html",
                     rd or full,
                     summary=(f"{c.get('rong', 0)}×{c.get('cao', 0)} px · {len(pt)} phần tử"),
-                    tep=tep,
+                    tep=tep, cao_px=int(c.get("cao") or 480) + 150,
                     bam_phan_tu=("Cho tôi xem phần tử `{ref}` của màn hình “" + ten + "”")))
             else:
                 khoi.append(empty(

@@ -394,6 +394,20 @@ final class AppState: ObservableObject {
 
     var theDangCho: [Card] { cards.filter { !$0.resolved } }
 
+    /// Thứ tự tab trên thanh.
+    ///
+    /// Danh sách này là một HỢP ĐỒNG với `src/eide/surfaces.py::SURFACES`, và nó viết cứng ở
+    /// hai phía bằng hai ngôn ngữ. Thiếu một dòng ở đây thì lõi vẫn gửi `surface.set` cho bề
+    /// mặt ấy, mà giao diện **không có tab nào nhận** — cả bề mặt trở thành vô hình, không
+    /// lỗi nào kêu lên.
+    ///
+    /// Đã xảy ra thật 11/10/2026: thêm bề mặt `screen` (A15) ở phía Python, bộ kiểm Python
+    /// xanh, và anh Công mở app lên thì **không thấy tab Màn hình**. Tệ hơn: tôi đã viết vào
+    /// chú thích của `TabBar` rằng *"`surfaceOrder` do lõi cấp, nên thanh này tự dài ra"* —
+    /// một câu tôi viết mà không mở tệp này ra kiểm.
+    ///
+    /// `tests/test_thiet_ke_ui.py::test_thanh_tab_Swift_KHOP_danh_sach_be_mat_cua_loi` đọc
+    /// chính tệp này và so với `SURFACES`, nên lần sau thiếu một dòng sẽ ĐỎ ở bộ kiểm.
     var surfaceOrder: [(key: String, code: String, title: String)] { [
         ("requirements", "A2", "Yêu cầu & Giải pháp"),
         ("documents", "A3", "Tài liệu & Nguồn"),
@@ -406,5 +420,6 @@ final class AppState: ObservableObject {
         ("journal", "A10", "Nhật ký"),
         ("history", "A11", "Lịch sử"),
         ("project", "A14", "Dự án & Bộ nhớ"),
+        ("screen", "A15", "Màn hình"),
     ] }
 }

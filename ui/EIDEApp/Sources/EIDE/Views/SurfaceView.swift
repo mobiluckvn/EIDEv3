@@ -273,7 +273,7 @@ struct KhoiKV: View {
             ForEach(Array(block.arr("pairs").enumerated()), id: \.offset) { _, p in
                 let cells = p.arrayValue
                 HStack(alignment: .top, spacing: 10) {
-                    Text(cells.first?.display ?? "")
+                    TextMd(cells.first?.display ?? "")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                         .frame(width: 210, alignment: .trailing)
                     OCoTang(text: cells.count > 1 ? cells[1].display : "")
@@ -355,6 +355,15 @@ struct KhoiBang: View {
     }
     private func meta(_ ma: String) -> JSONValue? {
         block.payload["row_meta"]?[ma]
+    }
+
+    /// Cột mà lõi khai là NGUYÊN VĂN — vẽ thô, không diễn giải markdown.
+    ///
+    /// Một cột "trích dẫn nguyên văn" đi qua bộ markdown sẽ được diễn giải NỬA VỜI: `**x**`
+    /// thành chữ đậm, còn `<br/>` và dấu `|` thì vẫn thô. Lúc ấy nó không còn là nguyên văn,
+    /// mà nguyên văn chính là thứ người dùng dùng để tìm lại dòng ấy trong tệp (N1).
+    private var cotNguyenVan: Set<Int> {
+        Set(block.arr("cot_nguyen_van").compactMap(\.intValue))
     }
 
     private var rowsHien: [[JSONValue]] {
@@ -459,7 +468,7 @@ struct KhoiBang: View {
                         .frame(width: rong, alignment: .leading)
                         .padding(.vertical, 4).padding(.horizontal, 6)
                 } else {
-                    OCoTang(text: cell.display)
+                    OCoTang(text: cell.display, nguyenVan: cotNguyenVan.contains(j))
                         .frame(width: rong, alignment: .topLeading)
                         .padding(.vertical, 4).padding(.horizontal, 6)
                 }
@@ -588,10 +597,19 @@ struct OSuaDuoc: View {
 /// phải làm gì mà cắt mất phần "phải làm gì" thì thà đừng có cột đó.
 struct OCoTang: View {
     let text: String
+    /// Vẽ THÔ: không diễn giải markdown, dùng phông đơn cách. Xem `KhoiBang.cotNguyenVan`.
+    var nguyenVan: Bool = false
 
     var body: some View {
         if let t = Tier(loose: text), t.nhan == text || text.uppercased() == t.rawValue {
             TierChip(tier: t)
+        } else if nguyenVan {
+            Text(text)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(text)
         } else {
             TextMd(text)
                 .font(.system(size: 11))
@@ -1491,9 +1509,14 @@ struct KhoiHTML: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let url = duongDan {
+                // Chiều cao do LÕI nói (`cao_px`), vì lõi biết panel cao bao nhiêu pixel.
+                // Một trần cố định làm khung thiết bị bị cắt, và người dùng nhìn thấy phần
+                // báo cáo ở cuối trang thay vì màn hình họ vừa thiết kế — đo được 11/10/2026
+                // với panel 480 px trong một khối cao 452 px.
+                let cao = CGFloat(block.int("cao_px") ?? 560)
                 TrangHTML(url: url, onBam: bam)
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: 360, maxHeight: 760)
+                    .frame(height: min(max(cao, 360), 1100))
                     .background(Color(nsColor: .textBackgroundColor),
                                 in: RoundedRectangle(cornerRadius: 6))
                     .overlay(RoundedRectangle(cornerRadius: 6)

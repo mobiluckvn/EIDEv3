@@ -184,6 +184,8 @@ struct SurfaceBlock: Codable, Identifiable {
 
     func str(_ key: String) -> String? { payload[key]?.stringValue }
     func arr(_ key: String) -> [JSONValue] { payload[key]?.arrayValue ?? [] }
+    /// Số nguyên trong khối — ví dụ `cao_px` của khối `html`, do LÕI tính và gửi sang.
+    func int(_ key: String) -> Int? { payload[key]?.intValue }
 }
 
 // MARK: - Thẻ (Card)

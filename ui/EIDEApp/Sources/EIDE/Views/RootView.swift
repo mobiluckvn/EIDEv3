@@ -206,9 +206,14 @@ struct RootView: View {
 /// cùng nằm trong khung. Vẫn giữ cuộn ngang làm lưới an toàn cho khổ còn hẹp hơn nữa.
 ///
 /// Số tab KHÔNG viết cứng trong chú thích này nữa: 10/10/2026 thêm tab "Màn hình" (A15) thành
-/// 12 tab, và một con số viết trong chú thích là một con số sẽ lỗi thời lặng lẽ. `surfaceOrder`
-/// do lõi cấp, nên thanh này tự dài ra — và ngưỡng 1180 pt dưới đây là ngưỡng ĐO trên 11 tab,
-/// chưa đo lại cho 12. Nói ra để ai mở cửa sổ hẹp mà thấy chật thì biết chỗ sửa.
+/// 12 tab, và một con số viết trong chú thích là một con số sẽ lỗi thời lặng lẽ. Ngưỡng 1180 pt
+/// dưới đây là ngưỡng ĐO trên 11 tab, chưa đo lại cho 12 — nói ra để ai mở cửa sổ hẹp mà thấy
+/// chật thì biết chỗ sửa.
+///
+/// Và một câu SAI của bản trước, sửa ở đây vì nó đã gây hậu quả: tôi viết *"`surfaceOrder` do
+/// lõi cấp, nên thanh này tự dài ra"*. Nó **không** do lõi cấp — nó viết cứng trong
+/// `AppState.surfaceOrder`. Vì câu ấy, tab "Màn hình" thêm ở phía Python mà không thêm ở đây,
+/// bộ kiểm Python vẫn xanh, và anh Công mở app lên thì không thấy tab nào.
 struct TabBar: View {
     @EnvironmentObject var state: AppState
 
