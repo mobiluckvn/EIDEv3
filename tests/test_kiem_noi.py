@@ -513,3 +513,93 @@ def test_build_wiring_GHI_hien_vat(bo, monkeypatch):
     a = ag.store.get("analysis:wiring")
     assert a is not None and a["type"] == "analysis", a
     assert a["canonical"]["isr_bo_quen"][0]["ten"] == "SysTick_Handler"
+
+
+# ============ hàm RỖNG — dạng stub phổ biến nhất, và bản đầu bỏ sót nó
+def test_ham_RONG_mot_lenh_bx_lr_bi_bat():
+    """Một hàm `void` rỗng biên dịch ra đúng MỘT lệnh `bx lr`, và bản đầu bỏ sót nó.
+
+    Bản đầu chỉ tìm **đúng hai** lệnh (`mov r0,#N` + `bx lr`), nên nó bắt "trả một hằng" mà bỏ
+    sót dạng stub phổ biến hơn hẳn.
+
+    Đo được 11/10/2026 trong một phiên thật: Agent viết game Flappy Bird, tự khai một header
+    BSP với tám hàm `BSP_LCD_*` rỗng. Firmware **liên kết sạch, nạp được**, và màn hình
+    **không hiện gì** — tám ký hiệu ấy nằm cách nhau đúng 2 byte trong ảnh. Phép kiểm viết ra
+    chính để bắt chuyện ấy đã im lặng đi qua.
+    """
+    from eide.build.kiem_noi import ham_tra_hang
+
+    d = ("080006b8 <BSP_LCD_FillRect>:\n 80006b8:\t4770      \tbx\tlr\n\n"
+         "080006ba <BSP_LCD_DrawRect>:\n 80006ba:\t4770      \tbx\tlr\n")
+    ra = ham_tra_hang(d)
+    assert [x.ten for x in ra] == ["BSP_LCD_FillRect", "BSP_LCD_DrawRect"], ra
+    assert all(x.rong and x.gia_tri is None for x in ra), [(x.ten, x.gia_tri) for x in ra]
+
+
+def test_ham_RONG_va_ham_TRA_HANG_la_HAI_chuyen_khac_nhau():
+    """`gia_tri=None` (rỗng) phải phân biệt được với `gia_tri=0` (trả hằng 0).
+
+    Gộp hai thứ này là gộp hai cách sửa khác nhau: một hàm rỗng cần **viết thân**, một hàm trả
+    hằng cần **thay hằng bằng phép tính**. Và `0` là một giá trị trả hợp lệ, nên lấy `0` làm
+    dấu hiệu "rỗng" sẽ báo oan mọi hàm trả về 0.
+    """
+    from eide.build.kiem_noi import ham_tra_hang
+
+    d = ("08000010 <rong>:\n 8000010:\t4770      \tbx\tlr\n\n"
+         "08000020 <tra_khong>:\n 8000020:\t2000      \tmovs\tr0, #0\n"
+         " 8000022:\t4770      \tbx\tlr\n")
+    theo = {x.ten: x for x in ham_tra_hang(d)}
+    assert theo["rong"].rong is True and theo["rong"].gia_tri is None
+    assert theo["tra_khong"].rong is False and theo["tra_khong"].gia_tri == 0
+
+
+def test_ham_co_THAN_THAT_mot_lenh_khac_bx_lr_thi_khong_keu():
+    """Ca âm: một hàm một lệnh mà lệnh ấy KHÔNG phải `bx lr` thì không rỗng."""
+    from eide.build.kiem_noi import ham_tra_hang
+
+    d = "08000010 <treo>:\n 8000010:\te7fe      \tb.n\t8000010 <treo>\n"
+    assert ham_tra_hang(d) == []
+
+
+def test_build_compile_KHAI_tep_nguon_de_sua_ma_lam_STALE(bo):
+    """Sửa một tệp nguồn phải làm `build:firmware` thành STALE.
+
+    Không khai `deps.upstream` thì cơ chế STALE không có gì để bám, và một bản dựng cũ nằm
+    trong kho trông **y như** bản vừa dựng.
+
+    Đo được 11/10/2026 trong một phiên thật: Agent sửa `main.c` lúc 09:37, rồi đọc hiện vật
+    build từ 09:00 và báo *"dịch sạch, 0 lỗi"* — bản dựng lỗi thời 37 phút, và không gì trong
+    hệ nói ngược lại. Tôi bắt được bằng cách so `mtime`, không bằng cách hỏi hệ.
+
+    Đây đúng lỗ đã vá cho `test.run`/`sim.run` ở M4-11 (DEV-358): cơ chế đồ thị phụ thuộc có
+    sẵn và chạy đúng, mà đường dẫn tới nó từ `build.compile` thì đứt.
+    """
+    ag, ctx = bo
+    goc = ag.config.paths.project_root
+    (goc / "firmware").mkdir(parents=True, exist_ok=True)
+    (goc / "firmware" / "main.c").write_text("int main(void){return 0;}\n", "utf-8")
+
+    from eide.tools import xay_dung as XD
+
+    ds = XD._nguon_da_dich(goc, goc / "firmware")
+    assert "firmware/main.c" in ds, ds
+    # Tệp ngoài cây nguồn KHÔNG được vào danh sách — nó sẽ làm STALE nổ oan.
+    (goc / "ghi-chu.c").write_text("/* x */\n", "utf-8")
+    assert "ghi-chu.c" not in XD._nguon_da_dich(goc, goc / "firmware")
+
+
+def test_nguon_da_dich_gom_CA_cay_con(bo):
+    """Gom đệ quy — một dự án kéo BSP của hãng vào `firmware/bsp/` thì sửa BSP cũng phải STALE.
+
+    `toolchain.bien_dich` gom bằng `rglob`, nên danh sách khai ra phải gom cùng cách; gom nông
+    hơn thì một tệp ĐÃ DỊCH lại không nằm trong `upstream`, và sửa nó không làm gì STALE.
+    """
+    from eide.tools import xay_dung as XD
+
+    ag, _ = bo
+    goc = ag.config.paths.project_root
+    (goc / "firmware" / "bsp").mkdir(parents=True, exist_ok=True)
+    (goc / "firmware" / "bsp" / "lcd.c").write_text("void f(void){}\n", "utf-8")
+    (goc / "firmware" / "bsp" / "lcd.h").write_text("void f(void);\n", "utf-8")
+    ds = XD._nguon_da_dich(goc, goc / "firmware")
+    assert "firmware/bsp/lcd.c" in ds and "firmware/bsp/lcd.h" in ds, ds

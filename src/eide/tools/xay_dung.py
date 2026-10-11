@@ -423,6 +423,16 @@ def dang_ky(r: Registry) -> None:
             artefact_id=MA_BUILD, type="build",
             op="update" if ctx.store.get(MA_BUILD) else "create",
             author=f"agent:{ctx.run_id}", canonical=kq.to_dict(), explain=explain,
+            # KHAI tệp nguồn đã dịch, để sửa một tệp làm `build:firmware` thành STALE.
+            #
+            # Không khai thì cơ chế STALE không có gì để bám, và một bản dựng cũ nằm trong kho
+            # trông y như bản vừa dựng. Đo được 11/10/2026 trong một phiên thật: Agent sửa
+            # `main.c` lúc 09:37, rồi đọc hiện vật build từ 09:00 và báo "dịch sạch, 0 lỗi" —
+            # **37 phút lỗi thời**, và không gì trong hệ nói ngược lại.
+            #
+            # Đây đúng lỗ đã vá cho `test.run`/`sim.run` ở M4-11 (DEV-358): cơ chế đồ thị phụ
+            # thuộc có sẵn và chạy đúng, mà đường dẫn tới nó từ `build.compile` thì đứt.
+            deps={"upstream": _nguon_da_dich(goc, p)},
             view_hint={"kind": "table", "path": kq.tep_ra})
 
         if not kq.dat:
@@ -1601,6 +1611,31 @@ def _ho_chieu(ctx: Any) -> dict[str, Any] | None:
     return None
 
 
+def _nguon_da_dich(goc: Any, sketch: Any) -> list[str]:
+    """Đường dẫn tương đối của mọi tệp nguồn mà lần dịch này gom vào.
+
+    Lấy đúng cách `toolchain.bien_dich` gom (`rglob` cho `.c`/`.s`/`.S` + `.ld`), nên danh
+    sách này nói về **chính** những tệp đã dịch, không phải một phỏng đoán.
+
+    Trần 400: một dự án kéo cả HAL của hãng vào có thể có hàng trăm tệp, và một danh sách dài
+    bằng ấy trong hiện vật là thứ không ai đọc. Chạm trần thì cắt — nhưng cắt ở đây chỉ làm
+    STALE **hẹp** đi, không làm nó sai.
+    """
+    from pathlib import Path as _P
+
+    g, s = _P(goc), _P(sketch)
+    if not s.is_dir():
+        return [str(s.relative_to(g))] if s.is_file() and g in s.parents else []
+    ra: list[str] = []
+    for mau in ("*.c", "*.s", "*.S", "*.h", "*.ld"):
+        for x in sorted(s.rglob(mau)):
+            try:
+                ra.append(str(x.relative_to(g)))
+            except ValueError:
+                continue
+    return ra[:400]
+
+
 def _note_kiem_noi(config: Any, goc: Any, isa: str, nguon_chu: str, log_link: str) -> str:
     """Phần "kiểm NỐI" nối vào `note_vi` của `build.compile` — M4-13, sau cờ `kiem_noi`.
 
@@ -1646,8 +1681,17 @@ def _note_kiem_noi(config: Any, goc: Any, isa: str, nguon_chu: str, log_link: st
                  + (f" …+{len(bl) - 8}" if len(bl) > 8 else "")
                  + " — mã ấy KHÔNG có trong ảnh nạp chip.")
     if th:
-        L.append("* **hàm chỉ trả một hằng** (chưa viết xong?): "
-                 + ", ".join(f"`{x['ten']}` → {x['gia_tri']}" for x in th[:8]))
+        rong = [x for x in th if x.get("rong")]
+        hang = [x for x in th if not x.get("rong")]
+        if rong:
+            L.append(f"* **{len(rong)} hàm RỖNG** — thân chỉ có `bx lr`, không làm gì: "
+                     + ", ".join(f"`{x['ten']}`" for x in rong[:8])
+                     + (f" …+{len(rong) - 8}" if len(rong) > 8 else "")
+                     + ". Mã gọi chúng **liên kết sạch và nạp được**, rồi không có gì xảy ra. "
+                       "Nếu đây là một lớp driver tự khai thì cả lớp ấy là vỏ rỗng.")
+        if hang:
+            L.append("* **hàm chỉ trả một hằng** (chưa viết xong?): "
+                     + ", ".join(f"`{x['ten']}` → {x['gia_tri']}" for x in hang[:8]))
     L.append("Ba thứ trên đều biên dịch sạch, nên ĐỪNG báo đạt trước khi xử lý chúng.")
     return "\n".join(L)
 

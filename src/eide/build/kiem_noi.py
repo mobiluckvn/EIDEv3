@@ -96,10 +96,16 @@ class IsrBoQuen:
 @dataclass(slots=True)
 class HamTraHang:
     ten: str
-    gia_tri: int
+    # `None` = hàm RỖNG (một lệnh `bx lr`, không làm gì); số = hàm trả đúng hằng ấy.
+    # Hai chuyện khác nhau và cách sửa khác nhau, nên không gộp vào một trường.
+    gia_tri: int | None
+
+    @property
+    def rong(self) -> bool:
+        return self.gia_tri is None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"ten": self.ten, "gia_tri": self.gia_tri}
+        return {"ten": self.ten, "gia_tri": self.gia_tri, "rong": self.rong}
 
 
 # =========================================================================== đọc
@@ -208,13 +214,27 @@ def ham_bi_loai(log_link: str) -> list[str]:
 
 
 def ham_tra_hang(dis: str) -> list[HamTraHang]:
-    """Hàm mà cả thân chỉ là *"nạp một hằng vào r0 rồi về"* — một hàm chưa viết xong.
+    """Hàm chưa viết xong — thân chỉ *"nạp một hằng rồi về"*, hoặc **về ngay không làm gì**.
 
     `target.debug` đã có cảnh báo này, nhưng **chỉ khi chạy trên chip** (`tools/mach_that.py`).
     Nhìn thấy nó ở bước dịch thì không cần cắm bo.
 
     Bỏ `main` và mọi `*_Handler`: `main(){return 0;}` và một handler rỗng có **đúng** hình dạng
     ấy, mà cả hai là chuyện thường. Kêu chúng lên là kêu ở mọi dự án, và cảnh báo mất nghĩa.
+
+    ## Hàm RỖNG — một lệnh `bx lr`, và bản đầu BỎ SÓT nó
+
+    Bản đầu chỉ tìm **đúng hai** lệnh (`mov r0,#N` + `bx lr`), nên nó bắt được "trả một hằng"
+    mà bỏ sót dạng stub phổ biến **hơn hẳn**: một hàm `void` rỗng, biên dịch ra đúng **một**
+    lệnh `bx lr`.
+
+    Đo được 11/10/2026 trong một phiên thật — Agent viết game Flappy Bird và tự khai một
+    header BSP với tám hàm `BSP_LCD_*` rỗng. Firmware **liên kết sạch, nạp được**, và màn hình
+    **không hiện gì**. Tám ký hiệu ấy nằm cách nhau đúng 2 byte trong ảnh, tức mỗi hàm một
+    lệnh. Phép kiểm này — thứ viết ra chính để bắt chuyện ấy — im lặng đi qua.
+
+    Đó là ca #7 của `DANH-GIA-NGUOI-VS-AGENT-2-VIEC.md` §3.1 ở dạng nguy hiểm nhất: không phải
+    một hàm bị quên, mà **cả một lớp driver** là vỏ rỗng.
     """
     ra: list[HamTraHang] = []
     ten = ""
@@ -222,6 +242,11 @@ def ham_tra_hang(dis: str) -> list[HamTraHang]:
 
     def _chot() -> None:
         if not ten or ten == "main" or ten.endswith(("_Handler", "_handler")):
+            return
+        # Hàm RỖNG: đúng một lệnh, và lệnh ấy là `bx lr`. `gia_tri=None` phân biệt nó với
+        # "trả một hằng" — hai chuyện khác nhau và cách sửa khác nhau.
+        if len(lenh) == 1 and _RE_BX_LR.search(lenh[0]):
+            ra.append(HamTraHang(ten=ten, gia_tri=None))
             return
         if len(lenh) == 2 and _RE_BX_LR.search(lenh[1]):
             m = _RE_MOV_HANG.search(lenh[0])

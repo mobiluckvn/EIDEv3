@@ -119,6 +119,19 @@ def _ve(p: PhanTu, mh: ManHinh) -> list[str]:
               f"  BSP_LCD_DrawBitmap({p.x}, {p.y}, (uint8_t *){bien});"]
 
     elif p.loai in ("text", "button"):
+        # TÔ CẢ Ô trước, nếu phần tử có màu nền.
+        #
+        # `BSP_LCD_SetBackColor` + `DisplayStringAt` chỉ tô nền **sau từng ký tự**, không tô
+        # cả ô — nên một nút khai `mau_nen` sẽ ra một viền rỗng với mấy chữ có nền, trong khi
+        # bản xem HTML tô kín cả nút. Hai bản dựng vẽ khác nhau.
+        #
+        # Anh Công nhìn thấy trên bo thật ngày 11/10/2026: *"thiết kế là nút bôi màu da cam
+        # nhưng trên board thì chỉ bôi mỗi phần chữ"*. Đây đúng là chỗ mà "một nguồn, hai bản
+        # dựng" sinh ra để chặn — và nó không chặn được, vì tôi viết hai bản dựng độc lập
+        # rồi không có phép kiểm nào bắt chúng phải nói cùng một thứ.
+        if p.mau_nen:
+            d += [f"  BSP_LCD_SetTextColor({_mau_c(p.mau_nen)});",
+                  f"  BSP_LCD_FillRect({p.x}, {p.y}, {p.w}, {p.h});"]
         if p.loai == "button":
             d += [f"  BSP_LCD_SetTextColor({_mau_c(p.mau_chu)});",
                   f"  BSP_LCD_DrawRect({p.x}, {p.y}, {p.w}, {p.h});"]

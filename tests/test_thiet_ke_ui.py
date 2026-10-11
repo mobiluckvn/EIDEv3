@@ -970,3 +970,46 @@ def test_giao_dien_TON_TRONG_cot_nguyen_van():
     sw = (GOC / "ui/EIDEApp/Sources/EIDE/Views/SurfaceView.swift").read_text("utf-8")
     assert "cot_nguyen_van" in sw, "giao diện chưa đọc `cot_nguyen_van`"
     assert "nguyenVan: Bool" in sw and "design: .monospaced" in sw
+
+
+def test_HTML_va_C_cung_TO_NEN_cho_moi_phan_tu_co_mau_nen():
+    """Hợp đồng giữa HAI bản dựng: phần tử nào có `mau_nen` thì **cả hai** phải tô kín ô.
+
+    Đây là phép kiểm mà cả thiết kế "một nguồn, hai bản dựng" đứng trên. Thiếu nó thì hai bản
+    dựng trôi xa nhau, và bản xem **nói dối** về thiết bị — thứ tệ nhất một bản xem có thể làm.
+
+    Anh Công bắt được trên bo thật ngày 11/10/2026: *"thiết kế là nút bôi màu da cam nhưng
+    trên board thì chỉ bôi mỗi phần chữ"*. Lý do: C chỉ `DrawRect` (viền) rồi
+    `SetBackColor` + `DisplayStringAt`, mà BSP chỉ tô nền **sau từng ký tự**; còn HTML đặt
+    `background` cho cả khối.
+    """
+    from eide.man_hinh import sinh_c as SC
+
+    mh = _mh(
+        MO.PhanTu(id="nut", loai="button", x=100, y=50, w=200, h=80, chu="BAT DAU",
+                  co_chu=20, mau_chu="#FFFFFF", mau_nen="#E76F51"),
+        MO.PhanTu(id="nhan", loai="text", x=10, y=200, w=300, h=30, chu="DIEM",
+                  co_chu=16, mau_chu="#FFFFFF", mau_nen="#1F2937"))
+    c = SC.sinh_c(mh, _hs())
+    h = HT.dung_html(mh, _hs())
+
+    for p in mh.phan_tu:
+        # C: phải có một FillRect phủ đúng ô, bằng đúng màu nền.
+        assert f"BSP_LCD_SetTextColor({SC._mau_c(p.mau_nen)});" in c, (p.id, c)
+        assert f"BSP_LCD_FillRect({p.x}, {p.y}, {p.w}, {p.h});" in c, (p.id, c)
+        # HTML: cùng màu ấy, sau lượng hoá.
+        assert MO.luong_hoa(p.mau_nen, mh.he_mau).lower() in h.lower(), p.id
+
+
+def test_phan_tu_KHONG_co_mau_nen_thi_C_khong_to():
+    """Ca âm: không khai `mau_nen` thì không tô — nếu không, mọi nhãn sẽ đè lên nền phía sau.
+
+    Không có ca này thì phép kiểm trên có thể đang bắt mã tô mọi thứ, và một chữ trong suốt
+    đặt trên nền trời sẽ ra một ô chữ nhật đen.
+    """
+    from eide.man_hinh import sinh_c as SC
+
+    mh = _mh(MO.PhanTu(id="t", loai="text", x=10, y=10, w=300, h=30, chu="X", co_chu=16,
+                       mau_chu="#FFFFFF"))
+    c = SC.sinh_c(mh, _hs())
+    assert "BSP_LCD_FillRect(10, 10, 300, 30);" not in c, c
