@@ -12,8 +12,16 @@ Vì sao phải có bộ này bên cạnh `tests/test_edit47_nut_lui.py` và `Lui
   lời. Cả gói DEV-365 sinh ra vì đúng một loại hỏng: **cơ chế có sẵn, đường lên giao diện
   đứt**. Một phép đo không đi hết đường ấy sẽ xanh y như cũ trong khi đường vẫn đứt.
 
-Bộ này KHÔNG gọi mô hình một lần nào: `edit`, `undo`, `snapshot`, `branch` đều được lõi
-giải quyết bằng mã. Nên nó chạy miễn phí và chạy lại được bao nhiêu lần cũng được.
+Mặc định bộ này KHÔNG gọi mô hình một lần nào: `edit`, `undo`, `snapshot`, `branch`,
+`confirm` đều được lõi giải quyết bằng mã. Nên nó chạy miễn phí và chạy lại được bao nhiêu
+lần cũng được.
+
+Ngoại lệ DUY NHẤT là phần H (duyệt có sửa, DEV-370): một thẻ cổng chỉ sinh ra từ một lời
+gọi công cụ THẬT của tác tử, nên phần ấy phải tốn một lượt mô hình. Nó nằm sau một cờ
+riêng và mặc định bị bỏ qua:
+
+    EIDE_FEATURE_CONG_CO_DIFF=1 EIDE_FEATURE_DUYET_CO_SUA=1 EIDE_E2E_MO_HINH=1 \
+        python tools/thu_nut_lui.py
 """
 
 from __future__ import annotations
@@ -357,6 +365,60 @@ def chay(du_an: pathlib.Path) -> int:
     b.kiem("Lý do nằm trong MỤC §Đừng của EIDE.md", "bảng vector" in muc_dung,
            muc_dung.strip()[:120])
 
+    # ---------------------------------------------------------------- H
+    b.phan("H · DUYỆT VỚI BẢN ĐÃ SỬA (DEV-370)")
+
+    # Cần cờ `CONG_CO_DIFF` để cổng có diff, và `DUYET_CO_SUA` để cột phải sửa được.
+    # Chạy phần này khi cả hai bật; không thì nói rõ là đã bỏ qua, đừng im lặng.
+    #
+    # Phần H là phần DUY NHẤT của bộ này gọi mô hình, và nó phải gọi: một thẻ cổng chỉ
+    # sinh ra từ một lời gọi công cụ THẬT của tác tử. Dựng một thẻ giả để bấm là đo cái
+    # nút trên một thứ không phải thẻ cổng.
+    #
+    # Nên nó nằm sau một cờ riêng: `EIDE_E2E_MO_HINH=1`. Mặc định cả bộ vẫn chạy miễn phí.
+    if not (os.environ.get("EIDE_FEATURE_CONG_CO_DIFF")
+            and os.environ.get("EIDE_FEATURE_DUYET_CO_SUA")
+            and os.environ.get("EIDE_E2E_MO_HINH")):
+        print("  (bỏ qua phần H — cần EIDE_FEATURE_CONG_CO_DIFF=1 "
+              "EIDE_FEATURE_DUYET_CO_SUA=1 EIDE_E2E_MO_HINH=1; phần này TỐN TIỀN mô hình)")
+    else:
+        # Mức tự chủ A3 không dựng cổng cho `fs.write`. Hạ xuống A1 bằng đúng đường người
+        # đi (`HumanAct kind=set`), không sửa cấu hình sau lưng app.
+        g._gui({"kind": "set", "data": {"key": "autonomy", "value": "A1"},
+                "origin": {"surface": "settings"}})
+        time.sleep(2)
+        b.buoc("Tác tử xin ghi Makefile; người sửa một cờ dịch rồi duyệt")
+        g.go("viết cho tôi một Makefile tối giản dịch main.c, dùng -O2")
+        a = g.doi_xong()
+        cong = [t for t in a["the_dang_cho"] if t["loai"] == "gate"]
+        b.kiem("Thẻ cổng G-FILE hiện ra", bool(cong),
+               cong[0]["tieu_de"] if cong else "không thẻ nào")
+        ds = [d for d in (a.get("diff") or []) if d["gan_voi"] == (cong[0]["gate_id"]
+                                                                  if cong else "")]
+        b.kiem("Thẻ cổng kèm khối diff: ghi đè CÁI GÌ lên cái gì", bool(ds),
+               json.dumps(a.get("diff") or [], ensure_ascii=False)[:160])
+        b.kiem("Cột phải SỬA ĐƯỢC vì cờ duyệt-có-sửa đang bật",
+               bool(ds) and ds[0]["cho_phep_sua"] is True,
+               str(ds[0]["cho_phep_sua"]) if ds else "—")
+        assert cong and ds
+
+        ban_toi = "CFLAGS = -Og -g -Wall\nall:\n\t$(CC) $(CFLAGS) -o main main.c\n"
+        g._gui({"kind": "decide",
+                "data": {"gate_id": cong[0]["gate_id"], "approved": True,
+                         "choice": "Duyệt với bản đã sửa",
+                         "amended": {"content": ban_toi}},
+                "note": "cờ -O2 làm mất thông tin gỡ lỗi", "origin": {"surface": "console"}})
+        g.doi_xong()
+
+        tep = du_an / "Makefile"
+        b.kiem("Trên đĩa là BẢN CỦA NGƯỜI, không phải bản tác tử",
+               tep.exists() and tep.read_text("utf-8") == ban_toi,
+               repr(tep.read_text("utf-8")[:60]) if tep.exists() else "chưa có tệp")
+        cs = _changeset_cham(du_an, "Makefile")
+        b.kiem("Hai changeset riêng, tác tử trước rồi tới anh",
+               [c["author"].split(":")[0] for c in cs] == ["agent", "human"],
+               " → ".join(c["author"] for c in cs) or "không có changeset nào")
+
     # ---------------------------------------------------------------- Đ
     b.phan("Đ · ẢNH CHỤP CHO BÁO CÁO")
     g.mo_tab("history")
@@ -408,6 +470,22 @@ def _ghi_phat_hien(du_an: pathlib.Path) -> None:
     _kho(du_an).apply(artefact_id="PT-do-1", type="analysis", op="create",
                       author="agent:bo-do", explain=EX,
                       canonical={"vi_sao": "hàm ISR_TIM2 không ai gọi"})
+
+
+def _changeset_cham(du_an: pathlib.Path, path: str) -> list[dict]:
+    """Changeset chạm một tệp, theo thứ tự ghi. Đọc thẳng sổ — không dựng `History`
+    (nó sẽ khởi tạo git và cấp mã, tức một tiến trình thứ hai ghi vào dự án)."""
+    p = du_an / ".eide" / "changesets.jsonl"
+    if not p.exists():
+        return []
+    ra = []
+    for l in p.read_text("utf-8").splitlines():
+        if not l.strip():
+            continue
+        d = json.loads(l)
+        if any(t.get("artefact_id") == path for t in d.get("touches") or []):
+            ra.append(d)
+    return ra
 
 
 def _ban_ung_y(du_an: pathlib.Path) -> list[dict]:

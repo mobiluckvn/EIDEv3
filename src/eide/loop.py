@@ -46,6 +46,7 @@ from .memory import boc_ket_qua
 from .memory.transcript import KhoPhien, phuc_hoi as _phuc_hoi
 from .policy import PolicyEngine
 from .protocol import HumanAct
+from .protocol.humanact import Target
 from .protocol import uicommand as uic
 from .protocol.ledger import Ledger
 from .store import EideMd, Store, inventory
@@ -1068,10 +1069,11 @@ class Agent:
             diff_id=f"d-{card['gate_id']}",
             nhan_trai=("Bản đang có trên đĩa" if p.exists() else "Chưa có tệp này"),
             nhan_phai="Bản tác tử định ghi",
-            # Sửa thẳng trong diff rồi duyệt là DEV-370 (`decide` kèm `amended`). Tới lúc đó
-            # cột phải chỉ để đọc — mở ô sửa khi lõi chưa nhận được bản sửa là dựng một cái
-            # nút nuốt mất việc của người.
-            cho_phep_sua=False, gan_voi={"gate_id": card["gate_id"]})))
+            # Cột phải sửa được CHỈ KHI lõi nhận được bản sửa ấy (DEV-370, sau cờ riêng).
+            # Mở ô sửa khi lõi chưa nhận là dựng một cái nút nuốt mất việc của người: họ
+            # gõ lại cả một đoạn mã, bấm Duyệt, và bản của tác tử vẫn là thứ được ghi.
+            cho_phep_sua=self.config.features.bat("duyet_co_sua"),
+            gan_voi={"gate_id": card["gate_id"]})))
 
     def _one_tool(self, call: Any, ctx: TurnContext) -> None:
         ctx.tool_calls_used += 1
@@ -2167,6 +2169,11 @@ class Agent:
         if approved and call["tool"] == "plan.exit" and res.ok:
             self._duyet_ke_hoach(ctx, gid)
 
+        # DEV-370 — người duyệt NHƯNG đã sửa nội dung trong khối diff.
+        nhac_sua = self._ap_ban_nguoi_sua(act, call, res, ctx)
+        if nhac_sua:
+            self.messages.append({"role": "user", "_he_thong": True, "text": nhac_sua})
+
         # M1-01 — THAY kết quả cũ tại chỗ, không sinh kết quả thứ hai cho cùng một id.
         #
         # Lời gọi bị chặn đã có sẵn một kết quả `E4003` (`gate_pending`) trong lịch sử.
@@ -2188,6 +2195,109 @@ class Agent:
                                   "_da_duyet_sau": gid})
         self.messages.append(nhac_da_duyet)
         self._tool_loop(ctx, None)
+
+    def _ap_ban_nguoi_sua(self, act: HumanAct, call: dict[str, Any], res: Any,
+                          ctx: TurnContext) -> str:
+        """Người bấm *Duyệt với bản đã sửa* — EIDE-EDIT-47 §DEV-370. Trả lời nhắc cho mô hình.
+
+        Bỏ vòng **"Không → gõ lời → đợi lượt"**: trước gói này, thấy một cờ dịch sai trong
+        thẻ cổng thì người chỉ có hai nút — Duyệt (ghi cả cái sai) hoặc Từ chối (rồi gõ một
+        câu mô tả chỗ cần sửa, đợi một lượt mô hình, và hy vọng nó sửa đúng chỗ).
+
+        ## Vì sao áp SAU khi chạy, không thay tham số TRƯỚC khi chạy
+
+        Tài liệu nói thay `call.args.content` trước khi chạy. Làm thế thì trên đĩa chỉ có
+        **một** changeset — của tác tử — mang nội dung của NGƯỜI. Hai hệ quả, cả hai đều
+        tệ: changeset nói sai ai viết dòng nào (§8 của tài liệu nói thẳng "duyệt có sửa làm
+        mờ ranh giới ai viết dòng này", và vì thế phần người sửa phải là changeset riêng);
+        và *"hoàn tác phần người sửa → về bản tác tử"* thành một lời hứa suông, vì bản tác
+        tử chưa bao giờ nằm trên đĩa để mà quay về.
+
+        Nên: chạy lời gọi NGUYÊN BẢN (một changeset `author=agent`), rồi áp bản của người
+        lên trên như một lần sửa của người (một changeset `author=human`). Đúng hai
+        changeset, đúng thứ tự, và phép lùi ở giữa có nghĩa.
+        """
+        am = act.data.get("amended")
+        if not am:
+            return ""
+        if not self.config.features.bat("duyet_co_sua"):
+            ctx.emit(uic.notice(
+                "Duyệt kèm bản sửa đang TẮT (cờ `EIDE_FEATURE_DUYET_CO_SUA`) — tôi đã ghi "
+                "bản của tác tử, KHÔNG ghi phần anh sửa. Bật cờ rồi sửa lại, hoặc sửa "
+                "thẳng trên hiện vật.", level="warn", code="E_CO_TAT"))
+            return ""
+        if not res.ok:
+            ctx.emit(uic.notice(
+                "Lời gọi của tác tử không chạy được, nên phần anh sửa cũng chưa ghi — "
+                "không có bản nào để sửa lên.", level="warn"))
+            return ""
+
+        path = str((call.get("args") or {}).get("path") or "")
+        gia = HumanAct(
+            kind="edit", text="", target=None, data={}, origin=act.origin,
+            note=act.note or "anh duyệt nhưng sửa lại nội dung", id=act.id, ts=act.ts)
+        if am.get("content") is not None and path:
+            gia.target = Target(type="file", id=path)
+            p = (self.config.paths.project_root / path).resolve()
+            gia.data = {"base_version": _bam(p.read_text("utf-8", errors="replace"))
+                        if p.exists() else "",
+                        "content": str(am["content"]),
+                        "summary": f"anh sửa {path} khi duyệt"}
+        elif am.get("patch") is not None:
+            aid = str(am.get("artefact_id") or (call.get("args") or {}).get("id") or "")
+            a = self.store.get(aid)
+            if a is None:
+                ctx.emit(uic.notice(
+                    f"Không rõ phần anh sửa thuộc hiện vật nào ({aid or 'thiếu mã'}) — "
+                    "chưa ghi phần ấy.", level="warn"))
+                return ""
+            gia.target = Target(type=a["type"], id=aid)
+            gia.data = {"base_version": f"v{a['version']}", "patch": list(am["patch"]),
+                        "summary": f"anh sửa {aid} khi duyệt"}
+        else:
+            return ""
+
+        try:
+            cs = (self._sua_tep(gia, ctx, pha_khoa=False) if gia.target.type == "file"
+                  else self._sua_hien_vat(gia, ctx))
+        except _XungDot as e:
+            # Hiếm, nhưng có thật: tác tử vừa ghi xong thì một tiến trình khác đụng vào.
+            return (f"<system-reminder>\nNgười dùng duyệt kèm một bản sửa, nhưng bản ấy "
+                    f"đụng với {e.hien_vat} ({e.vi_sao}) nên CHƯA ghi. Hỏi họ.\n"
+                    "</system-reminder>")
+        if cs is None:
+            return ""
+
+        self.ledger.append("gate", {"run_id": ctx.run_id,
+                                    "gate_id": act.data.get("gate_id"),
+                                    "state": "approved", "amended": True,
+                                    "changeset": cs.id})
+        self.eide_md.note_human_edit(artefact=str(gia.target),
+                                     summary=cs.explain.get("summary", "sửa khi duyệt"),
+                                     why=act.note)
+        self.eide_md.save()
+        ctx.emit(uic.console_post(
+            f"Đã ghi bản **anh sửa** đè lên bản tôi vừa viết ({cs.id}). Hai thay đổi nằm "
+            "riêng trong lịch sử: hoàn tác cái của anh thì về đúng bản của tôi.",
+            role="agent"))
+        ctx.emit(uic.history_update(changesets=[self.history.tom_tat(cs)],
+                                    vua_ghi=self._vua_ghi(gia, cs)))
+        # Mô hình PHẢI biết nó đang đứng trên bản của người, không phải bản nó vừa viết.
+        from . import diff_khoi as dk
+
+        tt = ""
+        if am.get("content") is not None:
+            try:
+                tt = str(dk.diff_tom_tat(str(res.data.get("noi_dung_cu") or ""),
+                                         str(am["content"])))
+            except Exception:                                          # noqa: BLE001
+                tt = ""
+        return (f"<system-reminder>\nNgười dùng duyệt cổng nhưng **ĐÃ SỬA nội dung** trước "
+                f"khi cho ghi: {cs.explain.get('summary', '')}"
+                + (f" ({tt})" if tt else "")
+                + f". Bản trên đĩa bây giờ là BẢN CỦA HỌ ({cs.id}), không phải bản bạn vừa "
+                "viết. Làm tiếp trên bản của họ; đừng ghi đè lại bằng bản cũ.\n"
+                "</system-reminder>")
 
     def _duyet_ke_hoach(self, ctx: TurnContext, gid: str) -> None:
         """Đóng dấu `da_duyet` lên kế hoạch và mở lại công cụ ghi."""

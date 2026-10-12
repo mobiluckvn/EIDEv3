@@ -304,6 +304,8 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 
 ---
 
+<!-- /se-co -->
+
 ### DEV-370 · Duyệt có sửa, và sửa phương án trước khi chọn
 
 **Mục tiêu.** Bỏ vòng "Không → gõ lời → đợi lượt". Trên thẻ cổng có diff (DEV-366) người sửa thẳng rồi duyệt; trên thẻ "nêu 2–4 cách" người sửa một cách rồi chọn. Cờ `EIDE_FEATURE_DUYET_CO_SUA`.
@@ -322,6 +324,8 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 **Ước lượng.** 2–3 ngày (sau DEV-366, DEV-368).
 
 ---
+
+<!-- se-co -->
 
 ### DEV-371 · Cài đặt dự án qua `set`, gộp thẻ `tool.install`, và hai công cụ chạy
 

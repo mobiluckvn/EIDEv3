@@ -25,6 +25,8 @@ struct TheCongView: View {
     @EnvironmentObject var state: AppState
     let card: Card
     @State private var lyDo: String = ""
+    /// Bản người sửa trong cột phải của khối diff — DEV-370.
+    @State private var banDaSua: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -69,7 +71,10 @@ struct TheCongView: View {
             // cái gì lên cái gì**. Đứng SAU phần hậu quả và TRƯỚC hai cái nút — đúng quy
             // tắc 1 của thẻ cổng.
             if let d = state.diffGanVoi(gateID: card.gateID ?? "") {
-                DiffView(d: d, banDaSua: .constant(nil))
+                // Cột phải SỬA ĐƯỢC khi lõi cho phép (DEV-370). Thấy một cờ dịch sai thì
+                // người sửa ngay tại đây rồi duyệt — thay cho vòng "Không → gõ một câu mô
+                // tả chỗ cần sửa → đợi một lượt mô hình → hy vọng nó sửa đúng chỗ".
+                DiffView(d: d, banDaSua: $banDaSua)
             }
 
             if let r = card.requireText {
@@ -91,6 +96,15 @@ struct TheCongView: View {
                         .disabled(thieuLyDo)
                         // Không .keyboardShortcut(.defaultAction) — xem quy tắc 2.
                 }
+                // Nút thứ ba, CHỈ hiện khi người đã thật sự sửa cột phải. Hiện sẵn một nút
+                // "duyệt với bản đã sửa" khi chưa ai sửa gì là mời người bấm một thứ không
+                // khác gì nút bên cạnh.
+                if daSua {
+                    Button("Duyệt với bản đã sửa") { duyetKemBanSua() }
+                        .disabled(thieuLyDo)
+                        .help("Ghi bản của tác tử trước, rồi ghi bản anh sửa đè lên — hai "
+                              + "thay đổi riêng, hoàn tác cái của anh thì về bản của nó")
+                }
                 Spacer()
                 Text(card.gateID ?? card.id)
                     .font(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
@@ -106,10 +120,42 @@ struct TheCongView: View {
         !card.requireFields.isEmpty && lyDo.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// Người đã sửa cột phải THÀNH MỘT BẢN KHÁC bản tác tử định ghi.
+    private var daSua: Bool {
+        guard let b = banDaSua,
+              let d = state.diffGanVoi(gateID: card.gateID ?? "") else { return false }
+        return b != (d["phai"]?["noi_dung"]?.stringValue ?? "")
+    }
+
     private func quyet(approved: Bool, choice: String) {
         guard let gid = card.gateID else { return }
         state.gui(.decide(gateID: gid, approved: approved, choice: choice,
                           note: lyDo.isEmpty ? nil : lyDo))
+    }
+
+    private func duyetKemBanSua() {
+        guard let gid = card.gateID, let act = Self.actDuyetKemSua(
+            gateID: gid, banDaSua: banDaSua,
+            goc: state.diffGanVoi(gateID: gid)?["phai"]?["noi_dung"]?.stringValue,
+            lyDo: lyDo) else { return }
+        state.gui(act)
+    }
+
+    /// `decide` kèm bản người sửa. `nil` khi không có gì để kèm.
+    ///
+    /// Tách ra để đo được, và vì đây là chỗ một lỗi im lặng tốn nhất: gửi `amended` mà
+    /// nội dung y hệt bản của tác tử sẽ đẻ ra một changeset "của người" không chứa thay
+    /// đổi nào — làm hỏng đúng cái câu *"ai viết dòng này"* mà cả gói sinh ra để giữ.
+    static func actDuyetKemSua(gateID: String, banDaSua: String?, goc: String?,
+                               lyDo: String) -> HumanAct? {
+        guard let b = banDaSua, b != (goc ?? "") else { return nil }
+        return HumanAct(
+            kind: .decide,
+            data: ["gate_id": .string(gateID), "approved": .bool(true),
+                   "choice": .string("Duyệt với bản đã sửa"),
+                   "amended": .object(["content": .string(b)])],
+            origin: .init(surface: "console"),
+            note: lyDo.isEmpty ? nil : lyDo)
     }
 }
 

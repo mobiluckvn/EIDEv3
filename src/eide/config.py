@@ -414,6 +414,11 @@ class Features:
     # duong dan. Phan KHONG sau co: `sua_duoc` tren cac khoi (thuan trinh bay — giao dien
     # ve o sua), va `ap_patch` (ham thuan, co ca kiem rieng).
     sua_long: bool = False
+    # EIDE-EDIT-47 DEV-370 — nguoi sua noi dung ngay trong khoi diff cua THE CONG roi bam
+    # Duyet. Sau co vi no doi THU XAY RA SAU MOT CAI GAT DAU: loi gay them mot changeset
+    # cua nguoi va nhan mot `<system-reminder>` vao ngu canh, tuc doi thu mo hinh doc o
+    # luot sau (N-4). Co tat thi the cong chay y nhu cu.
+    duyet_co_sua: bool = False
 
     @classmethod
     def load(cls) -> "Features":

@@ -10665,3 +10665,104 @@ của phép đo "cờ bật thì sao" lặng lẽ đo lại đúng chế độ c
 * **`symbol` giữ nhánh riêng** (xem trên).
 * **Hiện vật đã bác bỏ chưa bị ẩn khỏi bảng.** Lõi đánh dấu `canonical.bac_bo` và ghi
   §Đừng; `surfaces` chưa lọc chúng ra sau một nút "hiện N dòng đã bác bỏ".
+
+---
+
+## [DEV-370] Duyệt có sửa — bỏ vòng "Không → gõ lời → đợi lượt"
+
+Gói thứ tư của EIDE-EDIT-47. Thẻ cổng có đúng hai nút, và cả hai đều sai với tình huống
+thường gặp nhất: **đúng gần hết, sai một dòng**. Duyệt thì ghi cả cái sai. Từ chối thì vứt
+luôn phần đúng, rồi gõ một câu mô tả chỗ cần sửa, đợi một lượt mô hình, và hy vọng nó sửa
+đúng chỗ.
+
+Nay thẻ cổng có khối diff (DEV-366) và cột phải sửa được: người sửa cờ dịch ngay tại đó
+rồi bấm **Duyệt với bản đã sửa**.
+
+### Chỗ làm khác tài liệu, và nó là chỗ quan trọng nhất của gói
+
+Tài liệu nói: *"**trước khi** chạy lời gọi đang chờ, thay tham số nội dung của lời gọi"*.
+Làm thế thì trên đĩa chỉ có **một** changeset — của tác tử — mang nội dung của NGƯỜI. Hai
+hệ quả, và cả hai đánh thẳng vào thứ mà §8 của chính tài liệu dặn phải giữ:
+
+* changeset nói **sai ai viết dòng nào**. §8: *"duyệt có sửa làm mờ ranh giới ai viết dòng
+  này. Vì thế phần người sửa là changeset riêng `author=human`, không gộp vào changeset
+  của Agent."* Thay tham số trước khi chạy là gộp;
+* *"hoàn tác phần người sửa → về bản tác tử"* thành một **lời hứa suông**: bản tác tử chưa
+  bao giờ nằm trên đĩa để mà quay về.
+
+Nên lõi chạy lời gọi **nguyên bản** (một changeset `author=agent:…`), rồi áp bản của người
+lên trên như một lần sửa của người (một changeset `author=human`). Đúng hai changeset,
+đúng thứ tự, và phép lùi ở giữa có nghĩa — `test_hoan_tac_phan_NGUOI_thi_ve_dung_ban_TAC_TU`
+đo đúng câu ấy.
+
+### Ba chỗ từ chối, và vì sao từng chỗ
+
+* **Từ chối kèm bản đã sửa → lỗi lược đồ.** Hai ý chí ngược nhau trong một thông điệp;
+  nhận nó thì lõi phải đoán, và đoán sai ở đây nghĩa là **ghi một thứ người vừa từ chối**.
+* **Lời gọi của tác tử hỏng thì không ghi phần người.** Không có bản nào để sửa lên.
+* **Cờ tắt thì nói ra tên cờ.** Im lặng bỏ qua là tệ nhất: người bấm Duyệt, thấy tệp được
+  ghi, và tưởng bản của mình đã vào.
+
+Và một chỗ nữa ở phía giao diện: nút *Duyệt với bản đã sửa* **chỉ hiện khi người đã thật
+sự sửa cột phải**. Gửi `amended` với nội dung y hệt bản tác tử sẽ đẻ ra một changeset "của
+người" không chứa thay đổi nào — hỏng đúng cái câu *ai viết dòng này*.
+
+`cho_phep_sua` của khối diff trên thẻ cổng nay bám theo cờ `DUYET_CO_SUA` (DEV-366 để
+`False` cứng và ghi chú rõ là chờ gói này). Mở ô sửa khi lõi chưa nhận được bản sửa là
+dựng một cái nút **nuốt mất việc của người**: họ gõ lại cả một đoạn mã, bấm Duyệt, và bản
+của tác tử vẫn là thứ được ghi.
+
+### Đo
+
+* `tests/test_edit47_duyet_co_sua.py` — 13 ca. **Phá lại thì đỏ: 9/9.**
+* `DuyetCoSuaTests` trong `DiffTests.swift` — 2 ca. **3/3.**
+* `tools/thu_nut_lui.py` phần H — 5 ca mới, dựng đúng **tiêu chí chấp nhận** của gói trên
+  một phiên thật: tác tử xin ghi `Makefile` với `-O2`, người sửa thành `-Og -g` ngay trong
+  diff rồi bấm Duyệt với bản đã sửa → trên đĩa là bản của người, hai changeset riêng theo
+  đúng thứ tự `agent` → `human`. Bộ ấy 40 → **45/45**.
+* Bộ kiểm 2 315 → **2 329 xanh**, 2 skip, 0 đỏ. Giao diện 81 → **83 ca**. Cờ 16 → **17**.
+
+**Hai phép phá dựng SAI ở lượt đầu — không phải hai lỗ trong bộ ca:**
+
+1. Phá câu cảnh báo "cờ đang tắt" bằng cách thay **hai dòng cuối** của một chuỗi nối ngầm
+   ba dòng. Tên cờ nằm ở dòng ĐẦU nên nó vẫn còn nguyên trong thông báo, và ca kiểm xanh
+   đúng. Đây là lần thứ hai dự án vấp đúng chuyện ấy (DEV-364 đã ghi: *"phép phá vào một
+   chuỗi nhiều dòng phải thay CẢ biểu thức"*).
+2. Phá "ghi phần người bằng tên tác tử" ở một chỗ **không quyết định tác giả** — tác giả
+   do `_sua_tep(author="human")` đặt. Phá đúng chỗ ấy thì đỏ ngay.
+
+### Và một lỗi của chính tôi, ghi lại vì nó suýt qua mặt bộ kiểm
+
+Tôi gõ `rm -rf ui/EIDEApp/tests` để dọn một tệp ca kiểm Python lạc chỗ. Trên ổ đĩa của
+máy này, `tests` và `Tests` là **cùng một thư mục** — lệnh ấy xoá sạch cả sáu tệp ca kiểm
+giao diện.
+
+Phần đáng ghi không phải cái lỗi, mà là **cách nó suýt lọt**: `swift test` trên một gói
+không còn mục tiêu kiểm thì **lỗi**, và bộ phá của tôi đọc "mã thoát khác 0" là ĐỎ. Nên
+bảng phép phá vẫn báo `GIAO DIỆN: bắt 3/3` — ba ô xanh nói về một bộ ca không tồn tại.
+
+Hai ca kiểm Python mới là thứ bắt được: `test_tap_mau_dung_chung_co_doc_duoc_tu_phia_Swift`
+đọc `MarkdownTests.swift` và không thấy tệp, còn bộ dò tài liệu báo `ui/EIDEApp/Tests`
+không tồn tại. Khôi phục bằng `git checkout` (mọi thứ tới `541243b` đều đã trong git), gõ
+lại hai ca `DuyetCoSuaTests` viết sau commit ấy, rồi chạy lại: 83 ca xanh, và lần phá lại
+sau đó mới là lần nói thật.
+
+*Một bộ đo coi "chạy lỗi" là "bắt được lỗi" thì nó xanh nhất đúng lúc nó hỏng nhất.*
+
+### Một lần nữa, bộ đo tự bẫy mình
+
+Phần H là phần **duy nhất** của `thu_nut_lui.py` gọi mô hình, và nó phải gọi: một thẻ cổng
+chỉ sinh ra từ một lời gọi công cụ THẬT. Dựng một thẻ giả để bấm là đo cái nút trên một
+thứ không phải thẻ cổng. Nên nó nằm sau cờ `EIDE_E2E_MO_HINH=1` và mặc định bị bỏ qua —
+cả bộ vẫn chạy miễn phí.
+
+Và nó cần mức tự chủ A1 (A3 không dựng cổng cho `fs.write`). Hạ mức ấy bằng đúng đường
+người đi — `HumanAct kind=set` qua kênh kiểm thử — chứ không sửa cấu hình sau lưng app.
+
+### Chưa làm
+
+* **Thẻ phương án chưa có nút "Sửa".** A2.3 đã mang `sua_duoc` từ DEV-368 nên sửa được ở
+  tab Yêu cầu; nhưng sửa một cách NGAY TRÊN thẻ "nêu 2–4 cách" rồi chọn thì chưa.
+* **`amended` kèm `patch` có đường đi và có ca kiểm, nhưng giao diện chưa gửi dạng ấy** —
+  nút trên thẻ cổng mới gửi `content`. Cổng cho hiện vật (G-DESIGN, G-DATA) vì thế chưa
+  sửa-rồi-duyệt được.

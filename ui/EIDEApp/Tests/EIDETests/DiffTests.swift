@@ -176,3 +176,31 @@ final class DiffTests: XCTestCase {
         XCTAssertEqual(s.daGui[0].kind, .choose)
     }
 }
+
+/// Nút *Duyệt với bản đã sửa* — EIDE-EDIT-47 DEV-370.
+@MainActor
+final class DuyetCoSuaTests: XCTestCase {
+
+    func test_chua_sua_gi_thi_KHONG_co_gi_de_kem() {
+        // Gửi `amended` mà nội dung y hệt bản của tác tử sẽ đẻ ra một changeset "của
+        // người" không chứa thay đổi nào — hỏng đúng cái câu "ai viết dòng này".
+        XCTAssertNil(TheCongView.actDuyetKemSua(gateID: "g-1", banDaSua: nil,
+                                                goc: "a\n", lyDo: ""))
+        XCTAssertNil(TheCongView.actDuyetKemSua(gateID: "g-1", banDaSua: "a\n",
+                                                goc: "a\n", lyDo: ""))
+    }
+
+    func test_gui_decide_APPROVED_kem_ban_da_sua() {
+        let a = TheCongView.actDuyetKemSua(gateID: "g-7", banDaSua: "CFLAGS = -Og\n",
+                                           goc: "CFLAGS = -O2\n",
+                                           lyDo: "cờ -O2 làm mất thông tin gỡ lỗi")
+        XCTAssertNotNil(a)
+        XCTAssertEqual(a?.kind, .decide)
+        XCTAssertEqual(a?.data["gate_id"]?.stringValue, "g-7")
+        XCTAssertEqual(a?.data["approved"]?.boolValue, true,
+                       "từ chối mà kèm bản sửa là hai ý chí ngược nhau — lõi từ chối cả "
+                       + "thông điệp, nên giao diện không được dựng ra nó")
+        XCTAssertEqual(a?.data["amended"]?["content"]?.stringValue, "CFLAGS = -Og\n")
+        XCTAssertEqual(a?.note, "cờ -O2 làm mất thông tin gỡ lỗi")
+    }
+}

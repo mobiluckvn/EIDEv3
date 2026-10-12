@@ -138,6 +138,23 @@ class HumanAct:
         if self.kind == "decide" and not self.data.get("gate_id"):
             raise schema_violation("HumanAct[decide]", "thiếu gate_id — một chữ 'có' không mở cổng nào")
 
+        # EIDE-EDIT-47 §DEV-370 — "duyet co sua": nguoi sua noi dung ngay trong khoi diff
+        # roi bam Duyet, thay cho vong "Khong → go loi → doi luot".
+        if self.kind == "decide" and self.data.get("amended") is not None:
+            am = self.data["amended"]
+            if not isinstance(am, dict) or not ({"content", "patch"} & set(am)):
+                raise schema_violation(
+                    "HumanAct[decide].data.amended",
+                    "phải là {\"content\": …} hoặc {\"patch\": [...]}")
+            if not self.data.get("approved"):
+                # TU CHOI kem mot ban da sua la hai y chi nguoc nhau trong mot thong diep.
+                # Nhan no thi lõi phai doan xem nguoi muon gi — va doan sai o day nghia la
+                # ghi mot thu ho vua tu choi.
+                raise schema_violation(
+                    "HumanAct[decide]",
+                    "từ chối mà vẫn kèm bản đã sửa — hai ý chí ngược nhau trong một "
+                    "thông điệp. Duyệt với bản đã sửa, hoặc từ chối hẳn.")
+
         if self.kind == "edit":
             if self.target is None:
                 raise schema_violation("HumanAct[edit]", "thiếu target: sửa hiện vật nào?")
