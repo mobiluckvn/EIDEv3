@@ -94,6 +94,15 @@ def la_tieng_cua_eide(p: Path, noi_dung: str) -> bool:
     return _EIDE_DA_GHI.get(str(Path(p).resolve())) == _bam(noi_dung)
 
 
+def quen_tep(p: Path) -> None:
+    """Tệp này KHÔNG CÒN — bỏ dấu "EIDE vừa ghi" của nó (§DEV-375).
+
+    Giữ dấu cũ lại thì sau một lần xoá, người tạo lại tệp với ĐÚNG nội dung cũ sẽ bị coi
+    là "tiếng của chính EIDE" và lần tạo lại ấy không vào sổ.
+    """
+    _EIDE_DA_GHI.pop(str(Path(p).resolve()), None)
+
+
 def la_nhi_phan(p: Path) -> bool:
     """Dò bằng mấy byte đầu, cùng cách `ING-43` làm — không đoán theo đuôi tệp."""
     try:
@@ -182,9 +191,16 @@ class Watcher:
         for path, dau in moi.items():
             if self._dau.get(path) != dau:
                 self._cho[path] = bay
+        # Tệp BIẾN MẤT cũng là một thay đổi (§DEV-375). Bản đầu bỏ qua nó, nên người xoá
+        # `main.c` bằng Finder thì EIDE không có đường nào trả nó về — một lỗ trong luật
+        # nền số 3, ở đúng chỗ đắt nhất.
+        #
+        # Vẫn xếp vào hàng chờ như mọi thay đổi khác, và **không** đánh dấu "đã xoá": một
+        # lần lưu kiểu ghi-tạm-rồi-đổi-tên làm tệp biến mất trong vài chục milli giây, nên
+        # "xoá hay sửa" chỉ trả lời được LÚC CHÍN. Người gọi kiểm lại sự tồn tại ở đó.
         for path in list(self._dau):
             if path not in moi:
-                self._cho.pop(path, None)          # tệp bị xoá: chưa xử lý ở bản này
+                self._cho[path] = bay
         self._dau = moi
 
         chin = [p for p, luc in self._cho.items() if bay - luc >= GIAY_GOM]
@@ -218,5 +234,5 @@ def noi_dung_doc_duoc(p: Path) -> str | None:
 
 
 __all__ = ["Watcher", "la_nhi_phan", "dang_theo_doi", "noi_dung_doc_duoc",
-           "danh_dau_eide_ghi", "la_tieng_cua_eide",
+           "danh_dau_eide_ghi", "la_tieng_cua_eide", "quen_tep",
            "BO_QUA_THU_MUC", "TRAN_BYTE", "GIAY_GOM"]

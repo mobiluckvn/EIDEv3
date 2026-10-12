@@ -531,6 +531,33 @@ def chay(du_an: pathlib.Path) -> int:
                "bên ngoài app",
                ngoai.read_text("utf-8") == V1, repr(ngoai.read_text("utf-8")))
 
+        b.buoc("XOÁ hẳn tệp ấy bằng tay (như xoá trong Finder) — DEV-375")
+        # Đếm MỐC NGAY TRƯỚC khi xoá, không dùng số đếm từ trước lần hoàn tác: chính lần
+        # hoàn tác vừa rồi cũng sinh một changeset chạm tệp này, nên `len(cs) + 1` đã
+        # thoả ngay lập tức và phép đo trả về trước khi watcher kịp quét. Một lần chờ
+        # thoả sai thì nó không chờ gì cả.
+        truoc_xoa = len(_changeset_cham(du_an, "sua-bang-vscode.c"))
+        ngoai.unlink()
+        cs = _doi_changeset(du_an, "sua-bang-vscode.c", truoc_xoa + 1)
+        b.kiem("App bắt được cả lần XOÁ, thành changeset hoàn tác được",
+               bool(cs) and cs[-1]["author"] == "human" and cs[-1]["reversible"]
+               and any(f.get("op") == "delete" for f in cs[-1].get("forward") or []),
+               f"{len(cs)} changeset · " + " → ".join(
+                   f"{c['author']}/{'xoá' if any(f.get('op') == 'delete' for f in c.get('forward') or []) else 'sửa'}"
+                   for c in cs))
+        md = (du_an / "EIDE.md").read_text("utf-8")
+        b.kiem("Tác tử biết đây là XOÁ, không phải sửa", "XOÁ bên ngoài EIDE" in md,
+               md.split("## Người vừa sửa", 1)[-1].strip()[:110])
+
+        b.buoc("Bấm Hoàn tác — tệp phải trở lại trên đĩa")
+        g.ve_lai()
+        g._gui({"kind": "undo", "target": {"type": "changeset", "id": cs[-1]["id"]},
+                "data": {"mode": "revert"}, "origin": {"surface": "history"}})
+        g.doi_xong()
+        b.kiem("Tệp đã xoá TRỞ LẠI, đúng nội dung cũ",
+               ngoai.exists() and ngoai.read_text("utf-8") == V1,
+               repr(ngoai.read_text("utf-8")) if ngoai.exists() else "tệp vẫn mất")
+
     # ---------------------------------------------------------------- L
     b.phan("L · BẬT MỘT CỜ TÍNH NĂNG TỪ TRONG APP (DEV-371)")
 

@@ -11401,3 +11401,80 @@ lượt ấy, và không bị hỏi lại lần hai.
 * **Tệp bị XOÁ bên ngoài** thì watcher thấy rồi bỏ qua — nên luật nền số 3 còn một lỗ:
   người xoá `main.c` bằng Finder thì EIDE không có đường nào trả nó về.
 * **Chỉ số 2 và 3 của §7 chưa có con số "sau"** — cần một phiên có người thật ngồi bấm.
+
+## [DEV-375] Người XOÁ một tệp bên ngoài EIDE — lỗ cuối trong luật nền số 3
+
+DEV-369 bắt được người SỬA tệp bằng VS Code. Nó **bỏ qua** chuyện tệp biến mất, và chú
+thích tự khai điều đó bằng một dòng không ai đọc lại:
+
+```python
+self._cho.pop(path, None)          # tệp bị xoá: chưa xử lý ở bản này
+```
+
+Nên người xoá `main.c` bằng Finder thì EIDE không có đường nào trả nó về: không changeset,
+không dòng nào trong tab Lịch sử, và người chỉ biết lúc đi tìm tệp. Đó là lỗ ở đúng chỗ đắt
+nhất — luật nền số 3 hứa *"mọi thay đổi gỡ lại được"*, và một tệp mất đi là thay đổi tốn
+nhất trong mọi thay đổi.
+
+### "Xoá hay sửa" chỉ trả lời được LÚC CHÍN
+
+Trình soạn hiện đại lưu bằng cách ghi tệp tạm rồi đổi tên, nên tệp đích **biến mất vài chục
+milli giây**. Kết luận "xoá" ngay lúc thấy nó vắng thì mỗi lần Cmd-S là một changeset *"anh
+xoá main.c"*.
+
+Nên watcher vẫn xếp tệp vắng mặt vào **hàng chờ** như mọi thay đổi khác, và không đánh dấu
+gì. Người gọi kiểm lại sự tồn tại lúc hàng chờ chín (1,5 giây sau). Tệp đã về → đó là một
+lần SỬA; vẫn mất → một lần XOÁ. Một dòng mã, và nó giải quyết cả hai ca bằng cùng một cơ chế
+gộp sự kiện đã có.
+
+### Hai phép, không một
+
+`changeset.for_file_delete` ghi **hai** phép thuận: tệp rời khỏi đĩa, và hiện vật rời khỏi
+kiểm kê. Thiếu phép thứ hai thì kho còn một hiện vật `code` trỏ vào một tệp không tồn tại,
+và mọi phép đếm sau đó nói về một dự án khác. Phép nghịch đảo giữ cả hai: git revert (hoặc
+blob) trả tệp về đĩa, `restore` trả hiện vật về kiểm kê với đúng `canonical` cũ. Trả một nửa
+thì **kho và đĩa nói hai chuyện** — sai theo hai cách khác nhau.
+
+Không có bản nào để trả về (dự án không git, EIDE chưa từng đọc tệp) thì vẫn ghi, nhưng
+`reversible=False` kèm lý do, và thông báo cho người lên mức `warn`. Ghi một changeset
+"hoàn tác được" mà hoàn tác thì đổ còn tệ hơn không ghi: người tin vào một đường lui không
+có thật, và chỉ biết lúc bấm.
+
+### Hai thứ phép phá dạy lại
+
+**Một cái cờ tôi vừa thêm vào là MÃ CHẾT.** Tôi thêm `danh_dau_eide_ghi_mat` /
+`eide_biet_tep_mat` để "lần quét sau đừng ghi lại", rồi phép phá tháo nó đi mà bộ kiểm vẫn
+xanh. Lý do: sau khi lần xoá được commit, `_ban_eide_biet` không còn thấy tệp trong git HEAD
+nữa, nên `_nguoi_xoa_tep` tự trả `None`. Cờ ấy không bao giờ đổi được kết quả — đã **bỏ**,
+và ghi lý do vào chú thích để lần sau không ai thêm lại. (Lần thứ hai trong EDIT-47 một phép
+phá không dựng được lại là câu trả lời: DEV-367 cũng bỏ một dòng `loai=` thừa như thế.)
+
+Thứ CÓ giữ lại là `quen_tep` — bỏ dấu *"EIDE vừa ghi"* của tệp đã mất. Giữ dấu cũ thì người
+dán lại **đúng bản vừa bị xoá** sẽ bị coi là tiếng của chính EIDE, và lần tạo lại ấy không
+vào sổ: tab Lịch sử nói tệp vẫn đang bị xoá trong khi nó đã trở lại.
+
+**Bốn phép phá LỌT vì bộ kiểm dàn dựng thiếu**, và cả bốn cùng một kiểu: ca kiểm dùng một
+tệp **chưa phải hiện vật trong kho**, nên nhánh "hiện vật rời kiểm kê" không bao giờ chạy;
+undo đi qua git nên nhánh blob không bao giờ chạy; không ca nào đọc EIDE.md sau một lần xoá;
+và ca "xoá rồi tạo lại" dựng sai chỗ nên không có dấu nào để quên. Vá cả bốn.
+
+### Đo
+
+* `tests/test_edit47_watcher.py` 20 → **29 ca**. **Phá lại thì đỏ: 11/11.**
+* `tools/thu_nut_lui.py` phần K — 3 ca mới qua APP THẬT: xoá tệp bằng tay → app bắt được
+  thành changeset hoàn tác được, EIDE.md nói **XOÁ** (không phải sửa), bấm Hoàn tác →
+  **tệp trở lại trên đĩa đúng nội dung cũ**. Bộ ấy 66 → **66/66** (cờ tắt, phần này nằm
+  sau cờ `WATCHER`) và 69 → **72/72** (cờ bật).
+* Bộ kiểm 2 427 → **2 436 xanh**.
+
+Một bẫy của bộ đo E2E, ghi lại vì nó sẽ gặp lại: phép chờ `_doi_changeset(..., len(cs) + 1)`
+đếm mốc từ **trước lần hoàn tác**, mà chính lần hoàn tác cũng sinh một changeset chạm tệp ấy
+— nên điều kiện thoả ngay lập tức và phép đo trả về **trước khi watcher kịp quét**. Một lần
+chờ thoả sai thì nó không chờ gì cả. Nay đếm mốc ngay trước khi xoá.
+
+### Chưa làm
+
+* **`watchdog` vẫn chưa cắm.** Đường quét `mtime` là đường chính, cố ý (xem DEV-369).
+* **Thư mục bị xoá** (không phải một tệp) thì watcher báo từng tệp một, nên lịch sử có N
+  dòng cho một cú bấm Delete. Gộp chúng thành một changeset là việc chưa làm.
+* **Chỉ số 2 và 3 của §7 chưa có con số "sau"** — cần một phiên có người thật ngồi bấm.

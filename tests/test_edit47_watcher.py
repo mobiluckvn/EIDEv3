@@ -339,6 +339,179 @@ def test_EIDE_MD_va_DU_AN_JSON_khong_thanh_sua_ngoai(phien, du_an):
     assert [c for c in _cs_ngoai(a)], "sửa thật thì phải thành changeset"
 
 
+# =============================================================== tệp bị XOÁ (§DEV-375)
+def test_nguoi_XOA_tep_ngoai_app_thi_lay_lai_duoc(phien, du_an):
+    """Bản đầu của watcher bỏ qua chuyện tệp biến mất, nên người xoá `main.c` bằng Finder
+    thì EIDE không có đường nào trả nó về — một lỗ trong luật nền số 3, ở đúng chỗ đắt
+    nhất. Và nó im lặng: không changeset, không dòng nào trong tab Lịch sử.
+    """
+    a, core, out = phien()
+    goc = (du_an / "main.c").read_text("utf-8")
+    # Tệp này là một HIỆN VẬT trong kho, không chỉ một tệp trên đĩa — đúng như sau khi tác
+    # tử ghi nó. Thiếu chỗ này thì nhánh "hiện vật rời kiểm kê" không bao giờ chạy, và
+    # phép phá tháo nó đi vẫn xanh.
+    a.store.apply(artefact_id="main.c", type="code", op="create", author="agent:run-1",
+                  canonical={"path": "main.c", "bytes": len(goc)}, explain=EX)
+    a._watcher_emit = out.append
+
+    (du_an / "main.c").unlink()
+    a._tep_doi_ngoai_eide(["main.c"])
+
+    cs = [c for c in a.history.log.all() if c.by_human]
+    assert len(cs) == 1 and cs[0].reversible
+    assert any(f.get("op") == "delete" for f in cs[0].forward)
+    assert "xoá" in cs[0].explain["summary"]
+    # Hiện vật cũng rời kiểm kê: một hiện vật `code` trỏ vào tệp không tồn tại làm mọi
+    # phép đếm sau đó nói về một dự án khác.
+    assert a.store.get("main.c") is None
+    # Và tác tử phải biết đây là XOÁ, không phải sửa: nó đọc mục này mỗi lượt.
+    assert "XOÁ bên ngoài EIDE" in a.eide_md.get("Người vừa sửa")
+
+    kq = a.history.hoan_tac_changeset(cs[0].id, by="human")
+    assert kq.ok, kq.message_vi
+    assert (du_an / "main.c").read_text("utf-8") == goc
+    hv = a.store.get("main.c")
+    assert hv is not None and hv["canonical"]["path"] == "main.c", \
+        "trả tệp về mà không trả hiện vật về là một nửa — kho và đĩa nói hai chuyện"
+
+
+def test_XOA_hoan_tac_duoc_ca_khi_GIT_REVERT_HONG(phien, du_an):
+    """`_lui_tep` ưu tiên `git revert`, nên khi git chạy ngon thì blob không được dùng tới
+    — và một changeset xoá **không giữ bản cũ** vẫn hoàn tác được. Đây là ca đo đúng nó."""
+    from eide.vcs import GitKhongSan
+
+    a, core, out = phien()
+    goc = (du_an / "main.c").read_text("utf-8")
+    a._watcher_emit = out.append
+    (du_an / "main.c").unlink()
+    a._tep_doi_ngoai_eide(["main.c"])
+    cs = [c for c in a.history.log.all() if c.by_human][-1]
+
+    def revert_hong(*_a, **_k):
+        raise GitKhongSan("giả lập: git revert xung đột")
+
+    a.history.vcs.revert = revert_hong
+    kq = a.history.hoan_tac_changeset(cs.id, by="human")
+    assert kq.ok, kq.message_vi
+    assert (du_an / "main.c").read_text("utf-8") == goc
+
+
+def test_XOA_roi_quet_lai_KHONG_de_them_changeset(phien, du_an):
+    """Nhịp quét 2 giây, nên một lần xoá không được đẻ ra một dòng lịch sử mỗi hai giây.
+
+    Thứ chặn nó KHÔNG phải một cái cờ riêng (đã thử, và phép phá cho thấy cờ ấy là mã
+    chết): sau khi lần xoá được commit, `_ban_eide_biet` không còn thấy tệp trong git HEAD
+    nữa, nên lần quét sau tự trả `None`.
+    """
+    a, core, out = phien()
+    a._watcher_emit = out.append
+    (du_an / "main.c").unlink()
+    for _ in range(3):
+        a._tep_doi_ngoai_eide(["main.c"])
+    assert len([c for c in a.history.log.all() if c.by_human]) == 1
+
+
+def test_watcher_BAO_tep_bien_mat(du_an):
+    """Ở mức watcher: tệp mất và KHÔNG trở lại thì nó phải có trong danh sách đã chín.
+
+    Bản đầu `pop` tệp mất ra khỏi hàng chờ kèm chú thích *"tệp bị xoá: chưa xử lý ở bản
+    này"* — nên cả đường xoá nằm sau một dòng không ai đọc lại.
+    """
+    w = wt.Watcher(du_an, khi_doi=lambda _: None)
+    w._dau = w._chup()
+    (du_an / "main.c").unlink()
+    assert _chin_ngay(w) == ["main.c"]
+    assert not (du_an / "main.c").exists(), "lúc chín vẫn mất — đây là một lần XOÁ"
+
+
+def test_XOA_roi_TAO_LAI_dung_noi_dung_cu_van_vao_so(phien, du_an):
+    """Người xoá tệp rồi dán lại đúng bản cũ. Nếu dấu "EIDE vừa ghi" của tệp ấy còn nguyên
+    thì lần tạo lại bị coi là **tiếng của chính EIDE** và không vào sổ — tab Lịch sử sẽ
+    nói tệp vẫn đang bị xoá, trong khi nó đã trở lại."""
+    a, core, out = phien()
+    a._watcher_emit = out.append
+    # Một lần sửa THẬT trước đã: nó mới là lần EIDE ghi dấu nội dung (`danh_dau_eide_ghi`
+    # chỉ chạy sau một lần ghi thành công). Không có bước này thì không có dấu nào để
+    # quên, và phép phá "bỏ `quen_tep` đi" sẽ LỌT — bộ đo nói về một tình huống khác.
+    ban = "int main(void){return 42;}\n"
+    (du_an / "main.c").write_text(ban, "utf-8")
+    a._tep_doi_ngoai_eide(["main.c"])
+    assert [c for c in a.history.log.all() if c.by_human]
+
+    (du_an / "main.c").unlink()
+    a._tep_doi_ngoai_eide(["main.c"])
+    (du_an / "main.c").write_text(ban, "utf-8")     # dán lại ĐÚNG bản vừa bị xoá
+    a._tep_doi_ngoai_eide(["main.c"])
+
+    cs = [c for c in a.history.log.all() if c.by_human]
+    assert len(cs) >= 2, [c.explain["summary"] for c in cs]
+    assert "xoá" in cs[-2].explain["summary"]
+    assert "sửa" in cs[-1].explain["summary"], "lần tạo lại phải có mặt trong sổ"
+
+
+def test_tep_EIDE_CHUA_TUNG_BIET_bi_xoa_thi_khong_ghi_gi(phien, du_an):
+    """Một tệp tạm do trình dịch sinh ra rồi tự xoá không phải việc của ai — và sổ đầy
+    những dòng không nói gì là cách nhanh nhất làm người ngừng đọc sổ."""
+    a, core, out = phien()
+    a._watcher_emit = out.append
+    a._tep_doi_ngoai_eide(["khong-he-ton-tai.c"])
+    assert not [c for c in a.history.log.all() if c.by_human]
+
+
+def test_LUU_KIEU_GHI_TAM_ROI_DOI_TEN_khong_thanh_mot_lan_xoa(du_an):
+    """Trình soạn hiện đại lưu bằng cách ghi tệp tạm rồi đổi tên, nên tệp đích **biến mất
+    vài chục milli giây**. Nếu watcher kết luận "xoá" ngay lúc thấy nó vắng thì mỗi lần
+    Cmd-S là một changeset "anh xoá main.c".
+
+    Nên: tệp vắng mặt vẫn chỉ vào HÀNG CHỜ, và câu "xoá hay sửa" chỉ trả lời lúc CHÍN.
+    """
+    w = wt.Watcher(du_an, khi_doi=lambda _: None)
+    w._dau = w._chup()
+    (du_an / "main.c").unlink()
+    assert w.quet_mot_lan() == [], "chưa chín thì chưa kết luận gì"
+    (du_an / "main.c").write_text("int main(void){return 1;}\n", "utf-8")
+
+    assert _chin_ngay(w) == ["main.c"]
+    assert (du_an / "main.c").exists(), "lúc chín thì tệp đã về — đây là một lần SỬA"
+
+
+def test_KHONG_GIT_thi_NOI_THANG_la_khong_lui_duoc(phien, du_an):
+    """Dự án không có git thì mốc nội dung không tồn tại (xem `_ban_eide_biet`), nên một
+    lần xoá **không trả về được**. Chuyện ấy phải nói ra bằng chữ, ở hai chỗ: trong
+    changeset (`reversible=False` kèm lý do) và trong thông báo cho người.
+
+    Im lặng ghi một changeset "hoàn tác được" mà hoàn tác thì đổ là tệ hơn cả không ghi:
+    người sẽ tin vào một đường lui không có thật, và chỉ biết lúc bấm.
+    """
+    a, core, out = phien()
+    a.history.git_san = False
+    a._watcher_emit = out.append
+    (du_an / "moi.c").write_text("int g(void){return 1;}\n", "utf-8")
+    a._tep_doi_ngoai_eide(["moi.c"])          # EIDE ghi nhận tệp này
+    out.clear()
+    (du_an / "moi.c").unlink()
+    a._tep_doi_ngoai_eide(["moi.c"])
+
+    cs = [c for c in a.history.log.all() if c.by_human][-1]
+    assert any(f.get("op") == "delete" for f in cs.forward)
+    assert cs.reversible is False
+    assert "không có git" in (cs.ly_do_khong_hoan_tac() or "")
+    tb = [c.params for c in out if c.method == "notice"]
+    assert any(t.get("level") == "warn" and "KHÔNG hoàn tác được" in t.get("text", "")
+               for t in tb), tb
+
+
+def test_noi_dung_thong_bao_noi_DUNG_VIEC(phien, du_an):
+    """"Anh vừa sửa main.c" cho một lần xoá là một câu sai, và nó sai đúng lúc người cần
+    đọc kỹ nhất."""
+    a, core, out = phien()
+    a._watcher_emit = out.append
+    (du_an / "main.c").unlink()
+    a._tep_doi_ngoai_eide(["main.c"])
+    tb = " ".join(c.params.get("text", "") for c in out if c.method == "notice")
+    assert "XOÁ main.c" in tb and "sửa main.c" not in tb
+
+
 def test_cham_tep_ma_KHONG_DOI_GI_thi_khong_ghi(phien, du_an):
     a, core, out = phien()
     a._watcher_emit = out.append

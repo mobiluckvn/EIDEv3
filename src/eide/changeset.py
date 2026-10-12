@@ -371,6 +371,39 @@ def for_file_write(*, cs_id: str, author: str, paths: list[str], sha: str | None
         forward=forward, inverse=inverse, explain=explain, note=note)
 
 
+def for_file_delete(*, cs_id: str, author: str, path: str, type: str,
+                    sha: str | None, sha_truoc: str | None,
+                    blob_truoc: dict[str, str], canonical_truoc: dict[str, Any] | None,
+                    explain: dict[str, Any], run_id: str | None = None,
+                    human_act_id: str | None = None,
+                    note: str | None = None) -> Changeset:
+    """Một tệp BỊ XOÁ — EIDE-EDIT-47 §DEV-375.
+
+    Hai phép, không một: tệp rời khỏi đĩa **và** hiện vật rời khỏi kiểm kê. Thiếu phép thứ
+    hai thì kho còn một hiện vật `code` trỏ vào một tệp không tồn tại, và mọi phép đếm sau
+    đó nói về một dự án khác.
+
+    Phép nghịch đảo giữ **cả hai**: git revert (hoặc blob) trả tệp về đĩa, và `restore` trả
+    hiện vật về kiểm kê với đúng `canonical` cũ. Trả một nửa thì tệp về mà kho không biết,
+    hoặc kho biết mà tệp không có — hai trạng thái sai theo hai cách khác nhau.
+    """
+    forward: list[dict[str, Any]] = [
+        {"kind": "file", "op": "delete", "sha": sha, "paths": [path]}]
+    inverse: list[dict[str, Any]] = [
+        {"kind": "file", "op": "revert", "sha": sha, "paths": [path],
+         "sha_truoc": sha_truoc, "blob_truoc": blob_truoc}]
+    if canonical_truoc is not None:
+        forward.append({"kind": "store", "op": "delete", "artefact_id": path,
+                        "type": type})
+        inverse.append({"kind": "store", "op": "restore", "artefact_id": path,
+                        "type": type, "canonical": canonical_truoc,
+                        "explain": explain})
+    return Changeset(
+        id=cs_id, ts=_now(), author=author, run_id=run_id, human_act_id=human_act_id,
+        touches=[Touch(path, type, "delete")],
+        forward=forward, inverse=inverse, explain=explain, note=note)
+
+
 def for_stale_accept(*, cs_id: str, author: str, artefact_id: str, type: str,
                      ly_do: str, ly_do_cu: str, explain: dict[str, Any],
                      run_id: str | None = None, human_act_id: str | None = None,
