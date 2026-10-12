@@ -422,7 +422,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **2 417 ca Python + 98 ca giao diện**
+### Mức 1 — Ca đơn vị: **2 427 ca Python + 98 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -541,7 +541,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét giao diện | **124/124 ô** trên 11 tab · tab thứ 12 (Màn hình, A15) **chưa quét** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **2 417** | `pytest -q` |
+| Ca đơn vị Python | **2 427** | `pytest -q` |
 | Ca đơn vị giao diện | **98** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa NGOÀI app · bật cờ · cập nhật hạ nguồn, qua app thật | **69/69** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
 | Loại hiện vật người sửa được thẳng trên giao diện | **15/33** | [`dem_sua_duoc.py`](tools/dem_sua_duoc.py) |

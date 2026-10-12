@@ -11343,3 +11343,61 @@ cho hành động của chính người dùng. Cùng lý lẽ với DEV-365 (nă
   Chấp nhận (0 token); đường còn lại được đo ở mức lõi (`test_LOI_NHO_toi_mo_hinh_that`),
   nơi đơn công việc được kiểm là có thật trong thứ gửi cho mô hình.
 * **`tests/kich_ban/cx_edit47_*.py`** vẫn chưa viết.
+
+## [DEV-374] Bộ ca cộng tác CX17–CX25 — mỗi gói EDIT-47 một ca "đi đúng đường người đi"
+
+Mục cuối của §7 chưa làm: *"Thêm bộ ca CX mới … theo mẫu CX05/CX08: mỗi gói một ca 'đi đúng
+đường người đi'"*. Chín gói, chín ca, trong `pytest -q`.
+
+### Lệch có ý về chỗ đặt tệp — và nó là một phép đo, không phải một ý thích
+
+Đặc tả ghi `tests/kich_ban/cx_edit47_*.py`. Tệp này ở `tests/test_cx_edit47.py`, vì
+`pytest` chỉ thu các tệp khớp `test_*.py`: một bộ ca tên `cx_edit47_*.py` **sẽ không bao
+giờ chạy**. Đó đúng là loại lỗi cả gói EDIT-47 sinh ra để vá — cơ chế có sẵn, đường dẫn
+tới nó đứt — nên viết bộ ca theo đúng chữ của đặc tả là dựng lại chính cái lỗi ấy, lần này
+trong bộ đo. CX01–CX16 của MDD-40 cũng nằm ở `tests/test_cx_cong_tac.py` vì cùng lý do.
+
+### Chúng khác gì chín bộ `test_edit47_*.py` đã có
+
+Chín bộ kia đo **từng cơ chế**. Bộ này đo **chuyện cộng tác**: tác tử làm gì → người xen
+vào → và **lượt SAU của tác tử có thấy không**. Đó là chiều N9 nói về, và là chiều một bộ
+ca đơn vị không chạm tới. Ba ví dụ:
+
+* **CX17** không kiểm "lùi được không" (`test_edit47_nut_lui.py` làm rồi) mà kiểm *lượt sau
+  mô hình có đọc được rằng việc ấy đã bị lùi, kèm lệnh đừng làm lại*;
+* **CX21** dựng một mô hình **cư xử tệ** — người sửa `drv_eth.c` bằng VS Code, lượt sau mô
+  hình nói *"hôm nay trời đẹp"* — rồi đòi hook Stop bắt thêm một vòng. Đúng khuôn CX07,
+  nhưng cho đường sửa NGOÀI app, nơi chưa ai kiểm;
+* **CX25** đi cả hai cú bấm trên một hiện vật lỗi thời rồi đòi: đơn công việc tới được mô
+  hình, cờ tự tắt khi hiện vật được dựng lại thật, và nút kia **0 token**.
+
+### Một ca đỏ hoá ra là tin tốt, lần thứ hai
+
+CX19 (người đang mở tệp → tác tử ghi tệp ấy) viết theo lối hiển nhiên: cổng G-FILE hiện ra
+→ người duyệt → tệp phải là bản tác tử. Nó **đỏ**: sau khi duyệt, tệp vẫn là bản của người.
+
+Mở kết quả công cụ ra đọc thì thấy `E4020` — *"`drv_eth.c` đã có 1 dòng mà lượt này bạn chưa
+đọc nó — chưa ghi đè được"*. Lớp một (cổng) đã được người mở, và **lớp hai vẫn đỡ phía
+sau**: tác tử chưa hề đọc tệp người đang gõ dở. Đây là lần thứ hai cùng một chuyện xảy ra ở
+đúng chỗ này (xem DEV-367, *"Một ca kiểm đỏ hoá ra là tin tốt"*), nên ca kiểm nay đo cả
+chuỗi: cổng chặn → người duyệt → `E4020` giữ lại → tác tử **đọc trước rồi ghi** trong cùng
+lượt ấy, và không bị hỏi lại lần hai.
+
+### Đo
+
+* `tests/test_cx_edit47.py` — 10 ca (CX17–CX25 + một ca đếm bao phủ: chín gói phải có đúng
+  chín ca, đếm bằng mã trên chính tệp nguồn, không bằng ký ức).
+* **Phá lại thì đỏ: 12/12.** Mỗi phép phá tháo một bất biến cộng tác khác nhau — không nhắc
+  mô hình sau khi lùi · thẻ xung đột không phát diff · khoá hai chiều tắt · `ap_patch` ghi
+  đè cả hiện vật · sửa ngoài app không vào EIDE.md nên Stop không bắt được · duyệt có sửa
+  không ghi bản người · `set` không áp ngay · không gộp thẻ cài trùng · lùi thất bại ghi là
+  thành công · đơn công việc không tới mô hình · chấp nhận STALE tốn một lượt mô hình · lõi
+  không khai nút nào.
+* Bộ kiểm 2 417 → **2 427 xanh**, 2 skip, 0 đỏ.
+
+### Chưa làm
+
+* **`watchdog` chưa cắm** vào watcher (đường quét `mtime` là đường chính, cố ý).
+* **Tệp bị XOÁ bên ngoài** thì watcher thấy rồi bỏ qua — nên luật nền số 3 còn một lỗ:
+  người xoá `main.c` bằng Finder thì EIDE không có đường nào trả nó về.
+* **Chỉ số 2 và 3 của §7 chưa có con số "sau"** — cần một phiên có người thật ngồi bấm.
