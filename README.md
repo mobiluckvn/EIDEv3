@@ -422,7 +422,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **2 391 ca Python + 93 ca giao diện**
+### Mức 1 — Ca đơn vị: **2 402 ca Python + 93 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -541,10 +541,12 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét giao diện | **124/124 ô** trên 11 tab · tab thứ 12 (Màn hình, A15) **chưa quét** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **2 391** | `pytest -q` |
+| Ca đơn vị Python | **2 402** | `pytest -q` |
 | Ca đơn vị giao diện | **93** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
-| Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa NGOÀI app · bật cờ, qua app thật | **57/57** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
+| Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa NGOÀI app · bật cờ, qua app thật | **62/62** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
 | Loại hiện vật người sửa được thẳng trên giao diện | **15/33** | [`dem_sua_duoc.py`](tools/dem_sua_duoc.py) |
+| Hoàn tác theo tầng, đọc từ sổ cái | **5/5 ok** · 4 tầng | [`do_edit47.py`](tools/do_edit47.py) |
+| Hạ nguồn bị đánh STALE rồi KHÔNG ai cập nhật | **7 lần** · trung vị cập nhật 41,8 phút (4 mẫu) | [`do_edit47.py`](tools/do_edit47.py) |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
 | Vẽ sơ đồ (trên màn hình và trong tệp) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
@@ -1341,6 +1343,12 @@ Nói ra để người đọc không phải tự tìm:
   mở**: bản dựng ra thì sửa trên gốc, phép đo thì không ai được gõ đè, hình chiếu thì sửa
   ở chỗ nó chiếu từ đó. Còn thiếu: cây khối A5.9 chưa sửa được, nút thêm/xoá dòng chưa
   vẽ, kéo–thả trên canvas để sau.
+- **Cơ chế STALE chạy đúng, mà 7 lần hạ nguồn bị đánh dấu rồi KHÔNG ai cập nhật** (đo
+  12/10/2026 bằng [`do_edit47.py`](tools/do_edit47.py) trên sổ cái 39 dự án; khi có ai cập
+  nhật thì trung vị 41,8 phút — chỉ 4 mẫu). Chỗ thiếu là một cú bấm *"cập nhật hạ nguồn"*,
+  chưa làm. Cùng gói DEV-372: sổ cái nay ghi **kết quả** hoàn tác kèm tầng (trước đó §7
+  đòi đo một thứ sổ không ghi, nên "lùi thất bại" trông y hệt "không ai bấm"), và bốn tầng
+  lùi đều có bản ghi **ok** trong một phiên app thật.
 - **Bật một cờ tính năng nay bấm được trong app** (DEV-371, 12/10/2026): tab A14 có mười
   chín công tắc, mỗi cái kèm một câu giải thích và cái giá nếu cái giá đo được; chúng ghi
   vào `.eide/settings.json` của DỰ ÁN. Cùng gói: hai công cụ `build.make` và `py.run` để

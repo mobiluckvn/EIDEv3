@@ -79,6 +79,21 @@ Trong **68 ca đo được**: **68 đạt** (100 %). 8 ca còn lại mang nhãn 
 
 Không ô nào đỏ.
 
+## EIDE-EDIT-47 §7 — bốn chỉ số
+
+Đo bằng [`do_edit47.py`](../../../tools/do_edit47.py) trên sổ cái của **39 dự án thật** trong `du-lieu/`.
+
+| Chỉ số | Đo được | Đích của §7 |
+|---|---|---|
+| 1 · Loại hiện vật sửa được qua giao diện | **15/33** | ≥ 20/30 |
+| 2 · Lượt người gõ lời cho việc lẽ ra bấm được | **0** trong 32 câu ngắn có từ khoá (217 câu dài là báo cáo của tác tử đóng vai sinh viên, không tính) | giảm ≥ 70 % |
+| 3 · Sửa → hạ nguồn cập nhật | đo được **4** lần, trung vị **41.8 phút**; **7** lần hạ nguồn bị đánh STALE rồi KHÔNG AI cập nhật | có số |
+| 4 · Hoàn tác theo tầng | người bấm **9** lần, có ghi kết quả **5** lần (changeset 2/2, run 1/1, session 1/1, snapshot 1/1) | đủ 5 tầng, ok ≥ 95 % |
+
+**4 lần hoàn tác KHÔNG đo được kết quả**: sổ cái trước DEV-372 không có loại sự kiện `undo`, nên §7 đòi đo một thứ mà sổ không ghi. Phân biệt chỗ này với *“0 lần”* là việc của bộ đo: một bảng viết `0/0` ở đây sẽ đọc như “chưa ai hoàn tác”, trong khi sự thật là “đã hoàn tác mà không ai ghi lại”.
+
+Giới hạn của chỉ số 2, nói ra chứ không giấu: Mọi câu trong kho mẫu đều do KỊCH BẢN gõ, không phải người ngồi gõ — nên con số này là mốc “trước”, và chỉ phiên có người thật ngồi trước giao diện mới cho con số “sau”.
+
 ## Đọc bảng này thế nào
 
 Máy chấm ca kiểm bằng **dấu hiệu bề mặt** — cụm từ phải/không được có trong lời đáp, và công cụ phải được gọi. Một lời đáp nhắc đúng chữ mà sai ý vẫn qua được; một lời đáp đúng ý mà dùng từ khác vẫn trượt. Nên ô xanh nghĩa là *có dấu hiệu của thứ đề bài chờ*, không phải *đã làm đúng*. Nguyên văn nằm ở `ket-qua-chay-lai/ket-qua.jsonl` — đó mới là chỗ kết luận.

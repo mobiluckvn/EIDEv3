@@ -553,6 +553,54 @@ def chay(du_an: pathlib.Path) -> int:
     b.kiem("Bảng vẽ lại nói đúng trạng thái mới", cap.get("pdf_bang") == "có",
            f"pdf_bang={cap.get('pdf_bang')}")
 
+    # ---------------------------------------------------------------- M
+    b.phan("M · TẦNG THỨ TƯ: LÙI CẢ MỘT LƯỢT, VÀ SỔ CÁI GHI LẠI KẾT QUẢ (DEV-372)")
+
+    # Ba tầng kia (changeset · phiên sửa · bản ưng ý) đã đi ở phần A và C. Tầng `run` thì
+    # chưa phần nào chạm tới, nên chỉ số thứ tư của §7 không có số cho nó — và "chưa có số"
+    # trông y hệt "có số mà xấu" trong một bảng tổng.
+    _ghi_req(du_an, "FR-09", "≤ 200 ms")
+    g.ve_lai()
+    g._gui({"kind": "edit", "target": {"type": "req", "id": "FR-09"},
+            "data": {"base_version": _ver(du_an, "FR-09"), "fields": {"text": "≤ 50 ms"}},
+            "origin": {"surface": "requirements"}})
+    g.doi_xong()
+    cs = _changeset_cham(du_an, "FR-09")
+    run = cs[-1]["run_id"] if cs else ""
+    b.kiem("Changeset của lần sửa ấy khai đúng mã lượt", bool(run), run or "không có")
+
+    # Tầng MỘT trước (một changeset), rồi sửa lại để có cái mà lùi cả lượt. Làm cả hai ở
+    # đây chứ không dựa vào phần K: phần ấy chỉ chạy khi cờ `WATCHER` bật, nên phép kiểm
+    # "bốn tầng đều có bản ghi" sẽ đỏ ở chế độ cờ tắt — một phép đo chỉ đúng một nửa thời
+    # gian thì nó nói về cấu hình, không nói về sản phẩm.
+    g._gui({"kind": "undo", "target": {"type": "changeset", "id": cs[-1]["id"]},
+            "data": {"mode": "revert"}, "origin": {"surface": "history"}})
+    g.doi_xong()
+    b.kiem("Lùi MỘT changeset đưa hiện vật về bản trước",
+           _doc_req(du_an, "FR-09") == "≤ 200 ms", _doc_req(du_an, "FR-09"))
+
+    g._gui({"kind": "edit", "target": {"type": "req", "id": "FR-09"},
+            "data": {"base_version": _ver(du_an, "FR-09"), "fields": {"text": "≤ 20 ms"}},
+            "origin": {"surface": "requirements"}})
+    g.doi_xong()
+    cs = _changeset_cham(du_an, "FR-09")
+    run = cs[-1]["run_id"] if cs else run
+
+    g._gui({"kind": "undo", "target": {"type": "run", "id": run},
+            "data": {"mode": "revert"}, "origin": {"surface": "history"}})
+    g.doi_xong()
+    b.kiem("Lùi CẢ LƯỢT đưa hiện vật về bản trước", _doc_req(du_an, "FR-09") == "≤ 200 ms",
+           _doc_req(du_an, "FR-09"))
+
+    ds = _su_kien(du_an, "undo")
+    b.kiem("Sổ cái ghi KẾT QUẢ hoàn tác, kèm TẦNG — §7 chỉ số 4 đo đúng chỗ này",
+           any(d.get("tang") == "run" and d.get("ok") for d in ds),
+           " · ".join(f"{d.get('tang')}:{'ok' if d.get('ok') else 'hỏng'}" for d in ds)
+           or "không bản ghi nào")
+    b.kiem("Bốn tầng đều có bản ghi trong một phiên",
+           {"changeset", "session", "snapshot", "run"} <= {d.get("tang") for d in ds},
+           " · ".join(sorted({str(d.get("tang")) for d in ds})))
+
     # ---------------------------------------------------------------- Đ
     b.phan("Đ · ẢNH CHỤP CHO BÁO CÁO")
     g.mo_tab("history")
@@ -638,6 +686,24 @@ def _doi_changeset(du_an: pathlib.Path, path: str, du: int,
             return cs
         time.sleep(1.0)
     return cs
+
+
+def _su_kien(du_an: pathlib.Path, kind: str) -> list[dict]:
+    """Phần `data` của mọi sự kiện sổ cái loại ấy. Đọc thẳng tệp, không dựng `Ledger`."""
+    p = du_an / ".eide" / "ledger.jsonl"
+    if not p.exists():
+        return []
+    ra = []
+    for l in p.read_text("utf-8", errors="replace").splitlines():
+        if not l.strip():
+            continue
+        try:
+            d = json.loads(l)
+        except ValueError:
+            continue
+        if d.get("kind") == kind:
+            ra.append(d.get("data") or {})
+    return ra
 
 
 def _ban_ung_y(du_an: pathlib.Path) -> list[dict]:

@@ -67,6 +67,12 @@ EVENT_KINDS = {
     #   ok/ma loi — nen voi mot lenh dung do, chinh ma thoat va dau ra (hai thu duy nhat
     #   dang doc) khong co o dau trong so.
     "setting", "tool_run",
+    # EIDE-EDIT-47 §7 chi so thu tu — "hoan tac thanh cong / that bai, THEO TANG", do bang
+    # "ledger `undo` + `KetQuaHoanTac.ok`". Mo so cai ra thi khong co loai su kien nao ten
+    # `undo`: y chi cua nguoi co trong `human_act`, con KET QUA thi chi suy duoc tu viec
+    # sau do co mot `history.update` hay khong. Suy khong phai do — mot lan lui that bai
+    # vi "da hoan tac roi" trong y het mot lan loi goi khong bao gio chay.
+    "undo",
 }
 
 

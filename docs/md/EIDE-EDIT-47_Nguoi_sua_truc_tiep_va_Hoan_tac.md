@@ -351,8 +351,6 @@ Tổng ≈ 15–24 ngày công. Sau DEV-365 và DEV-366 đã có thể dùng th�
 
 ## 7 · Đo
 
-<!-- se-co -->
-
 Thêm vào `tools/bao_cao_tong.py` và `docs/review-v3/test/BAO-CAO-TONG.md` bốn chỉ số, đo trên 9 kho mẫu trong `du-lieu/` và trên phiên thật tiếp theo:
 
 | Chỉ số | Cách đo | Hiện nay | Đích sau EDIT-47 |
@@ -361,8 +359,6 @@ Thêm vào `tools/bao_cao_tong.py` và `docs/review-v3/test/BAO-CAO-TONG.md` b�
 | Lượt người gõ lời cho việc lẽ ra bấm được | đếm trong ledger: `say` ngay sau `console_post` có từ khoá *sửa/đổi/lùi/về bản* mà hiện vật đích có `sua_duoc` | chưa đo | giảm ≥ 70 % |
 | Thời gian sửa → hạ nguồn cập nhật | từ `human_act edit` tới changeset Agent đầu tiên chạm hiện vật STALE tương ứng | chưa đo | có số, và nút "Cập nhật hạ nguồn" làm nó một cú bấm |
 | Hoàn tác thành công / thất bại, theo tầng | ledger `undo` + `KetQuaHoanTac.ok` | chỉ tầng 2 | đủ 5 tầng, tỉ lệ ok ≥ 95 % |
-
-<!-- /se-co -->
 
 Thêm bộ ca CX mới `tests/kich_ban/cx_edit47_*.py` theo mẫu CX05/CX08: mỗi gói một ca "đi đúng đường người đi" (§0 mục 6).
 

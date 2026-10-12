@@ -11124,3 +11124,98 @@ Bốn phép phá LỌT ở lượt đầu, và cả bốn là lỗ của bộ ki
 * **`build.make` không đọc `Makefile` để nói trước sẽ chạy gì.** Thẻ cổng hiện tên đích và
   thư mục; muốn biết đích ấy làm gì thì mở Makefile ra xem. Một bản đọc trước (`make -n`)
   là việc đáng làm và chưa làm.
+
+## [DEV-372] §7 của EDIT-47: đo bốn chỉ số — và chỗ sổ cái không ghi thứ §7 đòi đo
+
+Phần §7 "Đo" của EIDE-EDIT-47 đòi bốn chỉ số. Sau bảy gói, đúng **một** chỉ số có bộ đo
+(`dem_sua_duoc.py`, 15/33). Ba chỉ số còn lại mang chữ *"chưa đo"*, và một chỉ số "chưa đo"
+sau khi tính năng đã làm xong thì nó không bao giờ được đo nữa — không ai quay lại đo một
+thứ đã có người tuyên là xong.
+
+### Chỉ số thứ tư đòi đo một thứ sổ cái KHÔNG GHI
+
+§7 nói đo "hoàn tác thành công / thất bại, **theo tầng**" bằng *"ledger `undo` +
+`KetQuaHoanTac.ok`"*. Mở `EVENT_KINDS` ra thì **không có loại sự kiện nào tên `undo`**: ý
+chí của người có trong `human_act`, còn KẾT QUẢ thì chỉ suy được từ chuyện sau đó có một
+`history.update` hay không.
+
+Suy không phải đo. Một lần lùi **thất bại** vì *"đã hoàn tác rồi"* trông y hệt một lần lời
+gọi không bao giờ chạy — cùng một khoảng lặng trong sổ. Nay `_nguoi_hoan_tac` ghi một sự
+kiện `undo` kèm `tang` · `target` · `ok` · `message_vi` · số changeset đã lùi · số phần giữ
+nguyên. Cả ba đường ra đều ghi, kể cả đường "thiếu target".
+
+Và đo được ngay trên phiên thật: bốn tầng (`changeset` · `session` · `run` · `snapshot`)
+đều có bản ghi **ok** trong một lần chạy `thu_nut_lui.py`.
+
+> Tầng thứ năm của DEV-365 là **mốc ngầm** trước lần sửa đầu của người. Nó là một
+> `checkpoint`, không có `target.type` riêng, và người về nó bằng chính `snapshot` hoặc
+> `session`. Bản đầu của bộ đo kể năm tên, trong đó có `artefact` — một tầng **không tồn
+> tại trong mã**. Một tầng bịa ra thì dòng "tầng chưa có bản ghi" không bao giờ hết, và nó
+> đổ lỗi cho sản phẩm vì một thứ sản phẩm không có. Nay có ca kiểm đối chiếu danh sách tầng
+> với chính bảng trong docstring của `_nguoi_hoan_tac`.
+
+### `tools/do_edit47.py` — và ba cái bẫy của chính bộ đo
+
+**Bẫy thứ nhất: một `SELECT` sai tên cột, bị `except` nuốt.** Hàm tra loại hiện vật viết
+`SELECT artefact_id, type FROM artefacts` (cột thật tên `id`) và bọc cả thân trong `except
+sqlite3.Error: return {}`. Nên mọi dự án trả về `{}`, và chỉ số 2 ra **0 lượt trên cả 39 dự
+án** — một con số trông hoàn toàn hợp lý, và tôi đã gần như ghi nó vào báo cáo. Nay lỗi
+**nổ ra ngoài**. Lặp lại đúng bài học *"lọc sai ra số đẹp"*: lọc sai trả về rỗng thì rẻ,
+trả về một con số hợp lý thì tốn nhiều lượt mới phát hiện.
+
+**Bẫy thứ hai: đếm lời của MÁY rồi gọi là lời người gõ.** Sửa xong `SELECT`, chỉ số 2 ra 6
+lượt. Mở sáu câu ấy ra đọc thì chúng là **báo cáo dài của một tác tử đóng vai sinh viên**
+(`tools/phien_sinhvien_*.py`): vài nghìn ký tự, có bảng, có mã, và tình cờ chứa chữ "sửa".
+Trong 249 câu khớp từ khoá, **217 câu** thuộc loại ấy. Nay chỉ số 2 chia **bốn rổ** và nói
+ra từng rổ; con số cuối là **0 trong 32 câu ngắn**, vì cả 32 câu đều là *"sửa mã nguồn giúp
+tôi"* — việc của tác tử, không phải một ô để bấm.
+
+**Bẫy thứ ba: "0 lần" không phân biệt được với "không ghi lại".** Sổ cũ không có `undo`,
+nên 4 trong 9 lần hoàn tác không có kết quả trong sổ. Một bảng viết `0/0` ở đó đọc như
+*"chưa ai hoàn tác"*. Nay hai con số để riêng — **ý chí** (có trong mọi sổ) và **kết quả**
+(chỉ từ gói này) — và hiệu của chúng chính là phần không đo được, in ra bằng chữ.
+
+Chỉ số 1 **không đếm lại**: nó gọi `dem_sua_duoc.main()`. Hai cách đếm cùng một thứ sẽ
+lệch, và lúc lệch thì không ai biết cái nào đúng.
+
+### Bốn con số, đo 12/10/2026 trên sổ cái 39 dự án thật
+
+| Chỉ số | Đo được | Đích của §7 |
+|---|---|---|
+| 1 · Loại hiện vật sửa được qua giao diện | **15/33** | ≥ 20/30 |
+| 2 · Lượt người gõ lời cho việc lẽ ra bấm được | **0** trong 32 câu ngắn có từ khoá (217 câu dài là lời của máy, không tính) | giảm ≥ 70 % |
+| 3 · Sửa → hạ nguồn cập nhật | **4** lần đo được, trung vị **41,8 phút**; **7** lần hạ nguồn bị đánh STALE rồi **không ai cập nhật** | có số |
+| 4 · Hoàn tác theo tầng | **5/5 ok** — changeset 2/2 · run 1/1 · session 1/1 · snapshot 1/1 | đủ 5 tầng, ok ≥ 95 % |
+
+Con số đáng đọc nhất không phải trung vị 41,8 phút (chỉ bốn mẫu), mà là **7 lần hạ nguồn bị
+đánh STALE rồi không ai cập nhật**. Cơ chế STALE chạy đúng; chỗ thiếu là một cú bấm "cập
+nhật hạ nguồn" — đúng thứ §7 nhắc tới và chưa gói nào làm.
+
+Chỉ số 2 bằng 0 **không** nghĩa là người dùng không bao giờ gõ lời cho việc bấm được. Nó
+nghĩa là: trong kho mẫu, mọi câu đều do **kịch bản** gõ, và chúng nói về việc viết mã.
+Con số "sau" chỉ có từ một phiên có người thật ngồi trước giao diện — nói ra chứ không giấu.
+
+### Đo
+
+* `tests/test_edit47_do.py` — 11 ca. **Phá lại thì đỏ: 14/14** (5 phép phá vào lõi, 9 vào
+  chính bộ đo). Một phép phá LỌT ở lượt đầu: "nhận cả changeset của NGƯỜI làm bản cập nhật
+  hạ nguồn" — dàn dựng của ca kiểm chỉ có một changeset tác tử nên tháo phép lọc ấy không
+  đổi gì. Nay có thêm một lần người tự chạm lại hiện vật hạ nguồn: việc dựng lại bản dưới
+  là việc của tác tử, tính của người vào thì con số đẹp đi một nửa mà nói về chuyện khác.
+* `tools/thu_nut_lui.py` phần M — 5 ca qua APP THẬT: lùi một changeset, rồi lùi **cả lượt**,
+  rồi đòi sổ cái có bản ghi kết quả kèm tầng cho **cả bốn tầng trong một phiên**. Bộ ấy
+  54 → **59/59** (cờ tắt) và 57 → **62/62** (cờ bật).
+* `bao_cao_tong.py` có mục "EIDE-EDIT-47 §7 — bốn chỉ số". Nó bọc `try` và biến lỗi thành
+  một dòng ĐỎ **trong báo cáo**: mở 39 kho SQLite thì có thể đổ, và một báo cáo tổng không
+  được mất cả bảng 76 ca vì một kho mẫu hỏng — nhưng cũng không được im lặng bỏ qua.
+* Bộ kiểm 2 391 → **2 402 xanh**. `kiem_tai_lieu`: **0 chỗ lệch**.
+* **Tài liệu EDIT-47 không còn dấu `<!-- se-co -->` nào** — mọi đường dẫn trong nó đã tồn
+  tại và đang bị bộ dò kiểm.
+
+### Chưa làm
+
+* **Nút "Cập nhật hạ nguồn" một cú bấm** — §7 nhắc tới nó như đích của chỉ số 3, và con số
+  7-lần-không-ai-cập-nhật ở trên là lý lẽ mạnh nhất cho nó. Chưa làm.
+* **`tests/kich_ban/cx_edit47_*.py`** vẫn chưa viết: đường "đi đúng đường người đi" của
+  tám gói do `thu_nut_lui.py` đo qua app thật, nhưng nó không chạy trong `pytest -q`.
+* **Chỉ số 2 chưa có con số "sau"** — cần một phiên có người thật ngồi gõ.

@@ -2336,6 +2336,9 @@ class Agent:
         t = act.target
         if t is None:
             ctx.emit(uic.notice("Hoàn tác cái gì? Thiếu target.", level="error"))
+            self.ledger.append("undo", {"run_id": ctx.run_id, "act_id": act.id,
+                                        "tang": "", "target": "", "ok": False,
+                                        "message_vi": "thiếu target"})
             return
         if t.type == "snapshot":
             # §E6.3 — khôi phục KHÔNG xoá lịch sử, và bản đang bỏ lại được giữ thành một
@@ -2349,6 +2352,20 @@ class Agent:
             kq = self.history.hoan_tac_luot(t.id, by="human")
         else:
             kq = self.history.hoan_tac_changeset(t.id, by="human")
+
+        # GHI SỔ kết quả, theo TẦNG (EIDE-EDIT-47 §7, chỉ số thứ tư).
+        #
+        # Trước dòng này, sổ cái chỉ có ý chí của người (`human_act`) chứ không có kết quả:
+        # "hoàn tác thành công / thất bại theo tầng" phải SUY từ chuyện sau đó có một
+        # `history.update` hay không. Suy không phải đo — một lần lùi thất bại vì *"đã hoàn
+        # tác rồi"* trông y hệt một lần lời gọi không bao giờ chạy.
+        self.ledger.append("undo", {
+            "run_id": ctx.run_id, "act_id": act.id,
+            "tang": t.type or "changeset", "target": t.id,
+            "ok": bool(kq.ok), "message_vi": kq.message_vi,
+            "so_changeset_lui": len(getattr(kq, "da_lui", []) or []),
+            "so_giu_nguyen": len(kq.giu_nguyen or []),
+            "canh_bao": len(kq.canh_bao or [])})
 
         ctx.emit(uic.console_post(f"{kq.message_vi}", role="agent"))
         for c in kq.canh_bao:

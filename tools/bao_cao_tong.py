@@ -46,6 +46,58 @@ def _gop(dong: list[dict]) -> list[dict]:
     return list(theo.values())
 
 
+def _phan_edit47() -> list[str]:
+    """Bốn chỉ số của EIDE-EDIT-47 §7, đo từ sổ cái 39 dự án thật.
+
+    Để riêng một hàm vì nó có thể ĐỔ: nó mở 39 kho SQLite và dựng mọi bề mặt của từng dự
+    án. Một báo cáo tổng không được mất cả bảng 76 ca vì một kho mẫu hỏng — nhưng nó cũng
+    không được im lặng bỏ qua, nên lỗi thành một dòng ĐỎ trong chính báo cáo.
+    """
+    try:
+        import do_edit47
+
+        kq = do_edit47.do(REPO / "du-lieu")
+    except Exception as e:                                            # noqa: BLE001
+        return ["## EIDE-EDIT-47 §7 — bốn chỉ số", "",
+                f"**KHÔNG ĐO ĐƯỢC**: `do_edit47.py` đổ — `{type(e).__name__}: {e}`.", ""]
+
+    c2, c3, c4 = (kq["chi_so_2_go_loi"], kq["chi_so_3_ha_nguon"],
+                  kq["chi_so_4_hoan_tac"])
+    tv = c3["trung_vi_giay"]
+    tang = ", ".join(f"{t} {o['ok']}/{o['ok'] + o['hong']}"
+                     for t, o in c4["theo_tang"].items()) or "—"
+    d = ["## EIDE-EDIT-47 §7 — bốn chỉ số", "",
+         f"Đo bằng [`do_edit47.py`](../../../tools/do_edit47.py) trên sổ cái của "
+         f"**{kq['so_du_an']} dự án thật** trong `du-lieu/`.", "",
+         "| Chỉ số | Đo được | Đích của §7 |", "|---|---|---|",
+         f"| 1 · Loại hiện vật sửa được qua giao diện | **{kq['chi_so_1_sua_duoc']['ty_le']}** "
+         "| ≥ 20/30 |",
+         f"| 2 · Lượt người gõ lời cho việc lẽ ra bấm được | **{c2['le_ra_bam_duoc']}** "
+         f"trong {c2['cau_ngan_co_the_la_nguoi_go']} câu ngắn có từ khoá "
+         f"({c2['bao_cao_dai_cua_may']} câu dài là báo cáo của tác tử đóng vai sinh viên, "
+         "không tính) | giảm ≥ 70 % |",
+         f"| 3 · Sửa → hạ nguồn cập nhật | đo được **{c3['so_lan_do_duoc']}** lần"
+         + (f", trung vị **{tv / 60:.1f} phút**" if tv else "")
+         + f"; **{c3['so_lan_khong_bao_gio_cham']}** lần hạ nguồn bị đánh STALE rồi "
+           "KHÔNG AI cập nhật | có số |",
+         f"| 4 · Hoàn tác theo tầng | người bấm **{c4['so_lan_nguoi_bam']}** lần, có ghi "
+         f"kết quả **{c4['so_lan_co_ghi_ket_qua']}** lần ({tang}) | đủ 5 tầng, ok ≥ 95 % |",
+         ""]
+    if c4["khong_do_duoc"]:
+        d += [f"**{c4['khong_do_duoc']} lần hoàn tác KHÔNG đo được kết quả**: sổ cái trước "
+              "DEV-372 không có loại sự kiện `undo`, nên §7 đòi đo một thứ mà sổ không ghi. "
+              "Phân biệt chỗ này với *“0 lần”* là việc của bộ đo: một bảng viết `0/0` ở đây "
+              "sẽ đọc như “chưa ai hoàn tác”, trong khi sự thật là “đã hoàn tác mà không ai "
+              "ghi lại”.", ""]
+    if c4["tang_chua_thay"]:
+        d += ["Tầng chưa có bản ghi kết quả nào: "
+              + ", ".join(f"`{t}`" for t in c4["tang_chua_thay"])
+              + ". Đo được tầng nào thì nói tầng ấy — một tỉ lệ "
+                "“100 % ok” dựng trên một tầng duy nhất không nói gì về bốn tầng kia.", ""]
+    d += [f"Giới hạn của chỉ số 2, nói ra chứ không giấu: {c2['gioi_han']}", ""]
+    return d
+
+
 def main() -> int:
     from bo_usecase import NHOM, TEN_UC
     from quet_giao_dien import BE_MAT
@@ -186,6 +238,8 @@ def main() -> int:
         else:
             d.append("Không ô nào đỏ.")
         d.append("")
+
+    d += _phan_edit47()
 
     d += ["## Đọc bảng này thế nào", "",
           "Máy chấm ca kiểm bằng **dấu hiệu bề mặt** — cụm từ phải/không được có trong lời "
