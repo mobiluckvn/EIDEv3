@@ -196,8 +196,13 @@ class ThongTinDuAn:
         """
         p = self.goc / TEN_TEP
         try:
-            p.write_text(json.dumps(self.dung(**kw), ensure_ascii=False, indent=1) + "\n",
-                         "utf-8")
+            chu = json.dumps(self.dung(**kw), ensure_ascii=False, indent=1) + "\n"
+            p.write_text(chu, "utf-8")
+            # §DEV-369 — lõi tự ghi tệp này ở cuối mỗi lượt. Không đánh dấu thì watcher
+            # coi đó là "anh sửa du-an.json bên ngoài EIDE".
+            from . import watcher as _wt
+
+            _wt.danh_dau_eide_ghi(p, chu)
         except OSError:
             pass
         return p

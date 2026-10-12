@@ -426,6 +426,13 @@ class Features:
     # hon hay vuong hon" la cau chi bo 76 ca chay hai che do tra loi duoc. Phan khoa thuan
     # trinh bay — bang vang "anh dang mo tep nay" — chay ca khi co tat.
     khoa_nguoi: bool = False
+    # EIDE-EDIT-47 DEV-369 — theo doi thu muc du an, bat sua tu BEN NGOAI EIDE (VS Code,
+    # KiCad) thanh changeset hoan tac duoc.
+    #
+    # Sau co vi no doi THU TAC TU THAY moi luot (N-4): mot changeset moi trong
+    # `<human_edits>` va mot dong trong EIDE.md §Nguoi vua sua, cho moi lan nguoi luu tep
+    # o editor khac. No cung chay mot thread trong tien trinh loi — mac dinh TAT.
+    watcher: bool = False
 
     @classmethod
     def load(cls) -> "Features":

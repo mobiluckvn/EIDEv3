@@ -10857,3 +10857,129 @@ Ba phép phá LỌT ở lượt đầu, và cả ba chỉ ra chỗ ca kiểm d�
   Cmd-F. Đổi lại chép/dán/Cmd-Z đúng như macOS.
 * **Thẻ xung đột hiện ở Console, không hiện TRONG trình soạn** như đặc tả nói. Người vẫn
   thấy nó, chỉ là phải nhìn sang cột trái.
+
+## [DEV-369] Bắt sửa từ **bên ngoài** app — luật nền số 3 và cái editor quen tay
+
+Gói thứ sáu của EIDE-EDIT-47, và gói cuối của nhánh "người sửa trực tiếp". Luật nền số 3
+của README nói *"mọi thay đổi gỡ lại được, **kể cả do người gõ**"*. Rà lại 12/10/2026: câu
+ấy đúng với thứ người sửa TRONG app — và sai với cách kỹ sư nhúng thật sự làm việc. Mở
+`main.c` bằng VS Code, sửa, lưu. Lần sửa ấy không có changeset nên **không hoàn tác được**;
+không đánh dấu hạ nguồn nên một kết quả mô phỏng dựng trên mã cũ vẫn xanh; không phá
+soft-lock nên tác tử tưởng nó còn làm chủ tệp; và tác tử **không biết gì** cho tới khi nó
+tình cờ đọc lại tệp.
+
+### Quét `mtime`, không bắt buộc `watchdog`
+
+Đặc tả nói dùng `watchdog`, thêm vào `pyproject.toml`, không có thì fallback. Tôi làm ngược
+thứ tự ưu tiên: **đường quét `mtime` là đường chính**, và nó là đường duy nhất được viết ở
+gói này. Lý do: một tính năng *an toàn dữ liệu* mà tắt lặng lẽ khi thiếu một thư viện ngoài
+là một tính năng không ai dám tin. Nhịp 2 giây, gộp sự kiện 1,5 giây (một lần Cmd-S của
+trình soạn hiện đại là ba sự kiện tệp: ghi tạm · đổi tên · chmod — và ba changeset cho một
+lần lưu thì tab Lịch sử thành thứ không ai đọc). `Watcher.cach` nói ra đang chạy bằng đường
+nào, để lần sau cắm `watchdog` vào thì người đọc biết mình đang đo cái gì.
+
+### Hai luật bỏ qua, và vì sao phải để RIÊNG
+
+Bản đầu có một bảng `BO_QUA_THU_MUC` gộp `.eide`, `.git`, `.venv`, `build`, `__pycache__`,
+`.DS_Store` lại một chỗ, cộng một phép kiểm `rel.name.startswith(".")`. Phép phá cho thấy
+tháo phép kiểm thứ hai đi mà bộ kiểm **vẫn xanh**: mọi thứ nó bảo vệ đã có tên trong bảng.
+Đúng mẫu *"bảng tra trùng nhau che mất luật"*. Nay tách làm hai luật nói về hai thứ khác
+nhau:
+
+1. **thứ máy sinh ra** (`build/`, `dist/`, `__pycache__/`, `node_modules/`, `target/`,
+   `out/`) — theo dõi `build/` là coi mỗi lần biên dịch là một lần người sửa mã;
+2. **mọi thành phần bắt đầu bằng dấu chấm** — `.eide/` là chỗ chính lõi ghi liên tục, nên
+   theo dõi nó là tự nghe tiếng của mình rồi gọi đó là người dùng sửa; còn `.env` giữ
+   **khoá API**, và một changeset "anh sửa .env" là nguyên văn khoá nằm trong blob của kho
+   lịch sử — tức khoá đã rời khỏi `.env`, đúng thứ ràng buộc bảo mật của dự án cấm.
+
+Lọc `.env` nằm ở **hai chỗ**: trong watcher và lần nữa trong `_tep_doi_ngoai_eide`. Trùng
+lặp có chủ ý, vì cái giá của một lần lọt không đối xứng với cái giá của một dòng thừa.
+
+### Cửa sổ thời gian 3 giây — và nó hỏng ở app thật
+
+Đặc tả nói lọc tiếng của chính lõi bằng cách so hash *"ghi trong 3 giây gần nhất"*. Tôi làm
+đúng thế, bộ kiểm 19 ca xanh, 18/18 phép phá đỏ. Rồi chạy qua **app thật** và bốn phép đo
+của bộ E2E đỏ — bốn phép đo chẳng liên quan gì tới watcher. Lý do nằm trong `EIDE.md`:
+
+```
+- 2026-10-12 · **file:EIDE.md** — sửa bên ngoài EIDE (cs-0035)
+- 2026-10-12 · **file:du-an.json** — sửa bên ngoài EIDE
+```
+
+Lõi **tự ghi** hai tệp ấy ở cuối mỗi lượt, bằng một đường không đi qua chỗ đánh dấu
+(`EideMd.save`, `ThongTinDuAn.ghi`). Nên watcher ghi "anh sửa EIDE.md bên ngoài EIDE", lịch
+sử có thêm changeset lạ, và bốn phép đo khác đọc lịch sử đó thì nói sai.
+
+Nay luật đổi thành **so nội dung, không xem đồng hồ**: nếu nội dung hiện tại đúng bằng thứ
+EIDE ghi nhận lần cuối cho tệp ấy thì không có gì của người trong đó, bất kể bao lâu. Sổ
+`_EIDE_DA_GHI` ở mức module (khoá theo đường dẫn tuyệt đối), vì hai chỗ ghi cần đánh dấu
+không giữ tham chiếu tới `Agent` nào. Một cửa sổ thời gian còn làm phép lọc phụ thuộc vào
+máy nhanh hay chậm — thứ không ai muốn trong một cơ chế an toàn dữ liệu.
+
+Và nó không làm mất chiều ngược: người sửa **thật** `EIDE.md` bằng VS Code vẫn thành
+changeset, vì lúc đó nội dung khác thứ EIDE ghi nhận.
+
+### `loai="external"` — một chữ, hai nghĩa
+
+Đặc tả nói gọi `history.ghi_tep(..., loai="external")`, và nói changeset `kind="external"`
+*"đã có trong `changeset.py` từ bước G5 — không ai tạo nó"*. Mở mã ra thì **cả hai câu đều
+lệch**:
+
+* `loai=` của `ghi_tep` là **kiểu hiện vật trong kho** (`code`, `req`, …), không phải "loại
+  changeset". Truyền `"external"` vào đó làm `main.c` đổi kiểu thành `external` trong kiểm
+  kê — **mất chỗ trong đồ thị phụ thuộc**, nên sửa nó không đánh dấu hạ nguồn lỗi thời nữa.
+  Đúng cái mà gói này ra đời để vá. Đây là lần thứ hai cùng một tham số bẫy đúng một chỗ:
+  DEV-367 cũng thêm `loai=` theo tài liệu rồi phải bỏ đi.
+* `forward.kind="external"` thì **đã có người dùng**, với một nghĩa khác hẳn: *tác động ra
+  ngoài máy* (nạp bo, cài công cụ — §E5.3, không hoàn tác được).
+
+Nên nhãn đi đường khác: `explain.sources[].kind`, và `history.tom_tat()` kẹp thêm hai điều
+kiện (`by_human` và có `forward.kind == "file"`) để một lần **nạp bo** không hiện ra là
+"anh sửa bên ngoài EIDE". Tab A11 đọc `ngoai_eide` và vẽ một nhãn con bên cạnh tóm tắt.
+
+### Dự án không có git thì không có mốc — nói ra, không giấu
+
+`_ban_eide_biet` đọc **thẳng từ git**, không tra sổ changeset: blob trong changeset giữ bản
+*TRƯỚC* lần ghi, nên bản SAU của lần ghi gần nhất nằm trong changeset kế tiếp — thứ chưa
+tồn tại. Vòng lặp tra sổ ở bản đầu không làm gì cả (`break` ngay) — một **cửa mã chết**, đã
+bỏ. Hệ quả: dự án chưa `git init` không có mốc nội dung, nên ở đó chỉ còn dấu "EIDE tự ghi"
+đứng giữa. Có ca kiểm riêng cho tình huống ấy, vì nó là tình huống của mọi dự án mới.
+
+### Đo
+
+* `tests/test_edit47_watcher.py` — 20 ca. **Phá lại thì đỏ: 21/21.**
+* `tools/thu_nut_lui.py` phần K — 5 ca qua **APP THẬT**: ghi tệp thẳng vào đĩa (không qua
+  kênh kiểm thử, đúng như VS Code làm) → app tự bắt được, thành changeset của người; sửa
+  lần hai → hai changeset không gộp; EIDE.md có tên tệp; bấm Hoàn tác trong app → **nội
+  dung cũ trở lại trên đĩa**. Cờ tắt thì không changeset nào. Bộ ấy 45 → **47/47** (cờ tắt)
+  và **50/50** (cờ bật).
+* Bộ kiểm 2 345 → **2 365 xanh**, 2 skip, 0 đỏ. Giao diện **89 ca**. Cờ 18 → **19**.
+* `tools/kiem_tai_lieu.py`: **0 chỗ lệch**. Bộ dò phải học thêm một thứ — thuộc tính gán
+  trong `__init__` (`history.blobs`) không có trong `dir()` của lớp, nên nó báo một cái tên
+  có thật là "công cụ không tồn tại". Nay đọc thẳng mã của lớp.
+
+Bốn phép phá LỌT ở lượt đầu, và cả bốn chỉ ra chỗ **bộ kiểm** dựng hỏng, không phải chỗ sản
+phẩm thiếu:
+
+1. **tệp ẩn** — ca kiểm chỉ thử `.DS_Store`, thứ đã có tên trong bảng bỏ qua (xem trên).
+2. **tệp nhị phân** — ca kiểm dùng một tệp PNG, vừa có byte 0 vừa không giải mã được, nên
+   tháo một trong hai dấu hiệu đi vẫn xanh. Nay có một tệp cho mỗi dấu: `rac.dat` hợp lệ
+   UTF-8 nhưng chứa byte 0, và `utf16.txt` không byte 0 nhưng không giải mã được.
+3. **giữ bản cũ** — `_lui_tep` ưu tiên `git revert`, nên blob không được dùng tới và một
+   changeset *không giữ bản cũ* vẫn hoàn tác được. Nay có một ca cho `git revert` ngã (repo
+   lạ, xung đột) rồi đòi bản cũ về.
+4. **đánh dấu sau khi ghi** — không ca nào quét lại cùng một tệp hai lần. Thiếu dấu ấy thì
+   ở dự án không git, mỗi nhịp quét đẻ thêm một changeset cho **cùng một lần sửa**.
+
+### Chưa làm
+
+* **`watchdog` chưa được cắm vào.** Đường quét `mtime` tốn một lần `rglob` mỗi 2 giây; trên
+  một dự án nhúng cỡ vài trăm tệp thì không đo được, nhưng trên một repo chục nghìn tệp thì
+  sẽ thấy. Chỗ cắm đã có (`Watcher.cach`), và nó phải nói ra đang chạy đường nào.
+* **Tệp bị XOÁ bên ngoài chưa xử lý.** Watcher thấy, rồi bỏ qua. Ghi một changeset "người
+  xoá tệp" cần một `forward.kind` mới và một đường lui riêng; để sau, và nói ra.
+* **Không có nút "quét lại ngay"** trên giao diện. Nhịp 2 giây đủ nhanh cho tay người.
+* **`surface_patch("code", "A7.1", …)`** như đặc tả nói thì không làm: `history_update` đã
+  đủ để A11 và thanh "vừa ghi" đúng, còn A7.1 vẽ lại ở lượt sau. Thêm một đường vẽ riêng
+  cho một thread không nằm trong lượt là thêm một chỗ hai nguồn sự thật.

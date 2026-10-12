@@ -1301,6 +1301,9 @@ struct DongChangeset: View {
     private var luiDuoc: Bool { cs["hoan_tac_duoc"]?.boolValue ?? false }
     private var daLui: String? { cs["da_hoan_tac_boi"]?.stringValue }
     private var stale: [String] { (cs["stale"]?.arrayValue ?? []).compactMap(\.stringValue) }
+    /// §DEV-369 — "anh sửa trong app" và "anh sửa bằng VS Code" là hai chuyện khác nhau:
+    /// cái thứ hai nghĩa là tác tử có thể đang giữ một bản đã cũ trong đầu.
+    private var ngoaiEIDE: Bool { cs["ngoai_eide"]?.boolValue ?? false }
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
@@ -1316,6 +1319,17 @@ struct DongChangeset: View {
                     Text(cs["tom_tat"]?.stringValue ?? "")
                         .font(.system(size: 12, weight: .medium))
                         .textSelection(.enabled)
+                    if ngoaiEIDE {
+                        Text("ngoài EIDE")
+                            .font(.system(size: 9, weight: .semibold))
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.18),
+                                        in: Capsule())
+                            .help("Thay đổi này tới từ một trình soạn khác (VS Code, "
+                                  + "vim…), không qua giao diện EIDE. Nó vẫn là một "
+                                  + "changeset hoàn tác được, và tác tử được nhắc ở "
+                                  + "lượt sau.")
+                    }
                 }
                 HStack(spacing: 8) {
                     if let n = cs["note"]?.stringValue, !n.isEmpty {

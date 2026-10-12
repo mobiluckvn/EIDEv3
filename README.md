@@ -422,7 +422,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **2 345 ca Python + 89 ca giao diện**
+### Mức 1 — Ca đơn vị: **2 365 ca Python + 89 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -541,9 +541,9 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét giao diện | **124/124 ô** trên 11 tab · tab thứ 12 (Màn hình, A15) **chưa quét** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **2 345** | `pytest -q` |
+| Ca đơn vị Python | **2 365** | `pytest -q` |
 | Ca đơn vị giao diện | **89** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
-| Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp, qua app thật | **45/45** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
+| Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa NGOÀI app, qua app thật | **50/50** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
 | Loại hiện vật người sửa được thẳng trên giao diện | **15/33** | [`dem_sua_duoc.py`](tools/dem_sua_duoc.py) |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -1341,11 +1341,15 @@ Nói ra để người đọc không phải tự tìm:
   mở**: bản dựng ra thì sửa trên gốc, phép đo thì không ai được gõ đè, hình chiếu thì sửa
   ở chỗ nó chiếu từ đó. Còn thiếu: cây khối A5.9 chưa sửa được, nút thêm/xoá dòng chưa
   vẽ, kéo–thả trên canvas để sau.
-- **Sửa tệp bằng VS Code thì EIDE không biết** cho tới khi Agent đọc lại tệp — nên luật
-  nền số 3 hiện đúng với thứ sửa trong app, chưa đúng với thứ sửa ngoài app. Đó là gói
-  DEV-369 của [`EIDE-EDIT-47`](docs/md/EIDE-EDIT-47_Nguoi_sua_truc_tiep_va_Hoan_tac.md);
-  năm gói đầu — gỡ lại, khối `diff`, sửa sâu, duyệt có sửa, và **trình soạn tệp trong
-  app** — xong 12/10/2026.
+- **Sửa tệp bằng VS Code thì EIDE đã biết** (DEV-369, 12/10/2026, sau cờ
+  `EIDE_FEATURE_WATCHER`): một thread quét `mtime` mỗi 2 giây, gộp sự kiện 1,5 giây, và lần
+  lưu ấy thành changeset của người — hoàn tác được, phá soft-lock, đánh dấu hạ nguồn, có
+  trong `EIDE.md` để Agent biết ở lượt sau. Hai chỗ **chưa làm, nói ra chứ không giấu**:
+  `watchdog` chưa cắm (nên trên repo chục nghìn tệp thì nhịp quét sẽ thấy được), và **tệp
+  bị xoá bên ngoài** thì watcher thấy rồi bỏ qua. Sáu gói đầu của
+  [`EIDE-EDIT-47`](docs/md/EIDE-EDIT-47_Nguoi_sua_truc_tiep_va_Hoan_tac.md) — gỡ lại, khối
+  `diff`, sửa sâu, duyệt có sửa, trình soạn tệp trong app, bắt sửa ngoài app — xong
+  12/10/2026; còn DEV-371 (cài đặt qua `set`, gộp thẻ `tool.install`, `make`/`py.run`).
 - **Mã phiên sửa do giao diện cấp**, đếm trong một lần mở app — hai lần mở có thể cấp trùng
   mã, nên một danh sách changeset dài qua nhiều phiên có thể gom nhầm hai lượt sửa cùng tên.
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
@@ -1399,7 +1403,7 @@ Nói ra để người đọc không phải tự tìm:
   cả khi cờ tắt.
 
   Câu này từng ghi *"mười hai"* mà liệt kê **mười một** tên — con số tổng trong `Features` bị
-  dùng thay cho con số của đợt rà lại. Nay `Features` có **18** cờ (thêm `CONG_CO_DIFF`, `SUA_LONG`, `DUYET_CO_SUA`, `KHOA_NGUOI` của EDIT-47), trong đó `SCHEMATIC` có từ
+  dùng thay cho con số của đợt rà lại. Nay `Features` có **19** cờ (thêm `CONG_CO_DIFF`, `SUA_LONG`, `DUYET_CO_SUA`, `KHOA_NGUOI`, `WATCHER` của EDIT-47), trong đó `SCHEMATIC` có từ
   trước đợt này, nên đợt rà lại đóng góp **mười ba**.
 
   `PDF_BANG` có một chi phí đo được, nói ra để người bật cờ biết trước: nạp 21 PDF thật

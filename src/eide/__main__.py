@@ -61,6 +61,14 @@ def main(argv: list[str] | None = None) -> int:
 
     core = Core(agent.ledger, agent.ids, agent.turn, on_sync=agent.paint,
                 on_query=agent.hoi_chi_doc)
+
+    # EIDE-EDIT-47 DEV-369 — theo dõi thư mục dự án CHỈ ở chế độ có giao diện.
+    #
+    # `--go` chạy một lượt rồi thoát: bật một thread theo dõi ở đó chỉ đẻ ra changeset cho
+    # chính thứ lượt ấy vừa ghi, và không ai còn ở đó để đọc thông báo.
+    loi_nhac = agent.bat_dau_theo_doi(core.emit)
+    if loi_nhac:
+        print(loi_nhac, file=sys.stderr, flush=True)
     if a.ws:
         import asyncio
         from .protocol.rpc import serve_websocket
@@ -77,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         StdioTransport(core).serve_forever()
     finally:
+        agent.dung_theo_doi()
         agent.dong_phien()
     return 0
 

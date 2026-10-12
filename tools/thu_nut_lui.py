@@ -461,6 +461,58 @@ def chay(du_an: pathlib.Path) -> int:
     g._gui({"ui": "tep", "viec": "dong", "tep": "EIDE.md"})
     g._doi("da_dong_tep", 20)
 
+    # ---------------------------------------------------------------- K
+    b.phan("K · SỬA TỆP BÊN NGOÀI APP, NHƯ KỸ SƯ NHÚNG LÀM THẬT (DEV-369)")
+
+    # Đây là phần duy nhất của bộ này KHÔNG đi qua kênh kiểm thử để gây ra thay đổi: nó
+    # ghi thẳng vào đĩa, đúng như VS Code làm. Thứ phải đo là *app có tự biết hay không*.
+    #
+    # Cũng là cờ, nên cũng phải đo được cả hai phía:
+    #   python tools/thu_nut_lui.py                           # cờ tắt
+    #   EIDE_FEATURE_WATCHER=1 python tools/thu_nut_lui.py    # cờ bật
+    bat_wt = (os.environ.get("EIDE_FEATURE_WATCHER") or "").strip() in ("1", "true")
+    ngoai = du_an / "sua-bang-vscode.c"
+    V1, V2 = "int g(void){return 1;}\n", "int g(void){return 42;}\n"
+
+    b.buoc(f"Tạo tệp mới bằng tay, không qua app — cờ đang {'BẬT' if bat_wt else 'TẮT'}")
+    ngoai.write_text(V1, "utf-8")
+    # Cờ tắt thì không có gì để đợi — nhưng vẫn phải đợi QUÁ một nhịp quét cộng thời gian
+    # gộp, không thì "không thấy gì" chỉ nghĩa là đo quá sớm.
+    cs = _doi_changeset(du_an, "sua-bang-vscode.c", 1, giay=25 if bat_wt else 8)
+
+    if not bat_wt:
+        b.kiem("Cờ tắt: app KHÔNG theo dõi thư mục (không changeset nào)", not cs,
+               f"{len(cs)} changeset")
+        b.kiem("Cờ tắt: tệp vẫn y nguyên trên đĩa (không ai đụng vào)",
+               ngoai.read_text("utf-8") == V1, repr(ngoai.read_text("utf-8")))
+    else:
+        b.kiem("App tự bắt được tệp mới, thành changeset của NGƯỜI",
+               bool(cs) and cs[-1]["author"] == "human", f"{len(cs)} changeset")
+
+        # Lần sửa THỨ HAI mới là lần đo được đường hoàn tác về nội dung: lần đầu là tệp
+        # mới, hoàn tác nó nghĩa là xoá tệp đi, không phải trả về bản cũ.
+        b.buoc("Sửa lại tệp ấy lần nữa, vẫn bằng tay")
+        ngoai.write_text(V2, "utf-8")
+        cs = _doi_changeset(du_an, "sua-bang-vscode.c", 2)
+        b.kiem("Hai lần sửa là HAI changeset, không gộp vào nhau", len(cs) >= 2,
+               f"{len(cs)} changeset")
+        b.kiem("Changeset ấy hoàn tác được",
+               bool(cs) and cs[-1]["reversible"] is True,
+               str(cs[-1].get("reversible")) if cs else "—")
+        md = (du_an / "EIDE.md").read_text("utf-8")
+        b.kiem("Tác tử BIẾT: EIDE.md §Người vừa sửa có tên tệp",
+               "sua-bang-vscode.c" in md,
+               md.split("## Người vừa sửa", 1)[-1].strip()[:110])
+
+        b.buoc("Bấm Hoàn tác trên chính changeset ấy, trong app")
+        g.ve_lai()
+        g._gui({"kind": "undo", "target": {"type": "changeset", "id": cs[-1]["id"]},
+                "data": {"mode": "revert"}, "origin": {"surface": "history"}})
+        g.doi_xong()
+        b.kiem("Nội dung cũ trở lại trên ĐĨA — luật nền số 3 đúng cả với tệp người gõ "
+               "bên ngoài app",
+               ngoai.read_text("utf-8") == V1, repr(ngoai.read_text("utf-8")))
+
     # ---------------------------------------------------------------- Đ
     b.phan("Đ · ẢNH CHỤP CHO BÁO CÁO")
     g.mo_tab("history")
@@ -528,6 +580,24 @@ def _changeset_cham(du_an: pathlib.Path, path: str) -> list[dict]:
         if any(t.get("artefact_id") == path for t in d.get("touches") or []):
             ra.append(d)
     return ra
+
+
+def _doi_changeset(du_an: pathlib.Path, path: str, du: int,
+                   giay: float = 25) -> list[dict]:
+    """Đợi tới khi có `du` changeset chạm `path`, hoặc hết giờ.
+
+    Watcher trong app quét mỗi 2 s và gộp sự kiện trong 1,5 s. Đợi theo ĐIỀU KIỆN chứ
+    không ngủ một con số cố định: một bộ đo ngủ 6 giây rồi báo đỏ vì máy chậm 200 ms là
+    một bộ đo nói sai về sản phẩm.
+    """
+    han = time.time() + giay
+    cs: list[dict] = []
+    while time.time() < han:
+        cs = _changeset_cham(du_an, path)
+        if len(cs) >= du:
+            return cs
+        time.sleep(1.0)
+    return cs
 
 
 def _ban_ung_y(du_an: pathlib.Path) -> list[dict]:

@@ -123,7 +123,14 @@ class EideMd:
         order += [s for s in self.sections if s not in SECTIONS]
         for s in order:
             parts.append(f"## {s}\n\n{self.sections[s]}".rstrip())
-        self.path.write_text("\n\n".join(parts).rstrip() + "\n", "utf-8")
+        chu = "\n\n".join(parts).rstrip() + "\n"
+        self.path.write_text(chu, "utf-8")
+        # §DEV-369 — nói ra rằng CHÍNH EIDE vừa ghi tệp này. Watcher đọc dấu ấy để không
+        # ghi "anh sửa EIDE.md bên ngoài EIDE" cho đúng lần ghi mà lõi vừa làm; thiếu nó
+        # thì mỗi lượt đẻ ra một changeset lạ mang tên người.
+        from .. import watcher as _wt
+
+        _wt.danh_dau_eide_ghi(self.path, chu)
 
     # ------------------------------------------------------------------ dùng
     def get(self, section: str) -> str:

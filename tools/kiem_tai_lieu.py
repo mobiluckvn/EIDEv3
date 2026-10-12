@@ -26,6 +26,7 @@ phải đọc, và nó nói rõ điều đó thay vì để một bảng xanh n�
 from __future__ import annotations
 
 import argparse
+import inspect
 import pathlib
 import re
 import subprocess
@@ -156,6 +157,16 @@ def _ten_khong_phai_cong_cu() -> set[str]:
         except (ImportError, AttributeError):
             continue
         ra |= {f"{tien_to}.{n}" for n in dir(c) if not n.startswith("_")}
+        # `dir()` chỉ thấy thứ gắn trên LỚP. Thuộc tính gán trong `__init__`
+        # (`self.blobs = …`) không có ở đó, nhưng tài liệu thiết kế vẫn gọi tên chúng —
+        # `history.blobs` là một ví dụ. Đọc thẳng mã của lớp để lấy, không gõ tay một
+        # danh sách sẽ mục đi sau ba lần sửa.
+        try:
+            than = inspect.getsource(c)
+        except (OSError, TypeError):
+            continue
+        ra |= {f"{tien_to}.{n}" for n in
+               re.findall(r"^\s+self\.([a-z][a-z0-9_]*)\s*[:=]", than, re.M)}
     return ra
 
 

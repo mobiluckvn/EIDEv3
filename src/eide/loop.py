@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 from .du_an import ThongTinDuAn
@@ -149,6 +150,18 @@ class TurnContext:
             self.locks.add(path)
             self.emit(uic.surface_lock("code", block=path, by=self.run_id,
                                        why="Tác tử đang sửa tệp này"))
+        self.eide_vua_ghi(path)
+
+    def eide_vua_ghi(self, path: str) -> None:
+        """Đánh dấu CHÍNH EIDE vừa ghi tệp này (§DEV-369).
+
+        Watcher đọc dấu ấy để không ghi một changeset "người sửa bên ngoài" cho đúng lần
+        ghi mà lõi vừa làm. Thiếu nó thì mỗi lần tác tử ghi tệp đẻ ra HAI changeset, cái
+        thứ hai mang tên người — và tab Lịch sử nói sai về ai làm gì.
+        """
+        from . import watcher as wt
+
+        wt.danh_dau_eide_ghi(self.config.paths.project_root / path)
 
     def build_inventory(self):
         return inventory.build(self.store, ledger=self.ledger,
@@ -317,6 +330,8 @@ class Agent:
         # Tệp NGƯỜI đang mở trong trình soạn (path → lúc chạm gần nhất). Chiều ngược của
         # `self.locks`, và là nửa còn thiếu của soft-lock hai chiều (§DEV-367).
         self.locks_nguoi: dict[str, float] = {}
+        self._watcher: Any = None
+        self._watcher_emit: Callable[[Any], None] | None = None
         self.thoi_diem_ket_thuc: dict[str, float] = {}
         self.loi_nguoi: list[str] = []           # mọi câu người đã gõ trong phiên
         self.usage_phien: Any = None             # chi phí cộng dồn cả phiên
@@ -456,6 +471,139 @@ class Agent:
                           run=run, only=only, hist=self.history,
                           ngu_canh=self.ngu_canh_hien_tai(),
                           bo_nho_kw=self._mat_bang_bo_nho())
+
+    # --------------------------------------------------- sửa từ bên ngoài (§DEV-369)
+    def bat_dau_theo_doi(self, emit: Callable[[Any], None]) -> str:
+        """Bật watcher. Trả một câu nói đang theo dõi bằng đường nào (hoặc vì sao không).
+
+        Chỉ gọi ở chế độ `--stdio` (có giao diện). Chế độ `--go` chạy một lượt rồi thoát:
+        bật một thread theo dõi ở đó chỉ tốn công và đẻ ra changeset cho chính thứ lượt ấy
+        vừa ghi.
+        """
+        if not self.config.features.bat("watcher"):
+            return ""
+        if self._watcher is not None:
+            return ""
+        from .watcher import Watcher
+
+        self._watcher_emit = emit
+        self._watcher = Watcher(self.config.paths.project_root,
+                                khi_doi=self._tep_doi_ngoai_eide)
+        self._watcher.bat_dau()
+        return (f"Đang theo dõi thư mục dự án ({self._watcher.cach}): anh sửa tệp bằng "
+                "VS Code hay trình soạn nào cũng được — EIDE vẫn ghi thành thay đổi hoàn "
+                "tác được.")
+
+    def dung_theo_doi(self) -> None:
+        if self._watcher is not None:
+            self._watcher.dung()
+            self._watcher = None
+
+    def _tep_doi_ngoai_eide(self, paths: list[str]) -> None:
+        """Watcher báo mấy tệp vừa đổi. Lọc ra cái KHÔNG phải do chính EIDE ghi, rồi ghi
+        changeset `loai="external"`.
+
+        Chạy trên THREAD của watcher, không phải trong một lượt. Nên nó không có
+        `TurnContext`, không gọi mô hình, và không được ném ngoại lệ ra ngoài.
+        """
+        from . import watcher as wt
+
+        emit = self._watcher_emit
+        goc = self.config.paths.project_root
+        da_ghi: list[Any] = []
+        for rel in paths:
+            # Lọc LẠI ở đây, không chỉ trong watcher. Hàm này còn được gọi từ chỗ khác
+            # (ca kiểm, và sau này là một lệnh "quét lại"), và cái giá của một lần lọt là
+            # nguyên văn `.env` nằm trong blob của kho lịch sử.
+            if not wt.dang_theo_doi(Path(rel)):
+                continue
+            p = goc / rel
+            noi_dung = wt.noi_dung_doc_duoc(p)
+            if noi_dung is None:
+                continue
+            # Nội dung đúng bằng thứ CHÍNH EIDE vừa ghi? Thì đây là tiếng của chính nó.
+            # So nội dung, không xem đồng hồ — xem đồng hồ thì `EIDE.md` và `du-an.json`
+            # (lõi tự ghi ở cuối mỗi lượt) lọt qua mỗi khi máy chậm hơn cửa sổ thời gian.
+            if wt.la_tieng_cua_eide(p, noi_dung):
+                continue
+            # Nội dung y hệt bản EIDE biết: chạm tệp mà không đổi gì (một lần lưu không
+            # sửa gì, hay `touch`). Không có gì để hoàn tác.
+            if self._ban_eide_biet(rel) == noi_dung:
+                continue
+
+            truoc = self._ban_eide_biet(rel)
+            try:
+                cs = self.history.ghi_tep(
+                    # KHÔNG truyền `loai=`: tham số ấy là **kiểu hiện vật** trong kho
+                    # (`code`, `req`, …), không phải "loại changeset". Bản đầu của gói này
+                    # truyền `loai="external"` theo chữ trong tài liệu, và hậu quả là
+                    # `main.c` đổi kiểu thành `external` trong kiểm kê — mất chỗ trong đồ
+                    # thị phụ thuộc. Để trống thì `doan_loai()` đoán đúng theo đuôi tệp.
+                    author="human", paths=[rel],
+                    summary=f"anh sửa {rel} bên ngoài EIDE",
+                    explain={
+                        "summary": f"anh sửa {rel} bên ngoài EIDE",
+                        "why": "Thay đổi tới từ một trình soạn khác, không qua giao diện.",
+                        "sources": [{"kind": "external", "ref": rel, "tier": "NGUOI"}],
+                        "diff_prev": "xem diff của changeset",
+                        "next": "Tác tử đọc lại tệp trước khi sửa tiếp.",
+                        "confidence": "NGUOI"},
+                    noi_dung_truoc={rel: truoc} if truoc is not None else None)
+            except Exception:                                      # noqa: BLE001
+                continue
+            da_ghi.append((rel, cs))
+            # Sau khi đã ghi thành changeset thì bản này là bản EIDE biết: lần quét sau
+            # không được ghi lại nó lần nữa.
+            wt.danh_dau_eide_ghi(p, noi_dung)
+
+            # Tác tử đang giữ tệp này → đúng đường `lock_broken` đã có: nó dừng sửa tệp
+            # ấy, không tự ghi đè.
+            if rel in self.locks:
+                self.locks.discard(rel)
+                if emit:
+                    emit(uic.surface_unlock("code", block=rel))
+
+        if not da_ghi:
+            return
+        for rel, cs in da_ghi:
+            self.eide_md.note_human_edit(artefact=f"file:{rel}",
+                                         summary=f"sửa bên ngoài EIDE ({cs.id})",
+                                         why=None)
+        self.eide_md.save()
+        if emit is None:
+            return
+        cuoi = da_ghi[-1][1]
+        emit(uic.notice(
+            "Anh vừa sửa " + ", ".join(r for r, _ in da_ghi) + " bên ngoài EIDE — "
+            f"đã ghi thành thay đổi hoàn tác được ({cuoi.id}).", level="info"))
+        emit(uic.history_update(
+            changesets=[self.history.tom_tat(c) for _, c in da_ghi],
+            stale=[{"id": i} for _, c in da_ghi for i in c.stale_marked],
+            vua_ghi={"changeset": cuoi.id, "tom_tat": cuoi.explain.get("summary", ""),
+                     "session": None, "hoan_tac_duoc": bool(cuoi.reversible)}))
+
+    def _ban_eide_biet(self, rel: str) -> str | None:
+        """Nội dung tệp theo bản EIDE ghi nhận gần nhất — blob của changeset cuối chạm nó.
+
+        Đây là mốc để biết "đổi hay không đổi". Không có mốc thì mọi lần quét đầu tiên sau
+        khi mở app sẽ coi cả cây thư mục là người vừa sửa.
+
+        Mốc ấy đọc **thẳng từ git**, không tra sổ changeset. Lý do: blob trong changeset giữ
+        bản *TRƯỚC* lần ghi ấy, nên bản SAU của lần ghi gần nhất nằm trong changeset kế tiếp
+        — thứ chưa tồn tại. Dùng sổ changeset là lệch một nhịp.
+
+        Hệ quả phải nói ra: **dự án không có git thì không có mốc**, nên mọi lần sửa ngoài ở
+        đó chỉ được chặn bằng phép lọc thời gian `GIAY_TU_GHI`. §DEV-369 của DEV-LOG ghi đây
+        là giới hạn đã biết, không phải lỗi.
+        """
+        if self.history.git_san:
+            try:
+                sha = self.history.vcs.sha_hien_tai()
+                if sha:
+                    return self.history.vcs.noi_dung_tai(sha, rel)
+            except Exception:                                      # noqa: BLE001
+                return None
+        return None
 
     # ------------------------------------------------------------------ hỏi chỉ đọc
     def hoi_chi_doc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -1742,6 +1890,7 @@ class Agent:
             self.eide_md.save()
         else:
             p.write_text(moi, "utf-8")
+        ctx.eide_vua_ghi(path)
         return self.history.ghi_tep(
             author="human", paths=[path],
             summary=act.data.get("summary") or f"anh sửa {path}",

@@ -1022,7 +1022,20 @@ class History:
         return [self.tom_tat(c) for c in ds[-limit:]]
 
     def tom_tat(self, cs: Changeset) -> dict[str, Any]:
+        # Sửa từ BÊN NGOÀI EIDE (§DEV-369) — tab Lịch sử phải phân biệt được "anh sửa
+        # trong app" với "anh sửa bằng VS Code", vì cái thứ hai nghĩa là tác tử có thể
+        # đang giữ một bản đã cũ trong đầu.
+        #
+        # Nhận ra bằng `explain.sources`, không bằng một trường mới: xuất xứ của một thay
+        # đổi vốn đã ở đó. Và phải kẹp thêm hai điều kiện, không thì changeset NẠP BO
+        # (`forward.kind == "external"`, nghĩa "tác động ra ngoài máy" — một nghĩa khác
+        # hẳn của cùng chữ "external") cũng dính nhãn này.
+        ngoai = (cs.by_human
+                 and any(f.get("kind") == "file" for f in cs.forward)
+                 and any(s.get("kind") == "external"
+                         for s in (cs.explain.get("sources") or [])))
         return {
+            "ngoai_eide": ngoai,
             "id": cs.id, "ts": cs.ts, "author": cs.author, "run_id": cs.run_id,
             "tom_tat": cs.tom_tat(),
             "cham": [t.artefact_id for t in cs.touches],

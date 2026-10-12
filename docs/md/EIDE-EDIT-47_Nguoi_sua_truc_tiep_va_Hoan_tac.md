@@ -277,8 +277,6 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 
 ---
 
-<!-- se-co -->
-
 ### DEV-369 · Bắt sửa từ bên ngoài (VS Code, KiCad) — changeset `external`
 
 **Mục tiêu.** Luật nền 3 đúng với cách kỹ sư nhúng làm thật: sửa ở editor quen tay vẫn thành changeset hoàn tác được, vẫn kích hoạt `lock_broken` và STALE. Cờ `EIDE_FEATURE_WATCHER` (đổi thứ Agent thấy).
@@ -299,8 +297,6 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 **Ước lượng.** 2–3 ngày.
 
 ---
-
-<!-- /se-co -->
 
 ### DEV-370 · Duyệt có sửa, và sửa phương án trước khi chọn
 
