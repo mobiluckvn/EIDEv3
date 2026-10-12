@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -77,7 +78,15 @@ def _mo_app(g, lan: int = 3, giay: float = 60) -> None:
     for i in range(lan):
         subprocess.run(["pkill", "-f", "EIDE.app/Contents/MacOS/EIDE"], check=False)
         time.sleep(3)
-        subprocess.run(["open", str(REPO / "ui/EIDEApp/EIDE.app")], check=True)
+        # Chạy THẲNG tệp thực thi, không qua `open`.
+        #
+        # `open` đưa việc mở cho LaunchServices, và LaunchServices **không mang theo biến
+        # môi trường** của tiến trình gọi nó. Bộ đo này cần bật một cờ tính năng rồi mở
+        # lại app để đo cả hai chế độ — qua `open` thì cờ không tới được lõi, và phép đo
+        # "cờ bật thì sao" lặng lẽ đo lại đúng chế độ cờ tắt.
+        subprocess.Popen([str(REPO / "ui/EIDEApp/EIDE.app/Contents/MacOS/EIDE")],
+                         env=dict(os.environ),
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             g.san_sang(giay)
             return
@@ -284,6 +293,70 @@ def chay(du_an: pathlib.Path) -> int:
            bool(toast) and toast.get("con_hieu_luc") is True,
            json.dumps(toast, ensure_ascii=False))
 
+    # ---------------------------------------------------------------- G
+    b.phan("G · SỬA SÂU TRONG HIỆN VẬT, BÁC BỎ, XÁC NHẬN FACT (DEV-368)")
+
+    _ghi_tieu_chi(du_an)
+    g.ve_lai()
+    g.mo_tab("simulation")
+    a = g.chup("a8-tieu-chi")
+    kh = [k for k in a["khoi_tren_tab"] if k.get("sua_duoc_loai")]
+    b.kiem("Khối tiêu chí KHAI ra ô nào sửa được (I8)",
+           any(k["sua_duoc_loai"] == "criteria" for k in kh),
+           " · ".join(f"{k['code']}→{k['sua_duoc_loai']}" for k in kh) or "không khối nào")
+    b.kiem("Lõi khai đủ đường dẫn LỒNG, không phải tên trường cấp một",
+           any("assert/{row}/nguong" in (k.get("sua_duoc_duong") or []) for k in kh),
+           str([k.get("sua_duoc_duong") for k in kh]))
+
+    # HAI CHẾ ĐỘ, vì `EIDE_FEATURE_SUA_LONG` là một cờ và một cờ chỉ có nghĩa khi đo
+    # được cả hai phía. Chạy bộ này HAI LẦN, đúng cách dự án đo cờ:
+    #
+    #   python tools/thu_nut_lui.py                        # cờ tắt
+    #   EIDE_FEATURE_SUA_LONG=1 python tools/thu_nut_lui.py  # cờ bật
+    #
+    # Cố ý KHÔNG bật cờ rồi mở lại app giữa chừng: đã thử và nó làm kho hiện vật của dự
+    # án đo về trạng thái bản ưng ý — một hiệu ứng phụ của bộ đo, không phải của sản
+    # phẩm, nhưng nó làm mọi con số sau đó nói về một cái kho khác.
+    bat_co = (os.environ.get("EIDE_FEATURE_SUA_LONG") or "").strip() in ("1", "true")
+    b.buoc(f"Sửa ngưỡng của assert thứ HAI — cờ đang {'BẬT' if bat_co else 'TẮT'}")
+    _patch_a2(g)
+    a = g.doi_xong()
+    assertx = _tieu_chi(du_an)
+    if bat_co:
+        b.kiem("Cờ bật: phần tử thứ hai nhận giá trị mới", assertx[1]["nguong"] == 42,
+               str(assertx[1]))
+        b.kiem("Cờ bật: phần tử thứ nhất KHÔNG bị đụng tới", assertx[0]["nguong"] == 3.3,
+               str(assertx[0]))
+    else:
+        b.kiem("Cờ tắt: kho KHÔNG đổi", assertx[1]["nguong"] == 10, str(assertx[1]))
+        b.kiem("Cờ tắt: lõi nói ra TÊN CỜ, không im lặng bỏ qua",
+               any("SUA_LONG" in (t.get("chu") or "") for t in a.get("thong_bao") or []),
+               json.dumps(a.get("thong_bao") or [], ensure_ascii=False)[:150])
+
+    b.buoc("Xác nhận một Fact tầng BẠC — đường BẠC→VÀNG chỉ người đi được")
+    _ghi_fact(du_an)
+    g.ve_lai()
+    g._gui({"kind": "confirm", "target": {"type": "fact", "id": "f-do-1"},
+            "data": {"verdict": "dung"},
+            "note": "tôi tra datasheet trang 12, đúng là 3,6 V",
+            "origin": {"surface": "knowledge", "block": "A4.2", "row": "f-do-1"}})
+    g.doi_xong()
+    b.kiem("Fact lên tầng VÀNG", _tang_fact(du_an, "f-do-1") == "VANG",
+           _tang_fact(du_an, "f-do-1"))
+
+    b.buoc("Bác bỏ một phát hiện — ghi vào EIDE.md §Đừng")
+    _ghi_phat_hien(du_an)
+    g.ve_lai()
+    g._gui({"kind": "edit", "target": {"type": "analysis", "id": "PT-do-1"},
+            "data": {"base_version": "", "bac_bo": True, "summary": "bác bỏ PT-do-1"},
+            "note": "đây là ISR, trình liên kết gọi qua bảng vector",
+            "origin": {"surface": "code"}})
+    g.doi_xong()
+    md = (du_an / "EIDE.md").read_text("utf-8")
+    muc_dung = md.split("## Đừng", 1)[-1].split("\n## ", 1)[0]
+    b.kiem("Lý do nằm trong MỤC §Đừng của EIDE.md", "bảng vector" in muc_dung,
+           muc_dung.strip()[:120])
+
     # ---------------------------------------------------------------- Đ
     b.phan("Đ · ẢNH CHỤP CHO BÁO CÁO")
     g.mo_tab("history")
@@ -294,6 +367,47 @@ def chay(du_an: pathlib.Path) -> int:
            str(anh))
 
     return b.tong()
+
+
+def _patch_a2(g) -> None:
+    """Đúng thông điệp mà `FormEditor` gửi khi người sửa ô Ngưỡng của dòng thứ hai."""
+    g._gui({"kind": "edit", "target": {"type": "criteria", "id": "criteria:sim-01"},
+            "data": {"base_version": "v1",
+                     "patch": [{"path": "assert/1/nguong", "op": "set", "value": 42}],
+                     "summary": "sửa 1 ô của A2", "session_id": "es-do-3"},
+            "note": "tôi đo lại trên bo", "origin": {"surface": "simulation"}})
+
+
+def _ghi_tieu_chi(du_an: pathlib.Path) -> None:
+    k = _kho(du_an)
+    k.apply(artefact_id="criteria:sim-01", type="criteria", op="create",
+            author="agent:bo-do", explain=EX,
+            canonical={"ma": "sim-01",
+                       "assert": [{"ma": "A1", "mo_ta": "dòng nghỉ", "phep_so": "<=",
+                                   "nguong": 3.3, "don_vi": "mA"},
+                                  {"ma": "A2", "mo_ta": "thời gian khởi động",
+                                   "phep_so": "<=", "nguong": 10, "don_vi": "ms"}]})
+
+
+def _tieu_chi(du_an: pathlib.Path) -> list:
+    return (_kho(du_an).get("criteria:sim-01") or {}).get("canonical", {}).get("assert", [])
+
+
+def _ghi_fact(du_an: pathlib.Path) -> None:
+    _kho(du_an).put_fact({"fact_id": "f-do-1", "subject": "chip:X", "key": "vdd.max",
+                          "value": "3.6", "unit": "V", "tier": "BAC", "origin": "extract",
+                          "source": {"doc": "ds.pdf", "page": 12}, "explain": EX})
+
+
+def _tang_fact(du_an: pathlib.Path, fid: str) -> str:
+    return next((f["tier"] for f in _kho(du_an).query_facts(limit=99)
+                 if f["fact_id"] == fid), "—")
+
+
+def _ghi_phat_hien(du_an: pathlib.Path) -> None:
+    _kho(du_an).apply(artefact_id="PT-do-1", type="analysis", op="create",
+                      author="agent:bo-do", explain=EX,
+                      canonical={"vi_sao": "hàm ISR_TIM2 không ai gọi"})
 
 
 def _ban_ung_y(du_an: pathlib.Path) -> list[dict]:

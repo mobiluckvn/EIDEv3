@@ -41,6 +41,14 @@ HUMAN_ACT_KINDS: dict[str, str] = {
 SURFACES = {
     "console", "requirements", "documents", "knowledge", "design", "tools",
     "code", "simulation", "hardware", "journal", "history", "project", "settings",
+    # `screen` (A15) co tu DEV-364 ma danh sach nay khong duoc them vao, nen MOI thao tac
+    # cua nguoi tu tab Man hinh bi `validate()` nem tra: *"be mat la: 'screen'"*. Mot tab
+    # ve ra duoc, bam duoc, va khong gui duoc gi — chi lo ra khi DEV-368 mo o sua o day.
+    #
+    # Danh sach nay va `surfaces.SURFACES` la HAI danh sach viet cung mot thu o hai noi.
+    # `tests/test_edit47_patch.py::test_moi_be_mat_cua_loi_deu_gui_duoc_HumanAct` doi
+    # chieu chung — them tab lan sau se do o bo kiem, khong do o tay nguoi dung.
+    "screen",
 }
 
 

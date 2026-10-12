@@ -451,16 +451,28 @@ struct KhoiBang: View {
         }
     }
 
+    /// Đặc tả sửa được do LÕI gửi (I8). Có nó thì `cot_sua` không còn được dùng.
+    private var sd: SuaDuoc? { SuaDuoc(block.payload["sua_duoc"]) }
+
     @ViewBuilder
     private func hang(_ r: [JSONValue], chan: Bool) -> some View {
         let ma = r.first?.stringValue ?? ""
         let m = meta(ma)
         let w = beRong
+        let i = rowsHien.firstIndex(where: { $0.first?.stringValue == ma })
+            ?? rows.firstIndex(where: { $0.first?.stringValue == ma }) ?? 0
         HStack(alignment: .top, spacing: 0) {
             ForEach(Array(r.enumerated()), id: \.offset) { j, cell in
                 let cot = j < cols.count ? cols[j] : ""
                 let rong = j < w.count ? w[j] : 170
-                if let truong = cotSua[cot] {
+                if let sd, let t = truongCua(sd, cot: cot, maDong: ma) {
+                    OSuaTheoDuong(
+                        sd: sd, t: t, gia: cell.display,
+                        idHienVat: targetCua(sd, ma: ma), phienBan: phienBanCua(sd, ma: ma),
+                        row: i, ma: ma, khoi: block.code)
+                        .frame(width: rong, alignment: .leading)
+                        .padding(.vertical, 4).padding(.horizontal, 6)
+                } else if let truong = cotSua[cot] {
                     OSuaDuoc(ma: ma, truong: truong, gia: cell.display,
                              phienBan: m?["phien_ban"]?.intValue ?? 1,
                              khoi: block.code,
@@ -472,6 +484,12 @@ struct KhoiBang: View {
                         .frame(width: rong, alignment: .topLeading)
                         .padding(.vertical, 4).padding(.horizontal, 6)
                 }
+            }
+            // Nút của cả DÒNG: sửa nhiều ô một lần, bác bỏ, xác nhận Fact.
+            if let sd {
+                NutDongSuaDuoc(sd: sd, block: block, r: r, cols: cols, row: i, ma: ma,
+                               idHienVat: targetCua(sd, ma: ma),
+                               phienBan: phienBanCua(sd, ma: ma))
             }
             // Mỗi dòng có lớp giải thích riêng và thanh tác giả riêng.
             if let m {
@@ -494,6 +512,233 @@ struct KhoiBang: View {
         }
         .background(chan ? Color.clear
                     : Color(nsColor: .underPageBackgroundColor).opacity(0.5))
+    }
+
+    // MARK: - Tra đặc tả sửa được (I8 — lõi khai, đây chỉ tra)
+
+    /// Ô ở cột này / dòng này có sửa được không.
+    ///
+    /// Hai cách khớp, vì có hai hình dạng bảng: bảng mà mỗi DÒNG là một bản ghi (khớp
+    /// theo CỘT), và bảng mà mỗi dòng là một TRƯỜNG của một hồ sơ (khớp theo `dong`).
+    private func truongCua(_ sd: SuaDuoc, cot: String, maDong: String) -> SuaDuoc.Truong? {
+        sd.truong.first { t in
+            t.dong.isEmpty ? t.cot == cot : (t.dong == maDong && t.cot == cot)
+        }
+    }
+
+    /// Mã hiện vật để gửi đi, NGUYÊN VĂN như kho ghi. Khối-một-hiện-vật thì lấy
+    /// `artefact_id` mà `khoi_hien_vat` đã gửi sẵn — không đặt thêm khoá mới cho cùng
+    /// một thứ, và không tách nó ra: `criteria:sim-01` là cả cái mã, không phải hai phần.
+    private func targetCua(_ sd: SuaDuoc, ma: String) -> String {
+        sd.idTu == "block" ? (block.str("artefact_id") ?? "") : ma
+    }
+
+    private func phienBanCua(_ sd: SuaDuoc, ma: String) -> Int {
+        sd.idTu == "block"
+            ? (block.int("phien_ban") ?? 1)
+            : (meta(ma)?["phien_ban"]?.intValue ?? 1)
+    }
+}
+
+/// Một ô sửa được theo ĐƯỜNG DẪN — bản kế của `OSuaDuoc`, gửi `patch` thay vì `fields`.
+///
+/// `OSuaDuoc` vẫn còn và vẫn dùng cho bốn bảng cũ: chúng gửi `fields`, đi đường không cần
+/// cờ, nên gỡ chúng ngay là bắt người dùng bật một cờ mới mới sửa được thứ họ vẫn sửa.
+struct OSuaTheoDuong: View {
+    @EnvironmentObject var state: AppState
+    let sd: SuaDuoc
+    let t: SuaDuoc.Truong
+    let gia: String
+    let idHienVat: String
+    let phienBan: Int
+    let row: Int
+    let ma: String
+    let khoi: String
+
+    @State private var dangSua = false
+    @State private var moi = ""
+    @State private var nguon = ""
+    @State private var viSao = ""
+
+    var body: some View {
+        if dangSua {
+            VStack(alignment: .leading, spacing: 4) {
+                if t.kieu == "chon" {
+                    Picker("", selection: $moi) {
+                        ForEach(t.luaChon, id: \.self) { Text($0).tag($0) }
+                    }.labelsHidden().pickerStyle(.menu).font(.system(size: 11))
+                } else {
+                    TextField(t.goiY.isEmpty ? "giá trị mới" : t.goiY, text: $moi)
+                        .textFieldStyle(.roundedBorder).font(.system(size: 11))
+                }
+                if t.canNguon {
+                    TextField("nguồn — bỏ trống thì số này vào tầng NGƯỜI", text: $nguon)
+                        .textFieldStyle(.roundedBorder).font(.system(size: 10))
+                }
+                TextField("vì sao anh đổi?", text: $viSao)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 10))
+                HStack(spacing: 6) {
+                    Button("Lưu") { luu() }
+                        .font(.system(size: 10))
+                        .disabled(moi == gia
+                                  || (t.batBuoc
+                                      && moi.trimmingCharacters(in: .whitespaces).isEmpty))
+                    Button("Bỏ") { dangSua = false }
+                        .buttonStyle(.plain).font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            Button {
+                moi = gia; nguon = ""; viSao = ""; dangSua = true
+            } label: {
+                HStack(spacing: 4) {
+                    TextMd(gia).font(.system(size: 11))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(t.goiY.isEmpty
+                  ? "Bấm để sửa — thay đổi của anh thành một changeset hoàn tác được"
+                  : t.goiY)
+        }
+    }
+
+    private func luu() {
+        let act = FormEditor.actLuu(
+            sd: sd, idHienVat: idHienVat, phienBan: phienBan, row: row, ma: ma,
+            dangCo: [t.cot: gia], moi: [t.cot: moi], nguon: [t.cot: nguon],
+            viSao: viSao, khoi: khoi, surface: state.selectedSurface,
+            session: state.moPhienSua())
+        if let act { state.gui(act) }
+        dangSua = false
+    }
+}
+
+/// Nút của cả một DÒNG: sửa nhiều ô một lần · "Không phải lỗi" · "Xác nhận ✓ / Sai ✗".
+struct NutDongSuaDuoc: View {
+    @EnvironmentObject var state: AppState
+    let sd: SuaDuoc
+    let block: SurfaceBlock
+    let r: [JSONValue]
+    let cols: [String]
+    let row: Int
+    let ma: String
+    let idHienVat: String
+    let phienBan: Int
+
+    @State private var moBieuMau = false
+    @State private var moBacBo = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            if sd.truong.count > 1 {
+                Button { moBieuMau = true } label: {
+                    Image(systemName: "square.and.pencil").font(.system(size: 10))
+                }
+                .buttonStyle(.plain).foregroundStyle(Color.accentColor)
+                .help("Sửa cả dòng — nhiều ô, một lần lưu, một changeset")
+            }
+            if sd.bacBoDuoc {
+                Button("Không phải lỗi") { moBacBo = true }
+                    .buttonStyle(.plain).font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .help("Ghi vào EIDE.md §Đừng — tác tử sẽ không nêu lại")
+            }
+            if sd.xacNhanDuoc {
+                // Đường BẠC→VÀNG, §C1 nói **chỉ người đi được**.
+                Button("✓") { xacNhan("dung") }
+                    .buttonStyle(.plain).font(.system(size: 11))
+                    .foregroundStyle(Color.okGreen)
+                    .help("Xác nhận: con số này đúng — nâng lên tầng VÀNG")
+                Button("✗") { xacNhan("sai") }
+                    .buttonStyle(.plain).font(.system(size: 11))
+                    .foregroundStyle(Color.gateRed)
+                    .help("Sai — hạ xuống tầng ĐỒNG và đánh dấu hạ nguồn cần xem lại")
+            }
+        }
+        .sheet(isPresented: $moBieuMau) {
+            FormEditor(sd: sd, idHienVat: idHienVat, phienBan: phienBan,
+                       row: row, ma: ma,
+                       dangCo: dangCo, khoi: block.code, surface: state.selectedSurface)
+        }
+        .sheet(isPresented: $moBacBo) {
+            BacBoView(loai: sd.loai, idHienVat: idHienVat, ma: ma, khoi: block.code,
+                      surface: state.selectedSurface)
+        }
+    }
+
+    private var dangCo: [String: String] {
+        var d: [String: String] = [:]
+        for (j, c) in cols.enumerated() where j < r.count {
+            d[c] = r[j].display
+        }
+        return d
+    }
+
+    private func xacNhan(_ verdict: String) {
+        state.gui(HumanAct(
+            kind: .confirm, target: .init(type: "fact", id: ma),
+            data: ["verdict": .string(verdict)],
+            origin: .init(surface: state.selectedSurface, block: block.code, row: ma),
+            note: nil))
+    }
+}
+
+/// "Không phải lỗi" — và nó **đòi một lý do**.
+///
+/// Mục §Đừng của EIDE.md là ranh giới người đặt, tác tử đọc mỗi lượt và không được đề
+/// xuất lại. Một dòng "đừng" không nói vì sao thì lượt sau tác tử chỉ biết là bị cấm, và
+/// nó sẽ đề xuất lại đúng việc ấy bằng một cách gọi khác.
+struct BacBoView: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dong
+    let loai: String
+    let idHienVat: String
+    let ma: String
+    let khoi: String
+    let surface: String
+    @State private var lyDo = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Text("Không phải lỗi — \(ma)").font(.system(size: 14, weight: .semibold))
+            Text("Ghi vào **EIDE.md §Đừng**. Tác tử đọc mục ấy mỗi lượt và sẽ không nêu "
+                 + "lại phát hiện này.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            TextField("vì sao đây không phải lỗi?", text: $lyDo)
+                .textFieldStyle(.roundedBorder)
+            HStack {
+                Spacer()
+                Button("Bỏ") { dong() }
+                Button("Bác bỏ") {
+                    if Self.gui(state: state, loai: loai, idHienVat: idHienVat, ma: ma,
+                                lyDo: lyDo, khoi: khoi, surface: surface) { dong() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(lyDo.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(18).frame(width: 440)
+    }
+
+    @discardableResult
+    static func gui(state: AppState, loai: String, idHienVat: String, ma: String,
+                    lyDo: String, khoi: String, surface: String) -> Bool {
+        let l = lyDo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !l.isEmpty else { return false }
+        state.gui(HumanAct(
+            kind: .edit,
+            target: .init(type: loai, id: idHienVat),
+            data: ["base_version": .string(""), "bac_bo": .bool(true),
+                   "summary": .string("bác bỏ \(ma)")],
+            origin: .init(surface: surface, block: khoi, row: ma),
+            note: l))
+        return true
     }
 }
 

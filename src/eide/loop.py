@@ -29,6 +29,7 @@ và nó đổi hướng.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -523,6 +524,8 @@ class Agent:
             return self._dieu_huong(act, ctx)
         if act.kind == "edit":
             return self._nguoi_sua(act, ctx)
+        if act.kind == "confirm":
+            return self._nguoi_xac_nhan_fact(act, ctx)
         if act.kind == "undo":
             return self._nguoi_hoan_tac(act, ctx)
         if act.kind == "snapshot":
@@ -1339,13 +1342,20 @@ class Agent:
         # I10 (EIDE-EDIT-47 §2) — một mốc lùi TRƯỚC lần sửa đầu tiên của người. Đặt ở đây,
         # trước cả ba nhánh sửa, nên mọi đường người đi đều có chỗ quay về.
         self._moc_lui_cho_nguoi(act, ctx)
-        if t.type == "criteria":
+        # Đường `patch` đi thẳng tới `_sua_hien_vat` cho MỌI loại.
+        #
+        # Hai nhánh riêng dưới đây (`criteria`, `symbol`) có trước đường dẫn lồng, và cả
+        # hai chỉ biết đọc `fields`. Để chúng chặn trước thì một `patch` vào tiêu chí sẽ
+        # rơi vào nhánh cũ, nhánh ấy đọc `fields` thấy rỗng, và lần lưu **im lặng không
+        # đổi gì** — kiểu hỏng tệ nhất: người bấm Lưu, không có lỗi nào, không có gì đổi.
+        co_patch = bool(act.data.get("patch"))
+        if t.type == "criteria" and not co_patch:
             # §E2: "Sửa ngưỡng (→ G-QUAL nếu đã có kết quả)… Kết quả sim → STALE".
             # Người sửa tiêu chí của chính họ thì KHÔNG phải hỏi — cổng G-QUAL là để chặn
             # TÁC TỬ tự nới ngưỡng. Nhưng kết quả cũ phải thành lỗi thời ngay, vì nó được đo
             # bằng một thước đã khác.
             return self._nguoi_sua_tieu_chi(act, ctx)
-        if t.type == "symbol":
+        if t.type == "symbol" and not co_patch:
             # SCH-14/15 — người xác nhận hoặc sửa kiểu chân một ký hiệu. Đi nhánh RIÊNG, không
             # qua `_sua_hien_vat`: kiểu chân nằm sâu trong `anh_xa[ref].chan[i].kieu`, mà đường
             # sửa hiện vật chung chỉ thay được trường ở cấp một. Nới nó ra để chạm tới đây là
@@ -1606,8 +1616,39 @@ class Agent:
                 "Mở tab tương ứng để xem kho đang có gì.", level="error"))
             return None
 
+        patch = act.data.get("patch") or []
+        if patch and not self.config.features.bat("sua_long"):
+            ctx.emit(uic.notice(
+                "Sửa theo đường dẫn lồng đang TẮT (cờ `EIDE_FEATURE_SUA_LONG`). "
+                "Chưa ghi gì cả — bật cờ trong Thiết lập rồi thử lại.",
+                level="warn", code="E_CO_TAT"))
+            return None
+
         base = str(act.data.get("base_version", "")).lstrip("v")
-        if base and base.isdigit() and int(base) != cu["version"]:
+        if patch and base and base.isdigit() and int(base) != cu["version"]:
+            # Xung đột theo ĐƯỜNG DẪN, không theo trường cấp một (DEV-368).
+            #
+            # Hai người sửa hai phần tử khác nhau của cùng một danh sách — `elements/2/x`
+            # và `elements/7/chu` — là hai việc không đụng nhau. Đường cũ so ở cấp một thì
+            # cả hai cùng chạm `elements`, nên nó bắt người chọn giữ bản nào cho một xung
+            # đột không có thật. Và nó bắt sai theo chiều nguy hơn nữa: hai người sửa CÙNG
+            # một phần tử thì đường cũ cũng chỉ thấy `elements`, tức cùng một tín hiệu cho
+            # hai tình huống ngược nhau.
+            goc = self.history.canonical_tai(aid, int(base))
+            dung = [str(p.get("path")) for p in patch
+                    if _da_doi_o_duong(goc, cu["canonical"], str(p.get("path") or ""))]
+            if dung:
+                raise _XungDot(
+                    aid,
+                    cua_nguoi="; ".join(f"{d} = {p.get('value')}"
+                                        for d, p in zip(dung, patch)),
+                    cua_tac_tu="; ".join(
+                        f"{d} = {he.doc_duong(cu['canonical'], d)}" for d in dung),
+                    goc=None,
+                    vi_sao=f"anh mở bản v{base}, nhưng kho đã ở v{cu['version']} — "
+                           f"đường {', '.join(dung)} đã đổi từ lúc đó")
+
+        if base and base.isdigit() and int(base) != cu["version"] and not patch:
             # Cùng hiện vật, hai người sửa. Trộn theo TRƯỜNG: khác trường thì gộp được,
             # cùng trường khác giá trị thì để người chọn (§E4 bước 3).
             fields = act.data.get("fields") or {}
@@ -1622,14 +1663,34 @@ class Agent:
                            f"trường {', '.join(dung)} đã đổi từ lúc đó")
 
         truoc = dict(cu["canonical"])
-        can = dict(truoc)
-        can.update(act.data.get("fields") or {})
+        bb = bool(act.data.get("bac_bo"))
+        if patch:
+            try:
+                can = he.ap_patch(truoc, patch)
+            except EideError as e:
+                # Lỗi đường dẫn thì KHÔNG ghi nửa vời: I9 nói lưu của người là nguyên tử.
+                ctx.emit(uic.notice(
+                    f"Không áp được thay đổi: {e.message_vi} — chưa ghi gì cả.",
+                    level="error", code=e.code))
+                ctx.said_anything = True
+                return None
+        else:
+            can = dict(truoc)
+            can.update(act.data.get("fields") or {})
+
+        if bb:
+            # §E4.1 dòng "Bác bỏ" — đánh dấu NGAY TRÊN hiện vật, không chỉ ghi vào EIDE.md.
+            # Hai chỗ vì hai người đọc: EIDE.md là thứ mô hình đọc mỗi lượt, còn dấu trên
+            # hiện vật là thứ bề mặt đọc để ẩn dòng ấy đi.
+            can["bac_bo"] = {"boi": act.id or "gui", "ly_do": act.note or "",
+                             "khi": _hom_nay()}
 
         # §E4.1 — không phải sửa nào cũng như nhau. Đổi tên một khối không được làm
         # cả chuỗi hạ nguồn sáng đèn cảnh báo (CX08).
         pl = he.phan_loai(truoc=truoc, sau=can,
                           lock_broken=bool(act.data.get("lock_broken")),
-                          bac_bo=bool(act.data.get("bac_bo")))
+                          bac_bo=bb,
+                          duong_dan_doi=[str(p.get("path")) for p in patch] or None)
         ctx.phan_loai_sua = pl
 
         cs = self.history.ghi_kho(
@@ -1637,6 +1698,13 @@ class Agent:
             canonical=can, explain=self._explain_cua_nguoi(act, f"anh sửa {aid}"),
             human_act_id=act.id, note=act.note, run_id=ctx.run_id,
             gay_stale=pl.gay_stale)
+
+        if bb:
+            self.eide_md.append_line(
+                "Đừng",
+                f"- {aid}: {act.note or 'anh bác bỏ, không nêu lý do'}"
+                f" *(bác bỏ {_hom_nay()}, {cs.id})*", boi="nguoi")
+            self.eide_md.save()
 
         # §E4 bước 3 / CX05 — số mới người vừa nhập mà chưa truy vết được thì thành
         # Fact tầng NGƯỜI, chứ không biến mất vào một ô trong bảng.
@@ -1650,6 +1718,125 @@ class Agent:
             for s in he.so_moi_khong_nguon(truoc=truoc, sau=can, nguon_da_co=nguon)
         ]
         return cs
+
+    # ------------------------------------------------------- người xác nhận Fact (§3.4)
+    def _nguoi_xac_nhan_fact(self, act: HumanAct, ctx: TurnContext) -> None:
+        """`HumanAct kind=confirm` — đường BẠC→VÀNG mà **chỉ người đi được** (§C1).
+
+        Loại thứ tư trong mười ba loại, có trong giao thức từ đầu, và `grep "confirm"`
+        trong `loop.py` = **0** cho tới gói này: giao diện không gửi, mà lõi cũng không
+        có nhánh nào nhận. Một con số BẠC (mã đọc thẳng từ PDF, chưa ai xem lại) nằm im
+        ở tầng BẠC mãi mãi, vì đường nâng tầng duy nhất không có ai đi.
+
+        Ba phán quyết, theo §3.4:
+          · `dung` → BẠC lên VÀNG, ghi `confirmed_by`;
+          · `sai`  → xuống ĐỒNG, và **hạ nguồn của nó thành lỗi thời** — thứ dựng trên một
+            con số vừa bị bác thì không còn đứng được;
+          · `sua`  → Fact MỚI tầng NGƯỜI thay chỗ, Fact cũ `superseded_by`.
+        """
+        t = act.target
+        if t is None or t.type != "fact":
+            ctx.emit(uic.notice("Xác nhận cái gì? `confirm` cần target là một Fact.",
+                                level="error"))
+            ctx.said_anything = True
+            return
+        fid = t.id
+        f = next((x for x in self.store.query_facts(limit=2000)
+                  if str(x.get("fact_id")) == fid), None)
+        if f is not None:
+            # `query_facts` trả thẳng dòng SQL: `source` và `explain` còn là chuỗi JSON.
+            # Lấy nguyên chuỗi ấy rồi `{**chuoi}` thì nổ `'str' object is not a mapping`
+            # — và nổ ở giữa một thao tác nâng tầng tin cậy.
+            f = dict(f)
+            for k in ("source", "explain"):
+                if isinstance(f.get(k), str):
+                    try:
+                        f[k] = json.loads(f[k] or "{}")
+                    except ValueError:
+                        f[k] = {}
+        if f is None:
+            ctx.emit(uic.notice(f"Không có Fact nào mã {fid}.", level="error"))
+            ctx.said_anything = True
+            return
+
+        verdict = str(act.data.get("verdict") or "").strip()
+        loi_nguoi = (act.note or "").strip()
+        if verdict not in ("dung", "sai", "sua"):
+            ctx.emit(uic.notice(
+                f"Phán quyết lạ: “{verdict}”. Chỉ nhận `dung`, `sai` hoặc `sua`.",
+                level="error"))
+            ctx.said_anything = True
+            return
+        if not loi_nguoi:
+            # Cùng lý lẽ với `_nguoi_xac_nhan_ky_hieu`: một xác nhận không có lời của
+            # người là một xác nhận của máy đội tên người, và tầng VÀNG là tầng cao nhất.
+            ctx.emit(uic.notice(
+                f"Chưa ghi xác nhận cho {fid}: cần một câu của anh (ô “vì sao”). "
+                "Tầng VÀNG nói “đã có người xác nhận” — nên phải có lời người thật.",
+                level="warn", code="E8009"))
+            ctx.said_anything = True
+            return
+
+        cu_tang = str(f.get("tier") or "")
+        moi = dict(f)
+        moi["source"] = {**(f.get("source") or {}),
+                         "confirmed_by": f"human_act:{act.id or 'gui'}",
+                         "quote": loi_nguoi}
+        ha_nguon: list[str] = []
+        if verdict == "dung":
+            moi["tier"] = "VANG"
+            moi["approved_by"] = "nguoi"
+            moi["approved_at"] = _hom_nay()
+            loi = (f"**{f.get('key')} = {f.get('value')} {f.get('unit') or ''}** lên "
+                   f"tầng VÀNG theo xác nhận của anh (trước: {cu_tang}).")
+        elif verdict == "sai":
+            moi["tier"] = "DONG"
+            loi = (f"**{f.get('key')}** xuống tầng ĐỒNG — anh nói nó sai. Mọi thứ dựng "
+                   "trên nó giờ cần xem lại.")
+        else:
+            gt = str(act.data.get("gia_tri_moi") or "").strip()
+            if not gt:
+                ctx.emit(uic.notice("Sửa Fact thì phải có giá trị mới.", level="error"))
+                ctx.said_anything = True
+                return
+            moi["tier"] = "NGUOI"
+            moi["value"] = gt
+            moi["origin"] = "user"
+            if act.data.get("nguon"):
+                moi["source"]["nguon_nguoi_cho"] = str(act.data["nguon"])
+            loi = (f"**{f.get('key')}** nay là **{gt}** ở tầng NGƯỜI — anh cho con số này; "
+                   "mọi chỗ dùng tôi sẽ ghi rõ *(anh cho, chưa có tài liệu)*.")
+
+        moi["explain"] = {
+            "summary": f"anh {('xác nhận' if verdict == 'dung' else 'bác' if verdict == 'sai' else 'sửa')} {f.get('key')}",
+            "why": loi_nguoi,
+            "sources": [self._nguon_nguoi(act)],
+            "diff_prev": f"tầng {cu_tang} → {moi['tier']}",
+            "next": "—", "confidence": "NGUOI",
+        }
+        # Đi qua `ghi_kho` chứ không gọi thẳng `put_fact`: không có changeset thì việc này
+        # KHÔNG hoàn tác được, và nó là một thao tác nâng tầng tin cậy — đúng loại việc
+        # người hay làm nhầm rồi muốn lùi.
+        cs = self.history.ghi_kho(
+            author="human", artefact_id=f"fact:{fid}", type="fact", op="update",
+            canonical={k: v for k, v in moi.items() if k != "explain"},
+            explain=moi["explain"], human_act_id=act.id, note=act.note,
+            run_id=ctx.run_id, gay_stale=(verdict == "sai"))
+        self.store.put_fact(moi)
+        if verdict == "sai":
+            ha_nguon = list(cs.stale_marked)
+
+        self.eide_md.note_human_edit(artefact=f"fact:{fid}",
+                                     summary=moi["explain"]["summary"], why=loi_nguoi)
+        self.eide_md.save()
+        ctx.emit(uic.console_post(
+            loi + f" ({cs.id})"
+            + (f"\n\nHạ nguồn cần xem lại: {', '.join(ha_nguon)}." if ha_nguon else ""),
+            role="agent"))
+        ctx.emit(uic.history_update(changesets=[self.history.tom_tat(cs)],
+                                    stale=[{"id": i} for i in ha_nguon],
+                                    vua_ghi=self._vua_ghi(act, cs)))
+        ctx.said_anything = True
 
     def _nguon_nguoi(self, act: HumanAct, *, kind: str = "human_act") -> dict[str, Any]:
         """Xuất xứ "người làm" cho `explain.sources[0]`, kèm MÃ PHIÊN SỬA nếu có.
@@ -2223,6 +2410,33 @@ class _XungDot(Exception):
 def _bam(s: str) -> str:
     import hashlib
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def _hom_nay() -> str:
+    from datetime import date
+    return date.today().isoformat()
+
+
+def _da_doi_o_duong(goc: dict[str, Any] | None, hien: dict[str, Any],
+                    duong: str) -> bool:
+    """Đường dẫn này có đổi kể từ bản người đã mở không?
+
+    So BẢN GỐC với bản hiện tại — không so với thứ người định ghi. Hỏi "giá trị hiện tại
+    có khác cái người sắp đặt không" thì MỌI lần sửa đều thành xung đột: dĩ nhiên là
+    khác, đó là lý do họ sửa.
+
+    Không tìm lại được bản gốc (sổ changeset không có phiên bản ấy) thì coi là CÓ đổi:
+    không biết thì hỏi người, đừng đoán rồi ghi đè.
+    """
+    from . import human_edit as he
+
+    if goc is None:
+        return True
+    try:
+        return he.doc_duong(goc, duong) != he.doc_duong(hien, duong)
+    except EideError:
+        # Một trong hai bên không còn đường ấy nữa — phần người định sửa đã biến mất.
+        return True
 
 
 def _hau_qua(call: dict[str, Any], ctx: Any, perm: Any, spec: Any) -> list[str]:

@@ -53,6 +53,76 @@ def block(code: str, title: str, type: str, **kw: Any) -> dict[str, Any]:
     return b
 
 
+# =========================================================================== sửa được
+def truong(path: str, cot: str, *, kieu: str = "chu", don_vi: str = "",
+           bat_buoc: bool = False, gay_stale: bool = True, goi_y: str = "",
+           lua_chon: list[str] | None = None, dong: str = "",
+           can_nguon: bool = False) -> dict[str, Any]:
+    """Một ô sửa được — EIDE-EDIT-47 §3.2.
+
+    `path` là đường dẫn LỒNG trong `canonical`, có thể mang hai chỗ thay:
+      · `{row}` → **chỉ số dòng** trong `rows` của khối (đếm từ 0);
+      · `{ma}`  → **cột đầu** của dòng ấy.
+
+    Hai chỗ thay ấy là hợp đồng với giao diện, và nó được ghi ở đây chứ không ở phía
+    Swift: giao diện thay chữ rồi gửi về, lõi áp. Nếu mỗi bên tự hiểu một kiểu thì một
+    bảng sẽ ghi vào đúng dòng của dòng khác.
+    """
+    d: dict[str, Any] = {"path": path, "cot": cot, "kieu": kieu,
+                         "gay_stale": gay_stale}
+    if don_vi:
+        d["don_vi"] = don_vi
+    if bat_buoc:
+        d["bat_buoc"] = True
+    if goi_y:
+        d["goi_y"] = goi_y
+    if lua_chon:
+        d["lua_chon"] = lua_chon
+    if can_nguon:
+        # §E4 bước 3 / CX05 — trường kỹ thuật thì một con số không nguồn là một con số
+        # không ai kiểm được. Giao diện hiện thêm ô "nguồn" ngay cạnh.
+        d["can_nguon"] = True
+    if dong:
+        # Bảng mà mỗi DÒNG là một trường (hồ sơ panel, hộ chiếu chip): ô sửa được nằm ở
+        # dòng có cột đầu bằng chuỗi này, không phải ở một cột.
+        d["dong"] = dong
+    return d
+
+
+def sua_duoc(loai: str, truong_ds: list[dict[str, Any]], *,
+             id_tu: str = "row", phien_ban_tu: str = "row_meta.phien_ban",
+             them_xoa: dict[str, Any] | None = None,
+             bac_bo_duoc: bool = False,
+             xac_nhan_duoc: bool = False) -> dict[str, Any]:
+    """Đặc tả "ô nào sửa được" gắn vào một khối — bất biến I8 của EIDE-EDIT-47.
+
+    **Lõi khai, giao diện không suy.** Trước gói này giao diện biết ô nào sửa được bằng
+    `cot_sua` — một bảng *tên cột → tên trường*, tức nó phải đoán từ TÊN CỘT. Bốn bảng
+    dùng được cách ấy vì cả bốn sửa trường cấp một; loại hiện vật nào có cấu trúc lồng
+    thì không có cách nào nói ra.
+
+    `id_tu`:
+      · `"row"`   — mỗi DÒNG là một hiện vật; `target.id` lấy ở cột đầu;
+      · `"block"` — cả KHỐI là một hiện vật (`block.ma_hien_vat`), mỗi dòng là một phần
+        tử bên trong nó, và `{row}` trong `path` là chỉ số dòng.
+    """
+    return {"loai": loai, "id_tu": id_tu, "phien_ban_tu": phien_ban_tu,
+            "truong": truong_ds,
+            **({"them_xoa": them_xoa} if them_xoa else {}),
+            **({"bac_bo_duoc": True} if bac_bo_duoc else {}),
+            **({"xac_nhan_duoc": True} if xac_nhan_duoc else {})}
+
+
+def _sua_duoc_tu_cot_sua(cot_sua: dict[str, str], loai: str) -> dict[str, Any]:
+    """Dựng `sua_duoc` tương đương từ `cot_sua` cũ — §3.2 dòng cuối.
+
+    Để bốn bảng cũ không phải sửa ngay mà vẫn đi đường mới, và để giao diện chỉ còn MỘT
+    đường đọc. Trường nào cũng coi là chữ và gây STALE: đó đúng là thứ `cot_sua` nói
+    được, không hơn.
+    """
+    return sua_duoc(loai, [truong(t, c) for c, t in cot_sua.items()])
+
+
 def khoi_hien_vat(code: str, title: str, type: str, a: dict[str, Any],
                   **kw: Any) -> dict[str, Any]:
     """Khối gắn với MỘT hiện vật — mang theo đủ lớp giải thích (§E2, §E3).
@@ -201,6 +271,12 @@ def requirements(store: Any, inv: Any, ledger: Any = None) -> dict[str, Any]:
             # kèm ô "vì sao". Giao diện đọc đúng danh sách này để biết ô nào cho gõ.
             editable_fields=["text", "criteria"],
             cot_sua={"Yêu cầu": "text", "Tiêu chí đo": "criteria"},
+            sua_duoc=sua_duoc("req", [
+                truong("text", "Yêu cầu", kieu="van_ban_dai", bat_buoc=True,
+                       goi_y="một câu nói rõ hệ thống phải làm được gì"),
+                truong("criteria", "Tiêu chí đo", kieu="van_ban_dai",
+                       goi_y="đo bằng gì, ngưỡng bao nhiêu — không đo được thì không chốt được"),
+            ]),
             # Mỗi dòng mang phiên bản và lớp giải thích riêng — nút "Vì sao?" trên
             # từng dòng chứ không phải trên cả bảng.
             row_meta={r["id"]: {"phien_ban": r["version"],
@@ -236,6 +312,15 @@ def requirements(store: Any, inv: Any, ledger: Any = None) -> dict[str, Any]:
                    ", ".join(o["canonical"].get("khong_dap_ung", [])),
                    "; ".join(o["canonical"].get("rui_ro", [])),
                    "★" if o["canonical"].get("da_chon") else ""] for o in opts],
+            sua_duoc=sua_duoc("option", [
+                truong("ten", "Tên"),
+                truong("kien_truc", "Kiến trúc", kieu="van_ban_dai"),
+                truong("chi_phi_uoc", "Chi phí ước"),
+                truong("do_kho", "Độ khó"),
+                # `da_chon` là một QUYẾT ĐỊNH, không phải một ô chữ: `phan_loai` xếp nó
+                # vào loại `quyet_dinh` và tác tử phải hỏi giữ nhánh cũ hay bỏ (§E4.1).
+                truong("da_chon", "Chốt", kieu="bool"),
+            ]),
             stale=[o["id"] for o in opts if o["stale"]]))
     else:
         blocks.append(empty(
@@ -256,6 +341,10 @@ def requirements(store: Any, inv: Any, ledger: Any = None) -> dict[str, Any]:
                    _ai_quyet(a, cong),
                    a["canonical"].get("trich_loi_nguoi", ""),
                    "; ".join(a["canonical"].get("he_qua", []))] for a in adrs],
+            sua_duoc=sua_duoc("adr", [
+                truong("tieu_de", "Quyết định", kieu="van_ban_dai"),
+                truong("chon", "Chọn", bat_buoc=True),
+            ]),
             stale=[a["id"] for a in adrs if a["stale"]]))
     else:
         blocks.append(empty(
@@ -326,7 +415,16 @@ def _khoi_ke_hoach(store: Any) -> list[dict[str, Any]]:
                    "chi_phi": str(b.get("chi_phi") or ""),
                    "cong": str(b.get("cong") or ""),
                    "ghi_chu": str(b.get("ghi_chu") or ""),
-                   "xong": bool(b.get("xong"))} for j, b in enumerate(buoc)]))
+                   "xong": bool(b.get("xong"))} for j, b in enumerate(buoc)],
+            sua_duoc=sua_duoc("plan", [
+                truong("steps/{row}/viec", "Việc", kieu="van_ban_dai", bat_buoc=True),
+                truong("steps/{row}/kiem_bang", "Kiểm bằng",
+                       goi_y="bước xong thì nhìn vào đâu để biết nó xong"),
+                truong("steps/{row}/ghi_chu", "Ghi chú", gay_stale=False),
+            ], id_tu="block",
+               them_xoa={"path": "steps",
+                         "mau": {"viec": "", "cong_cu": "", "hien_vat": "",
+                                 "kiem_bang": "", "ghi_chu": "", "xong": False}})))
     return ra
 
 
@@ -381,6 +479,14 @@ def documents(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
                    d["canonical"].get("pages", ""),
                    d["canonical"].get("publisher", "") or "—",
                    (d["canonical"].get("hash", "") or "")[:12]] for d in docs],
+            # Sửa được đúng hai thứ, và cả hai là NHÃN: tiêu đề tài liệu trích ra nhiều
+            # khi là dòng đầu của trang bìa, còn số hiệu bản thì PDF hay không ghi. Nội
+            # dung và số trang thì KHÔNG — chúng là của tệp, không phải của ai gõ vào.
+            sua_duoc=sua_duoc("doc", [
+                truong("title", "Tên", gay_stale=False),
+                truong("version", "Phiên bản", gay_stale=False,
+                       goi_y="số hiệu bản tài liệu, ví dụ Rev 7"),
+            ]),
             row_meta={d["id"]: {"phien_ban": d["version"],
                                 "tac_gia": "tac_tu", "explain": d["explain"]}
                       for d in docs}))
@@ -470,8 +576,21 @@ def documents(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
 def knowledge(store: Any, inv: Any) -> dict[str, Any]:
     blocks: list[dict[str, Any]] = []
     if inv.passport:
-        blocks.append(block("A4.1", "Hộ chiếu chip", "kv",
-                            pairs=[["Chip", inv.passport], ["ISA", inv.isa or "chưa rõ"]]))
+        hc = store.get(inv.passport)
+        # Bí danh là thứ DUY NHẤT của hộ chiếu mà người đặt: "bo của em", "bo trên bàn".
+        # Tên chip và ISA đọc từ tài liệu — gõ đè lên chúng là tự chế ra một hằng số phần
+        # cứng, đúng cái dự án này đã trả giá ba lần.
+        blocks.append(khoi_hien_vat(
+            "A4.1", "Hộ chiếu chip", "kv", hc,
+            pairs=[["Chip", inv.passport], ["ISA", inv.isa or "chưa rõ"],
+                   ["Bí danh", (hc["canonical"].get("bi_danh") or "— chưa đặt —")]],
+            sua_duoc=sua_duoc("passport", [
+                truong("bi_danh", "Bí danh", dong="Bí danh", gay_stale=False,
+                       goi_y="tên anh quen gọi bo này"),
+            ], id_tu="block"))
+            if hc else block("A4.1", "Hộ chiếu chip", "kv",
+                             pairs=[["Chip", inv.passport],
+                                    ["ISA", inv.isa or "chưa rõ"]]))
     else:
         blocks.append(empty(
             "A4.1", "Hộ chiếu chip",
@@ -548,6 +667,11 @@ def design(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
         thieu = [d.get("ten") for d in dong if not d.get("datasheet")]
         khoi.append(block(
             "A5.4", "BOM — linh kiện đã chốt", "table",
+            sua_duoc=sua_duoc("bom", [
+                truong("so_luong", "SL", kieu="so_nguyen"),
+                truong("gia_tri", "Giá trị", goi_y="ví dụ 4,7 kΩ · 100 nF"),
+                truong("ghi_chu", "Ghi chú", gay_stale=False),
+            ]),
             summary=(f"{len(dong)} dòng"
                      + (f" · {len(thieu)} linh kiện CHƯA có datasheet" if thieu else "")),
             columns=["Mã", "Linh kiện", "SL", "Lý do chọn", "Giá ước", "Datasheet"],
@@ -966,6 +1090,7 @@ def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:
                          f"{len(thieu)} chỗ CHƯA ĐỦ DỮ KIỆN · "
                          f"{len(erc) - len(nang) - len(cb) - len(thieu)} đạt"
                          + (" — 'chưa đủ dữ kiện' KHÔNG phải đạt" if thieu else "")),
+                sua_duoc=sua_duoc("report", [], id_tu="block", bac_bo_duoc=True),
                 columns=["Khối", "Luật", "Kết luận", "Điều gì", "Cách sửa"],
                 rows=[[x.get("path", ""), x.get("luat", ""),
                        _ket_luan_vi(x.get("ket_luan", "")), x.get("vi", ""),
@@ -1027,6 +1152,12 @@ def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:
                    ", ".join(m.get("tin_hieu_ra") or []) or "—",
                    m.get("rail") or "—", ", ".join(m.get("dap_ung_req") or []) or "—"]
                   for m in c.get("khoi") or []],
+            sua_duoc=sua_duoc("block_diagram", [
+                truong("khoi/{row}/ten", "Khối", gay_stale=False),
+                truong("khoi/{row}/muc_dich", "Việc", kieu="van_ban_dai"),
+                truong("khoi/{row}/rail", "Nguồn",
+                       goi_y="rail cấp cho khối này — ví dụ 3V3"),
+            ], id_tu="block"),
             stale=[mg["id"]] if mg["stale"] else []))
         mm = (mg.get("view_hint") or {}).get("text", "")
         if mm:
@@ -1050,6 +1181,13 @@ def _khoi_ban_do_mach(store: Any) -> list[dict[str, Any]]:
                    _tang_vi(g.get("tier", "")),
                    "có" if g.get("af_kiem_duoc") else "KHÔNG",
                    g.get("fact_id") or "—"] for g in gan],
+            sua_duoc=sua_duoc("pinout", [
+                # Gán lại một chân là chuyện có hậu quả tới tận mạch in, nên nó PHẢI có
+                # nguồn: datasheet nói chân ấy làm được chức năng này ở AF nào.
+                truong("gan/{row}/chuc_nang", "Chức năng", bat_buoc=True, can_nguon=True,
+                       goi_y="ví dụ I2C1_SCL — và trang datasheet nói chân này làm được"),
+                truong("gan/{row}/net", "Net", gay_stale=False),
+            ], id_tu="block"),
             stale=[p["id"]] if p["stale"] else []))
 
     nl = store.get(K.MA_NETLIST)
@@ -1267,8 +1405,14 @@ def _khoi_phan_tich_ma(store: Any, goc: str = "") -> list[dict[str, Any]]:
                     f"{a.get('version', 1)} vẫn còn trong kho.*")
         muc.append({"ten": f"{duong} · v{a.get('version', 1)}", "than": than})
 
+    # "Sửa được" của một PHÁT HIỆN không phải là gõ đè lên nó — là **bác bỏ** nó.
+    #
+    # Một nhận định máy đọc ra từ mã mà người sửa chữ trong đó thì nó không còn là nhận
+    # định của máy nữa, và lần chạy sau sẽ ghi đè. Cái người thật sự cần là nói "chỗ này
+    # không phải lỗi" MỘT LẦN và tác tử đừng nêu lại — đó là mục §Đừng của EIDE.md.
     return [block("A7.2", "Phân tích mã trước khi sửa", "sections",
                   summary=(f"{len(muc)} tài liệu — đọc trước khi đổi mã có sẵn"),
+                  sua_duoc=sua_duoc("analysis", [], id_tu="block", bac_bo_duoc=True),
                   sections=muc)]
 
 
@@ -1359,6 +1503,12 @@ def code_surface(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
                 can_truoc=can.get("can_truoc", []),
                 buoc=[{**b, "trang_thai": (td.get(str(b.get("so"))) or {}).get("trang_thai", "")}
                       for b in can.get("buoc", [])],
+                sua_duoc=sua_duoc("procedure", [
+                    truong("buoc/{row}/viec", "Việc", kieu="van_ban_dai"),
+                    truong("buoc/{row}/lenh", "Lệnh", kieu="ma"),
+                    truong("buoc/{row}/ket_qua_mong_doi", "Kết quả mong đợi",
+                           kieu="van_ban_dai"),
+                ], id_tu="block"),
                 stale=[a["id"]] if a["stale"] else []))
     else:
         khoi.append(empty(
@@ -1405,6 +1555,17 @@ def simulation(store: Any, inv: Any) -> dict[str, Any]:
                      "Ngưỡng lấy từ đâu"],
             cot_sua={"Ngưỡng": "nguong"},
             loai_sua="criteria",
+            sua_duoc=sua_duoc("criteria", [
+                truong("assert/{row}/nguong", "Ngưỡng", kieu="so", bat_buoc=True,
+                       can_nguon=True,
+                       goi_y="đổi thước đo thì kết quả cũ thành lỗi thời — nói nguồn"),
+                truong("assert/{row}/phep_so", "Phép so", kieu="chon",
+                       lua_chon=["<=", ">=", "==", "trong_khoang"]),
+                truong("assert/{row}/mo_ta", "Đo gì", kieu="van_ban_dai"),
+            ], id_tu="block",
+               them_xoa={"path": "assert",
+                         "mau": {"ma": "", "mo_ta": "", "phep_so": ">=", "nguong": 0,
+                                 "don_vi": "", "nguon_nguong": ""}}),
             rows=[[x.get("ma", ""), x.get("mo_ta", ""), x.get("phep_so", ""),
                    (f"{x.get('nguong')}–{x.get('nguong_tren')}"
                     if x.get("phep_so") == "trong_khoang" else str(x.get("nguong", ""))),
@@ -1779,7 +1940,11 @@ def project(eide_md: Any, inv: Any, assumptions: list[str], **kw: Any) -> dict[s
               summary="Anh và tác tử cùng sửa tệp này; tác tử đọc nó mỗi lượt.",
               path=str(eide_md.path),
               sections=[{"ten": s, "than": eide_md.get(s)}
-                        for s in eide_md.sections if eide_md.get(s)]),
+                        for s in eide_md.sections if eide_md.get(s)],
+              sua_duoc=sua_duoc("eide_md", [
+                  truong("than/{ma}", "Nội dung mục", kieu="van_ban_dai",
+                         goi_y="tác tử đọc mục này mỗi lượt — viết ngắn và rõ"),
+              ], id_tu="block", phien_ban_tu="")),
         block("A14.3", "Kiểm kê — đúng bảng tác tử nhìn thấy", "kv",
               summary=f"Chặng {inv._stage()} · dựng bằng mã, 0 token, {inv.elapsed_ms:.1f} ms",
               pairs=[
@@ -1962,6 +2127,17 @@ def screen(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
             # "nguyên văn" mà bị diễn giải một nửa thì không còn là nguyên văn — và nguyên văn
             # chính là thứ người dùng dùng để TÌM LẠI dòng ấy trong tệp (N1).
             cot_nguyen_van=[2],
+            # Mỗi trường sửa được PHẢI kèm nguồn (§DEV-368): hồ sơ màn hình là chỗ dự án
+            # này đã trả giá ba lần cho hằng số phần cứng tự nhớ. Không nguồn thì con số
+            # thành Fact tầng NGƯỜI, và mọi chỗ dùng ghi rõ "(anh cho, chưa có tài liệu)".
+            sua_duoc=sua_duoc("display", [
+                truong("driver", "Giá trị", dong="Driver", can_nguon=True),
+                truong("he_mau", "Giá trị", dong="Hệ màu", can_nguon=True,
+                       kieu="chon", lua_chon=["RGB565", "RGB888", "ARGB8888", "mono"]),
+                truong("bus", "Giá trị", dong="Bus", can_nguon=True),
+                truong("inch", "Giá trị", dong="Đường chéo", kieu="so", don_vi="inch",
+                       can_nguon=True),
+            ], id_tu="block"),
             rows=[[a, b, (d[:140] if d else "— không có trích dẫn")] for a, b, d in dong]))
         if (c.get("dem_khung") or {}).get("note_vi"):
             khoi.append(block("A15.1b", "Bộ đệm khung", "text",
@@ -2024,6 +2200,19 @@ def screen(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
                 rows=[[p.get("id", ""), p.get("loai", ""), p.get("x", 0), p.get("y", 0),
                        p.get("w", 0), p.get("h", 0), p.get("co_chu", ""),
                        (p.get("chu") or "")[:40]] for p in pt],
+                # I7 — sửa trên GỐC, không sửa trên bản dựng: người sửa toạ độ ở bảng này,
+                # còn trang HTML 1:1 ở khối trên là hình chiếu và dựng lại từ gốc.
+                sua_duoc=sua_duoc("ui_screen", [
+                    truong("phan_tu/{row}/x", "x", kieu="so_nguyen", don_vi="px"),
+                    truong("phan_tu/{row}/y", "y", kieu="so_nguyen", don_vi="px"),
+                    truong("phan_tu/{row}/w", "w", kieu="so_nguyen", don_vi="px"),
+                    truong("phan_tu/{row}/h", "h", kieu="so_nguyen", don_vi="px"),
+                    truong("phan_tu/{row}/chu", "Chữ",
+                           goi_y="bảng font của BSP chỉ có 95 ký tự ASCII — chữ có dấu "
+                                 "sẽ đọc ra ngoài bảng"),
+                    truong("phan_tu/{row}/co_chu", "Cỡ chữ", kieu="chon",
+                           lua_chon=["Font8", "Font12", "Font16", "Font20", "Font24"]),
+                ], id_tu="block"),
                 stale=[m["id"]] if m.get("stale") else []))
     else:
         khoi.append(empty(

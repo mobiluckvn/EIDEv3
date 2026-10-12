@@ -10530,3 +10530,138 @@ của bộ đo nói *"app có đang chạy không?"* trong khi app chạy bình 
   thật: chép, dán, Cmd-Z đều đúng như macOS.
 * **`history.preview_restore` trả `diff_tom_tat` nhưng giao diện chưa vẽ** — mới là con số
   trong JSON. Sheet "Về bản…" vẫn chỉ hiện `se_mat_vi` dạng chữ.
+
+---
+
+## [DEV-368] Người sửa được **sâu trong** hiện vật — 15/33 loại, và hai loại việc chưa ai đi
+
+Gói thứ ba của EIDE-EDIT-47, và là gói lớn nhất. Ba việc trong một:
+
+1. **Sửa theo đường dẫn lồng** (`edit` kèm `patch`), thay cho "chỉ trường cấp một";
+2. **`sua_duoc`** — lõi KHAI ô nào sửa được (bất biến I8), giao diện thôi suy từ tên cột;
+3. hai loại việc có trong giao thức từ đầu mà **không đường nào đi tới**: `confirm` và
+   `bac_bo`.
+
+### Đo trước, không ước
+
+`tools/dem_sua_duoc.py` (mới) dựng THẬT mọi bề mặt từ 41 kho mẫu trong `du-lieu/` rồi đếm
+khối nào mang `sua_duoc`. Không grep mã: câu hỏi là *"người mở app lên thì sửa được cái
+gì"*, và một khối chỉ hiện ra khi kho có hiện vật loại ấy.
+
+**0/32 → 15/33.** Mười lăm loại: `req`, `option`, `adr`, `plan`, `criteria`, `bom`,
+`pinout`, `block_diagram`, `display`, `passport`, `doc`, `procedure`, `ui_screen`,
+`analysis`, `report`. Đúng mức tài liệu đặt ra (≥ 15), và con số này đo được lại sau mỗi
+lần sửa mã.
+
+Mười tám loại **cố ý không mở**, chia ba nhóm, vì "sửa được" không phải lúc nào cũng đúng:
+
+* **bản dựng ra** (`code`, `file`, `ui_render`, `ui_code`, `netlist`, `netlist_kicad`,
+  `skidl_src`, `layout`, `build`) — I7 nói sửa trên GỐC. Tệp thì có trình soạn riêng ở
+  DEV-367;
+* **phép đo** (`sim_result`, `target`) — gõ đè lên một kết quả đo là đúng thứ N6 cấm;
+* **hình chiếu và sổ sách** (`ckm` là chiếu của hiện vật, `note`/`memory` chỉ là bản ghi
+  `{path, sha, bytes}`, `classification` là một quyết định nạp, `fact` có đường riêng là
+  `confirm`).
+
+Với `analysis` và `report`, "sửa được" KHÔNG phải gõ đè — là **bác bỏ**. Một nhận định máy
+đọc ra từ mã mà người sửa chữ trong đó thì lần chạy sau ghi đè; cái người cần là nói "chỗ
+này không phải lỗi" một lần và tác tử đừng nêu lại.
+
+### `ap_patch` — và vì sao nó thay một đống nhánh `if`
+
+Đường sửa cũ chỉ thay được trường cấp một, nên mỗi loại hiện vật có cấu trúc lồng lại phải
+có một nhánh riêng trong `_nguoi_sua`. Nhánh `symbol` đã có, và chú thích của chính nó nói:
+*"nới đường chung ra để chạm tới đây là nới một đường mà mọi tab khác đang dùng"*. Bảy loại
+nữa đang chờ tới lượt.
+
+JSON-Pointer rút gọn (`a/b/2/c`, `-` = cuối mảng), bốn phép `set|add|remove|move`, trả
+**bản sao** (`deepcopy`), và lỗi đường dẫn **nói ra đường nào sai**. Hai luật đáng ghi:
+
+* `set` vào một nhánh CHƯA CÓ thì từ chối — gần như luôn là gõ nhầm tên trường. Muốn thêm
+  thì nói rõ bằng `add`.
+* Lỗi ở phép thứ hai thì **không ghi phép thứ nhất** (I9: lưu của người là nguyên tử).
+
+### Ba chỗ làm khác tài liệu
+
+**1 · Xếp loại sửa theo đoạn CUỐI của đường dẫn, không phải đoạn đầu.** Tài liệu ghi "xếp
+loại theo **đoạn đầu**". Nhưng `phan_tu/3/mau` (sửa màu — trình bày) và `phan_tu/3/x` (dời
+chỗ — nội dung) chung đoạn đầu `phan_tu`, nên xếp theo đoạn đầu thì một trong hai sai, và
+sai theo chiều nguy: hoặc mọi lần đổi màu đánh STALE cả chuỗi hạ nguồn, hoặc một lần dời
+phần tử không đánh gì.
+
+**2 · Xung đột so với BẢN GỐC người đã mở, không so với thứ họ định ghi.** Đường cũ hỏi
+"giá trị hiện tại có khác cái người sắp đặt không" — câu ấy luôn đúng, đó là lý do họ sửa.
+Thêm `history.canonical_tai()` để đọc lại bản cũ từ sổ changeset. Không tìm được bản gốc
+thì **hỏi người**, không đoán rồi ghi đè.
+
+**3 · Chưa chuyển `symbol` sang đường `patch`.** Tài liệu nói cho A5.8c dùng
+`anh_xa/{ref}/chan/{i}/kieu` rồi xoá `_nguoi_xac_nhan_ky_hieu`. Chưa làm: nhánh ấy đi qua
+công cụ `sch.symbol_confirm` (nên luật "phải có lời của người" chỉ tồn tại một chỗ), và
+chuyển nó cần SCH-14/15 chạy xanh trên đường mới. Giữ nguyên, ghi vào mục chưa làm.
+
+### `confirm` — đường BẠC→VÀNG mà `grep` trả về 0
+
+Loại thứ tư trong mười ba loại HumanAct. Có trong giao thức từ G1. `grep "confirm"` trong
+`loop.py` = **0** cho tới gói này: giao diện không gửi, và lõi cũng không có nhánh nào
+nhận. Nghĩa là một con số BẠC (mã đọc thẳng từ PDF, chưa ai xem lại) nằm ở tầng BẠC **mãi
+mãi**, vì đường nâng tầng duy nhất không có ai đi.
+
+Ba phán quyết: `dung` → VÀNG; `sai` → ĐỒNG **và đánh dấu hạ nguồn lỗi thời**; `sua` → Fact
+mới tầng NGƯỜI. Hai luật mang từ chỗ khác sang vì cùng một lý lẽ:
+
+* **phải có lời của người** — tầng VÀNG nghĩa là "đã có người xác nhận", nên một xác nhận
+  không có lời là một xác nhận của máy đội tên người (cùng luật với `symbol_confirm`);
+* **đi qua `ghi_kho`**, không gọi thẳng `put_fact` — không có changeset thì việc nâng tầng
+  tin cậy KHÔNG hoàn tác được, mà đó đúng là loại việc người hay làm nhầm rồi muốn lùi.
+
+### Một lỗi CŨ lộ ra, và nó đã nằm đó từ DEV-364
+
+`humanact.SURFACES` thiếu `"screen"`. Tab Màn hình (A15) có từ DEV-364, vẽ được, bấm được —
+và **mọi HumanAct gửi từ đó bị `validate()` ném trả**: *"bề mặt lạ: 'screen'"*. Không ai
+phát hiện vì tab ấy chưa có ô sửa nào; DEV-368 mở ô sửa ở đó và nó nổ ngay ca kiểm đầu tiên.
+
+Lại đúng mẫu *"một danh sách viết cứng ở hai phía"* — `surfaces.SURFACES` và
+`humanact.SURFACES`. Nay có `test_moi_be_mat_cua_loi_deu_gui_duoc_HumanAct` đối chiếu hai
+danh sách, nên lần thêm tab sau sẽ đỏ ở bộ kiểm chứ không đỏ ở tay người dùng.
+
+### Đo
+
+* `tests/test_edit47_patch.py` — 31 ca. **Phá lại thì đỏ: 20/20.**
+* `ui/EIDEApp/Tests/EIDETests/FormEditorTests.swift` — 10 ca. **7/7.**
+* `tools/thu_nut_lui.py` phần G — 6 ca mới qua APP THẬT, **chạy hai chế độ cờ**, cả hai
+  **40/40**.
+* `tools/dem_sua_duoc.py` — **15/33**.
+* Bộ kiểm 2 284 → **2 315 xanh**, 2 skip, 0 đỏ. Giao diện 72 → **81 ca**. Cờ 15 → **16**.
+
+**Bốn phép phá LỌT ở lượt đầu, và cả bốn là lỗi của bộ đo — không phải của sản phẩm:**
+
+1. **`..` trong đường dẫn.** Bỏ chặn `..` vẫn đỏ… nhầm: trên một canonical thường, nó ra
+   lỗi *"không có nhánh `..`"* — cũng là lỗi, cũng chứa hai dấu chấm, nên phép khẳng định
+   `".." in str(e)` không phân biệt được hai cái. Nay ca kiểm dựng một canonical mà `..`
+   **đọc được**, để bỏ chặn là ghi thành công.
+2. **Bác bỏ không ghi vào §Đừng.** Ca kiểm tìm `"PT-1"` trong CẢ TỆP EIDE.md — mà
+   `_nguoi_sua` cũng ghi một dòng vào §Người vừa sửa. Nay đọc đúng `eide_md.dont_list()`.
+3. **Phán quyết lạ.** Bỏ phép kiểm thì `"co_le_dung"` rơi vào nhánh "sửa" rồi dừng ở chỗ
+   thiếu `gia_tri_moi` — tầng không đổi, ca kiểm xanh vì một lý do khác lý do nó muốn đo.
+4. **Không tìm được bản gốc.** Không ca nào đi vào nhánh ấy.
+
+### Một cái bẫy nữa của BỘ ĐO
+
+Bật một cờ rồi **mở lại app giữa chừng** làm kho hiện vật của dự án đo về trạng thái bản
+ưng ý — một hiệu ứng phụ của bộ đo, nhưng nó làm mọi con số sau đó nói về một cái kho
+khác. Nay bộ đo chạy HAI LẦN, mỗi lần một chế độ cờ, đúng cách dự án vẫn đo cờ.
+
+Và `open` của macOS **không mang theo biến môi trường** của tiến trình gọi nó, nên bản đầu
+của phép đo "cờ bật thì sao" lặng lẽ đo lại đúng chế độ cờ tắt.
+
+### Chưa làm, nói ra để không ai đọc thành đã làm
+
+* **Chưa có kéo–thả trên canvas A15.** Bấm một phần tử trong khung 1:1 vẫn hỏi tác tử;
+  đường sửa là bảng phần tử ngay dưới. Tài liệu §8 đã nói kéo–thả để sau.
+* **`them_xoa` mới có trong đặc tả, giao diện chưa vẽ nút.** Lõi nhận `add`/`remove` và có
+  ca kiểm; thêm/xoá một dòng tiêu chí từ bảng thì chưa bấm được.
+* **`KhoiCay`, `KhoiDanhSach`, `KhoiMuc` chưa đọc `sua_duoc`** — mới `KhoiBang` và khối
+  `kv`. Cây khối A5.9 vì thế vẫn chỉ đọc.
+* **`symbol` giữ nhánh riêng** (xem trên).
+* **Hiện vật đã bác bỏ chưa bị ẩn khỏi bảng.** Lõi đánh dấu `canonical.bac_bo` và ghi
+  §Đừng; `surfaces` chưa lọc chúng ra sau một nút "hiện N dòng đã bác bỏ".

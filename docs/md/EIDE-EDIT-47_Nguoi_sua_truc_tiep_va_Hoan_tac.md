@@ -254,6 +254,8 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 
 ---
 
+<!-- /se-co -->
+
 ### DEV-368 · `sua_duoc` + trình soạn biểu mẫu lồng + nút "Không phải lỗi" + nhánh `confirm`
 
 **Mục tiêu.** Phủ sửa trực tiếp từ 4 bảng lên mọi hiện vật JSON; xoá nhu cầu viết nhánh riêng cho từng loại; người bác bỏ phát hiện và xác nhận Fact bằng một nút. Cờ `EIDE_FEATURE_SUA_LONG` cho đường `patch` (vì nó đổi thứ Agent thấy ở lượt sau qua STALE), không cờ cho `sua_duoc` thuần trình bày.
@@ -266,7 +268,7 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 - `bac_bo`: `_sua_hien_vat` với `data.bac_bo=true` → `eide_md.note_dung(...)` (mục §Đừng) + đánh dấu hiện vật `canonical.bac_bo = {"boi": act.id, "ly_do": act.note}`; `surfaces` ẩn dòng bác bỏ sau một nút "hiện N dòng đã bác bỏ".
 
 **Giao diện.**
-- `Views/FormEditor.swift` (mới): nhận `sua_duoc` + dòng/khối → vẽ ô theo `kieu`; gom nhiều ô đổi thành **một** `patch`; "vì sao" chung; thêm/xoá dòng khi có `them_xoa`.
+- `ui/EIDEApp/Sources/EIDE/Views/FormEditor.swift` (mới): nhận `sua_duoc` + dòng/khối → vẽ ô theo `kieu`; gom nhiều ô đổi thành **một** `patch`; "vì sao" chung; thêm/xoá dòng khi có `them_xoa`.
 - `KhoiBang`, `KhoiKV`, `KhoiCay`, `KhoiMuc`, `KhoiDanhSach`: nếu `block.sua_duoc != nil` → ô sửa được, thay cho `cotSua` hiện tại (giữ `cotSua` cho tới khi lõi phát `sua_duoc` ở cả 4 bảng cũ).
 - Nút "Không phải lỗi" (→ `edit{bac_bo:true}` kèm `note` bắt buộc) và "Xác nhận ✓ / Sai ✗" (→ `confirm`).
 - A15: bấm phần tử trong khung 1:1 → `FormEditor` ở cột cạnh (bước 1 của trình soạn C).
@@ -278,6 +280,8 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 **Ước lượng.** 3–5 ngày.
 
 ---
+
+<!-- se-co -->
 
 ### DEV-369 · Bắt sửa từ bên ngoài (VS Code, KiCad) — changeset `external`
 

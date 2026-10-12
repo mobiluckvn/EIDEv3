@@ -553,6 +553,15 @@ final class UITestChannel {
                 "stale_reason": b.str("stale_reason") ?? "",
                 // Cột nào người sửa được bằng widget (§E2 "Người sửa được gì")
                 "cot_sua": Array((b.payload["cot_sua"]?.objectValue ?? [:]).keys),
+                // Đặc tả `sua_duoc` (I8, DEV-368) — loại hiện vật và ĐƯỜNG DẪN.
+                //
+                // Phơi cả đường dẫn chứ không chỉ "có hay không": cả gói này là chuyện
+                // sửa được vào SÂU trong hiện vật, và một `sua_duoc` chỉ khai mấy trường
+                // cấp một thì trông y hệt `cot_sua` cũ trong mọi con số đếm được.
+                "sua_duoc_loai": b.payload["sua_duoc"]?["loai"]?.stringValue ?? "",
+                "sua_duoc_duong": (b.payload["sua_duoc"]?["truong"]?.arrayValue ?? [])
+                    .compactMap { $0["path"]?.stringValue },
+                "sua_duoc_bac_bo": b.payload["sua_duoc"]?["bac_bo_duoc"]?.boolValue ?? false,
                 "so_dong_co_explain": (b.payload["row_meta"]?.objectValue ?? [:])
                     .values.filter { !($0["explain"]?.objectValue ?? [:]).isEmpty }.count,
             ]

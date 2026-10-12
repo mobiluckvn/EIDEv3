@@ -308,6 +308,21 @@ class History:
                 + ". Trạng thái trên máy đã lùi, nhưng thứ ở ngoài thì chưa.")
         return kq
 
+    def canonical_tai(self, artefact_id: str, version: int) -> dict[str, Any] | None:
+        """Nội dung hiện vật TẠI một phiên bản cũ — đọc từ sổ changeset.
+
+        Cần cho phép so xung đột theo đường dẫn: câu hỏi đúng không phải "giá trị hiện tại
+        có khác thứ người định ghi không" (hai người sửa ra cùng một kết quả thì khác gì
+        nhau?) mà là **"đường này có đổi kể từ bản người mở ra không"**. Không có bản cũ
+        thì không trả lời được câu ấy.
+        """
+        for cs in reversed(self.log.all()):
+            for f in cs.forward:
+                if (f.get("kind") == "store" and f.get("artefact_id") == artefact_id
+                        and int(f.get("version") or 0) == int(version)):
+                    return f.get("canonical")
+        return None
+
     def changeset_cua_phien_sua(self, session_id: str) -> list[Changeset]:
         """Changeset của MỘT PHIÊN SỬA của người (`es-<n>`) — EIDE-EDIT-47 §5.1.
 

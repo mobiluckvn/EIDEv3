@@ -407,6 +407,13 @@ class Features:
     # `diff_khoi.dung_diff` va the xung dot cua NGUOI (DEV-366) — chay ca khi co tat: chung
     # khong dong vao the tac tu dung.
     cong_co_diff: bool = False
+    # EIDE-EDIT-47 DEV-368 — duong sua theo DUONG DAN LONG (`edit` kem `patch`).
+    #
+    # Sau co vi no doi THU TAC TU THAY o luot sau: mot sua sau co the danh STALE mot chuoi
+    # ha nguon khac han voi sua truong cap mot, va `phan_loai` xep loai theo doan cuoi cua
+    # duong dan. Phan KHONG sau co: `sua_duoc` tren cac khoi (thuan trinh bay — giao dien
+    # ve o sua), va `ap_patch` (ham thuan, co ca kiem rieng).
+    sua_long: bool = False
 
     @classmethod
     def load(cls) -> "Features":

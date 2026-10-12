@@ -30,6 +30,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .errors import schema_violation
+
 # Trường chỉ ảnh hưởng tới cách trình bày — sửa chúng không làm hạ nguồn lỗi thời.
 TRUONG_TRINH_BAY = frozenset({
     "label", "ten", "tieu_de", "order", "thu_tu", "note", "ghi_chu", "mo_ta_ngan",
@@ -67,13 +69,36 @@ class PhanLoai:
 
 
 def phan_loai(*, truoc: dict[str, Any], sau: dict[str, Any],
-              lock_broken: bool = False, bac_bo: bool = False) -> PhanLoai:
-    """Xếp loại một lần sửa của người theo §E4.1."""
+              lock_broken: bool = False, bac_bo: bool = False,
+              duong_dan_doi: list[str] | None = None) -> PhanLoai:
+    """Xếp loại một lần sửa của người theo §E4.1.
+
+    `duong_dan_doi` (EIDE-EDIT-47 DEV-368) — danh sách đường dẫn LỒNG mà người vừa chạm,
+    ví dụ `["elements/3/mau", "assert/0/nguong"]`. Có nó thì phép xếp loại nhìn được vào
+    bên trong hiện vật; không có nó, mọi sửa sâu đều ra "nội dung" vì **trường cấp một**
+    (`elements`, `assert`) đổi.
+
+    Xếp theo ĐOẠN ĐẦU hay đoạn CUỐI? — đoạn **cuối**, cộng với đoạn đầu.
+    `elements/3/mau` là sửa màu một nhãn: trình bày. `elements/3/x` là dời nó đi chỗ khác:
+    nội dung. Hai đường ấy chung đoạn đầu `elements`, nên chỉ nhìn đoạn đầu thì cả hai
+    cùng loại — và một trong hai sẽ bị xếp sai. Tài liệu viết "theo đoạn đầu" và đó là
+    chỗ làm khác, có ghi vào DEV-LOG.
+    """
     if lock_broken:
         return PhanLoai("lock_broken", ly_do="người sửa tệp tác tử đang giữ soft-lock")
     if bac_bo:
         return PhanLoai("bac_bo", gay_stale=False,
                         ly_do="người bác bỏ một phát hiện hoặc một đề xuất")
+
+    if duong_dan_doi:
+        doan = [_doan_co_nghia(d) for d in duong_dan_doi]
+        if any(d in TRUONG_QUYET_DINH for d in doan):
+            return PhanLoai("quyet_dinh", list(duong_dan_doi),
+                            ly_do="chạm trường mang quyết định")
+        if all(d in TRUONG_TRINH_BAY for d in doan):
+            return PhanLoai("trinh_bay", list(duong_dan_doi), gay_stale=False,
+                            ly_do="chỉ chạm trường trình bày")
+        return PhanLoai("noi_dung", list(duong_dan_doi), ly_do="chạm trường có nghĩa")
 
     doi = [k for k in set(truoc) | set(sau) if truoc.get(k) != sau.get(k)]
     if not doi:
@@ -88,6 +113,140 @@ def phan_loai(*, truoc: dict[str, Any], sau: dict[str, Any],
                         ly_do="chỉ chạm trường trình bày")
 
     return PhanLoai("noi_dung", doi, ly_do="chạm trường có nghĩa")
+
+
+def _doan_co_nghia(duong: str) -> str:
+    """Đoạn mang nghĩa của một đường dẫn: đoạn CUỐI không phải chỉ số.
+
+    `elements/3/mau` → `mau`; `assert/0` → `assert`; `label` → `label`.
+    """
+    doan = [d for d in str(duong).split("/") if d and not d.isdigit() and d != "-"]
+    return doan[-1] if doan else str(duong)
+
+
+# =========================================================================== patch
+def ap_patch(canonical: dict[str, Any], patch: list[dict[str, Any]]) -> dict[str, Any]:
+    """Áp một danh sách phép sửa theo ĐƯỜNG DẪN LỒNG. Trả BẢN SAO — EIDE-EDIT-47 §3.1.
+
+    Đường dẫn là JSON-Pointer rút gọn: `a/b/2/c`, `-` nghĩa là cuối mảng.
+    Phép: `set` (mặc định) · `add` · `remove` · `move`.
+
+    Vì sao cần nó, và vì sao nó thay một đống nhánh `if`: đường sửa cũ chỉ thay được
+    **trường cấp một**, nên mỗi loại hiện vật có cấu trúc lồng lại phải có một nhánh riêng
+    trong `_nguoi_sua` — `symbol` đã có một nhánh như thế, và chú thích của nó nói thẳng
+    "nới đường chung ra để chạm tới đây là nới một đường mà mọi tab khác đang dùng". Bảy
+    loại hiện vật nữa chờ tới lượt. Một phép áp đường dẫn chung là cách KHÔNG phải viết
+    bảy nhánh.
+
+    **Không sửa tại chỗ** (`copy.deepcopy`): người gọi còn giữ bản cũ để so, để ghi
+    `noi_dung_truoc`, và để xếp loại sửa. Sửa tại chỗ thì bản "trước" biến thành bản "sau"
+    ngay dưới tay họ, và changeset sẽ nói hai bản giống hệt nhau.
+    """
+    import copy
+
+    ra = copy.deepcopy(canonical)
+    for i, p in enumerate(patch or []):
+        op = str(p.get("op") or "set")
+        duong = str(p.get("path") or "")
+        if not duong or ".." in duong:
+            raise schema_violation(f"patch[{i}].path",
+                                   f"đường dẫn rỗng hoặc có “..”: {duong!r}")
+        if op not in ("set", "add", "remove", "move"):
+            raise schema_violation(f"patch[{i}].op", f"phép lạ: {op!r}")
+
+        if op == "move":
+            gia = _lay(ra, duong, f"patch[{i}].path")
+            _xoa(ra, duong, f"patch[{i}].path")
+            _dat(ra, str(p.get("to") or ""), gia, f"patch[{i}].to", them=True)
+        elif op == "remove":
+            _xoa(ra, duong, f"patch[{i}].path")
+        else:
+            _dat(ra, duong, p.get("value"), f"patch[{i}].path", them=(op == "add"))
+    return ra
+
+
+def doc_duong(canonical: dict[str, Any], duong: str) -> Any:
+    """Giá trị đang nằm ở một đường dẫn. Lạc đường thì nổ — người gọi quyết nghĩa của nó."""
+    return _lay(canonical, duong, f"path {duong}")
+
+
+def _tach(duong: str) -> list[str]:
+    return [d for d in duong.split("/") if d != ""]
+
+
+def _di(goc: Any, doan: list[str], o: str) -> Any:
+    """Đi tới vật chứa của đoạn cuối. Lạc đường thì NÓI RA ĐƯỜNG NÀO — một lỗi
+    "không tìm thấy" không chỉ ra chỗ sai thì người chỉ còn cách thử lại y nguyên."""
+    cur = goc
+    for k in doan:
+        if isinstance(cur, list):
+            if not k.lstrip("-").isdigit():
+                raise schema_violation(o, f"“{k}” không phải chỉ số của một danh sách")
+            try:
+                cur = cur[int(k)]
+            except IndexError:
+                raise schema_violation(o, f"không có phần tử thứ {k}") from None
+        elif isinstance(cur, dict):
+            if k not in cur:
+                raise schema_violation(o, f"không có nhánh “{k}”")
+            cur = cur[k]
+        else:
+            raise schema_violation(o, f"“{k}” đi vào một giá trị không có nhánh con")
+    return cur
+
+
+def _lay(goc: Any, duong: str, o: str) -> Any:
+    doan = _tach(duong)
+    return _di(goc, doan, o)
+
+
+def _dat(goc: Any, duong: str, gia: Any, o: str, *, them: bool) -> None:
+    doan = _tach(duong)
+    if not doan:
+        raise schema_violation(o, "đường dẫn rỗng")
+    cha = _di(goc, doan[:-1], o)
+    cuoi = doan[-1]
+    if isinstance(cha, list):
+        if cuoi == "-":
+            cha.append(gia)
+            return
+        if not cuoi.lstrip("-").isdigit():
+            raise schema_violation(o, f"“{cuoi}” không phải chỉ số của một danh sách")
+        k = int(cuoi)
+        if them:
+            cha.insert(k, gia)
+        else:
+            try:
+                cha[k] = gia
+            except IndexError:
+                raise schema_violation(o, f"không có phần tử thứ {k}") from None
+    elif isinstance(cha, dict):
+        if not them and cuoi not in cha:
+            raise schema_violation(o, f"không có nhánh “{cuoi}” để sửa")
+        cha[cuoi] = gia
+    else:
+        raise schema_violation(o, "chỗ cần ghi không phải bảng hay danh sách")
+
+
+def _xoa(goc: Any, duong: str, o: str) -> None:
+    doan = _tach(duong)
+    if not doan:
+        raise schema_violation(o, "đường dẫn rỗng")
+    cha = _di(goc, doan[:-1], o)
+    cuoi = doan[-1]
+    if isinstance(cha, list):
+        if not cuoi.lstrip("-").isdigit():
+            raise schema_violation(o, f"“{cuoi}” không phải chỉ số của một danh sách")
+        try:
+            del cha[int(cuoi)]
+        except IndexError:
+            raise schema_violation(o, f"không có phần tử thứ {cuoi}") from None
+    elif isinstance(cha, dict):
+        if cuoi not in cha:
+            raise schema_violation(o, f"không có nhánh “{cuoi}” để xoá")
+        del cha[cuoi]
+    else:
+        raise schema_violation(o, "chỗ cần xoá không phải bảng hay danh sách")
 
 
 # =========================================================================== Fact NGƯỜI
