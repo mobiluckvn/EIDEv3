@@ -495,8 +495,25 @@ struct KhoiBang: View {
                 }
                 .buttonStyle(.plain).foregroundStyle(.secondary).padding(.top, 6)
             }
+            // Nút của CẢ KHỐI, do lõi khai (§DEV-373).
+            if !hanhDongKhoi.isEmpty {
+                HStack(spacing: 10) {
+                    ForEach(Array(hanhDongKhoi.enumerated()), id: \.offset) { _, h in
+                        NutHanhDong(hd: h, ma: "", loai: "", khoi: block.code)
+                    }
+                    Spacer()
+                }
+                .padding(.top, 8)
+            }
         }
     }
+
+    /// Hành động do LÕI khai — `muc` nói nó thuộc cả khối hay từng dòng (§DEV-373).
+    private var hanhDong: [HanhDong] {
+        block.arr("hanh_dong").map(HanhDong.init)
+    }
+    private var hanhDongKhoi: [HanhDong] { hanhDong.filter { $0.muc == "khoi" } }
+    private var hanhDongDong: [HanhDong] { hanhDong.filter { $0.muc == "dong" } }
 
     /// Đặc tả sửa được do LÕI gửi (I8). Có nó thì `cot_sua` không còn được dùng.
     private var sd: SuaDuoc? { SuaDuoc(block.payload["sua_duoc"]) }
@@ -535,6 +552,15 @@ struct KhoiBang: View {
             // Mở tệp trong trình soạn của app (DEV-367).
             if block.payload["mo_duoc"] != nil, !ma.isEmpty {
                 NutMoTep(path: ma)
+            }
+            // Nút của DÒNG, do lõi khai (§DEV-373) — ví dụ "Cập nhật" / "Chấp nhận STALE"
+            // trên từng hiện vật lỗi thời. Cột thứ hai là LOẠI, dùng cho `{loai}`.
+            if !hanhDongDong.isEmpty, !ma.isEmpty {
+                ForEach(Array(hanhDongDong.enumerated()), id: \.offset) { _, h in
+                    NutHanhDong(hd: h, ma: ma,
+                                loai: r.count > 1 ? (r[1].stringValue ?? "") : "",
+                                khoi: block.code)
+                }
             }
             // Nút của cả DÒNG: sửa nhiều ô một lần, bác bỏ, xác nhận Fact.
             if let sd {

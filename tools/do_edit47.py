@@ -108,7 +108,7 @@ def _goi_loi_le_ra_bam_duoc(so: list[dict], loai: dict[str, str],
     NAY mang `sua_duoc` thì mới nói được rằng lẽ ra họ bấm được.
     """
     ra: dict[str, list] = {"bam_duoc": [], "chua_bam_duoc": [], "khong_ro": [],
-                           "bao_cao_dai": []}
+                           "bao_cao_dai": [], "tu_nut": []}
     for e in so:
         if e.get("kind") != "human_act":
             continue
@@ -120,6 +120,14 @@ def _goi_loi_le_ra_bam_duoc(so: list[dict], loai: dict[str, str],
         if not any(k in thap for k in TU_KHOA):
             continue
         gi = {"ts": e.get("ts", ""), "chu": chu[:120], "dai": len(chu)}
+        # Lần bấm NÚT (§DEV-373) gửi `say`, nên nếu không tách ra thì **cái nút tự làm xấu
+        # đúng con số mà nó sinh ra để cải thiện**: mỗi lần người bấm "Cập nhật hạ nguồn"
+        # sẽ được đếm là "một lượt người gõ lời cho việc lẽ ra bấm được". Lần đo sau sẽ
+        # nói ngược lại sự thật, và nó nói bằng một con số tăng lên.
+        if (d.get("data") or {}).get("nut"):
+            gi["nut"] = (d.get("data") or {}).get("nut")
+            ra["tu_nut"].append(gi)
+            continue
         if len(chu) > TRAN_CAU_NGUOI:
             ra["bao_cao_dai"].append(gi)
             continue
@@ -222,7 +230,7 @@ def do(goc: pathlib.Path) -> dict[str, object]:
     sua_duoc = set(c1["sua_duoc"]) | set(c1["khai_ma_kho_chua_co"])
 
     goi: dict[str, list] = {"bam_duoc": [], "chua_bam_duoc": [], "khong_ro": [],
-                            "bao_cao_dai": []}
+                            "bao_cao_dai": [], "tu_nut": []}
     ha_nguon = {"so_lan_co_so": 0, "giay": [], "khong_bao_gio_cham": []}
     ht = {"so_lan_nguoi_bam": 0, "so_lan_co_ghi_ket_qua": 0,
           "theo_tang": collections.defaultdict(lambda: {"ok": 0, "hong": 0})}
@@ -256,6 +264,7 @@ def do(goc: pathlib.Path) -> dict[str, object]:
         "chi_so_2_go_loi": {
             "cau_co_tu_khoa": sum(len(v) for v in goi.values()),
             "bao_cao_dai_cua_may": len(goi["bao_cao_dai"]),
+            "tu_nut_khong_phai_nguoi_go": len(goi["tu_nut"]),
             "cau_ngan_co_the_la_nguoi_go": (len(goi["bam_duoc"])
                                             + len(goi["chua_bam_duoc"])
                                             + len(goi["khong_ro"])),
@@ -272,7 +281,7 @@ def do(goc: pathlib.Path) -> dict[str, object]:
             "trung_vi_giay": (round(statistics.median(ha_nguon["giay"]), 1)
                               if ha_nguon["giay"] else None),
             "so_lan_khong_bao_gio_cham": len(ha_nguon["khong_bao_gio_cham"]),
-            "vi_du_khong_cham": ha_nguon["khong_bao_gio_cham"][:8],
+            "vi_du_khong_cham": ha_nguon["khong_bao_gio_cham"][:20],
         },
         "chi_so_4_hoan_tac": {
             "so_lan_nguoi_bam": ht["so_lan_nguoi_bam"],
@@ -296,7 +305,8 @@ def _in(kq: dict) -> None:
           f"{VANG}{c2['le_ra_bam_duoc']}{HET}")
     print(f"        {XAM}{c2['cau_co_tu_khoa']} câu khớp từ khoá, trong đó "
           f"{c2['bao_cao_dai_cua_may']} là báo cáo DÀI của tác tử đóng vai sinh viên "
-          f"(> {TRAN_CAU_NGUOI} ký tự){HET}")
+          f"(> {TRAN_CAU_NGUOI} ký tự) và {c2['tu_nut_khong_phai_nguoi_go']} là lần "
+          f"BẤM NÚT (§DEV-373){HET}")
     print(f"        {XAM}{c2['cau_ngan_co_the_la_nguoi_go']} câu ngắn còn lại: "
           f"{c2['le_ra_bam_duoc']} nhắc hiện vật NAY sửa được · "
           f"{c2['hien_vat_chua_sua_duoc']} nhắc hiện vật chưa sửa được · "
@@ -306,6 +316,15 @@ def _in(kq: dict) -> None:
     print(f"  3 · Sửa → hạ nguồn cập nhật: đo được {c3['so_lan_do_duoc']} lần"
           + (f", trung vị {tv/60:.1f} phút" if tv else "")
           + f"  {DO}· KHÔNG BAO GIỜ chạm: {c3['so_lan_khong_bao_gio_cham']}{HET}")
+    if c3["vi_du_khong_cham"]:
+        # Nói ra hạ nguồn chưa cập nhật nằm ở DỰ ÁN NÀO. Kho mẫu có cả phiên thật lẫn dự
+        # án của chính bộ đo (`thu-nut-lui`), và một con số trộn hai thứ ấy mà không nói
+        # thì người đọc sẽ tưởng cả tám lần đều là việc thật.
+        dem: dict[str, int] = {}
+        for v in c3["vi_du_khong_cham"]:
+            dem[v["du_an"]] = dem.get(v["du_an"], 0) + 1
+        print(f"        {XAM}nằm ở: "
+              + " · ".join(f"{k} ({n})" for k, n in sorted(dem.items())) + HET)
     print(f"  4 · Hoàn tác: người bấm {c4['so_lan_nguoi_bam']} lần, "
           f"có ghi kết quả {c4['so_lan_co_ghi_ket_qua']} lần"
           + (f"  {DO}· {c4['khong_do_duoc']} lần KHÔNG ĐO ĐƯỢC (sổ cũ, "

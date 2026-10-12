@@ -593,6 +593,14 @@ final class UITestChannel {
                 "sua_duoc_duong": (b.payload["sua_duoc"]?["truong"]?.arrayValue ?? [])
                     .compactMap { $0["path"]?.stringValue },
                 "sua_duoc_bac_bo": b.payload["sua_duoc"]?["bac_bo_duoc"]?.boolValue ?? false,
+                // Nút do LÕI khai (§DEV-373) — đọc qua CHÍNH bộ phân tích của app
+                // (`HanhDong`), không đọc thô từ payload: như thế một lỗi phân tích ở đây
+                // lộ ra trong bộ đo, thay vì chỉ lộ ra khi người bấm và không có gì xảy ra.
+                "hanh_dong": b.arr("hanh_dong").map { h -> [String: Any] in
+                    let hd = HanhDong(h)
+                    return ["ma": hd.ma, "nhan": hd.nhan, "kind": hd.kind, "muc": hd.muc,
+                            "ton_token": hd.tonToken, "can_ly_do": hd.canLyDo]
+                },
                 // DEV-371 — `set` hay `edit`. Phơi ra vì nó quyết định app GỬI GÌ, và một
                 // khối khai sai chỗ này vẫn vẽ ra một cái công tắc trông đúng y như vậy.
                 "sua_duoc_gui_bang": b.payload["sua_duoc"]?["gui_bang"]?.stringValue ?? "",

@@ -223,6 +223,36 @@ class History:
             mo_ta=("anh sửa" if author == "human" else "tác tử sửa") + " mã")
         return self._chot(cs)
 
+    def ghi_chap_nhan_stale(self, *, artefact_id: str, why: str, author: str = "human",
+                            run_id: str | None = None,
+                            human_act_id: str | None = None) -> Changeset | None:
+        """Tắt băng cảnh báo lỗi thời của một hiện vật, thành một changeset HOÀN TÁC ĐƯỢC.
+
+        Công cụ `stale.accept` (có từ G5) gọi thẳng `store.accept_stale` nên lần ấy KHÔNG
+        vào sổ changeset: không hoàn tác được, và tab Lịch sử không biết ai tắt cảnh báo
+        lúc nào. Đường của người đi qua đây.
+
+        Trả `None` nếu hiện vật không tồn tại hoặc không hề lỗi thời — tắt một cái cảnh
+        báo không bật là một việc không có nội dung, và ghi nó vào sổ thì sổ đầy những
+        dòng không nói gì.
+        """
+        a = self.store.get(artefact_id)
+        if a is None or not a.get("stale"):
+            return None
+        cs = cs_mod.for_stale_accept(
+            cs_id=self.ids.next("cs"), author=author, artefact_id=artefact_id,
+            type=a["type"], ly_do=f"chấp nhận STALE: {why}",
+            ly_do_cu=str(a.get("stale_reason") or ""),
+            explain={"summary": f"chấp nhận {artefact_id} lỗi thời, giữ nguyên",
+                     "why": why,
+                     "sources": [{"kind": "human", "ref": artefact_id, "tier": "NGUOI"}],
+                     "diff_prev": "chỉ tắt cờ lỗi thời; nội dung hiện vật không đổi",
+                     "next": "Hoàn tác changeset này thì cờ lỗi thời bật lại nguyên văn.",
+                     "confidence": "NGUOI"},
+            run_id=run_id, human_act_id=human_act_id, note=why)
+        self.store.accept_stale(artefact_id, why)
+        return self._chot(cs)
+
     def ghi_khong_hoan_tac(self, *, author: str, what: str, reason_vi: str,
                            explain: dict[str, Any], run_id: str | None = None,
                            tool_call_id: str | None = None) -> Changeset:
@@ -441,6 +471,12 @@ class History:
                                          {"summary": f"khôi phục theo hoàn tác {cs.id}"})
         elif kind == "file":
             self._lui_tep(op, cs)
+        elif kind == "stale":
+            # §DEV-373 — cờ lỗi thời đi hai chiều: tắt (chấp nhận) và bật lại (hoàn tác).
+            if op["op"] == "accept":
+                self.store.accept_stale(op["artefact_id"], op.get("reason") or "")
+            else:
+                self.store.mark_stale([op["artefact_id"]], op.get("reason") or "")
         elif kind in ("external", "checkpoint"):
             pass          # không có gì để lùi
         else:

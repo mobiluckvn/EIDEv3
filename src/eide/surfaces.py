@@ -53,6 +53,39 @@ def block(code: str, title: str, type: str, **kw: Any) -> dict[str, Any]:
     return b
 
 
+# =========================================================================== hành động
+def hanh_dong(ma: str, nhan: str, kind: str, *, muc: str = "dong",
+              target: dict[str, str] | None = None, data: dict[str, Any] | None = None,
+              text: str = "", can_ly_do: bool = False, ton_token: bool = False,
+              giai_thich: str = "") -> dict[str, Any]:
+    """Một cái NÚT, do lõi khai — EIDE-EDIT-47 §DEV-373.
+
+    Cùng tinh thần với `sua_duoc` (I8) nhưng cho **việc làm** thay vì cho ô sửa: lõi nói
+    rõ bấm vào thì gửi HumanAct nào, kèm `target`/`data`/`text`; giao diện chỉ thay chỗ
+    `{ma}`/`{loai}` theo dòng rồi gửi. Không để giao diện tự soạn thông điệp, vì lúc ấy
+    luật nằm ở hai nơi và một hôm chúng sẽ khác nhau.
+
+    `muc`: `"dong"` — một nút mỗi dòng; `"khoi"` — một nút cho cả khối.
+    `can_ly_do`: giao diện phải hỏi lý do và đặt vào `note` TRƯỚC khi gửi. Một hiện vật
+    lỗi thời bị tắt cảnh báo mà không ai ghi vì sao thì sáu tháng sau không ai dám tin nó.
+    `ton_token`: bấm vào là một lượt mô hình. Nói trước, đừng để người phát hiện qua hoá đơn.
+    """
+    d: dict[str, Any] = {"ma": ma, "nhan": nhan, "kind": kind, "muc": muc}
+    if target:
+        d["target"] = target
+    if data:
+        d["data"] = data
+    if text:
+        d["text"] = text
+    if can_ly_do:
+        d["can_ly_do"] = True
+    if ton_token:
+        d["ton_token"] = True
+    if giai_thich:
+        d["giai_thich"] = giai_thich
+    return d
+
+
 # =========================================================================== sửa được
 def truong(path: str, cot: str, *, kieu: str = "chu", don_vi: str = "",
            bat_buoc: bool = False, gay_stale: bool = True, goi_y: str = "",
@@ -1828,11 +1861,50 @@ def history(store: Any, inv: Any, hist: Any = None) -> dict[str, Any]:
                 items=[f"{'▸ ' if n == hist.nhanh_hien_tai() else '  '}{n}"
                        for n in nhanh]))
 
-    khoi.append(block(
-        "A11.4", "Hiện vật STALE", "list",
-        summary=f"{len(stale)} hiện vật cần cập nhật vì thượng nguồn đã đổi",
-        items=[f"{a['id']} ({a['type']}): {a['stale_reason']}" for a in stale]
-              or ["Không có hiện vật nào cần cập nhật."]))
+    # A11.4 — và HAI CÚ BẤM (§DEV-373).
+    #
+    # Đo được 12/10/2026 trên sổ cái 39 dự án: **7 lần** hạ nguồn bị đánh STALE rồi không
+    # ai cập nhật. Cơ chế đồ thị phụ thuộc chạy đúng; chỗ thiếu là đường đi của người. Tới
+    # gói này, cả hai việc người muốn làm với một hiện vật lỗi thời đều phải GÕ MỘT CÂU:
+    #
+    #   · "cập nhật đi"      → một lượt mô hình, và lời nhờ do người tự soạn nên mỗi lần
+    #                          một kiểu;
+    #   · "thôi, giữ nguyên" → công cụ `stale.accept` có từ G5, nhưng **chỉ tác tử gọi
+    #                          được** — nên người phải nhờ mô hình làm một việc kế toán.
+    #
+    # `deps.py` đã nói ra điều này ngay trong docstring của nó: *"phải có nút chấp nhận
+    # STALE"*. Nút ấy chưa bao giờ được vẽ.
+    if stale:
+        khoi.append(block(
+            "A11.4", "Hiện vật STALE", "table",
+            summary=f"{len(stale)} hiện vật cần xem lại vì thượng nguồn đã đổi",
+            columns=["Hiện vật", "Loại", "Vì sao cần xem lại"],
+            rows=[[a["id"], a["type"], a["stale_reason"] or "—"] for a in stale],
+            hanh_dong=[
+                hanh_dong("cap_nhat_tat_ca", "Cập nhật hạ nguồn", "say", muc="khoi",
+                          text="Cập nhật những hiện vật đang lỗi thời.",
+                          data={"nut": "cap_nhat_ha_nguon"}, ton_token=True,
+                          giai_thich="Tác tử dựng lại từng hiện vật bằng đúng công cụ "
+                                     "sinh ra nó, theo thứ tự thượng nguồn → hạ nguồn. "
+                                     "Lời nhờ do LÕI soạn, không phải anh gõ."),
+                hanh_dong("cap_nhat_mot", "Cập nhật", "say", muc="dong",
+                          text="Cập nhật {ma}.",
+                          data={"nut": "cap_nhat_ha_nguon", "hien_vat": ["{ma}"]},
+                          ton_token=True),
+                hanh_dong("chap_nhan", "Chấp nhận STALE", "edit", muc="dong",
+                          target={"type": "{loai}", "id": "{ma}"},
+                          data={"chap_nhan_stale": True}, can_ly_do=True,
+                          giai_thich="Lỗi thời nhưng anh quyết định giữ nguyên. Tắt băng "
+                                     "cảnh báo, ghi lại lý do, 0 token — và hoàn tác được."),
+            ]))
+    else:
+        khoi.append(empty(
+            "A11.4", "Hiện vật STALE",
+            chua_co="Không có hiện vật nào cần xem lại.",
+            vi_sao="Mọi thứ dựng trên thứ khác đều đang khớp với bản thượng nguồn mới "
+                   "nhất — hoặc chưa có cặp phụ thuộc nào trong kho.",
+            can_gi="Không cần gì. Khi anh sửa một hiện vật, thứ dựng trên nó sẽ hiện ở "
+                   "đây kèm hai nút: cập nhật, hoặc chấp nhận để nguyên."))
     return _don_gian("history", "A11", "Lịch sử", khoi)
 
 

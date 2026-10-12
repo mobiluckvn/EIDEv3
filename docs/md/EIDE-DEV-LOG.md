@@ -11219,3 +11219,127 @@ Con số "sau" chỉ có từ một phiên có người thật ngồi trước g
 * **`tests/kich_ban/cx_edit47_*.py`** vẫn chưa viết: đường "đi đúng đường người đi" của
   tám gói do `thu_nut_lui.py` đo qua app thật, nhưng nó không chạy trong `pytest -q`.
 * **Chỉ số 2 chưa có con số "sau"** — cần một phiên có người thật ngồi gõ.
+
+## [DEV-373] Hai cú bấm cho một hiện vật lỗi thời — nút mà `deps.py` đòi từ bước G5
+
+DEV-372 đo được, trên sổ cái 39 dự án thật: **7 lần** hạ nguồn bị đánh STALE rồi **không
+ai cập nhật**. Đồ thị phụ thuộc chạy đúng, băng cảnh báo hiện đúng. Chỗ thiếu là đường đi
+của người — và `deps.py` đã nói ra điều đó ngay trong docstring của chính nó:
+
+> Có ba cách xử lý một hiện vật lỗi thời […] **đánh dấu và nói lý do** — người nhìn thấy,
+> người quyết. Cách thứ ba đắt hơn về mã (phải có đồ thị, phải có lý do đọc được, **phải
+> có nút "chấp nhận STALE"**) nhưng nó là cách duy nhất không lấy mất quyền quyết của người.
+
+Nút ấy chưa bao giờ được vẽ. Tới gói này, cả hai việc người muốn làm với một hiện vật lỗi
+thời đều phải **gõ một câu**:
+
+* *"cập nhật đi"* → một lượt mô hình, và câu người tự gõ không mang theo danh sách hiện vật
+  lẫn lý do lỗi thời, nên mô hình phải tự đi tìm bằng cách đọc lại kho;
+* *"thôi, giữ nguyên"* → công cụ `stale.accept` có từ bước G5 và **chỉ tác tử gọi được**,
+  nên người phải nhờ mô hình làm một việc kế toán. Một lượt mô hình cho một phép ghi mà mã
+  làm xong trong một dòng.
+
+Và chính `_nguoi_sua` đã hỏi người một câu không có nút để trả lời, từ bước G2:
+
+> "Những thứ dựng trên nó giờ cần xem lại: … Tôi chưa chạy lại gì cả — **anh muốn tôi lập
+> kế hoạch cập nhật không?**"
+
+### `hanh_dong` — I8 mở rộng cho VIỆC LÀM
+
+`sua_duoc` (DEV-368) khai *ô nào sửa được*. Khối A11.4 cần khai một thứ khác: *bấm vào thì
+gửi HumanAct nào*. Nên có `surfaces.hanh_dong(...)` — lõi nói rõ `kind` · `target` · `data`
+· `text`, kèm hai cờ cho người đọc:
+
+* `can_ly_do` — giao diện phải hỏi lý do và đặt vào `note` TRƯỚC khi gửi;
+* `ton_token` — bấm vào là một lượt mô hình. Nói trước, đừng để người phát hiện qua hoá đơn.
+
+Giao diện chỉ thay `{ma}`/`{loai}` theo dòng rồi gửi. Vì sao không để nó tự soạn: nó đã tự
+soạn ở hai chỗ khác (nút "Giải thích thêm", bộ lọc tác giả) và cả hai lần đều ổn vì thông
+điệp đơn giản. Với "cập nhật hạ nguồn" thì không — lõi biết danh sách hiện vật lỗi thời,
+lý do lỗi thời, và công cụ dựng lại từng loại; giao diện không biết gì trong ba thứ ấy.
+
+A11.4 đổi từ `list` (một danh sách chuỗi — **không có chỗ nào để đặt nút**) thành `table`
+ba cột, mỗi dòng một hiện vật lỗi thời kèm lý do.
+
+### Nút thứ nhất: "Chấp nhận STALE" — 0 token, và hoàn tác được
+
+`edit` + `data.chap_nhan_stale`, chặn ở đầu `_nguoi_sua` **trước** mọi nhánh sửa nội dung.
+Phải chặn ở đó chứ không rẽ theo loại hiện vật: thứ lỗi thời thường là `build`/`sim_result`
+— những loại **không có đường sửa nào cả**.
+
+Hai điều đáng nói:
+
+**Nó là một changeset.** `stale.accept` (công cụ) gọi thẳng `store.accept_stale`, nên lần
+ấy không vào sổ changeset: không hoàn tác được, và tab Lịch sử không biết ai tắt cảnh báo
+lúc nào. Đường của người đi qua `history.ghi_chap_nhan_stale`, sinh một changeset với
+`forward.kind="stale"` mới — cờ lỗi thời không nằm trong `canonical` nên tắt nó không phải
+một `store` op, nhưng luật nền số 3 của README không có ngoại lệ *"trừ cờ"*. Phép nghịch
+đảo giữ **nguyên văn lý do cũ**: hoàn tác phải trả lại đúng câu "vì sao nó lỗi thời", không
+phải một câu dựng lại — dựng lại thì lý do thứ hai sẽ nói về lần hoàn tác chứ không nói về
+lần sửa thượng nguồn đã gây ra nó.
+
+**Nó bắt buộc có lý do.** Một hiện vật lỗi thời bị tắt cảnh báo mà không ai ghi vì sao thì
+sáu tháng sau không ai dám tin nó, và cũng không ai dám bật lại.
+
+Lược đồ phải nới một chỗ: `edit` vốn đòi `base_version`. Việc này không đổi nội dung nên
+không có hai bản nào để đâm nhau, và đường ra kia — truyền `base_version=""` cho đủ lệ — là
+một trường **hình dạng giả**. Nới có điều kiện, kèm chú thích ở cả hai chỗ kiểm.
+
+### Nút thứ hai: "Cập nhật hạ nguồn" — lời nhờ do LÕI soạn
+
+`say` + `data.nut="cap_nhat_ha_nguon"`. `_user_block` thay chỗ `act.text` bằng một đơn công
+việc dựng từ đồ thị phụ thuộc: danh sách hiện vật lỗi thời, lý do từng cái, và **công cụ
+dựng lại từng loại** (`CONG_CU_LAM_MOI`). Bảng ấy nói "không biết" ở chỗ không biết — `code`
+không có công cụ sinh tự động, và `target` thì *"KHÔNG tự nạp bo"*: một bảng đoán bừa sẽ
+bảo tác tử gọi `build.compile` cho một `netlist`, và nó sẽ thử, rồi báo lỗi như thể dự án
+hỏng.
+
+Đơn công việc cấm hai thứ, bằng chữ: đừng gọi `stale.accept` cho xong (người đã có nút
+riêng, và dùng nó thay cho việc dựng lại là **nói dối bằng một ô xanh**), và dựng lại không
+được thì nói vì sao rồi để nguyên cờ.
+
+Người vẫn đọc câu của người trên dòng hội thoại; mô hình đọc đơn công việc. Hai độc giả,
+hai văn bản.
+
+### Cái nút gần như làm xấu chính chỉ số sinh ra nó
+
+Chỉ số 2 của §7 đếm *"lượt người GÕ LỜI cho việc lẽ ra bấm được"*, và nút này gửi `say`.
+Không tách ra thì **mỗi lần người bấm nút sẽ được đếm là một lần người gõ lời** — lần đo
+sau sẽ nói ngược lại sự thật, và nó nói bằng một con số tăng lên. Nay `do_edit47.py` có rổ
+thứ năm (`tu_nut`).
+
+Chữ trên nút hôm nay (*"Cập nhật …"*) tình cờ không chứa từ khoá nào của §7, nên hôm nay nó
+chưa lọt. Phép lọc vẫn phải có: chữ trên nút là thứ đổi được bất cứ lúc nào, và lúc nó đổi
+thì chỉ số xấu đi vì một lý do chẳng liên quan gì tới người dùng. Ca kiểm dựng đúng tình
+huống ấy thay vì dựa vào may mắn.
+
+### Không cờ tính năng, và vì sao
+
+Luật §0 mục 4 đòi cờ cho thứ *"đổi thứ Agent thấy/làm mỗi lượt"*. Hai nút này đổi thứ tác
+tử thấy **chỉ khi người bấm** — đúng như khi họ gõ một câu. Cờ ở đây sẽ là một cái phanh
+cho hành động của chính người dùng. Cùng lý lẽ với DEV-365 (năm tầng lùi, không cờ).
+
+### Đo
+
+* `tests/test_edit47_cap_nhat_ha_nguon.py` — 15 ca. **Phá lại thì đỏ: 25/25** (21 vào lõi,
+  4 vào giao diện), và đỏ hết ngay lượt đầu.
+* `ui/EIDEApp/Tests/EIDETests/HanhDongTests.swift` — 5 ca: thay chỗ `{ma}` trong **mảng
+  lồng** (`hien_vat: ["{ma}"]` — thay sót ở đó thì nút chạy, không lỗi, và không làm gì
+  cả), và "dòng không có mã thì KHÔNG gửi gì".
+* `tools/thu_nut_lui.py` phần N — 7 ca qua APP THẬT: khối STALE là bảng, app vẽ được,
+  lõi khai hai nút kèm cờ `ton_token`/`can_ly_do` → bấm Chấp nhận → băng tắt, nội dung
+  không đổi một byte, là changeset của người → hoàn tác → **cờ bật lại**. Bộ ấy 59 →
+  **66/66** (cờ tắt) và 62 → **69/69** (cờ bật).
+* Bộ kiểm 2 402 → **2 417 xanh**. Giao diện 93 → **98 ca**. `kiem_tai_lieu`: **0 chỗ lệch**.
+* Bộ đo §7 nay nói ra hạ nguồn chưa cập nhật nằm ở **dự án nào** — kho mẫu có cả phiên thật
+  lẫn dự án của chính bộ đo (`thu-nut-lui`), và một con số trộn hai thứ mà không nói thì
+  người đọc tưởng cả tám lần đều là việc thật.
+
+### Chưa làm
+
+* **Chưa đo được "sau khi có nút thì chỉ số 3 giảm bao nhiêu".** Cần một phiên thật có
+  người bấm nút rồi tác tử dựng lại — tức một lượt mô hình. Con số hiện tại là mốc "trước".
+* **Nút "Cập nhật hạ nguồn" chưa chạy qua app với mô hình thật.** Phần N đo đường của nút
+  Chấp nhận (0 token); đường còn lại được đo ở mức lõi (`test_LOI_NHO_toi_mo_hinh_that`),
+  nơi đơn công việc được kiểm là có thật trong thứ gửi cho mô hình.
+* **`tests/kich_ban/cx_edit47_*.py`** vẫn chưa viết.

@@ -371,6 +371,31 @@ def for_file_write(*, cs_id: str, author: str, paths: list[str], sha: str | None
         forward=forward, inverse=inverse, explain=explain, note=note)
 
 
+def for_stale_accept(*, cs_id: str, author: str, artefact_id: str, type: str,
+                     ly_do: str, ly_do_cu: str, explain: dict[str, Any],
+                     run_id: str | None = None, human_act_id: str | None = None,
+                     note: str | None = None) -> Changeset:
+    """"Chấp nhận STALE" — EIDE-EDIT-47 §DEV-373.
+
+    Cờ lỗi thời không nằm trong `canonical`, nên tắt nó KHÔNG phải một `store` op: nội
+    dung hiện vật không đổi một byte nào. Nhưng nó vẫn là một thay đổi trạng thái mà
+    người gây ra, nên nó phải là một changeset — luật nền số 3 của README không có ngoại
+    lệ *"trừ cờ"*.
+
+    Phép nghịch đảo giữ **nguyên văn lý do cũ**: hoàn tác phải trả lại đúng câu "vì sao
+    nó lỗi thời", không phải một câu dựng lại. Dựng lại thì lý do thứ hai sẽ nói về lần
+    hoàn tác, chứ không nói về lần sửa thượng nguồn đã gây ra nó.
+    """
+    return Changeset(
+        id=cs_id, ts=_now(), author=author, run_id=run_id, human_act_id=human_act_id,
+        touches=[Touch(artefact_id, type, "update")],
+        forward=[{"kind": "stale", "op": "accept", "artefact_id": artefact_id,
+                  "reason": ly_do}],
+        inverse=[{"kind": "stale", "op": "mark", "artefact_id": artefact_id,
+                  "reason": ly_do_cu}],
+        explain=explain, note=note)
+
+
 def irreversible(*, cs_id: str, author: str, what: str, reason_vi: str,
                  explain: dict[str, Any], run_id: str | None = None,
                  tool_call_id: str | None = None) -> Changeset:

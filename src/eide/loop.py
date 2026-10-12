@@ -1682,6 +1682,12 @@ class Agent:
         """
         t = act.target
         assert t is not None                       # đã kiểm ở HumanAct.validate()
+        # "Chấp nhận STALE" (§DEV-373) — đứng TRƯỚC mọi nhánh sửa nội dung, vì nó không
+        # sửa nội dung: nó tắt một cái cờ. Phải chặn ở đây chứ không rẽ theo LOẠI hiện
+        # vật, vì thứ lỗi thời thường là `build`/`sim_result` — những loại không có đường
+        # sửa nào cả.
+        if act.data.get("chap_nhan_stale"):
+            return self._nguoi_chap_nhan_stale(act, ctx)
         # I10 (EIDE-EDIT-47 §2) — một mốc lùi TRƯỚC lần sửa đầu tiên của người. Đặt ở đây,
         # trước cả ba nhánh sửa, nên mọi đường người đi đều có chỗ quay về.
         self._moc_lui_cho_nguoi(act, ctx)
@@ -1750,6 +1756,110 @@ class Agent:
                                     stale=[{"id": i} for i in cs.stale_marked],
                                     vua_ghi=self._vua_ghi(act, cs)))
         ctx.said_anything = True
+
+    def _nguoi_chap_nhan_stale(self, act: HumanAct, ctx: TurnContext) -> None:
+        """Người bấm "Chấp nhận STALE" — 0 token, và hoàn tác được (§DEV-373).
+
+        Công cụ `stale.accept` có từ bước G5 và **chỉ tác tử gọi được**. Nên tới gói này,
+        người muốn tắt một băng cảnh báo phải nhờ mô hình làm một việc kế toán: một lượt
+        mô hình, cho một phép ghi mà mã làm xong trong một dòng.
+
+        `deps.py` nói ra điều ấy ngay trong docstring của nó — *"phải có nút chấp nhận
+        STALE"* — và nút đó chưa bao giờ được vẽ.
+
+        **Bắt buộc có lý do.** Một hiện vật lỗi thời bị tắt cảnh báo mà không ai ghi vì
+        sao thì sáu tháng sau không ai dám tin nó, và cũng không ai dám bật lại.
+        """
+        t = act.target
+        assert t is not None
+        why = (act.note or "").strip()
+        if not why:
+            ctx.emit(uic.notice(
+                "Chấp nhận một hiện vật lỗi thời thì phải nói vì sao — câu ấy là thứ "
+                "anh (hoặc người khác) đọc lại sáu tháng sau để biết có tin nó được "
+                "không.", level="error", code="E_THIEU_LY_DO"))
+            ctx.said_anything = True
+            return
+
+        cs = self.history.ghi_chap_nhan_stale(
+            artefact_id=t.id, why=why, run_id=ctx.run_id, human_act_id=act.id)
+        if cs is None:
+            ctx.emit(uic.notice(
+                f"{t.id} không đang lỗi thời (hoặc không có trong kho) — không có băng "
+                "cảnh báo nào để tắt.", level="warn"))
+            ctx.said_anything = True
+            return
+
+        # Tác tử phải BIẾT: từ lượt sau nó không được coi hiện vật ấy là "cần dựng lại",
+        # và nó cũng không được tự ý bật cảnh báo lại.
+        self.eide_md.note_human_edit(
+            artefact=t.id, summary=f"chấp nhận lỗi thời, giữ nguyên ({cs.id})", why=why)
+        self.eide_md.save()
+        ctx.emit(uic.console_post(
+            f"Đã tắt băng cảnh báo cho {t.id} và ghi lý do: “{why}”. Nội dung hiện vật "
+            f"không đổi một byte nào. Hoàn tác {cs.id} thì cờ lỗi thời bật lại nguyên văn.",
+            role="agent"))
+        ctx.emit(uic.history_update(changesets=[self.history.tom_tat(cs)],
+                                    vua_ghi=self._vua_ghi(act, cs)))
+        ctx.said_anything = True
+
+    # Loại hiện vật nào dựng lại bằng công cụ nào. Lõi NÓI RA, không để mô hình đoán.
+    #
+    # Chỗ không biết thì ghi rõ là không biết: một bảng đoán bừa sẽ bảo tác tử gọi
+    # `build.compile` cho một `netlist`, và nó sẽ thử — rồi báo lỗi như thể dự án hỏng.
+    CONG_CU_LAM_MOI: dict[str, str] = {
+        "build": "build.compile",
+        "sim_result": "sim.run (hoặc test.run nếu mã hiện vật bắt đầu bằng `unit-`)",
+        "criteria": "sim.criteria / test.criteria — nêu lại ngưỡng trước khi chạy",
+        "netlist": "mach.netlist",
+        "pinout": "mach.pinout",
+        "bom": "mach.bom",
+        "ckm": "ckm.build",
+        "findings": "mach.erc",
+        # Mã nguồn thì KHÔNG có một công cụ dựng lại: phải đọc rồi sửa. Nói thẳng.
+        "code": "không có công cụ sinh tự động — đọc `code.analyze` rồi sửa bằng fs.edit",
+        "target": "KHÔNG tự nạp bo. Nạp là thao tác không hoàn tác được (§E5.3) — "
+                  "dựng lại firmware rồi để NGƯỜI quyết có nạp hay không",
+    }
+
+    def _lenh_cap_nhat_ha_nguon(self, act: HumanAct) -> str:
+        """Lời nhờ cho nút "Cập nhật hạ nguồn" — **do lõi soạn**, không do người gõ.
+
+        Vì sao lõi soạn: câu người tự gõ mỗi lần một kiểu (*"cập nhật đi"*, *"dựng lại
+        hết"*), và nó không mang theo danh sách hiện vật lẫn lý do lỗi thời — nên mô hình
+        phải tự đi tìm, và nó tìm bằng cách đọc lại kho. Lõi đã biết sẵn cả danh sách,
+        cả lý do, cả công cụ dựng lại từng loại.
+
+        Trả chuỗi rỗng nếu đây không phải lần bấm nút ấy.
+        """
+        if (act.data or {}).get("nut") != "cap_nhat_ha_nguon":
+            return ""
+        chi = [str(x) for x in (act.data.get("hien_vat") or []) if str(x).strip()]
+        ds = [a for a in self.store.list(stale_only=True, limit=200)
+              if not chi or a["id"] in chi]
+        if not ds:
+            return ("Người dùng bấm “Cập nhật hạ nguồn” nhưng lúc này KHÔNG còn hiện vật "
+                    "nào lỗi thời. Nói đúng điều đó và đừng dựng lại gì.")
+
+        dong = []
+        for a in ds:
+            cach = self.CONG_CU_LAM_MOI.get(a["type"], "chưa có đường dựng lại tự động")
+            dong.append(f"- `{a['id']}` ({a['type']}) — lỗi thời vì: "
+                        f"{a.get('stale_reason') or 'không ghi lý do'}\n"
+                        f"  dựng lại bằng: {cach}")
+        return (
+            "<system-reminder>\n"
+            "Người dùng bấm nút “Cập nhật hạ nguồn” trên tab Lịch sử (A11.4). Đây là một "
+            "YÊU CẦU CÔNG VIỆC do LÕI soạn từ đồ thị phụ thuộc, không phải câu người gõ.\n\n"
+            f"{len(ds)} hiện vật đang lỗi thời:\n" + "\n".join(dong) + "\n\n"
+            "Làm theo thứ tự thượng nguồn → hạ nguồn. Với mỗi hiện vật: chạy đúng công cụ "
+            "sinh ra nó, rồi NÓI RA kết quả thật (đạt hay không, số đo bao nhiêu).\n\n"
+            "Hai điều KHÔNG được làm:\n"
+            "1. Không gọi `stale.accept` để tắt cờ cho xong — người đã có nút riêng cho "
+            "việc ấy, và dùng nó thay cho việc dựng lại là nói dối bằng một ô xanh.\n"
+            "2. Không dựng lại được thì nói VÌ SAO và để nguyên cờ. Một hiện vật còn cờ "
+            "lỗi thời kèm lời giải thích thì thật hơn một hiện vật mới mà sai.\n"
+            "</system-reminder>")
 
     def _moc_lui_cho_nguoi(self, act: HumanAct, ctx: TurnContext) -> None:
         """Mốc lùi trước lần sửa ĐẦU TIÊN của người trong một lượt việc (I10).
@@ -2740,7 +2850,10 @@ class Agent:
 
     def _user_block(self, act: HumanAct, ctx: TurnContext, annotations: list[str]) -> str:
         asm = self._assemble(ctx, type("S", (), {"annotations": annotations})())
-        body = act.text or act.transcript_line()
+        # Lời nhờ của một cái NÚT do lõi soạn (§DEV-373), không phải câu người gõ. Nó
+        # thay chỗ `act.text` trong ngữ cảnh mô hình, nhưng `act.text` vẫn là thứ hiện
+        # trên dòng hội thoại — người đọc câu của người, mô hình đọc đơn công việc.
+        body = self._lenh_cap_nhat_ha_nguon(act) or act.text or act.transcript_line()
         return (asm.reminder + "\n\n" + body) if asm.reminder else body
 
     def _context_pressure(self, asm: Any) -> float:

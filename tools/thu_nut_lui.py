@@ -59,6 +59,24 @@ def _ghi_req(du_an: pathlib.Path, ma: str, text: str) -> None:
             author="agent:bo-do", canonical={"text": text}, explain=EX)
 
 
+def _ghi_build(du_an: pathlib.Path, thuong_nguon: list[str]) -> None:
+    """Một hiện vật `build` dựng TỪ các hiện vật kia — để sửa thượng nguồn thì nó lỗi thời."""
+    _kho(du_an).apply(artefact_id="build:firmware", type="build", op="create",
+                      author="agent:bo-do", explain=EX,
+                      canonical={"dat": True, "flash": 1234},
+                      deps={"upstream": thuong_nguon})
+
+
+def _stale(du_an: pathlib.Path, ma: str) -> bool | None:
+    a = _kho(du_an).get(ma)
+    return None if a is None else bool(a["stale"])
+
+
+def _canon(du_an: pathlib.Path, ma: str) -> dict:
+    a = _kho(du_an).get(ma)
+    return {} if a is None else dict(a["canonical"])
+
+
 def _doc_req(du_an: pathlib.Path, ma: str) -> str:
     a = _kho(du_an).get(ma)
     return "" if a is None else str(a["canonical"].get("text", ""))
@@ -600,6 +618,62 @@ def chay(du_an: pathlib.Path) -> int:
     b.kiem("Bốn tầng đều có bản ghi trong một phiên",
            {"changeset", "session", "snapshot", "run"} <= {d.get("tang") for d in ds},
            " · ".join(sorted({str(d.get("tang")) for d in ds})))
+
+    # ---------------------------------------------------------------- N
+    b.phan("N · HAI CÚ BẤM CHO MỘT HIỆN VẬT LỖI THỜI (DEV-373)")
+
+    # Đo được 12/10/2026 trên sổ cái 39 dự án: 7 lần hạ nguồn bị đánh STALE rồi KHÔNG AI
+    # cập nhật. Phần này đo đường đi của người tới hai việc ấy.
+    _ghi_req(du_an, "FR-20", "≥ 1 MB/s")
+    _ghi_build(du_an, ["FR-20"])
+    g.ve_lai()
+    g._gui({"kind": "edit", "target": {"type": "req", "id": "FR-20"},
+            "data": {"base_version": _ver(du_an, "FR-20"), "fields": {"text": "≥ 9 MB/s"}},
+            "origin": {"surface": "requirements"}})
+    g.doi_xong()
+
+    g.mo_tab("history")
+    a = g.chup("a11-stale")
+    k = {x["code"]: x for x in a["khoi_tren_tab"]}.get("A11.4", {})
+    b.kiem("Khối STALE là một BẢNG (danh sách chuỗi thì không có chỗ đặt nút)",
+           k.get("type") == "table", str(k.get("type")))
+    b.kiem("App vẽ được nó và thấy hiện vật lỗi thời",
+           k.get("ve_duoc") is True and k.get("so_hang", 0) >= 1,
+           f"ve_duoc={k.get('ve_duoc')} · {k.get('so_hang')} dòng")
+    hd = {h.get("ma"): h for h in k.get("hanh_dong") or []}
+    b.kiem("Lõi KHAI hai cú bấm, và khai cái nào tốn tiền",
+           set(hd) >= {"cap_nhat_tat_ca", "chap_nhan"}
+           and hd["cap_nhat_tat_ca"].get("ton_token") is True
+           and not hd["chap_nhan"].get("ton_token"),
+           " · ".join(f"{m}{'(tốn token)' if h.get('ton_token') else ''}"
+                      for m, h in hd.items()) or "không khai nút nào")
+    b.kiem("Nút chấp nhận ĐÒI lý do trước khi gửi",
+           hd.get("chap_nhan", {}).get("can_ly_do") is True,
+           str(hd.get("chap_nhan", {}).get("can_ly_do")))
+
+    b.buoc("Bấm “Chấp nhận STALE” — đúng thông điệp mà `NutHanhDong` gửi")
+    g._gui({"kind": "edit", "target": {"type": "build", "id": "build:firmware"},
+            "data": {"chap_nhan_stale": True},
+            "note": "bản dựng này chỉ để đo kích thước, ngưỡng mới không đụng tới",
+            "origin": {"surface": "history", "block": "A11.4", "row": "build:firmware"}})
+    g.doi_xong()
+    b.kiem("Băng cảnh báo tắt, nội dung hiện vật KHÔNG đổi",
+           _stale(du_an, "build:firmware") is False
+           and _canon(du_an, "build:firmware").get("flash") == 1234,
+           f"stale={_stale(du_an, 'build:firmware')} · "
+           f"{_canon(du_an, 'build:firmware')}")
+    cs = _changeset_cham(du_an, "build:firmware")
+    b.kiem("Là một changeset của NGƯỜI, hoàn tác được",
+           bool(cs) and cs[-1]["author"] == "human" and cs[-1]["reversible"],
+           " → ".join(c["author"] for c in cs) or "không changeset nào")
+
+    b.buoc("Hoàn tác nó — cờ lỗi thời phải bật lại")
+    g._gui({"kind": "undo", "target": {"type": "changeset", "id": cs[-1]["id"]},
+            "data": {"mode": "revert"}, "origin": {"surface": "history"}})
+    g.doi_xong()
+    b.kiem("Cờ lỗi thời bật lại sau khi hoàn tác",
+           _stale(du_an, "build:firmware") is True,
+           f"stale={_stale(du_an, 'build:firmware')}")
 
     # ---------------------------------------------------------------- Đ
     b.phan("Đ · ẢNH CHỤP CHO BÁO CÁO")

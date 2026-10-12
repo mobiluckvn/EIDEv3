@@ -126,6 +126,12 @@ class HumanAct:
             raise schema_violation("HumanAct.origin.surface", f"bề mặt lạ: {self.origin.surface!r}")
 
         req = _REQUIRED_DATA.get(self.kind)
+        # EIDE-EDIT-47 §DEV-373 — "chap nhan STALE" la mot `edit` KHONG doi noi dung: no
+        # tat mot cai co. `base_version` ton tai de canh hai nguoi ghi de len nhau tren
+        # cung mot noi dung; doi no o day la doi mot con so khong co nghia gi — va duong
+        # ra la truyen `base_version=""` cho du le, tuc la mot truong hinh dang gia.
+        if self.kind == "edit" and self.data.get("chap_nhan_stale"):
+            req = None
         if req:
             missing = [k for k in req if k not in self.data]
             if missing:
@@ -159,7 +165,11 @@ class HumanAct:
             if self.target is None:
                 raise schema_violation("HumanAct[edit]", "thiếu target: sửa hiện vật nào?")
             # base_version la thu duy nhat cho phep phat hien nguoi va tac tu dam nhau (E4 buoc 3)
-            if "base_version" not in self.data:
+            #
+            # Tru "chap nhan STALE" (§DEV-373): no khong doi noi dung nen khong co hai ban
+            # nao de dam nhau. Xem chu thich o cho `_REQUIRED_DATA` tren kia.
+            if ("base_version" not in self.data
+                    and not self.data.get("chap_nhan_stale")):
                 raise schema_violation(
                     "HumanAct[edit].data",
                     "thiếu base_version — không có nó thì không phát hiện được xung đột",
