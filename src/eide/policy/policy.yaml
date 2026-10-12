@@ -134,6 +134,21 @@ rules:
     summary_vi: "Hậu quả vĩnh viễn — nói rõ mất gì, không có mặc định"
     principle: N5
 
+  # EIDE-EDIT-47 §DEV-371 — chạy đường dựng/script CỦA DỰ ÁN.
+  #
+  # Cùng cổng G-OPS với `target.dangerous` nhưng KHÔNG `never_auto`: một vòng sửa–dựng–sửa
+  # mười lần không được thành mười lần bấm Duyệt (xem `_da_duyet_roi` và chú thích 16 thẻ
+  # G-DATA ở đó). Lần đầu trong lượt hỏi; những lần sau cùng lượt tự đi.
+  #
+  # Vì sao vẫn phải hỏi, trong khi `build.compile` không hỏi: `make` chạy bất kỳ thứ gì
+  # trong Makefile, và Makefile là một tệp trong dự án mà chính tác tử ghi được.
+  - id: POL-OPS-chay-du-an
+    tool: "build.make|py.run"
+    action: ask
+    gate: G-OPS
+    summary_vi: "Chạy lệnh của dự án (Makefile / script Python) — nói rõ lệnh thật sẽ chạy"
+    principle: N5
+
   - id: POL-FLASH
     tool: "target.flash"
     action: ask

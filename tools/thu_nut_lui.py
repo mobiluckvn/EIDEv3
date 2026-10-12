@@ -513,6 +513,46 @@ def chay(du_an: pathlib.Path) -> int:
                "bên ngoài app",
                ngoai.read_text("utf-8") == V1, repr(ngoai.read_text("utf-8")))
 
+    # ---------------------------------------------------------------- L
+    b.phan("L · BẬT MỘT CỜ TÍNH NĂNG TỪ TRONG APP (DEV-371)")
+
+    g.mo_tab("project")
+    g.ve_lai()
+    a = g.chup("a14-cai-dat")
+    kh = {k["code"]: k for k in a["khoi_tren_tab"]}
+    b.kiem("Tab A14 có khối Cài đặt dự án", "A14.7" in kh,
+           " · ".join(sorted(kh)) or "không khối nào")
+    cd = kh.get("A14.7", {})
+    b.kiem("Khối ấy khai gửi bằng `set`, không phải `edit` (một cờ không là hiện vật)",
+           cd.get("sua_duoc_gui_bang") == "set", str(cd.get("sua_duoc_gui_bang")))
+    b.kiem("App VẼ ĐƯỢC khối ấy (không rơi vào nhánh “chưa biết vẽ”)",
+           cd.get("ve_duoc") is True and "kv" not in (a.get("khoi_chua_biet_ve") or []),
+           f"ve_duoc={cd.get('ve_duoc')} · chưa biết vẽ: {a.get('khoi_chua_biet_ve')}")
+    cap = {c[0]: (c[1] if len(c) > 1 else "") for c in cd.get("cap_kv") or []}
+    b.kiem("Mười chín cờ đều có mặt, và `pdf_bang` đang TẮT",
+           len(cap) >= 19 and cap.get("pdf_bang") == "không",
+           f"{len(cap)} cờ · pdf_bang={cap.get('pdf_bang')}")
+
+    b.buoc("Bấm công tắc `pdf_bang` — đúng thông điệp mà `CongTac` gửi")
+    g._gui({"kind": "set", "data": {"key": "feature.pdf_bang", "value": True},
+            "origin": {"surface": "project", "block": "A14.7", "row": "pdf_bang"}})
+    g.doi_xong()
+    tep = du_an / ".eide" / "settings.json"
+    d = json.loads(tep.read_text("utf-8")) if tep.exists() else {}
+    b.kiem("Cờ nằm trong `.eide/settings.json` của DỰ ÁN (sống qua lần tắt app)",
+           (d.get("features") or {}).get("pdf_bang") is True,
+           json.dumps(d, ensure_ascii=False)[:120] if d else "không có tệp")
+    g.ve_lai()
+    a = g.chup("a14-sau-khi-bat")
+    b.kiem("Lõi nói lại BẬT cái gì và cái giá của nó",
+           any("pdf_bang" in (t.get("chu") or "") and "4,3" in (t.get("chu") or "")
+               for t in a.get("thong_bao") or []),
+           json.dumps(a.get("thong_bao") or [], ensure_ascii=False)[:170])
+    cd = {k["code"]: k for k in a["khoi_tren_tab"]}.get("A14.7", {})
+    cap = {c[0]: (c[1] if len(c) > 1 else "") for c in cd.get("cap_kv") or []}
+    b.kiem("Bảng vẽ lại nói đúng trạng thái mới", cap.get("pdf_bang") == "có",
+           f"pdf_bang={cap.get('pdf_bang')}")
+
     # ---------------------------------------------------------------- Đ
     b.phan("Đ · ẢNH CHỤP CHO BÁO CÁO")
     g.mo_tab("history")

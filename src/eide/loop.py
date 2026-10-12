@@ -1206,6 +1206,23 @@ class Agent:
                                           + " (đã duyệt cho công cụ này trong lượt này)"))
 
         if perm.action == "ask":
+            cu = self._the_dang_cho(call.tool, call.args)
+            if cu:
+                # CÙNG MỘT VIỆC đang chờ trên một thẻ chưa ai trả lời (§DEV-371).
+                #
+                # Khác với `_da_duyet_roi` ở trên: cái đó nhớ việc người ĐÃ duyệt, cái này
+                # chặn việc dựng thẻ THỨ HAI cho một câu hỏi chưa ai trả lời. Đo được trên
+                # phiên FPGA: mô hình gọi `tool.install` cho `oss-cad-suite` nhiều lần
+                # trong một lượt (mỗi lần tải 483 MB nên nó hết hạn lượt giữa đường), và
+                # mỗi lần đẻ một thẻ mới. Người dùng nhận một chồng thẻ hỏi cùng một câu —
+                # và một chồng thẻ giống nhau là cách nhanh nhất dạy người ta bấm Duyệt mà
+                # không đọc.
+                self.ledger.append("gate", {"run_id": ctx.run_id, "gate_id": cu,
+                                            "gate": perm.gate, "tool": call.tool,
+                                            "state": "trung_the_dang_cho"})
+                ctx.awaiting_human = True
+                return ToolResult(
+                    False, error=gate_pending(perm.gate or "?", cu, perm.summary_vi)), perm
             gid = self.ids.next("gate")
             card = {"type": "gate", "card_id": gid, "gate_id": gid, "gate": perm.gate,
                     "rule": perm.rule_id, "title": perm.summary_vi or f"Duyệt {call.tool}",
@@ -1557,7 +1574,9 @@ class Agent:
 
         key = str(act.data.get("key"))
         val = act.data.get("value")
-        if key == "autonomy" and val in ("A0", "A1", "A2", "A3", "A4"):
+        if key.startswith("feature."):
+            self._dat_co(key.split(".", 1)[1], val, act, ctx)
+        elif key == "autonomy" and val in ("A0", "A1", "A2", "A3", "A4"):
             self.policy.autonomy = str(val)
             self.config.autonomy = str(val)
             ctx.emit(uic.notice(f"Mức tự chủ đổi sang {val}.", level="info"))
@@ -1568,6 +1587,48 @@ class Agent:
             ctx.emit(uic.notice(f"Thiết lập “{key}” chưa được hiện thực ở bước này.",
                                 level="warn"))
         ctx.said_anything = True
+
+    def _dat_co(self, ten: str, val: Any, act: HumanAct, ctx: TurnContext) -> None:
+        """`set feature.<tên>` — bật/tắt một cờ tính năng CHO DỰ ÁN NÀY (§DEV-371).
+
+        Tới gói này, cách duy nhất để bật một cờ là sửa `.env` rồi mở lại app. Nghĩa là
+        mười chín cờ — mỗi cờ có một lý do tồn tại và một cái giá nói ra được — nằm sau
+        một thao tác không có trong giao diện, và người dùng phải làm thay máy đúng cái
+        việc máy làm được.
+
+        Ghi vào `<dự án>/.eide/settings.json`, không vào `~/.eide`: một cờ đổi *thứ tác tử
+        thấy mỗi lượt* nên nó thuộc về **dự án**, không thuộc về người. Hai dự án mở cùng
+        buổi có quyền chạy hai cấu hình khác nhau.
+
+        **Áp ngay trong bộ nhớ, và nói ra là từ lượt sau mới đủ.** Đặt giá trị vào
+        `config.features` ngay thì mọi chỗ đọc `features.bat(...)` thấy liền; nhưng kho
+        đăng ký công cụ đã dựng xong cho lượt này, nên một cờ MỞ CÔNG CỤ (như
+        `schematic`) chỉ thật sự có công cụ mới ở lượt sau. Nói đúng câu ấy thay vì hứa
+        một thứ chỉ đúng một nửa.
+        """
+        from .config import GIAI_THICH_CO, Features
+
+        if ten not in Features.ten_co():
+            ctx.emit(uic.notice(
+                f"Không có cờ tính năng nào tên “{ten}”. Đang có: "
+                + ", ".join(Features.ten_co()) + ".", level="warn"))
+            return
+        bat = val if isinstance(val, bool) else \
+            str(val).strip().lower() in ("1", "true", "yes", "on", "có", "co")
+        try:
+            p = Features.ghi_cai_dat(self.config.paths.state_dir, ten, bat)
+        except OSError as e:
+            ctx.emit(uic.notice(f"Không ghi được cài đặt dự án: {e}", level="error"))
+            return
+        setattr(self.config.features, ten, bat)
+        self.ledger.append("setting", {"key": f"feature.{ten}", "value": bat,
+                                       "act_id": act.id, "tep": str(p),
+                                       "boi": "human"})
+        cau = GIAI_THICH_CO.get(ten, "")
+        ctx.emit(uic.notice(
+            f"Đã {'BẬT' if bat else 'TẮT'} “{ten}” cho dự án này"
+            + (f" — {cau}" if cau else "")
+            + " Cờ nào mở thêm công cụ thì công cụ ấy có từ lượt sau.", level="info"))
 
     # Người mở một tệp bao lâu thì coi là vẫn đang sửa nó.
     #
@@ -2383,6 +2444,27 @@ class Agent:
         if perm.irreversible or perm.never_auto:
             return False
         return (tool, perm.gate or "") in self._cong_cu_da_duyet
+
+    @staticmethod
+    def _van_tay_viec(tool: str, args: dict[str, Any]) -> str:
+        """Dấu nhận dạng một VIỆC, để biết hai lời gọi có hỏi cùng một câu không.
+
+        Bỏ `explain` ra ngoài: đó là lời mô hình tự soạn, và nó khác nhau từng lần kể cả
+        khi việc y hệt. So cả `explain` thì phép gộp thẻ không bao giờ khớp — một cơ chế
+        có mà không bao giờ nổ.
+        """
+        goi = {k: v for k, v in (args or {}).items() if k != "explain"}
+        return tool + "|" + json.dumps(goi, ensure_ascii=False, sort_keys=True,
+                                       default=str)
+
+    def _the_dang_cho(self, tool: str, args: dict[str, Any]) -> str:
+        """Mã thẻ cổng đang chờ cho ĐÚNG việc này, nếu có."""
+        vt = self._van_tay_viec(tool, args)
+        for gid, pend in self.pending_gates.items():
+            c = pend.get("card") or {}
+            if self._van_tay_viec(str(c.get("tool") or ""), c.get("args") or {}) == vt:
+                return gid
+        return ""
 
     def _nho_da_duyet(self, tool: str, card: dict[str, Any]) -> None:
         if card.get("irreversible") or card.get("never_auto"):

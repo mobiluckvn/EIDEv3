@@ -593,6 +593,14 @@ final class UITestChannel {
                 "sua_duoc_duong": (b.payload["sua_duoc"]?["truong"]?.arrayValue ?? [])
                     .compactMap { $0["path"]?.stringValue },
                 "sua_duoc_bac_bo": b.payload["sua_duoc"]?["bac_bo_duoc"]?.boolValue ?? false,
+                // DEV-371 — `set` hay `edit`. Phơi ra vì nó quyết định app GỬI GÌ, và một
+                // khối khai sai chỗ này vẫn vẽ ra một cái công tắc trông đúng y như vậy.
+                "sua_duoc_gui_bang": b.payload["sua_duoc"]?["gui_bang"]?.stringValue ?? "",
+                // Khối `kv`: hai ô đầu của mỗi cặp. Đủ để hỏi "cờ nào đang bật" mà không
+                // kéo theo mười chín câu giải thích vào mỗi lần chụp.
+                "cap_kv": b.arr("pairs").map { p in
+                    p.arrayValue.prefix(2).map { $0.display }
+                },
                 "so_dong_co_explain": (b.payload["row_meta"]?.objectValue ?? [:])
                     .values.filter { !($0["explain"]?.objectValue ?? [:]).isEmpty }.count,
             ]

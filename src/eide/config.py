@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass, field
 from dataclasses import fields as dc_fields
 from pathlib import Path
+from typing import Any
 
 
 def load_dotenv(path: str | Path = ".env") -> int:
@@ -303,10 +304,18 @@ class Features:
     **khong dang ky**, nen khong co nhanh ma nao cua tinh nang do chay duoc, va luoc do
     tool khong tang mot token nao.
 
-    Doc theo thu tu: mac dinh trong ma → `~/.eide/settings.json` → bien moi truong.
-    Bien moi truong dung sau cung de chay hoi quy HAI CHE DO ma khong sua tep cua nguoi:
+    Doc theo thu tu: mac dinh trong ma → `~/.eide/settings.json` → bien moi truong →
+    `<du an>/.eide/settings.json`. Bien moi truong dung truoc cai dat du an de chay hoi quy
+    HAI CHE DO ma khong sua tep cua nguoi:
 
         EIDE_FEATURE_SCHEMATIC=1 .venv/bin/python tools/thu_g5.py
+
+    Va cai dat CUA DU AN dung SAU CUNG (EIDE-EDIT-47 §DEV-371). Day la mot lech co y voi
+    thu tu "settings > env > default" cua dac ta, va ly do la: cai dat du an la mot cai
+    bam cua nguoi TRONG app, ngay truoc mat ho. Neu bien moi truong thang thi cai cong
+    tac o tab A14 lang le khong lam gi trong moi shell co `export EIDE_FEATURE_*` — tuc
+    la giao dien noi doi. Cai dat o nha (`~/.eide`) thi van nhuong cho bien moi truong
+    nhu cu: no la mac dinh cua nguoi, khong phai mot cai bam vua xay ra.
     """
 
     schematic: bool = False        # SCH-44: sinh so do KiCad. Mac dinh TAT.
@@ -435,24 +444,53 @@ class Features:
     watcher: bool = False
 
     @classmethod
-    def load(cls) -> "Features":
-        import json
-
+    def load(cls, state_dir: Path | str | None = None) -> "Features":
         f = cls()
-        p = Path.home() / ".eide" / "settings.json"
-        if p.exists():
-            try:
-                d = (json.loads(p.read_text("utf-8")) or {}).get("features") or {}
-            except (ValueError, OSError):
-                d = {}
-            for ten in cls.ten_co():
-                if ten in d:
-                    setattr(f, ten, bool(d[ten]))
+        f._ap_tep(Path.home() / ".eide" / "settings.json")
         for ten in cls.ten_co():
             v = os.environ.get(f"EIDE_FEATURE_{ten.upper()}")
             if v is not None:
                 setattr(f, ten, v.strip().lower() in ("1", "true", "yes", "on", "co"))
+        if state_dir is not None:
+            f._ap_tep(Path(state_dir) / "settings.json")
         return f
+
+    def _ap_tep(self, p: Path) -> None:
+        import json
+
+        if not p.exists():
+            return
+        try:
+            d = (json.loads(p.read_text("utf-8")) or {}).get("features") or {}
+        except (ValueError, OSError):
+            # Mot tep cai dat vo KHONG duoc chan ca app: nguoi dung se mo app len de sua
+            # no, va luc ay app phai len duoc.
+            return
+        for ten in self.ten_co():
+            if ten in d:
+                setattr(self, ten, bool(d[ten]))
+
+    @staticmethod
+    def ghi_cai_dat(state_dir: Path | str, ten: str, bat: bool) -> Path:
+        """Ghi MOT co vao `<du an>/.eide/settings.json`, giu nguyen phan con lai.
+
+        Doc–sua–ghi nguyen tep thay vi ghi them mot dong: tep nay con giu thu khac
+        (`features` chi la mot khoa), va mot lan ghi de mat chung thi khong ai tim ra
+        luc nao mat.
+        """
+        import json
+
+        p = Path(state_dir) / "settings.json"
+        d: dict[str, Any] = {}
+        if p.exists():
+            try:
+                d = json.loads(p.read_text("utf-8")) or {}
+            except (ValueError, OSError):
+                d = {}
+        d.setdefault("features", {})[ten] = bool(bat)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(d, ensure_ascii=False, indent=1) + "\n", "utf-8")
+        return p
 
     @staticmethod
     def ten_co() -> tuple[str, ...]:
@@ -476,6 +514,59 @@ class Features:
         return {t: self.bat(t) for t in self.ten_co()}
 
 
+# Mot cai cong tac khong co loi giai thich la mot cai cong tac khong ai dam bat. Bang nay
+# la ban DICH cua chu thich trong `Features` sang mot cau NGUOI DUNG doc duoc: bat thi doi
+# gi, va cai gia neu cai gia do do duoc.
+#
+# Vi sao mot bang viet tay chu khong doc chu thich bang `inspect`: chu thich trong lop viet
+# cho NGUOI SUA MA — no noi N-4, noi ma do, noi so hieu goi viec. Hai doc gia khac nhau can
+# hai van ban khac nhau, va tron chung lai thi ca hai deu doc nua voi.
+#
+# `test_moi_co_co_mot_cau_giai_thich` chan bang nay muc di: them mot co vao `Features` ma
+# khong them mot cau o day thi bo kiem do.
+GIAI_THICH_CO: dict[str, str] = {
+    "schematic": "Sinh sơ đồ nguyên lý KiCad (chín công cụ `sch.*`). Tắt thì chúng không "
+                 "được đăng ký, nên lược đồ tool không tốn token nào cho chúng.",
+    "gon_cong_cu": "Chỉ hiện danh sách công cụ cốt lõi cho mô hình, cắt mô tả tham số, và "
+                   "gỡ công cụ mở tạm sau 3 lượt không dùng. Rẻ hơn mỗi lượt, nhưng đổi "
+                   "danh sách tác tử nhìn thấy.",
+    "truy_vet": "Mở trường “tệp này hiện thực REQ nào” trên `fs.write`/`fs.edit`, để cột "
+                "Mã nguồn của ma trận truy vết có dữ liệu.",
+    "req_phu": "Nhắc cuối lượt khi còn yêu cầu chưa có phép đo nào.",
+    "req_chat_luong": "Trả cảnh báo chất lượng yêu cầu (tiêu chí không đo được, từ mơ hồ, "
+                      "trùng lặp) ngay trong kết quả ghi yêu cầu.",
+    "ke_hoach_cong_kiem": "Bước kế hoạch phải khai KIỂM BẰNG GÌ, và “xong bước” bị chặn "
+                          "nếu phép kiểm ấy chưa chạy sau lần ghi của bước.",
+    "erc_tu_dong": "Chạy ERC ngay sau mỗi lần sửa bản đồ mạch, và không cho kết lượt khi "
+                   "còn lỗi chặn mới chưa ai nhắc tới.",
+    "sim_runner_gioi_han": "Giới hạn `fs.write` của tác tử con sim-runner trong `sim/` — "
+                           "để nó không sửa được chính thước đo của mình.",
+    "test_harden": "EIDE tự đo độ nhạy sau khi test xanh và tự gọi một tác tử con viết "
+                   "thêm ca kiểm. **Tốn tiền mô hình.**",
+    "verifier_goi_bang_chung": "Verifier chỉ đọc dữ kiện dựng từ sổ cái, không đọc đề bài "
+                               "do tác tử chính tự viết.",
+    "hoi_quy_nen": "Sau khi ghi một tệp nằm trong `deps.upstream` của bộ kiểm, EIDE tự "
+                   "chạy lại bộ kiểm ấy một lần (trần 20 s) và tiêm con số vào ngữ cảnh.",
+    "resume_tuong_thuat": "Khi mở lại một phiên chưa chạm ngưỡng nén, dựng một tường "
+                          "thuật cơ học từ transcript phiên trước. 0 token mô hình.",
+    "kiem_noi": "Sau mỗi lần biên dịch thành công, nói thêm phần “kiểm nối”: ô vector trỏ "
+                "Default_Handler, hàm bị trình liên kết loại, hàm chỉ trả hằng.",
+    "pdf_bang": "Đọc BẢNG trong PDF thành hàng bảng, nên một datasheet cho thêm hàng chục "
+                "đơn vị trích dẫn. **Giá: nạp PDF chậm ×4,3–4,7** (đo trên 21 tệp, 293 "
+                "trang: 5,0 s → 23,8 s).",
+    "cong_co_diff": "Thẻ cổng ghi tệp kèm một khối diff hai cột: bên trái là bản trên "
+                    "đĩa, bên phải là bản tác tử định ghi.",
+    "sua_long": "Cho sửa theo ĐƯỜNG DẪN LỒNG trong hiện vật (ô thứ hai của một bảng con, "
+                "một trường trong một mảng) — không chỉ trường cấp một.",
+    "duyet_co_sua": "Cho sửa nội dung ngay trong khối diff của thẻ cổng rồi mới bấm "
+                    "Duyệt. Lõi gây thêm một changeset của anh cho phần chênh.",
+    "khoa_nguoi": "Tác tử ghi một tệp ANH ĐANG MỞ thì phải qua thẻ cổng G-FILE. Khoá hết "
+                  "hạn sau 10 phút, và đọc thì vẫn tự do.",
+    "watcher": "Theo dõi thư mục dự án: anh sửa tệp bằng VS Code hay trình soạn nào cũng "
+               "thành một thay đổi hoàn tác được. Chạy một thread quét mỗi 2 giây.",
+}
+
+
 @dataclass(slots=True)
 class Config:
     paths: Paths
@@ -491,4 +582,8 @@ class Config:
 
     @classmethod
     def for_project(cls, root: str | Path, **kw) -> "Config":
-        return cls(paths=Paths(Path(root).expanduser().resolve()).ensure(), **kw)
+        paths = Paths(Path(root).expanduser().resolve()).ensure()
+        # Co tinh nang doc CA cai dat cua du an nay (§DEV-371). `field(default_factory=...)`
+        # khong lam duoc viec nay: luc dung lop no chua biet du an nao.
+        kw.setdefault("features", Features.load(paths.state_dir))
+        return cls(paths=paths, **kw)

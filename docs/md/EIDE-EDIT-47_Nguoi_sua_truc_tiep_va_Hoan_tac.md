@@ -317,8 +317,6 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 
 ---
 
-<!-- se-co -->
-
 ### DEV-371 · Cài đặt dự án qua `set`, gộp thẻ `tool.install`, và hai công cụ chạy
 
 **Mục tiêu.** Ba chỗ người đang phải làm thay máy: sửa `.env` để bật cờ; đóng hàng chục thẻ `tool.install`; gõ `make`/chạy Python hộ Agent.
@@ -337,8 +335,6 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 **Ước lượng.** 2–3 ngày.
 
 ---
-
-<!-- /se-co -->
 
 ## 6 · Thứ tự làm và phụ thuộc
 

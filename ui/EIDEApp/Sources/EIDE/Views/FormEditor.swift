@@ -13,6 +13,9 @@ struct SuaDuoc {
     /// `row` — mỗi dòng một hiện vật; `block` — cả khối là một hiện vật.
     var idTu: String { raw["id_tu"]?.stringValue ?? "row" }
     var themXoa: JSONValue? { raw["them_xoa"] }
+    /// `"set"` — ô này không phải hiện vật trong kho, nên gửi `set{key,value}` chứ không
+    /// gửi `edit{patch}`; `path` của trường chính là tên `key` (§DEV-371).
+    var guiBang: String { raw["gui_bang"]?.stringValue ?? "edit" }
     var bacBoDuoc: Bool { raw["bac_bo_duoc"]?.boolValue ?? false }
     var xacNhanDuoc: Bool { raw["xac_nhan_duoc"]?.boolValue ?? false }
     var truong: [Truong] { (raw["truong"]?.arrayValue ?? []).map(Truong.init) }
@@ -224,6 +227,18 @@ struct FormEditor: View {
                    "session_id": .string(session)],
             origin: .init(surface: surface, block: khoi, row: ma),
             note: ghiChu.isEmpty ? nil : ghiChu)
+    }
+
+    /// Thông điệp của một ô `gui_bang="set"` — một CÁI CÔNG TẮC, không phải một hiện vật.
+    ///
+    /// Vì sao không đi qua `edit`: một cờ tính năng không có phiên bản, không có changeset
+    /// và không có hạ nguồn STALE. Gửi nó bằng `edit` thì lõi phải đi tìm một hiện vật
+    /// không tồn tại, và `base_version` là một con số bịa ra.
+    static func actDat(key: String, bat: Bool, surface: String, khoi: String,
+                       ma: String) -> HumanAct {
+        HumanAct(kind: .set,
+                 data: ["key": .string(key), "value": .bool(bat)],
+                 origin: .init(surface: surface, block: khoi, row: ma))
     }
 
     /// Chuỗi người gõ → giá trị đúng KIỂU mà lõi khai.

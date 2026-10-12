@@ -93,7 +93,8 @@ def sua_duoc(loai: str, truong_ds: list[dict[str, Any]], *,
              id_tu: str = "row", phien_ban_tu: str = "row_meta.phien_ban",
              them_xoa: dict[str, Any] | None = None,
              bac_bo_duoc: bool = False,
-             xac_nhan_duoc: bool = False) -> dict[str, Any]:
+             xac_nhan_duoc: bool = False,
+             gui_bang: str = "") -> dict[str, Any]:
     """Đặc tả "ô nào sửa được" gắn vào một khối — bất biến I8 của EIDE-EDIT-47.
 
     **Lõi khai, giao diện không suy.** Trước gói này giao diện biết ô nào sửa được bằng
@@ -105,9 +106,15 @@ def sua_duoc(loai: str, truong_ds: list[dict[str, Any]], *,
       · `"row"`   — mỗi DÒNG là một hiện vật; `target.id` lấy ở cột đầu;
       · `"block"` — cả KHỐI là một hiện vật (`block.ma_hien_vat`), mỗi dòng là một phần
         tử bên trong nó, và `{row}` trong `path` là chỉ số dòng.
+
+    `gui_bang="set"`: ô này KHÔNG phải một hiện vật trong kho, nên nó gửi `set{key,value}`
+    chứ không gửi `edit{patch}` — `path` của trường chính là tên `key` (§DEV-371, khối cài
+    đặt dự án ở A14). Vẫn là lõi khai, giao diện không suy: nếu để giao diện tự quyết thao
+    tác nào gửi cho khối nào thì có hai nơi biết luật, và một hôm chúng sẽ biết khác nhau.
     """
     return {"loai": loai, "id_tu": id_tu, "phien_ban_tu": phien_ban_tu,
             "truong": truong_ds,
+            **({"gui_bang": gui_bang} if gui_bang else {}),
             **({"them_xoa": them_xoa} if them_xoa else {}),
             **({"bac_bo_duoc": True} if bac_bo_duoc else {}),
             **({"xac_nhan_duoc": True} if xac_nhan_duoc else {})}
@@ -1931,7 +1938,33 @@ def bo_nho(eide_md: Any, *, ngu_canh: dict[str, Any] | None = None,
     return khoi
 
 
-def project(eide_md: Any, inv: Any, assumptions: list[str], **kw: Any) -> dict[str, Any]:
+def cai_dat_du_an(cfg: Any) -> dict[str, Any]:
+    """Khối A14.7 — mười chín cái công tắc, mỗi cái kèm một câu và một cái giá.
+
+    EIDE-EDIT-47 §DEV-371. Tới gói này, bật một cờ nghĩa là sửa `.env` rồi mở lại app:
+    một thao tác không có trong giao diện, và người dùng làm thay máy đúng cái việc máy
+    làm được. Khối này là chỗ ấy.
+
+    Ô sửa được ở đây **không phải một hiện vật trong kho** (một cờ không có phiên bản,
+    không có changeset, không có hạ nguồn STALE), nên nó gửi `set` chứ không gửi `edit` —
+    xem `gui_bang` trong `sua_duoc`.
+    """
+    from .config import GIAI_THICH_CO, Features
+
+    co = cfg.features
+    return block(
+        "A14.7", "Cài đặt dự án", "kv",
+        summary=(f"{len(co.dang_bat())}/{len(Features.ten_co())} cờ đang bật · ghi vào "
+                 "`.eide/settings.json` của DỰ ÁN NÀY, không của máy"),
+        pairs=[[t, "có" if co.bat(t) else "không", GIAI_THICH_CO.get(t, "")]
+               for t in Features.ten_co()],
+        sua_duoc=sua_duoc("cai_dat", [
+            truong("feature.{ma}", "Bật", kieu="bool", gay_stale=False),
+        ], id_tu="row", phien_ban_tu="", gui_bang="set"))
+
+
+def project(eide_md: Any, inv: Any, assumptions: list[str], cfg: Any = None,
+            **kw: Any) -> dict[str, Any]:
     """Dự án & Bộ nhớ tác tử — bề mặt G1 điền được đầy đủ (ui_model A14).
 
     §A3 N3: bảng kiểm kê phải hiện cho NGƯỜI thấy đúng như tác tử thấy. Nếu người và
@@ -1970,7 +2003,7 @@ def project(eide_md: Any, inv: Any, assumptions: list[str], **kw: Any) -> dict[s
         block("A14.3b", "Giả định đang dùng", "list",
               summary="Giả định phải được nói ra, không nằm ngầm trong hiện vật (N4)",
               items=assumptions or ["Không có giả định nào đang dùng."]),
-    ] + bo_nho(eide_md, **kw))
+    ] + ([cai_dat_du_an(cfg)] if cfg is not None else []) + bo_nho(eide_md, **kw))
 
 
 # =========================================================================== thanh trạng thái
@@ -2323,7 +2356,8 @@ def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
         "hardware": lambda: hardware(store, inv),
         "journal": lambda: journal(ledger),
         "history": lambda: history(store, inv, hist),
-        "project": lambda: project(eide_md, inv, assumptions or [], **(bo_nho_kw or {})),
+        "project": lambda: project(eide_md, inv, assumptions or [], cfg,
+                                   **(bo_nho_kw or {})),
         "screen": lambda: screen(store, inv, _goc_du_an(cfg)),
     }
     n = 0

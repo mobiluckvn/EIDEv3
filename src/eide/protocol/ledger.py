@@ -55,6 +55,18 @@ EVENT_KINDS = {
     # va cau hoi "ti le verifier bac dung co giam khi doi dau vao khong" khong do duoc.
     "subagent_input",
     "note",
+    # EIDE-EDIT-47 §DEV-371 — hai loai moi, va ca hai deu tra loi mot cau hoi ma so cai
+    # chua tra loi duoc:
+    #
+    # `setting`  — nguoi doi mot co tinh nang cua du an. Khong ghi thi sau sau thang khong
+    #   ai biet vi sao hai phien cung mot du an hanh xu khac nhau: mot cai bam doi *thu tac
+    #   tu thay moi luot*, nen no phai co trong so y nhu mot changeset.
+    #
+    # `tool_run` — mot lan chay LENH CUA DU AN (`make`, `python <tep>`): lenh that, ma
+    #   thoat, nguyen van dau ra. `tool_use` chi ghi tham so, va `tool_result` chi ghi
+    #   ok/ma loi — nen voi mot lenh dung do, chinh ma thoat va dau ra (hai thu duy nhat
+    #   dang doc) khong co o dau trong so.
+    "setting", "tool_run",
 }
 
 

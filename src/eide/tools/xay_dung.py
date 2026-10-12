@@ -45,6 +45,153 @@ def _ma_tc_unit(ma: str) -> str:
     return f"criteria:{ten if ten.startswith('unit-') else f'unit-{ten}'}"
 
 
+# Trần đầu ra của một lần chạy lệnh dự án, và trần thời gian.
+#
+# 64 KB là con số của §DEV-371. Nó không phải để tiết kiệm đĩa: đầu ra đi vào `result.data`
+# rồi vào ngữ cảnh của lượt sau, và một bản `make` nói 4 MB cảnh báo sẽ đẩy mọi khối khác
+# ra khỏi cửa sổ — tức một lần dựng ồn ào xoá sạch thứ tác tử cần để hiểu dự án.
+#
+# Cắt ở GIỮA, giữ cả đầu và đuôi: dòng lỗi đầu tiên và dòng kết luận cuối cùng là hai thứ
+# duy nhất luôn đáng đọc, và chúng ở hai đầu.
+TRAN_DAU_RA = 64 * 1024
+GIAY_CHAY = 900.0
+
+
+def _cat_giua(s: str, tran: int = TRAN_DAU_RA) -> tuple[str, bool]:
+    if len(s) <= tran:
+        return s, False
+    nua = tran // 2
+    return (s[:nua] + f"\n\n… [đã cắt {len(s) - tran:,} ký tự ở giữa] …\n\n"
+            + s[-nua:]), True
+
+
+def _chay_lenh_du_an(ctx: Any, explain: dict[str, Any], *, kieu: str,
+                     target: str = "", cwd: str = "",
+                     args: list[str] | None = None):
+    """Phần chung của `build.make` và `py.run` — §DEV-371.
+
+    Một bản sao thứ hai của hàm này sẽ lệch, và lúc lệch thì một trong hai công cụ chạy
+    ngoài hộp cát hoặc không ghi sổ. Ba thứ nó bảo đảm cho cả hai:
+
+    1. **hộp cát** — mọi đường dẫn qua `_resolve` của `builtin`, cùng cửa mà `fs.*` đi;
+    2. **có trần** — thời gian và kích thước đầu ra;
+    3. **ghi sổ đầy đủ** — lệnh thật, mã thoát, nguyên văn đầu ra, vào cả hiện vật kho lẫn
+       `ledger`. Lớp 3 "chạy xong thì ghi sổ": một lần chạy không ghi sổ thì sáu tháng sau
+       không ai dựng lại được nó.
+    """
+    import shutil as _sh
+    import subprocess as _sp
+
+    from .builtin import _resolve
+
+    goc = Path(ctx.config.paths.project_root).resolve()
+    if kieu == "make":
+        thu_muc = _resolve(ctx, cwd) if cwd else goc
+        if not thu_muc.is_dir():
+            return ToolResult(False, error=EideError(
+                "E4001", f"Không có thư mục “{cwd}” trong dự án.",
+                hint_for_agent="Gọi fs.glob để xem dự án có gì, rồi chỉ đúng thư mục có "
+                               "Makefile.",
+                alternatives=["fs.glob"], blame="agent"))
+        mf = next((p for p in (thu_muc / "Makefile", thu_muc / "makefile",
+                               thu_muc / "GNUmakefile") if p.exists()), None)
+        if mf is None:
+            return ToolResult(False, error=EideError(
+                "E4001", f"Không có Makefile trong {_rel_goc(goc, thu_muc)}.",
+                hint_for_agent=("Dự án này chưa có đường dựng bằng make. Dùng "
+                                "build.compile, hoặc viết Makefile trước (fs.write) và "
+                                "nói cho người dùng biết vì sao cần nó."),
+                alternatives=["build.compile", "fs.write"], blame="agent"))
+        if not _sh.which("make"):
+            return ToolResult(False, error=EideError(
+                "E4005", "Máy này không có `make`.",
+                hint_for_agent="Nói cho người dùng biết cần cài make (Xcode Command Line "
+                               "Tools trên macOS) — đừng tự cài.",
+                blame="external"))
+        lenh = ["make"] + ([target] if target.strip() else [])
+        ma_hv = f"build:make:{(target.strip() or 'mac-dinh')}"
+    else:
+        p = _resolve(ctx, target)
+        if not p.is_file():
+            return ToolResult(False, error=EideError(
+                "E4001", f"Không có tệp “{target}” trong dự án để chạy.",
+                hint_for_agent="Viết tệp trước (fs.write), hoặc gọi fs.glob để tìm đúng "
+                               "đường dẫn.",
+                alternatives=["fs.write", "fs.glob"], blame="agent"))
+        if p.suffix != ".py":
+            return ToolResult(False, error=EideError(
+                "E4007", f"`py.run` chỉ chạy tệp `.py`, không chạy “{p.name}”.",
+                hint_for_agent="Muốn chạy thứ khác thì nói cho người dùng biết — EIDE "
+                               "không có cửa chạy một tệp nhị phân bất kỳ.",
+                blame="agent"))
+        thu_muc = goc
+        lenh = [_python_cua_may(), "-I", str(p)] + [str(x) for x in (args or [])]
+        ma_hv = f"build:py:{_rel_goc(goc, p)}"
+
+    try:
+        r = _sp.run(lenh, cwd=str(thu_muc), capture_output=True, text=True,
+                    timeout=GIAY_CHAY)
+        ma_thoat, ra, loi, qua_han = r.returncode, (r.stdout or ""), (r.stderr or ""), False
+    except _sp.TimeoutExpired as e:
+        ma_thoat, qua_han = -1, True
+        ra = (e.stdout or "") if isinstance(e.stdout, str) else (e.stdout or b"").decode(
+            "utf-8", "replace")
+        loi = (e.stderr or "") if isinstance(e.stderr, str) else (e.stderr or b"").decode(
+            "utf-8", "replace")
+    except OSError as e:
+        return ToolResult(False, error=EideError(
+            "E4005", f"Không chạy được `{' '.join(lenh)}`: {e}",
+            hint_for_agent="Đọc câu trên, nói lại cho người dùng, và ĐỪNG coi là đã chạy.",
+            blame="system"))
+
+    nguyen_van, da_cat = _cat_giua(ra + (("\n--- stderr ---\n" + loi) if loi else ""))
+    dat = (ma_thoat == 0) and not qua_han
+    canonical = {"lenh": " ".join(lenh), "cwd": _rel_goc(goc, thu_muc), "ma_thoat": ma_thoat,
+                 "dat": dat, "qua_han": qua_han, "da_cat_dau_ra": da_cat,
+                 "nguyen_van": nguyen_van}
+    ctx.store.apply(
+        artefact_id=ma_hv, type="build",
+        op="update" if ctx.store.get(ma_hv) else "create",
+        author=f"agent:{ctx.run_id}", explain=explain, canonical=canonical,
+        view_hint={"kind": "log"})
+    ctx.ledger.append("tool_run", {"run_id": ctx.run_id, "tool": f"{kieu}", **canonical})
+
+    if not dat:
+        return ToolResult(False, error=EideError(
+            "E4002",
+            (f"`{' '.join(lenh)}` quá hạn {GIAY_CHAY:.0f} s và đã bị dừng."
+             if qua_han else
+             f"`{' '.join(lenh)}` thoát với mã {ma_thoat}."),
+            hint_for_agent=("Đây là KẾT QUẢ, không phải sự cố của EIDE: đọc đầu ra dưới "
+                            "đây, nói lại cho người dùng bằng lời của họ, và đừng báo "
+                            "xong.\n" + nguyen_van[-4000:]),
+            details={"ma_thoat": ma_thoat, "lenh": " ".join(lenh),
+                     "hien_vat": ma_hv}, blame="agent" if not qua_han else "system"))
+    return {**canonical, "hien_vat": ma_hv,
+            "note_vi": (f"Chạy `{' '.join(lenh)}` trong {canonical['cwd'] or '.'} — "
+                        f"mã thoát 0. Đầu ra ghi vào hiện vật {ma_hv}"
+                        + (" (đã cắt phần giữa)." if da_cat else "."))}
+
+
+def _python_cua_may() -> str:
+    """Trình Python chạy `py.run`.
+
+    `sys.executable` của tiến trình lõi, không phải `python3` trên PATH: lõi đang chạy
+    trong `.venv` của dự án, và một script của dự án phải chạy bằng đúng cái Python ấy —
+    không thì "chạy được trên máy tôi" lại là một câu nói về một môi trường khác.
+    """
+    import sys as _sys
+
+    return _sys.executable or "python3"
+
+
+def _rel_goc(goc: Path, p: Path) -> str:
+    try:
+        return str(p.relative_to(goc))
+    except ValueError:
+        return str(p)
+
+
 def _kiem_assert(ds: list[dict[str, Any]]) -> "ToolResult | None":
     """Phần kiểm assert dùng chung cho `sim.criteria` và `test.criteria`.
 
@@ -267,6 +414,71 @@ def dang_ky(r: Registry) -> None:
                 details={"lenh": lenh, "ma_thoat": r.returncode}, blame="system"))
         return {"cong_cu": cong_cu, "da_co": False, "lenh": lenh, "duong_dan": duong,
                 "note_vi": f"Đã cài {cong_cu} bằng `{lenh}` — nay có ở {duong}."}
+
+    # =============================================== chạy lệnh của dự án (§DEV-371)
+    @r.tool("build.make", "Mã nguồn",
+            "Chạy `make` của CHÍNH DỰ ÁN (Makefile người dùng viết). Dùng khi dự án có "
+            "đường dựng riêng mà build.compile không biết — chip lạ, bitstream FPGA, "
+            "nhiều đích. Người phải duyệt lần đầu mỗi lượt.",
+            {"type": "object",
+             "properties": {
+                 "target": {"type": "string",
+                            "description": "đích trong Makefile, ví dụ `all`, "
+                                           "`bitstream-h1`. Bỏ trống thì chạy đích mặc định"},
+                 "cwd": {"type": "string",
+                         "description": "thư mục con chứa Makefile, tính từ gốc dự án"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["explain"]},
+            risk="R3", core=False, needs_explain=True, gate="G-OPS",
+            produces=["build"], writes_artefact=True,
+            keywords=["make", "makefile", "dựng", "build", "bitstream", "đích"])
+    def build_make(ctx: Any, explain: dict[str, Any], target: str = "", cwd: str = ""):
+        """Vì sao R3 và có cổng, khác `build.compile` (R2, không cổng).
+
+        `build.compile` chạy một chuỗi công cụ EIDE biết tên, với tham số EIDE soạn. `make`
+        chạy **bất kỳ thứ gì trong Makefile** — và Makefile là một tệp trong dự án mà
+        chính tác tử ghi được. Không có cổng thì đường "tác tử tự viết một dòng
+        `curl … | sh` vào Makefile rồi gọi build.make" là một đường mở.
+
+        Nó vẫn **gộp thẻ**: lần duyệt đầu trong lượt mở cho cả những lần sau cùng đích
+        (xem `_da_duyet_roi`). Mười lần dựng trong một vòng sửa–dựng–sửa không thành mười
+        lần bấm duyệt.
+
+        Đích ĐƯỢC mô hình soạn, không như `tool.install`. Lý do khác nhau: lệnh cài là một
+        lệnh shell chạy với quyền của người dùng trên cả máy, còn `make <đích>` chỉ chạy
+        được thứ Makefile của dự án đã viết sẵn — người duyệt đọc thấy đúng tên đích trên
+        thẻ, và nội dung Makefile thì ở trong dự án, mở ra xem được.
+        """
+        return _chay_lenh_du_an(
+            ctx, explain, kieu="make", target=target, cwd=cwd)
+
+    @r.tool("py.run", "Mã nguồn",
+            "Chạy một tệp Python CỦA DỰ ÁN (script đo, sinh dữ liệu, kiểm tay) bằng "
+            "`python -I` trong hộp cát. Trả stdout/stderr và mã thoát. Không phải chỗ "
+            "chạy bộ kiểm — cái đó là `test.run`.",
+            {"type": "object",
+             "properties": {
+                 "path": {"type": "string",
+                          "description": "tệp .py, đường dẫn tính từ gốc dự án"},
+                 "args": {"type": "array", "items": {"type": "string"},
+                          "description": "tham số dòng lệnh"},
+                 "explain": EXPLAIN_SCHEMA},
+             "required": ["path", "explain"]},
+            risk="R3", core=False, needs_explain=True, gate="G-OPS",
+            produces=["build"], writes_artefact=True,
+            keywords=["python", "chạy script", "py", "đo", "sinh dữ liệu"])
+    def py_run(ctx: Any, explain: dict[str, Any], path: str, args: list[str] | None = None):
+        """`-I` (isolated): không đọc `PYTHONPATH`, không nạp `site-packages` của người
+        dùng, không chạy `sitecustomize`. Một script của dự án phải chạy được bằng thứ
+        trong dự án — nếu nó cần một thư viện ngoài thì điều đó phải lộ ra ở đây, lúc
+        chạy, chứ không lộ ra trên máy người khác.
+
+        **Mã thoát khác 0 là MỘT KẾT QUẢ, không phải một sự cố của EIDE.** Nó về tay mô
+        hình kèm nguyên văn đầu ra, và `dat=False`. Gói mã thoát ấy thành `ok=True` là
+        đúng thứ `build.compile` được viết để không làm.
+        """
+        return _chay_lenh_du_an(ctx, explain, kieu="py", target=path,
+                               args=list(args or []))
 
     # ====================================================================== biên dịch
     @r.tool("code.analyze", "Mã nguồn",

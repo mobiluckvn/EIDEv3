@@ -10983,3 +10983,144 @@ phẩm thiếu:
 * **`surface_patch("code", "A7.1", …)`** như đặc tả nói thì không làm: `history_update` đã
   đủ để A11 và thanh "vừa ghi" đúng, còn A7.1 vẽ lại ở lượt sau. Thêm một đường vẽ riêng
   cho một thread không nằm trong lượt là thêm một chỗ hai nguồn sự thật.
+
+## [DEV-371] Ba chỗ người đang làm thay máy: bật cờ, đóng thẻ trùng, gõ `make` hộ
+
+Gói thứ bảy và cuối của EIDE-EDIT-47.
+
+### Mười chín cái công tắc nằm sau một tệp `.env`
+
+`Features` có mười chín cờ. Mỗi cờ có một lý do tồn tại viết rõ trong mã, và vài cờ có
+một **cái giá đo được** (`PDF_BANG`: nạp PDF chậm ×4,3–4,7 trên 21 tệp thật). Cách duy
+nhất để bật một cờ, tới gói này: sửa `.env` rồi mở lại app. Nghĩa là một tính năng *có
+sẵn, đã kiểm, đã đo* nằm sau một thao tác **không có trong giao diện**.
+
+Nay `set feature.<tên>` ghi vào `<dự án>/.eide/settings.json`. Ba quyết định đáng nói ra:
+
+**Của dự án, không của máy.** Một cờ đổi *thứ tác tử thấy mỗi lượt*, nên nó thuộc về dự
+án. Ghi vào `~/.eide` thì mở dự án thứ hai trong cùng buổi là đã bật cờ cho cả nó.
+
+**Cài đặt dự án đi SAU biến môi trường** — lệch có ý với đặc tả (`settings > env >
+default`), và lý do nằm ở chỗ người dùng đứng: cài đặt dự án là một cái **bấm vừa xảy
+ra**, ngay trước mắt họ. Nếu biến môi trường thắng thì cái công tắc ở tab A14 lặng lẽ
+không làm gì trong mọi shell có `export EIDE_FEATURE_*` — tức giao diện nói dối về trạng
+thái thật. Cài đặt *ở nhà* (`~/.eide`) thì vẫn nhường biến môi trường như cũ: nó là mặc
+định của người, không phải một cái bấm vừa xảy ra.
+
+**Áp ngay trong bộ nhớ, và nói ra là chưa đủ.** `config.features` nhận giá trị mới liền,
+nhưng kho đăng ký công cụ đã dựng xong cho lượt này — nên một cờ MỞ CÔNG CỤ (`schematic`)
+chỉ thật sự có công cụ mới ở lượt sau. Câu thông báo nói đúng điều ấy thay vì hứa một thứ
+chỉ đúng một nửa.
+
+Khối A14.7 là một bảng `kv` ba cột: tên cờ · bật/tắt · **một câu giải thích kèm cái giá**.
+Một cái công tắc không có lời giải thích là một cái công tắc không ai dám bật. Bảng câu
+chữ ấy viết tay (`GIAI_THICH_CO`), không rút từ chú thích trong mã bằng `inspect`: chú
+thích trong `Features` viết cho **người sửa mã** — nó nói N-4, nói mã đo, nói số hiệu gói
+việc. Hai độc giả khác nhau cần hai văn bản khác nhau, và trộn chung thì cả hai đều đọc
+nửa vời. `test_moi_co_co_mot_cau_giai_thich` chặn bảng ấy mục đi theo hai chiều: thiếu một
+câu thì đỏ, mà thừa một câu cho cờ đã xoá cũng đỏ.
+
+### `gui_bang="set"` — vì một cái công tắc không phải một hiện vật
+
+Ô sửa được ở khối ấy **không phải hiện vật trong kho**: một cờ không có phiên bản, không
+có changeset, không có hạ nguồn STALE. Gửi nó bằng `edit{patch}` thì lõi đi tìm một hiện
+vật không tồn tại và `base_version` là một con số bịa ra.
+
+Nên `sua_duoc` nhận thêm một trường: `gui_bang="set"`, và `path` của trường chính là tên
+`key`. Vẫn là **lõi khai, giao diện không suy** (I8): để giao diện tự quyết thao tác nào
+gửi cho khối nào thì có hai nơi biết luật, và một hôm chúng sẽ biết khác nhau. Phía app,
+`KhoiKV` vẽ `Toggle` khi khối khai như thế — và cái công tắc **không tự lật** bằng trạng
+thái nội bộ: nó hiện đúng thứ lõi vừa gửi về. Một công tắc tự lật rồi lõi từ chối là giao
+diện nói dối về trạng thái thật, và cờ tính năng là đúng chỗ không được nói dối.
+
+### Thẻ cổng trùng: chặn theo VIỆC, không theo tên công cụ
+
+Đặc tả nói khoá theo *tên gói* trong `tool.install`. Tôi làm rộng hơn và đơn giản hơn: một
+**vân tay việc** = tên công cụ + tham số, bỏ `explain` ra ngoài. Hai lời gọi có cùng vân
+tay mà một thẻ còn treo chưa ai trả lời thì lời gọi thứ hai nhận lại **đúng mã thẻ cũ**
+(`E4003`), không dựng thẻ mới.
+
+Bỏ `explain` là chỗ dễ sai nhất: đó là lời mô hình tự soạn, khác nhau từng lần kể cả khi
+việc y hệt. So cả `explain` thì phép gộp **không bao giờ khớp** — một cơ chế có mà không
+bao giờ nổ, đúng loại lỗi dự án này gặp nhiều nhất.
+
+Và nó khác `_da_duyet_roi` (đã có từ trước): cái kia nhớ việc người **đã duyệt**, cái này
+chặn thẻ **thứ hai** cho một câu hỏi chưa ai trả lời.
+
+Một chuyện bộ kiểm dạy lại giữa đường: bản đầu của ca kiểm xếp năm lời gọi `tool.install`
+vào **một** Response, và nó không đo được gì — thẻ cổng đầu tiên làm lượt DỪNG (I6), nên
+bốn lời gọi sau không bao giờ chạy. Chỗ thẻ trùng sinh ra là **lượt sau**, khi thẻ cũ vẫn
+còn treo. Ca kiểm nay chạy bốn lượt thật.
+
+### `build.make` và `py.run` — và vì sao chúng có cổng khi `build.compile` không có
+
+Hai công cụ mới, nhóm Mã nguồn (đặc tả gọi nhóm "Viết mã"; tên nhóm thật trong mã là "Mã
+nguồn"). Chúng bỏ đi hai chỗ "nhờ người gõ hộ" trong kịch bản FPGA.
+
+`build.compile` xếp R2, không cổng, và chú thích của nó giải thích vì sao: nó chạy một
+chuỗi công cụ EIDE biết tên, với tham số EIDE soạn. `make` thì chạy **bất kỳ thứ gì trong
+Makefile** — và Makefile là một tệp trong dự án mà **chính tác tử ghi được**. Không có
+cổng thì đường *"ghi một dòng `curl … | sh` vào Makefile rồi gọi `build.make`"* là một
+đường mở. Nên R3 + G-OPS, nhưng **không** `never_auto`: lần duyệt đầu trong lượt mở cho cả
+những lần sau cùng việc, vì một vòng sửa–dựng–sửa mười lần không được thành mười lần bấm
+Duyệt (cùng lý lẽ với chú thích 16 thẻ G-DATA ở `_da_duyet_roi`).
+
+Bốn thứ cả hai công cụ cùng đi qua một hàm (`_chay_lenh_du_an`) — một bản sao thứ hai sẽ
+lệch, và lúc lệch thì một trong hai chạy ngoài hộp cát hoặc không ghi sổ:
+
+* **hộp cát** — mọi đường dẫn qua `_resolve`, cùng cửa mà `fs.*` đi. `py.run` chỉ chạy
+  `.py`, và chỉ trong dự án: một đường chạy mã ngoài dự án là một đường chạy mã bất kỳ
+  trên máy, và lúc ấy mọi luật khác chỉ còn là trang trí;
+* **`python -I`** của **chính tiến trình lõi** (`sys.executable`), không phải `python3`
+  trên PATH — "chạy được trên máy tôi" phải nói về đúng môi trường lõi đang chạy;
+* **trần**: 900 giây (một lần tải `oss-cad-suite` mất gần thế), và đầu ra 64 KB **cắt ở
+  giữa**. 64 KB không phải để tiết kiệm đĩa: đầu ra đi vào ngữ cảnh của lượt sau, và một
+  bản `make` nói 4 MB cảnh báo sẽ đẩy mọi khối khác ra khỏi cửa sổ — một lần dựng ồn ào
+  xoá sạch thứ tác tử cần để hiểu dự án. Cắt ở giữa vì dòng lỗi đầu tiên và dòng kết luận
+  cuối cùng là hai thứ luôn đáng đọc, và chúng ở hai đầu. Cắt thì **khai ra đã cắt**;
+* **ghi sổ**: hiện vật `build:*` kèm lệnh thật, mã thoát, nguyên văn; cộng một sự kiện sổ
+  cái `tool_run`. Phải thêm loại sự kiện ấy, vì `tool_use` chỉ ghi tham số và `tool_result`
+  chỉ ghi ok/mã lỗi — nên với một lệnh dựng đổ, chính **mã thoát và đầu ra** (hai thứ duy
+  nhất đáng đọc) không có ở đâu trong sổ. Loại thứ hai là `setting`.
+
+**Mã thoát khác 0 là MỘT KẾT QUẢ, không phải sự cố của EIDE.** Nó về tay mô hình kèm
+nguyên văn đầu ra và `dat=False`. Gói nó thành "xong" là đúng thứ `build.compile` được viết
+để không làm.
+
+### Đo
+
+* `tests/test_edit47_set_va_cong_cu.py` — 26 ca. **Phá lại thì đỏ: 28/28.**
+* `ui/EIDEApp/Tests/EIDETests/CaiDatTests.swift` — 4 ca. **5/5.** Bộ phá Swift phân biệt
+  "đỏ vì bắt được" với "đỏ vì không dịch được" — bài học của DEV-367, nơi một bộ đo coi
+  *chạy lỗi* là *bắt được lỗi* và xanh nhất đúng lúc nó hỏng nhất.
+* `tools/thu_nut_lui.py` phần L — 7 ca qua **APP THẬT**: tab A14 có khối cài đặt, khối ấy
+  khai `gui_bang="set"`, app vẽ được nó, mười chín cờ có mặt → bấm công tắc `pdf_bang` →
+  cờ nằm trong `.eide/settings.json`, lõi nói lại cái giá ×4,3, và bảng vẽ lại nói đúng
+  trạng thái mới. Bộ ấy 50 → **54/54** (cờ tắt) và **57/57** (cờ bật).
+* Bộ kiểm 2 365 → **2 391 xanh**, 2 skip, 0 đỏ. Giao diện 89 → **93 ca**. Công cụ 140 →
+  **142**. `kiem_tai_lieu`: **0 chỗ lệch**.
+
+Bốn phép phá LỌT ở lượt đầu, và cả bốn là lỗ của bộ kiểm:
+
+1. **`Config.for_project` không đọc cài đặt dự án** — ca kiểm gọi `Features.load(sd)` trực
+   tiếp, không đi qua cái cửa mà `__main__` đi. Nay có một dòng đo đúng cửa ấy.
+2. **không ghi sổ cái** — không ca nào đọc sự kiện `setting`.
+3. **quá hạn cũng coi là xong** — không ca nào chạm tới đường timeout. Nay có, với trần hạ
+   xuống 0,8 giây: một bộ kiểm chờ 900 giây là một bộ kiểm không ai chạy lại.
+4. **`python3` trên PATH thay vì python của lõi** — ca kiểm đọc đầu ra, mà khi `.venv/bin`
+   đang nằm trên PATH thì hai thứ ấy **trùng nhau**. Phép đo xanh đúng trên máy của người
+   đang sửa mã, và đỏ ở nơi khác. Nay hỏi thẳng hàm chọn trình thông dịch.
+
+### Chưa làm
+
+* **§7 của tài liệu (bốn chỉ số đo) vẫn còn dấu `se-co`.** Chỉ `dem_sua_duoc.py` tồn tại
+  (15/33). Ba chỉ số kia — lượt người gõ lời cho việc lẽ ra bấm được, thời gian sửa → hạ
+  nguồn, tỉ lệ hoàn tác theo tầng — đều cần một bộ rà sổ cái mới, và không gói nào trong
+  bảy gói này dựng nó.
+* **`tests/kich_ban/cx_edit47_*.py`** chưa viết. Đường "đi đúng đường người đi" của bảy gói
+  hiện do `tools/thu_nut_lui.py` đo, qua app thật — mạnh hơn một ca CX dựng bằng mã, nhưng
+  nó không chạy trong `pytest -q`.
+* **Nút "Cập nhật hạ nguồn" một cú bấm** (§7 nhắc tới) chưa có.
+* **`build.make` không đọc `Makefile` để nói trước sẽ chạy gì.** Thẻ cổng hiện tên đích và
+  thư mục; muốn biết đích ấy làm gì thì mở Makefile ra xem. Một bản đọc trước (`make -n`)
+  là việc đáng làm và chưa làm.

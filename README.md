@@ -40,7 +40,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 
 ## 1 · Nhìn một lượt: EIDE làm được gì
 
-Agent có **140 công cụ**: **130 đăng ký mặc định** — trong đó 73 nằm sẵn trong lược đồ mỗi lượt,
+Agent có **142 công cụ**: **132 đăng ký mặc định** — trong đó 75 nằm sẵn trong lược đồ mỗi lượt,
 số còn lại hiện ra sau khi Agent gọi `tool.search` — cộng **10 công cụ chỉ đăng ký khi bật cờ**
 (9 công cụ vẽ sơ đồ mạch và 1 công cụ tự nâng bộ kiểm). Thêm **8 Agent con**, **8 bộ hướng dẫn
 nạp theo việc**, **11 cửa duyệt**, và **12 tab** để người xem việc đang tới đâu.
@@ -53,7 +53,7 @@ Bảng dưới xếp theo *việc người cần làm*, không theo cách chia m
 | **Đọc tài liệu** | 20 | nạp PDF, Word, Excel, slide, mã nguồn · đọc theo trang hoặc theo mục · rút hình kèm chữ trong hình · lấy con số **bằng mã**, không để mô hình đọc hộ |
 | **Viết tài liệu** | 1 | dựng ra Word · PowerPoint · Excel · PDF từ nguồn Markdown nằm trong kho |
 | **Thiết kế mạch** | 27 | bản đồ mạch · cây khối nhiều cấp · thư viện khối · sinh sơ đồ nguyên lý mở được bằng KiCad |
-| **Viết mã** | 9 | đọc hiểu mã cũ trước khi sửa · dịch mã · bản đồ bộ nhớ · chạy bộ kiểm · **nêu ngưỡng trước rồi để EIDE phán, thay vì tin tệp test tự khai** · đo xem bộ kiểm có đo gì không |
+| **Viết mã** | 11 | đọc hiểu mã cũ trước khi sửa · dịch mã · bản đồ bộ nhớ · chạy bộ kiểm · **nêu ngưỡng trước rồi để EIDE phán, thay vì tin tệp test tự khai** · đo xem bộ kiểm có đo gì không · chạy `make` và script Python **của dự án**, có cửa duyệt và có trần |
 | **Chạy thử trên máy** | 2 | nêu mức đo trước, chạy, rồi đối chiếu |
 | **Làm việc với bo thật** | 6 | dò bo · nạp · đọc ngược để so từng byte · đọc log · tìm chỗ treo · đọc khung ảnh từ chip |
 | **Làm chip trên FPGA** | 7 | soát cú pháp Verilog · mô phỏng testbench · **phá mã RTL thật để xem testbench có canh không** · tổng hợp · **kiểm ràng buộc chân trước khi dựng** · đặt-đi dây và **đo Fmax thật** · đóng gói bitstream |
@@ -83,7 +83,7 @@ ra pixel rác.
 
 **Nó tự viết được công cụ mới cho chính nó.** Khi cần một tệp PowerPoint mà trong kho chưa có
 công cụ nào làm được, nó tự viết một công cụ mới kèm bộ kiểm, chạy bộ kiểm, và chỉ nạp công cụ
-đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 140 công cụ kể ở trên — nó sinh
+đó khi bộ kiểm chạy đúng. Công cụ tự viết **không** nằm trong 142 công cụ kể ở trên — nó sinh
 ra lúc chạy, trong đúng dự án đang làm. Việc này đã chạy thật, không phải tính năng trên giấy.
 
 ---
@@ -422,7 +422,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **2 365 ca Python + 89 ca giao diện**
+### Mức 1 — Ca đơn vị: **2 391 ca Python + 93 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -541,9 +541,9 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét giao diện | **124/124 ô** trên 11 tab · tab thứ 12 (Màn hình, A15) **chưa quét** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **2 365** | `pytest -q` |
-| Ca đơn vị giao diện | **89** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
-| Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa NGOÀI app, qua app thật | **50/50** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
+| Ca đơn vị Python | **2 391** | `pytest -q` |
+| Ca đơn vị giao diện | **93** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
+| Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa NGOÀI app · bật cờ, qua app thật | **57/57** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
 | Loại hiện vật người sửa được thẳng trên giao diện | **15/33** | [`dem_sua_duoc.py`](tools/dem_sua_duoc.py) |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
@@ -552,7 +552,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 | Chia việc lớn rồi ráp lại | **12/14** | [`thu_chia_viec_lon.py`](tools/thu_chia_viec_lon.py) |
 | Mã có nói khác tài liệu thiết kế không | **0 chỗ lệch** trên 18 tệp | `tools/kiem_tai_lieu.py` |
 | Luồng công cụ FPGA bốn chặng | **chạy thông tới silicon** — Verilog → bitstream → nạp → **96/96 ô đo trên bo** | [`docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/`](docs/fpga/phien-sinhvien-04-10/bai2/ket-qua/) |
-| Công cụ đã được dùng thật | **118/140** | rà 77 tệp sổ cái · 201 774 bản ghi (10/10/2026) |
+| Công cụ đã được dùng thật | **118/142** | rà 77 tệp sổ cái · 201 774 bản ghi (10/10/2026) |
 
 Mỗi ca kiểm có một tệp log riêng, trong đó có **bảng từng lời gọi công cụ kèm tham số đầy đủ
 và mã lỗi**: [`ket-qua-chay-lai/nhat-ky/`](docs/review-v3/test/ket-qua-chay-lai/nhat-ky/).
@@ -564,8 +564,8 @@ nhau, nên gộp vào một cột là nói sai về sản phẩm.
 ### Một việc không thêm tính năng nào nhưng đáng kể
 
 Rà toàn bộ sổ ghi việc phát hiện **31 trong 122 công cụ chưa bao giờ được dùng lần nào** (số
-đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 140). Bảy công cụ có đường dẫn tới chúng
-bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **118/140 đã được dùng
+đo ngày 30/09/2026, lúc bộ công cụ có 122 cái; nay là 142). Bảy công cụ có đường dẫn tới chúng
+bị đứt — đã nối lại. Phần còn lại được giao đúng loại việc để kiểm. Nay **118/142 đã được dùng
 thật** — đo lại 10/10/2026 trên 77 tệp sổ cái, 201 774 bản ghi.
 
 > Con số này từng ghi là *115/134*, và nó sai vì **phép lọc**, không vì dữ liệu: lần quét ấy dùng
@@ -1316,7 +1316,7 @@ là chỗ hay đứt nhất. Nay mỗi khối có một ca đi qua đúng đư�
 
 Nói ra để người đọc không phải tự tìm:
 
-- **22 trong 140 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
+- **24 trong 142 công cụ vẫn chưa được dùng thật.** Trong đó có công cụ dò việc nguy hiểm trên
   bo, chưa viết xong; và **năm công cụ thiết kế giao diện nhúng** vừa thêm (DEV-364) — mã của
   chúng đã chạy trên tài liệu và trình dịch thật, nhưng chưa lượt Agent nào *gọi* chúng.
   Và bảy công cụ trước đó — `hdl.sensitivity` (DEV-344),
@@ -1341,6 +1341,12 @@ Nói ra để người đọc không phải tự tìm:
   mở**: bản dựng ra thì sửa trên gốc, phép đo thì không ai được gõ đè, hình chiếu thì sửa
   ở chỗ nó chiếu từ đó. Còn thiếu: cây khối A5.9 chưa sửa được, nút thêm/xoá dòng chưa
   vẽ, kéo–thả trên canvas để sau.
+- **Bật một cờ tính năng nay bấm được trong app** (DEV-371, 12/10/2026): tab A14 có mười
+  chín công tắc, mỗi cái kèm một câu giải thích và cái giá nếu cái giá đo được; chúng ghi
+  vào `.eide/settings.json` của DỰ ÁN. Cùng gói: hai công cụ `build.make` và `py.run` để
+  Agent tự chạy đường dựng của dự án (có cửa duyệt G-OPS, trần 900 s, đầu ra 64 KB), và
+  thẻ cổng trùng việc được gộp — gọi lại cùng một việc khi thẻ cũ còn treo thì nhận lại
+  đúng thẻ ấy, không đẻ thẻ mới.
 - **Sửa tệp bằng VS Code thì EIDE đã biết** (DEV-369, 12/10/2026, sau cờ
   `EIDE_FEATURE_WATCHER`): một thread quét `mtime` mỗi 2 giây, gộp sự kiện 1,5 giây, và lần
   lưu ấy thành changeset của người — hoàn tác được, phá soft-lock, đánh dấu hạ nguồn, có
@@ -1348,8 +1354,8 @@ Nói ra để người đọc không phải tự tìm:
   `watchdog` chưa cắm (nên trên repo chục nghìn tệp thì nhịp quét sẽ thấy được), và **tệp
   bị xoá bên ngoài** thì watcher thấy rồi bỏ qua. Sáu gói đầu của
   [`EIDE-EDIT-47`](docs/md/EIDE-EDIT-47_Nguoi_sua_truc_tiep_va_Hoan_tac.md) — gỡ lại, khối
-  `diff`, sửa sâu, duyệt có sửa, trình soạn tệp trong app, bắt sửa ngoài app — xong
-  12/10/2026; còn DEV-371 (cài đặt qua `set`, gộp thẻ `tool.install`, `make`/`py.run`).
+  `diff`, sửa sâu, duyệt có sửa, trình soạn tệp trong app, bắt sửa ngoài app — cùng gói
+  thứ bảy ở trên, **xong cả bảy** ngày 12/10/2026.
 - **Mã phiên sửa do giao diện cấp**, đếm trong một lần mở app — hai lần mở có thể cấp trùng
   mã, nên một danh sách changeset dài qua nhiều phiên có thể gom nhầm hai lượt sửa cùng tên.
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
@@ -1516,7 +1522,7 @@ bản kể lại nào.
 ```
 src/eide/
 ├── loop.py            vòng lặp Agent
-├── tools/             140 công cụ, chia theo nhóm
+├── tools/             142 công cụ, chia theo nhóm
 ├── policy/            luật chặn và cửa duyệt
 ├── knowledge/         đọc tài liệu, rút con số, chữ trong hình
 ├── store/             kho dữ liệu dựa trên sổ ghi việc + git

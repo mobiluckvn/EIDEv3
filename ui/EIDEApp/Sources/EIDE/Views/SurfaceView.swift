@@ -263,6 +263,9 @@ struct KhoiRong: View {
 struct KhoiKV: View {
     let block: SurfaceBlock
 
+    /// Đặc tả sửa được do LÕI gửi (I8). `gui_bang="set"` thì mỗi dòng là một CÔNG TẮC.
+    private var sd: SuaDuoc? { SuaDuoc(block.payload["sua_duoc"]) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             if block.arr("pairs").isEmpty {
@@ -272,15 +275,59 @@ struct KhoiKV: View {
             }
             ForEach(Array(block.arr("pairs").enumerated()), id: \.offset) { _, p in
                 let cells = p.arrayValue
+                let ma = cells.first?.stringValue ?? ""
                 HStack(alignment: .top, spacing: 10) {
                     TextMd(cells.first?.display ?? "")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                         .frame(width: 210, alignment: .trailing)
-                    OCoTang(text: cells.count > 1 ? cells[1].display : "")
+                    if let sd, sd.guiBang == "set", let t = sd.truong.first,
+                       t.kieu == "bool", !ma.isEmpty {
+                        CongTac(t: t, ma: ma, khoi: block.code,
+                                bat: cells.count > 1 && Self.laBat(cells[1].display))
+                    } else {
+                        OCoTang(text: cells.count > 1 ? cells[1].display : "")
+                    }
+                    // Cột thứ BA là lời giải thích: một cái công tắc không có lời giải
+                    // thích là một cái công tắc không ai dám bật.
+                    if cells.count > 2, !cells[2].display.isEmpty {
+                        TextMd(cells[2].display)
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                            .frame(maxWidth: 420, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Spacer()
                 }
             }
         }
+    }
+
+    static func laBat(_ s: String) -> Bool {
+        ["có", "true", "bật", "1"].contains(s.trimmingCharacters(in: .whitespaces).lowercased())
+    }
+}
+
+/// Một cái công tắc gửi `set` — khối cài đặt dự án ở A14 (§DEV-371).
+///
+/// Bật xong **không tự lật lại** bằng trạng thái nội bộ: nó hiện đúng thứ lõi vừa gửi về.
+/// Một công tắc tự lật rồi lõi từ chối (tên cờ sai, không ghi được tệp) là một giao diện
+/// nói dối về trạng thái thật — và cờ tính năng là đúng chỗ không được nói dối.
+struct CongTac: View {
+    @EnvironmentObject var state: AppState
+    let t: SuaDuoc.Truong
+    let ma: String
+    let khoi: String
+    let bat: Bool
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { bat }, set: { moi in
+            state.gui(FormEditor.actDat(key: t.duong(row: 0, ma: ma), bat: moi,
+                                        surface: state.selectedSurface,
+                                        khoi: khoi, ma: ma))
+        })) { Text("") }
+            .toggleStyle(.switch).labelsHidden().controlSize(.mini)
+            .frame(width: 40, alignment: .leading)
+            .help(t.goiY.isEmpty ? "Bật/tắt cho DỰ ÁN NÀY — ghi vào .eide/settings.json"
+                                 : t.goiY)
     }
 }
 
