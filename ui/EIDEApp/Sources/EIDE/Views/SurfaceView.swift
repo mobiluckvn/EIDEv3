@@ -485,6 +485,10 @@ struct KhoiBang: View {
                         .padding(.vertical, 4).padding(.horizontal, 6)
                 }
             }
+            // Mở tệp trong trình soạn của app (DEV-367).
+            if block.payload["mo_duoc"] != nil, !ma.isEmpty {
+                NutMoTep(path: ma)
+            }
             // Nút của cả DÒNG: sửa nhiều ô một lần, bác bỏ, xác nhận Fact.
             if let sd {
                 NutDongSuaDuoc(sd: sd, block: block, r: r, cols: cols, row: i, ma: ma,
@@ -1926,5 +1930,25 @@ struct AnhSVG: NSViewRepresentable {
                   !gia.isEmpty else { return }
             onBam(loai, gia)
         }
+    }
+}
+
+
+/// Nút "Mở" trên một dòng tệp — mở `TepEditorView`.
+struct NutMoTep: View {
+    @EnvironmentObject var state: AppState
+    let path: String
+    @State private var mo = false
+
+    var body: some View {
+        Button {
+            mo = true
+        } label: {
+            Image(systemName: "square.and.pencil").font(.system(size: 10))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+        .help("Mở \(path) để sửa — lưu đi qua đúng đường có changeset và hoàn tác được")
+        .sheet(isPresented: $mo) { TepEditorView(path: path) }
     }
 }

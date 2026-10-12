@@ -227,8 +227,6 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 
 ---
 
-<!-- se-co -->
-
 ### DEV-367 · Trình soạn tệp ở A7 / A3 và khoá mềm hai chiều
 
 **Mục tiêu.** Người mở và sửa bất kỳ tệp nào trong thư mục dự án ngay trong EIDE; lưu đi qua `_sua_tep` đã có; trong lúc người đang mở tệp, Agent muốn ghi tệp đó phải qua cổng. Cờ `EIDE_FEATURE_KHOA_NGUOI` cho phần khoá (đổi hành vi Agent).
@@ -253,8 +251,6 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 **Ước lượng.** 3–5 ngày.
 
 ---
-
-<!-- /se-co -->
 
 ### DEV-368 · `sua_duoc` + trình soạn biểu mẫu lồng + nút "Không phải lỗi" + nhánh `confirm`
 

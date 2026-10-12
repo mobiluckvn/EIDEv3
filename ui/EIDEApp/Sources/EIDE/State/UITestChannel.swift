@@ -374,6 +374,37 @@ final class UITestChannel {
                 } else {
                     ghi(["su_kien": "loi", "ghi_chu": "không có thẻ \(v["card_id"] ?? .null)"])
                 }
+            case "tep":
+                // Trình soạn tệp (DEV-367): mở · lưu · đóng. Gọi ĐÚNG những hàm mà
+                // `TepEditorView` gọi, chỉ thiếu cái bàn phím.
+                let duong = v["tep"]?.stringValue ?? ""
+                switch v["viec"]?.stringValue ?? "mo" {
+                case "mo":
+                    Task { @MainActor in
+                        let r = await s.moTep(duong)
+                        s.baoDangSuaTep(duong, dangSua: true)
+                        self.ghi(["su_kien": "da_mo_tep", "tep": duong,
+                                  "ok": r?["ok"]?.boolValue ?? false,
+                                  "qua_lon": r?["qua_lon"]?.boolValue ?? false,
+                                  "hash": r?["hash"]?.stringValue ?? "",
+                                  "so_ky_tu": (r?["content"]?.stringValue ?? "").count,
+                                  "la_eide_md": r?["la_eide_md"]?.boolValue ?? false,
+                                  "loi": r?["message_vi"]?.stringValue ?? ""])
+                    }
+                case "luu":
+                    s.gui(TepEditorView.actLuu(
+                        path: duong, noiDung: v["noi_dung"]?.stringValue ?? "",
+                        hash: v["hash"]?.stringValue ?? "",
+                        viSao: v["vi_sao"]?.stringValue ?? "",
+                        session: s.moPhienSua()))
+                    ghi(["su_kien": "da_luu_tep", "tep": duong])
+                case "dong":
+                    s.baoDangSuaTep(duong, dangSua: false)
+                    s.dongPhienSua()
+                    ghi(["su_kien": "da_dong_tep", "tep": duong])
+                default:
+                    ghi(["su_kien": "loi", "ghi_chu": "việc tệp lạ"])
+                }
             case "cho":
                 ghi(["su_kien": "cho", "dang_chay": s.busy ? "có" : "không"])
             default:
@@ -713,6 +744,7 @@ final class UITestChannel {
                 "luot_so_thay_doi": s.run?.soThayDoi ?? 0,
                 "luot_nut": s.run?.buttons ?? [],
                 "phien_sua": s.sessionSua ?? "",
+                "khoa_cua_tac_tu": Array(s.khoaCuaTacTu),
                 // HumanAct đã gửi — để ca đo hỏi "cái bấm ấy đi vào lõi dưới dạng gì".
                 "da_gui": s.daGui.suffix(6).map {
                     ["kind": $0.kind.rawValue,

@@ -1431,6 +1431,9 @@ def code_surface(store: Any, inv: Any, goc: str = "") -> dict[str, Any]:
             "A7.1", "Tệp mã & script", "table",
             summary=f"{len(files)} tệp do tác tử hoặc anh ghi",
             columns=["Tệp", "Phiên bản", "Tác giả", "Tóm tắt", "Cần cập nhật"],
+            # DEV-367 — dòng nào MỞ được trong trình soạn của app. Lõi khai (I3): nó là
+            # bên biết tệp nào nằm trong hộp cát và tệp nào chỉ là một bản ghi trong kho.
+            mo_duoc={"cot": 0},
             rows=[[f["id"], f"v{f['version']}",
                    "Anh" if f["author"] == "human" else "Tác tử",
                    (f["explain"] or {}).get("summary", ""),

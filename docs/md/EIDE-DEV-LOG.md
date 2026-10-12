@@ -10766,3 +10766,94 @@ người đi — `HumanAct kind=set` qua kênh kiểm thử — chứ không s�
 * **`amended` kèm `patch` có đường đi và có ca kiểm, nhưng giao diện chưa gửi dạng ấy** —
   nút trên thẻ cổng mới gửi `content`. Cổng cho hiện vật (G-DESIGN, G-DATA) vì thế chưa
   sửa-rồi-duyệt được.
+
+---
+
+## [DEV-367] Trình soạn tệp trong app, và khoá mềm **hai chiều**
+
+Gói thứ năm của EIDE-EDIT-47. `_sua_tep` có từ bước G2 — gộp ba chiều, thẻ xung đột,
+changeset hoàn tác được. Và khối `code` trên tab Mã nguồn là một `Text(...)` chỉ chọn–copy
+được: **không đường nào cho người gõ một chữ vào đó**. Muốn sửa một dòng thì mở VS Code, và
+lúc ấy EIDE mù cho tới khi tác tử đọc lại tệp.
+
+### `file.open` — và vì sao giao diện KHÔNG tự đọc tệp
+
+Phương thức RPC thứ hai trong `RPC_CHI_DOC` (máy–máy, chỉ đọc, 0 token). Giao diện chạy
+trên cùng máy và thừa sức `FileManager.contentsOfFile` — nhưng làm thế thì **hộp cát chỉ
+còn canh một nửa số đường vào**, và nửa không canh là nửa người dùng đang ngồi gõ. Nay
+đường dẫn của người đi qua đúng `_resolve` mà công cụ của tác tử đi: `../../etc/passwd` bị
+chặn ở cả hai cửa bằng cùng một mã lỗi.
+
+Ba thứ `file.open` trả về mà giao diện không tự suy được: `hash` (để lưu còn gộp ba chiều),
+`qua_lon` (tệp > 2 MB thì chỉ đọc — trình soạn giữ cả tệp trong bộ nhớ, và một tệp 50 MB
+làm app đứng hình theo kiểu trông giống hệt app chết), và `la_eide_md`.
+
+**Và nó cất bản vừa mở vào kho blob.** Chỗ này tìm ra bằng một ca kiểm đỏ: không có bản gốc
+thì `_tim_ban_goc` chịu, nên **mọi** lần "tác tử sửa trong lúc người gõ" rơi xuống thẻ xung
+đột — kể cả khi hai bên sửa hai chỗ chẳng liên quan. Blob đánh địa chỉ theo nội dung nên mở
+lại cùng một tệp không tốn thêm byte nào.
+
+### EIDE.md lưu đi một đường KHÁC
+
+Ghi thẳng `p.write_text` thì tệp trên đĩa đúng, nhưng `self.eide_md` trong bộ nhớ tiến
+trình vẫn giữ bản cũ — và nó là thứ dựng khối `<eide_md>` cho **mọi lượt sau**, lẫn thứ
+`note_human_edit` ghi tiếp vào rồi `save()` lại. Lần ghi kế của tác tử sẽ lưu bản cũ ấy đè
+lên bản người vừa sửa, **im lặng và toàn phần**. Nay `_sua_tep` nhận ra EIDE.md và đi qua
+`self.eide_md` — cùng cửa mà công cụ bộ nhớ đi (README §4.10).
+
+### Khoá mềm, nửa còn thiếu
+
+Soft-lock tới giờ có **một chiều**: tác tử sửa thì báo cho người. Chiều kia không có gì —
+người mở `main.c`, tác tử ghi đè ở lượt sau, người chỉ biết khi bản của họ biến mất. Lõi
+biết "người ĐÃ sửa" (qua changeset) nhưng không biết "người ĐANG sửa", và giữa hai cái ấy
+là đúng khoảng thời gian người gõ dở một hàm và chưa bấm Lưu.
+
+Nay trình soạn gửi `attend{block:"editor", path, dang_sua}` — là **sự chú ý**, đúng nghĩa
+của `attend`, nên không tốn lượt mô hình nào. Lõi giữ `locks_nguoi` và nâng lời gọi ghi tệp
+ấy lên **hỏi** (G-FILE, sau cờ `EIDE_FEATURE_KHOA_NGUOI`).
+
+Ba chỗ cố ý mềm: **đọc thì vẫn tự do** (chặn tác tử đọc là chặn đúng việc nó cần làm để
+khỏi ghi đè); khoá **hết hạn sau 10 phút** (người mở tệp rồi đi ăn trưa, và một cái khoá
+không bao giờ tự nhả sẽ biến chính nó thành thứ người ta học cách bấm qua cho nhanh); và nó
+dựng **thẻ hỏi**, không phải lời từ chối.
+
+Phía giao diện, `surface.lock`/`surface.unlock` **lần đầu tiên được đọc**: lõi gửi chúng từ
+bước G2 và `AppState` có đúng một dòng `case … : break`. Nên băng *"tác tử đang sửa tệp
+này"* mà §E4 bước 1 đòi thì chưa bao giờ hiện ra.
+
+### Một ca kiểm đỏ hoá ra là tin tốt
+
+Bản đầu của `test_tac_tu_khong_the_am_tham_de_len_ban_nguoi_vua_luu` đòi thấy `E4020`
+("chưa đọc thì chưa ghi đè"). Nó đỏ — vì một luật policy **có sẵn** (*"tệp này người dùng
+vừa sửa"*) dựng thẻ G-FILE trước khi lời gọi chạy tới `fs.write`. Lớp hai không nổ vì lớp
+một đã chặn. Nay ca kiểm đo cả chuỗi: chặn ở cổng → người lỡ tay duyệt → `E4020` vẫn đỡ
+phía sau.
+
+### Đo
+
+* `tests/test_edit47_sua_tep.py` — 17 ca. **Phá lại thì đỏ: 13/13.**
+* `ui/EIDEApp/Tests/EIDETests/TepEditorTests.swift` — 6 ca. **5/5.**
+* `tools/thu_nut_lui.py` phần I — 5 ca mới qua APP THẬT: mở tệp → sửa → Cmd-S → đúng nội
+  dung trên đĩa, một changeset của người hoàn tác được; EIDE.md tự khai là EIDE.md. Bộ ấy
+  40 → **45/45**.
+* Bộ kiểm 2 328 → **2 345 xanh**, 2 skip, 0 đỏ. Giao diện 83 → **89 ca**. Cờ 17 → **18**.
+
+Ba phép phá LỌT ở lượt đầu, và cả ba chỉ ra chỗ ca kiểm dựng hỏng:
+
+1. **Bản gốc vào blob** — ca kiểm tạo tệp TRƯỚC khi lõi khởi tạo git, nên `git log` tra
+   ngược được và blob không gánh gì. Nay tạo tệp SAU, đúng tình huống thật với một tệp tác
+   tử vừa viết ra.
+2. **Chuyển tab cũng khoá** — ca kiểm chỉ thử `attend` trơn không mang đường dẫn, nên bỏ
+   phép kiểm `block == "editor"` đi vẫn xanh. Nay có một `attend` mang đường dẫn nhưng đến
+   từ bảng A7.1.
+3. **`loai=` vào changeset** — phép phá không dựng được, và đó là câu trả lời: `ghi_tep`
+   đã tự đoán loại. Dòng tôi thêm theo tài liệu là **thừa**, đã bỏ.
+
+### Chưa làm
+
+* **Không tô màu cú pháp, không gợi ý mã, không số dòng.** EIDE không định thay VS Code;
+  nó cần một đường *lưu có dấu vết*. §8 của tài liệu đã nói thế.
+* **`TextEditor` của SwiftUI, không phải NSTextView bọc** — nên không có cột số dòng và
+  Cmd-F. Đổi lại chép/dán/Cmd-Z đúng như macOS.
+* **Thẻ xung đột hiện ở Console, không hiện TRONG trình soạn** như đặc tả nói. Người vẫn
+  thấy nó, chỉ là phải nhìn sang cột trái.

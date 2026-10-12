@@ -12,6 +12,7 @@ Phuong thuc RPC:
   ui.sync()                May–may. Ve lai toan bo be mat.
   ping()                   May–may.
   history.preview_restore  May–may, CHI DOC. "Khoi phuc ban nay thi mat gi?" (EDIT-47).
+  file.open(path)          May–may, CHI DOC. Noi dung mot tep trong hop cat (EDIT-47).
 
 Van chuyen: JSON-RPC 2.0 tren stdio (khung Content-Length) hoac WebSocket localhost.
 seq hai chieu; idempotent theo id; write-ahead HumanAct vao so cai TRUOC khi lam.
@@ -45,7 +46,7 @@ OUTBOX_KEEP = 2000
 #
 # Nen: mot danh sach dong, moi ten o day deu phai la chi doc. Them mot ten vao day la mot
 # quyet dinh thiet ke, khong phai mot tien ich.
-RPC_CHI_DOC: tuple[str, ...] = ("history.preview_restore",)
+RPC_CHI_DOC: tuple[str, ...] = ("history.preview_restore", "file.open")
 
 
 class TurnRunner(Protocol):

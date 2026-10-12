@@ -419,6 +419,13 @@ class Features:
     # cua nguoi va nhan mot `<system-reminder>` vao ngu canh, tuc doi thu mo hinh doc o
     # luot sau (N-4). Co tat thi the cong chay y nhu cu.
     duyet_co_sua: bool = False
+    # EIDE-EDIT-47 DEV-367 — tac tu ghi mot tep NGUOI DANG MO thi phai qua cong G-FILE.
+    #
+    # Sau co vi no THEM MOT CUA chan tren duong tac tu ghi tep (N-4): mot luot dang chay
+    # tron tru co the dung lai giua chung de hoi, va "nguoi co thay phien lam viec muot
+    # hon hay vuong hon" la cau chi bo 76 ca chay hai che do tra loi duoc. Phan khoa thuan
+    # trinh bay — bang vang "anh dang mo tep nay" — chay ca khi co tat.
+    khoa_nguoi: bool = False
 
     @classmethod
     def load(cls) -> "Features":

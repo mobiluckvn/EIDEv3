@@ -419,6 +419,48 @@ def chay(du_an: pathlib.Path) -> int:
                [c["author"].split(":")[0] for c in cs] == ["agent", "human"],
                " → ".join(c["author"] for c in cs) or "không có changeset nào")
 
+    # ---------------------------------------------------------------- I
+    b.phan("I · TRÌNH SOẠN TỆP TRONG APP, VÀ KHOÁ MỀM HAI CHIỀU (DEV-367)")
+
+    tep = du_an / "sua-trong-app.c"
+    tep.write_text("int f(void){return 0;}\n", "utf-8")
+    g.mo_tab("code")
+    g._gui({"ui": "tep", "viec": "mo", "tep": "sua-trong-app.c"})
+    r = g._doi("da_mo_tep", 25)
+    b.kiem("Mở được tệp trong app (nội dung tới từ LÕI, qua hộp cát)",
+           r.get("ok") is True and r.get("so_ky_tu", 0) > 0,
+           json.dumps(r, ensure_ascii=False)[:140])
+    b.kiem("Lõi cho hash để lưu còn gộp ba chiều được", bool(r.get("hash")),
+           str(r.get("hash"))[:16])
+
+    # (Khoá mềm chiều người → tác tử đo ở `tests/test_edit47_sua_tep.py`: nó cần một lời
+    # gọi công cụ thật của tác tử, tức một lượt mô hình. Không dựng một phép kiểm luôn
+    # xanh ở đây để lấp chỗ — một ô xanh không thể đỏ thì không nói gì cả.)
+
+    g._gui({"ui": "tep", "viec": "luu", "tep": "sua-trong-app.c",
+            "hash": r.get("hash", ""), "noi_dung": "int f(void){return 42;}\n",
+            "vi_sao": "tôi sửa thẳng trong EIDE"})
+    g._doi("da_luu_tep", 20)
+    g.doi_xong()
+    b.kiem("Nội dung người gõ nằm trên đĩa",
+           tep.read_text("utf-8") == "int f(void){return 42;}\n",
+           repr(tep.read_text("utf-8")))
+    cs = _changeset_cham(du_an, "sua-trong-app.c")
+    b.kiem("Lần lưu ấy là một changeset của NGƯỜI, hoàn tác được",
+           bool(cs) and cs[-1]["author"] == "human" and cs[-1]["reversible"],
+           " → ".join(c["author"] for c in cs) or "không có changeset nào")
+
+    g._gui({"ui": "tep", "viec": "dong", "tep": "sua-trong-app.c"})
+    g._doi("da_dong_tep", 20)
+
+    b.buoc("Mở EIDE.md — nó sửa được, nhưng lưu đi một đường khác")
+    g._gui({"ui": "tep", "viec": "mo", "tep": "EIDE.md"})
+    r = g._doi("da_mo_tep", 25)
+    b.kiem("App biết đây là EIDE.md (lưu phải đi qua cửa bộ nhớ)",
+           r.get("la_eide_md") is True, str(r.get("la_eide_md")))
+    g._gui({"ui": "tep", "viec": "dong", "tep": "EIDE.md"})
+    g._doi("da_dong_tep", 20)
+
     # ---------------------------------------------------------------- Đ
     b.phan("Đ · ẢNH CHỤP CHO BÁO CÁO")
     g.mo_tab("history")

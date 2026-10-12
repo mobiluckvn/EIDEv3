@@ -40,6 +40,7 @@ from .context import assemble
 from .errors import EideError, budget_exhausted, gate_pending, proto, PROTO_CHANNEL
 from .hooks import HookBus, S0Engine
 from .hooks.standard import register_standard_hooks
+from .history import doan_loai
 from .ids import IdGen
 from . import memory as mem
 from .memory import boc_ket_qua
@@ -313,6 +314,9 @@ class Agent:
         self.assumptions: list[str] = []
         self.last_report: dict[str, Any] = {}
         self.locks: set[str] = set()             # tệp tác tử đang giữ soft-lock
+        # Tệp NGƯỜI đang mở trong trình soạn (path → lúc chạm gần nhất). Chiều ngược của
+        # `self.locks`, và là nửa còn thiếu của soft-lock hai chiều (§DEV-367).
+        self.locks_nguoi: dict[str, float] = {}
         self.thoi_diem_ket_thuc: dict[str, float] = {}
         self.loi_nguoi: list[str] = []           # mọi câu người đã gõ trong phiên
         self.usage_phien: Any = None             # chi phí cộng dồn cả phiên
@@ -470,7 +474,60 @@ class Agent:
                 return {"ok": False, "message_vi": "Xem trước bản ưng ý nào? Thiếu "
                                                    "snapshot_id."}
             return self.history.se_mat_gi_khi_khoi_phuc(sid)
+        if method == "file.open":
+            return self._mo_tep(str(params.get("path") or ""))
         raise proto(PROTO_CHANNEL, f"Lõi không trả lời được {method!r}.", method=method)
+
+    # Trần nội dung một tệp mở trong app. Trên ngưỡng này thì chỉ đọc.
+    #
+    # Lý do có trần: trình soạn này giữ cả tệp trong bộ nhớ và gửi cả tệp mỗi lần lưu. Một
+    # tệp 50 MB (log, VCD, ảnh bitmap xuất ra) sẽ làm app đứng hình, và **cách hỏng ấy
+    # trông giống hệt app chết**. Thà nói "quá lớn, chỉ đọc" ngay.
+    TRAN_MO_TEP = 2 * 1024 * 1024
+
+    def _mo_tep(self, path: str) -> dict[str, Any]:
+        """`file.open` — EIDE-EDIT-47 §DEV-367. Máy–máy, CHỈ ĐỌC, 0 token.
+
+        Đi qua đúng lớp hộp cát mà công cụ của tác tử đi (`_resolve`), nên một đường dẫn
+        ra ngoài thư mục dự án bị chặn ở đây y như khi tác tử xin đọc. Giao diện **không**
+        tự đọc tệp bằng `FileManager`: nếu nó tự đọc thì hộp cát chỉ còn canh một nửa số
+        đường vào, và nửa không canh là nửa người dùng đang ngồi gõ.
+        """
+        from .errors import path_not_found
+        from .tools.builtin import _resolve
+
+        if not path.strip():
+            return {"ok": False, "message_vi": "Mở tệp nào? Thiếu đường dẫn."}
+
+        class _Ctx:                       # `_resolve` chỉ cần đúng một thứ từ ctx
+            config = self.config
+
+        p = _resolve(_Ctx(), path)        # ném E4010 nếu ra ngoài hộp cát
+        if not p.exists() or not p.is_file():
+            raise path_not_found(path)
+        rel = str(p.relative_to(self.config.paths.project_root.resolve()))
+        co = p.stat().st_size
+        if co > self.TRAN_MO_TEP:
+            return {"ok": True, "path": rel, "qua_lon": True, "size": co, "content": "",
+                    "hash": "", "loai": doan_loai(rel), "la_eide_md": False,
+                    "message_vi": (f"{rel} nặng {co / 1024 / 1024:.1f} MB — quá trần "
+                                   f"{self.TRAN_MO_TEP // 1024 // 1024} MB nên chỉ mở "
+                                   "được ở chế độ đọc.")}
+        noi_dung = p.read_text("utf-8", errors="replace")
+        # Cất bản người SẮP mở vào kho blob.
+        #
+        # Đây là thứ `_tim_ban_goc` đi tìm khi người bấm Lưu và tác tử đã sửa tệp trong
+        # lúc họ gõ: không có bản gốc thì không gộp ba chiều được, và MỌI lần như thế rơi
+        # xuống thẻ xung đột — kể cả khi hai bên sửa hai chỗ chẳng liên quan. Đo được
+        # ngay ca kiểm đầu tiên của gói này.
+        #
+        # Rẻ: blob đánh địa chỉ theo nội dung, mở lại cùng một tệp không tốn thêm byte nào.
+        self.history.blobs.put(noi_dung)
+        return {"ok": True, "path": rel, "qua_lon": False, "size": co,
+                "content": noi_dung, "hash": _bam(noi_dung),
+                "loai": doan_loai(rel),
+                # EIDE.md mở ra sửa được, nhưng lưu đi một đường KHÁC — xem `_sua_tep`.
+                "la_eide_md": p.resolve() == self.config.paths.eide_md.resolve()}
 
     def _mat_bang_bo_nho(self) -> dict[str, Any]:
         """Dữ liệu cho khối A14.6 — thứ người nhìn để biết tác tử đang nhớ gì (P6)."""
@@ -969,6 +1026,7 @@ class Agent:
         perm = self.policy.decide(c, pre.facts, spec)
         self.ledger.append("hook", {"run_id": ctx.run_id, "hook": "policy",
                                     "tool": call.tool, **perm.to_ledger()})
+        perm = self._cong_vi_nguoi_dang_mo(c, perm, ctx)
 
         if perm.action == "deny":
             return ToolResult(False, error=self.policy.deny_error(c, perm, pre.facts)), perm
@@ -1024,6 +1082,38 @@ class Agent:
         res = self.registry.run(call.tool, call.args, ctx)
         self.hooks.post_tool_use(c, res, ctx)
         return res, perm
+
+    def _cong_vi_nguoi_dang_mo(self, call: dict[str, Any], perm: Any,
+                               ctx: TurnContext) -> Any:
+        """Tác tử ghi một tệp NGƯỜI ĐANG MỞ → nâng lên hỏi (§DEV-367, sau cờ).
+
+        Đây là nửa còn thiếu của soft-lock. §E4 bước 6 nói *"KHÔNG ghi đè sửa của người
+        nếu không được đồng ý"* — nhưng tới giờ lõi chỉ biết "người ĐÃ sửa" (qua
+        changeset), không biết "người ĐANG sửa". Giữa hai cái ấy là đúng khoảng thời gian
+        người gõ dở một hàm và chưa bấm Lưu.
+
+        **Đọc thì vẫn tự do.** Chặn tác tử đọc một tệp người đang mở là chặn đúng việc nó
+        cần làm để khỏi ghi đè.
+        """
+        import dataclasses as _dc
+
+        if not self.config.features.bat("khoa_nguoi"):
+            return perm
+        if getattr(perm, "action", "") not in ("allow",):
+            return perm
+        tool = str(call.get("tool") or "")
+        if not (tool.startswith("fs.") or tool.startswith("code.")) or tool in _DOC_TEP:
+            return perm
+        path = str((call.get("args") or {}).get("path") or "")
+        if not path or not self._nguoi_dang_mo(path):
+            return perm
+        self.ledger.append("hook", {"run_id": ctx.run_id, "hook": "khoa_nguoi",
+                                    "tool": tool, "path": path})
+        return _dc.replace(
+            perm, action="ask", gate="G-FILE",
+            summary_vi=f"Ghi đè `{path}` — anh đang mở tệp này trong EIDE",
+            reason_vi=("người dùng đang mở tệp này trong trình soạn; ghi đè bây giờ có "
+                       "thể nuốt mất phần họ gõ dở"))
 
     def _diff_cho_cong(self, card: dict[str, Any], call: dict[str, Any],
                        ctx: TurnContext) -> None:
@@ -1314,6 +1404,7 @@ class Agent:
         """
         if act.kind == "attend":
             self.dang_nhin = act.origin.surface
+            self._khoa_cua_nguoi(act, ctx)
             return
 
         key = str(act.data.get("key"))
@@ -1329,6 +1420,47 @@ class Agent:
             ctx.emit(uic.notice(f"Thiết lập “{key}” chưa được hiện thực ở bước này.",
                                 level="warn"))
         ctx.said_anything = True
+
+    # Người mở một tệp bao lâu thì coi là vẫn đang sửa nó.
+    #
+    # Hết hạn là cần thiết: người mở một tệp rồi đi ăn trưa, và nếu khoá còn nguyên thì
+    # mọi lần tác tử ghi tệp ấy đều dựng một thẻ cổng không ai bấm. Một cái khoá không bao
+    # giờ tự nhả sẽ biến chính nó thành thứ người ta học cách bấm qua cho nhanh.
+    GIAY_KHOA_NGUOI = 600
+
+    def _khoa_cua_nguoi(self, act: HumanAct, ctx: TurnContext) -> None:
+        """Người đang mở tệp nào — khoá mềm theo CHIỀU NGƯỢC LẠI (§DEV-367).
+
+        Soft-lock tới giờ chỉ có một chiều: tác tử sửa tệp thì báo cho người
+        (`mark_agent_wrote`). Chiều kia không có gì — người mở `main.c` ra sửa, tác tử ghi
+        đè lên nó ở ngay lượt sau, và người chỉ biết khi bản của họ biến mất.
+
+        Khoá này **mềm cả hai chiều**: nó không chặn tác tử, nó dựng một thẻ cổng. Khoá
+        cứng sẽ biến người thành cái chắn đường, đúng lỗi mà §E4 bước 1 đã tránh cho chiều
+        ngược lại.
+        """
+        if act.origin.block != "editor":
+            return
+        path = str(act.data.get("path") or "").strip()
+        if not path:
+            return
+        if act.data.get("dang_sua"):
+            self.locks_nguoi[path] = time.time()
+            ctx.emit(uic.surface_lock("code", block=path, by="human",
+                                      why="anh đang mở tệp này trong EIDE"))
+        else:
+            self.locks_nguoi.pop(path, None)
+            ctx.emit(uic.surface_unlock("code", block=path))
+
+    def _nguoi_dang_mo(self, path: str) -> bool:
+        """Còn hiệu lực không — và dọn luôn cái đã nguội."""
+        luc = self.locks_nguoi.get(path)
+        if luc is None:
+            return False
+        if time.time() - luc > self.GIAY_KHOA_NGUOI:
+            self.locks_nguoi.pop(path, None)
+            return False
+        return True
 
     # ------------------------------------------------------------------ người sửa (§E4)
     def _nguoi_sua(self, act: HumanAct, ctx: TurnContext) -> None:
@@ -1599,7 +1731,17 @@ class Agent:
                                vi_sao=f"{kq.doan_xung_dot} đoạn đụng nhau")
             moi = kq.noi_dung
 
-        p.write_text(moi, "utf-8")
+        # EIDE.md đi qua CÙNG MỘT CỬA mà công cụ bộ nhớ đi (README §4.10).
+        #
+        # Ghi thẳng bằng `write_text` thì tệp trên đĩa đúng, nhưng `self.eide_md` trong bộ
+        # nhớ tiến trình vẫn giữ bản cũ — và nó là thứ dựng khối `<eide_md>` cho MỌI lượt
+        # sau, lẫn thứ `note_human_edit` ghi tiếp vào. Lần ghi kế của tác tử sẽ lưu lại bản
+        # cũ ấy đè lên bản người vừa sửa, im lặng và toàn phần.
+        if p.resolve() == self.config.paths.eide_md.resolve():
+            self.eide_md._parse(moi)
+            self.eide_md.save()
+        else:
+            p.write_text(moi, "utf-8")
         return self.history.ghi_tep(
             author="human", paths=[path],
             summary=act.data.get("summary") or f"anh sửa {path}",
@@ -2499,6 +2641,11 @@ class Agent:
 # Ba lựa chọn của thẻ xung đột. Hằng số vì chúng đi qua hai lần: lõi dựng thẻ, rồi lõi đọc
 # lại câu trả lời. So chuỗi gõ tay ở hai chỗ là cách chắc chắn để một ngày chúng lệch nhau —
 # và khi lệch, thẻ vẫn hiện, người vẫn bấm, mà không nhánh nào nhận.
+# Công cụ fs.* chỉ ĐỌC — khoá của người không chặn chúng, và không được chặn: tác tử
+# phải đọc được tệp mới biết người vừa gõ gì vào đó.
+_DOC_TEP = frozenset({"fs.read", "fs.glob", "fs.grep", "fs.stat", "code.analyze",
+                      "code.static", "code.map"})
+
 GIU_BAN_NGUOI = "Giữ bản của tôi (anh)"
 GIU_BAN_TAC_TU = "Giữ bản của tác tử"
 GIU_BAN_DA_SUA = "Dùng bản tôi vừa sửa trong diff"

@@ -42,6 +42,11 @@ final class AppState: ObservableObject {
     /// changeset cuối: sửa bốn ô trong một biểu mẫu là bốn lần lưu.
     @Published var sessionSua: String?
 
+    /// Tệp mà TÁC TỬ đang giữ soft-lock. Lõi gửi `surface.lock`/`surface.unlock` từ bước
+    /// G2 và giao diện **bỏ qua cả hai** cho tới DEV-367 — nên băng "tác tử đang sửa tệp
+    /// này" mà §E4 bước 1 đòi thì chưa bao giờ hiện ra.
+    @Published var khoaCuaTacTu: Set<String> = []
+
     /// Khối diff lõi đã gửi, theo `diff_id` — lệnh thứ 17 của UAP (EIDE-EDIT-47 DEV-366).
     ///
     /// Giữ riêng chứ không nhét vào `Card`: một khối diff có thể gắn vào thẻ xung đột, gắn
@@ -291,6 +296,7 @@ final class AppState: ObservableObject {
         staleList.removeAll()
         snapshots.removeAll()
         diffs.removeAll()
+        khoaCuaTacTu.removeAll()
         nhanh.removeAll()
         nhanhHienTai = "main"
         toastLuu = nil
@@ -406,6 +412,28 @@ final class AppState: ObservableObject {
                              + "Chưa khôi phục gì cả.", code: nil)
             return nil
         }
+    }
+
+    // MARK: - Trình soạn tệp (DEV-367)
+
+    /// Xin lõi đọc một tệp. Máy–máy, chỉ đọc, 0 token — và đi qua hộp cát của lõi.
+    func moTep(_ path: String) async -> JSONValue? {
+        guard connection.ok else { return nil }
+        do { return try await client.call("file.open", ["path": .string(path)]) }
+        catch {
+            themThongBao(level: "warn", text: "Không mở được \(path): \(error)", code: nil)
+            return nil
+        }
+    }
+
+    /// Báo cho lõi biết người đang mở (hay vừa đóng) một tệp — nửa còn thiếu của soft-lock.
+    ///
+    /// Đi bằng `attend` chứ không bằng một RPC mới: nó là **sự chú ý**, đúng nghĩa của
+    /// `attend`, và lõi đã có đường xử lý không tốn lượt mô hình nào cho loại ấy.
+    func baoDangSuaTep(_ path: String, dangSua: Bool) {
+        gui(HumanAct(kind: .attend,
+                     data: ["path": .string(path), "dang_sua": .bool(dangSua)],
+                     origin: .init(surface: "code", block: "editor", row: path)))
     }
 
     /// Lùi cả lượt vừa xong.
@@ -628,7 +656,18 @@ final class AppState: ObservableObject {
                 diffs[id] = .object(c.params)
             }
 
-        case "surface.lock", "surface.unlock", "surface.highlight", "explain.show":
+        case "surface.lock":
+            // `by == "human"` là khoá của CHÍNH NGƯỜI (lõi phát lại cho đủ một cửa) —
+            // không vẽ băng cảnh báo cho người về chính họ.
+            if let b = c.params["block"]?.stringValue,
+               (c.params["by"]?.stringValue ?? "") != "human" {
+                khoaCuaTacTu.insert(b)
+            }
+
+        case "surface.unlock":
+            if let b = c.params["block"]?.stringValue { khoaCuaTacTu.remove(b) }
+
+        case "surface.highlight", "explain.show":
             break
 
         default:
