@@ -96,9 +96,9 @@ def cau(tmp_path):
 def test_UP01_hello_tra_nang_luc(cau):
     r = cau.goi("hello", {"client": {"name": "test"}})
     assert r["core"] == "eide"
-    assert r["capabilities"]["uap"] == "1.1"
+    assert r["capabilities"]["uap"] == "1.2"
     assert r["capabilities"]["human_acts"] == 13
-    assert r["capabilities"]["ui_commands"] == 16
+    assert r["capabilities"]["ui_commands"] == 17
     assert len(r["capabilities"]["gates"]) == 11
     assert r["ledger"]["ok"] is True, "mở dự án phải kiểm chuỗi hash sổ cái (§F3)"
 

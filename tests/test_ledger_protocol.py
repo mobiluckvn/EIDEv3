@@ -70,7 +70,7 @@ def test_13_loai():
 
 def test_16_lenh_ui():
     from eide.protocol.uicommand import UI_COMMANDS
-    assert len(UI_COMMANDS) == 16
+    assert len(UI_COMMANDS) == 17
 
 
 def test_I6_decide_khong_gate_id_thi_vo_nghia():

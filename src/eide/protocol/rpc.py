@@ -97,9 +97,11 @@ class Core:
     """Lõi nhin tu phia giao thuc. Khong biet gi ve giao dien (I4)."""
 
     CAPABILITIES = {
-        "uap": "1.1",
+        # UAP v1.2 — EIDE-EDIT-47 §3: them lenh thu 17 `diff.show`. HumanAct van 13 loai;
+        # `edit` chi THEM truong tuy chon, nen giao dien cu van noi chuyen duoc.
+        "uap": "1.2",
         "human_acts": 13,
-        "ui_commands": 16,
+        "ui_commands": 17,
         "gates": ["G-DATA", "G-DESIGN", "G-SCOPE", "G-TOOL", "G-QUAL", "G-FILE",
                   "G-FLASH", "G-OPS", "G-SAFE", "G-HIST", "G-SNAP"],
         "surfaces": ["requirements", "documents", "knowledge", "design", "tools",

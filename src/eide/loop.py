@@ -560,6 +560,9 @@ class Agent:
                 ctx.said_anything = True
                 return
 
+            if the and the.get("tra_loi_thanh") == "xung_dot":
+                return self._nguoi_giai_xung_dot(the, tl, ctx)
+
             if the and the.get("tra_loi_thanh") == "snapshot" and tl.get("ten"):
                 return self._nguoi_ghi_ban(HumanAct.from_dict(
                     {"kind": "snapshot",
@@ -1003,6 +1006,7 @@ class Agent:
                     "consequences_vi": _hau_qua(c, ctx, perm, spec),
                     "options": ["Duyệt", "Từ chối"]}
             ctx.emit(uic.console_post(_render_gate(card), role="agent", card=card))
+            self._diff_cho_cong(card, c, ctx)
             self.pending_cards.append(card)
             self.pending_gates[gid] = {"card": card, "call": c, "run_id": ctx.run_id}
             self.ledger.append("gate", {"run_id": ctx.run_id, "gate_id": gid,
@@ -1016,6 +1020,55 @@ class Agent:
         res = self.registry.run(call.tool, call.args, ctx)
         self.hooks.post_tool_use(c, res, ctx)
         return res, perm
+
+    def _diff_cho_cong(self, card: dict[str, Any], call: dict[str, Any],
+                       ctx: TurnContext) -> None:
+        """Cổng G-FILE kèm diff: **ghi đè cái gì lên cái gì** (DEV-366, sau cờ).
+
+        Thẻ G-FILE nói "ghi `main.c`" và liệt kê hậu quả, nhưng không nói nội dung sẽ đổi ra
+        sao. Người duyệt một thứ họ không nhìn thấy — và đó là cổng đứng canh đúng chuyện
+        tác tử ghi đè bản của họ.
+
+        Chỉ dựng cho lời gọi mà nội dung MỚI tính được chắc chắn: `fs.write` mang sẵn
+        `content`, `fs.edit` thì áp đúng phép thay mà công cụ sẽ áp. Công cụ nào ghi tệp
+        bằng đường khác thì **không đoán** — một diff đoán sai còn tệ hơn không có diff.
+        """
+        if not self.config.features.bat("cong_co_diff"):
+            return
+        if card.get("gate") != "G-FILE":
+            return
+        from . import diff_khoi as dk
+
+        tool = call.get("tool", "")
+        args = call.get("args") or {}
+        path = str(args.get("path") or "")
+        if not path:
+            return
+        p = (self.config.paths.project_root / path).resolve()
+        cu = p.read_text("utf-8", errors="replace") if p.exists() else ""
+        if tool == "fs.write":
+            moi = str(args.get("content") or "")
+        elif tool == "fs.edit":
+            cu_doan, moi_doan = str(args.get("old_string") or ""), str(args.get("new_string") or "")
+            if cu.count(cu_doan) != 1:
+                # Công cụ sẽ từ chối lời gọi này (E1005/E1006). Vẽ một diff cho một phép
+                # thay sắp hỏng là nói sai về thứ sắp xảy ra.
+                return
+            moi = cu.replace(cu_doan, moi_doan, 1)
+        else:
+            return
+        if moi == cu:
+            return
+        ctx.emit(uic.diff_show(dk.dung_diff(
+            loai="tep", trai=cu, phai=moi,
+            tieu_de=f"{path} — bản đang có ↔ bản tác tử định ghi",
+            diff_id=f"d-{card['gate_id']}",
+            nhan_trai=("Bản đang có trên đĩa" if p.exists() else "Chưa có tệp này"),
+            nhan_phai="Bản tác tử định ghi",
+            # Sửa thẳng trong diff rồi duyệt là DEV-370 (`decide` kèm `amended`). Tới lúc đó
+            # cột phải chỉ để đọc — mở ô sửa khi lõi chưa nhận được bản sửa là dựng một cái
+            # nút nuốt mất việc của người.
+            cho_phep_sua=False, gan_voi={"gate_id": card["gate_id"]})))
 
     def _one_tool(self, call: Any, ctx: TurnContext) -> None:
         ctx.tool_calls_used += 1
@@ -1636,8 +1689,16 @@ class Agent:
         return None
 
     def _the_xung_dot(self, e: "_XungDot", act: HumanAct, ctx: TurnContext) -> None:
-        """§E4 bước 3 — "xung đột → thẻ clarify với hai bản cạnh nhau, người chọn"."""
+        """§E4 bước 3 — "xung đột → thẻ clarify với hai bản cạnh nhau, người chọn".
+
+        DEV-366: **hai bản ấy nay có thật**. Bản trước nhét chúng vào trường `hai_ban` cắt
+        ở 4 000 ký tự, và lựa chọn thứ ba của thẻ là *"Để tôi xem diff rồi quyết"* — một
+        lời mời xem thứ không tồn tại. Nay thẻ đi kèm một lệnh `diff.show` gắn vào chính nó.
+        """
+        from . import diff_khoi as dk
+
         card_id = self.ids.next("card")
+        la_tep = act.target is not None and act.target.type in ("file", "code")
         card = {
             "type": "clarify", "card_id": card_id,
             "intro": f"Bản của anh và bản hiện tại của {e.hien_vat} đụng nhau "
@@ -1647,19 +1708,71 @@ class Agent:
                 "question": f"Giữ bản nào cho {e.hien_vat}?",
                 "why": "Tôi không ghi đè sửa của anh, và cũng không vứt phần tôi vừa làm "
                        "mà không hỏi.",
-                "choices": ["Giữ bản của tôi (anh)", "Giữ bản của tác tử",
-                            "Để tôi xem diff rồi quyết"],
+                "choices": [GIU_BAN_NGUOI, GIU_BAN_TAC_TU, GIU_BAN_DA_SUA],
                 "required": True}],
-            "hai_ban": {"cua_nguoi": e.cua_nguoi[:4000], "cua_tac_tu": e.cua_tac_tu[:4000]},
+            # Trả lời thẻ này KHÔNG cần mô hình: ba lựa chọn đều là việc mã làm được, và
+            # nội dung để ghi thì nằm sẵn trong khối diff. Xem `_nguoi_giai_xung_dot`.
+            "tra_loi_thanh": "xung_dot",
+            "du_lieu": {"hien_vat": e.hien_vat, "la_tep": la_tep,
+                        "target": str(act.target) if act.target else "",
+                        "diff_id": f"d-{card_id}"},
         }
         ctx.emit(uic.console_post(
             f"Bản của anh và bản hiện tại của **{e.hien_vat}** đụng nhau: "
             f"{e.vi_sao}. Anh chọn giữ bản nào?", role="agent", card=card))
+        ctx.emit(uic.diff_show(dk.dung_diff(
+            loai="tep" if la_tep else "hien_vat",
+            trai=e.cua_nguoi, phai=e.cua_tac_tu, goc=e.goc,
+            tieu_de=f"{e.hien_vat} — bản của anh ↔ bản hiện tại",
+            diff_id=f"d-{card_id}",
+            nhan_trai="Bản của anh", nhan_phai="Bản hiện tại (của tác tử)",
+            # Cột phải sửa được: lựa chọn thứ ba của thẻ là "dùng bản tôi vừa sửa", và
+            # không có chỗ nào để sửa thì lựa chọn ấy lại là một lời mời suông.
+            cho_phep_sua=True, gan_voi={"card_id": card_id})))
         self.pending_cards.append(card)
         ctx.awaiting_human = True
         ctx.said_anything = True
         self.ledger.append("incident", {"run_id": ctx.run_id, "code": "E_VERSION_CONFLICT",
                                         "artefact": e.hien_vat, "why": e.vi_sao})
+
+    def _nguoi_giai_xung_dot(self, the: dict[str, Any], tl: dict[str, Any],
+                             ctx: TurnContext) -> None:
+        """Người đã chọn giữ bản nào. Giải bằng MÃ, không đẩy sang mô hình.
+
+        Trước DEV-366 câu trả lời này rơi xuống vòng lặp công cụ: mô hình đọc dòng "[Bạn]
+        Trả lời thẻ — chon: Giữ bản của tôi" rồi tự nghĩ cách ghi lại tệp. Tốn một lượt cho
+        một việc đã biết trước, và mô hình có thể ghi lại SAI nội dung — nó chỉ thấy câu trả
+        lời, không thấy hai bản.
+
+        Hai trong ba lựa chọn, nội dung cần ghi đã nằm ở phía giao diện (trong khối diff),
+        nên giao diện gửi `edit` TRƯỚC rồi mới gửi `choose` — lúc tới đây việc ghi đã xong,
+        chỗ này chỉ xác nhận và đóng sổ. Lựa chọn "giữ bản của tác tử" thì không ghi gì:
+        bản ấy đang nằm trên đĩa rồi.
+        """
+        chon = str(tl.get("chon") or "").strip()
+        hv = (the.get("du_lieu") or {}).get("hien_vat", "hiện vật")
+        if chon == GIU_BAN_TAC_TU:
+            loi = (f"Giữ nguyên bản hiện tại của **{hv}** — tôi không ghi gì thêm. "
+                   "Bản của anh vẫn còn trong khối diff của thẻ trên nếu anh đổi ý.")
+        elif chon in (GIU_BAN_NGUOI, GIU_BAN_DA_SUA):
+            # Giao diện đã gửi `edit` ngay trước `choose`, nên changeset của người đã có.
+            cs = next((c for c in reversed(self.history.log.all()) if c.by_human), None)
+            loi = (f"Đã ghi bản anh chọn cho **{hv}**"
+                   + (f" ({cs.id})." if cs else ".")
+                   + " Hoàn tác được như mọi thay đổi khác.")
+            if cs is None:
+                loi = (f"Anh chọn “{chon}” cho **{hv}**, nhưng tôi không thấy bản nội dung "
+                       "nào được gửi kèm — nên chưa ghi gì cả. Thử lại từ khối diff.")
+        else:
+            loi = (f"Chưa rõ anh chọn giữ bản nào cho **{hv}** (“{chon}”) — tôi không đoán "
+                   "hộ chuyện này. Bấm lại một trong ba lựa chọn trên thẻ.")
+        ctx.emit(uic.console_post(loi, role="agent"))
+        ctx.said_anything = True
+        self.ledger.append("note", {"run_id": ctx.run_id, "xung_dot": hv, "chon": chon})
+        self.messages.append({"role": "user", "text":
+                              f"<system-reminder>\nNgười dùng đã giải xung đột trên {hv}: "
+                              f"“{chon}”. Đọc lại hiện vật/tệp ấy trước khi sửa tiếp.\n"
+                              "</system-reminder>"})
 
     # ------------------------------------------------------------------ người hoàn tác
     def _nguoi_hoan_tac(self, act: HumanAct, ctx: TurnContext) -> None:
@@ -2084,6 +2197,14 @@ class Agent:
                        if not any(f.get("kind") == "checkpoint" for f in c.forward))
         except Exception:                                              # noqa: BLE001
             return 0
+
+
+# Ba lựa chọn của thẻ xung đột. Hằng số vì chúng đi qua hai lần: lõi dựng thẻ, rồi lõi đọc
+# lại câu trả lời. So chuỗi gõ tay ở hai chỗ là cách chắc chắn để một ngày chúng lệch nhau —
+# và khi lệch, thẻ vẫn hiện, người vẫn bấm, mà không nhánh nào nhận.
+GIU_BAN_NGUOI = "Giữ bản của tôi (anh)"
+GIU_BAN_TAC_TU = "Giữ bản của tác tử"
+GIU_BAN_DA_SUA = "Dùng bản tôi vừa sửa trong diff"
 
 
 class _XungDot(Exception):

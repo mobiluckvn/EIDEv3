@@ -398,6 +398,15 @@ class Features:
     # PDF nhu tren Office. Sau co vi no doi TAP FACT tac tu nhin thay: mot datasheet 3 trang
     # cho thêm hang chuc don vi trich dan, va moi don vi ay co the sinh Fact moi.
     pdf_bang: bool = False
+    # EIDE-EDIT-47 DEV-366 — the cong G-FILE kem mot khoi `diff` hai cot: ben trai la noi
+    # dung DANG nam tren dia, ben phai la thu tac tu dinh ghi de len.
+    #
+    # Sau co vi no DOI NOI DUNG THE ma tac tu dung ra (N-4): mot the cong day them vai tram
+    # dong diff la mot the khac han ve cach doc, va "nguoi co bam Duyet nhanh hon hay cham
+    # hon khi thay diff" la cau chi bo 76 ca chay hai che do tra loi duoc. Phan NEN — ham
+    # `diff_khoi.dung_diff` va the xung dot cua NGUOI (DEV-366) — chay ca khi co tat: chung
+    # khong dong vao the tac tu dung.
+    cong_co_diff: bool = False
 
     @classmethod
     def load(cls) -> "Features":

@@ -65,6 +65,13 @@ struct TheCongView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.gateRed)
             }
+            // Cổng G-FILE kèm diff (DEV-366, sau cờ `EIDE_FEATURE_CONG_CO_DIFF`): **ghi đè
+            // cái gì lên cái gì**. Đứng SAU phần hậu quả và TRƯỚC hai cái nút — đúng quy
+            // tắc 1 của thẻ cổng.
+            if let d = state.diffGanVoi(gateID: card.gateID ?? "") {
+                DiffView(d: d, banDaSua: .constant(nil))
+            }
+
             if let r = card.requireText {
                 TextMd(r).font(.system(size: 11)).foregroundStyle(.secondary)
             }
@@ -114,6 +121,8 @@ struct TheLamRoView: View {
     @EnvironmentObject var state: AppState
     let card: Card
     @State private var traLoi: [String: String] = [:]
+    /// Bản người sửa trong cột phải của khối diff — chỉ thẻ xung đột mới có.
+    @State private var banDaSua: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -156,6 +165,14 @@ struct TheLamRoView: View {
                 }
             }
 
+            // Thẻ xung đột: hai bản nằm NGAY TRONG thẻ, không phải sau một cái nút.
+            //
+            // Người đang phải chọn giữ bản nào — bắt họ mở thêm một tấm nữa để xem thứ họ
+            // đang quyết là đặt một bước thừa vào đúng chỗ dễ bấm bừa nhất.
+            if let d = state.diffGanVoi(cardID: card.id) {
+                DiffView(d: d, banDaSua: $banDaSua)
+            }
+
             if let gd = card.assumptionIfSkipped, !gd.isEmpty {
                 Label("Bỏ qua thì tôi đi tiếp với giả định: \(gd)",
                       systemImage: "questionmark.circle")
@@ -163,9 +180,7 @@ struct TheLamRoView: View {
             }
 
             HStack {
-                Button("Gửi trả lời") {
-                    state.gui(.choose(cardID: card.id, answers: traLoi.filter { !$0.value.isEmpty }))
-                }
+                Button("Gửi trả lời") { guiTraLoi() }
                 .disabled(traLoi.values.allSatisfy(\.isEmpty))
                 Button("Bỏ qua, dùng giả định") {
                     state.gui(.choose(cardID: card.id, answers: [:]))
@@ -177,6 +192,55 @@ struct TheLamRoView: View {
         .padding(11)
         .background(Color.accentColor.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.accentColor.opacity(0.3)))
+    }
+
+    private func guiTraLoi() {
+        Self.guiTraLoi(state: state, card: card,
+                       traLoi: traLoi.filter { !$0.value.isEmpty }, banDaSua: banDaSua)
+    }
+
+    /// Gửi câu trả lời. Với thẻ xung đột, **nội dung đi TRƯỚC, lựa chọn đi SAU**.
+    ///
+    /// Thứ tự ấy không phải tiểu tiết: lõi đóng sổ xung đột khi nhận `choose`, và lúc ấy nó
+    /// đi tìm changeset của người để báo lại. Gửi ngược thì nó đóng sổ một việc chưa xảy ra.
+    ///
+    /// `base_version` lấy **hash của cột PHẢI** — bản đang nằm trên đĩa lúc này. Lấy hash
+    /// bản của người (cột trái) là cố ghi đè bằng đúng cái phiên bản vừa gây ra xung đột;
+    /// lần lưu này sẽ xung đột lần nữa, và đoạn người vừa gõ trong cột phải mất theo.
+    ///
+    /// `static` để **đo được**: đây là chỗ dễ mất việc của người nhất trong cả gói, và một
+    /// closure trong thân view thì chỉ kiểm được bằng cách mở app ra bấm.
+    static func guiTraLoi(state: AppState, card: Card, traLoi: [String: String],
+                          banDaSua: String?) {
+        if let d = state.diffGanVoi(cardID: card.id),
+           let noiDung = banGuiDi(d, chon: traLoi["chon"] ?? "", banDaSua: banDaSua),
+           let tg = card.raw["du_lieu"]?["target"]?.stringValue, !tg.isEmpty {
+            let phan = tg.split(separator: ":", maxSplits: 1).map(String.init)
+            state.gui(HumanAct(
+                kind: .edit,
+                target: .init(type: phan.first ?? "file", id: phan.count > 1 ? phan[1] : tg),
+                data: ["base_version": .string(d["phai"]?["hash"]?.stringValue ?? ""),
+                       "content": .string(noiDung),
+                       "summary": .string("giải xung đột: \(traLoi["chon"] ?? "")"),
+                       "session_id": .string(state.moPhienSua())],
+                origin: .init(surface: "history", block: "the-xung-dot"),
+                note: "anh chọn giữ bản này khi hai bản đụng nhau"))
+        }
+        state.gui(.choose(cardID: card.id, answers: traLoi))
+    }
+
+    /// Nội dung sẽ ghi, theo lựa chọn. `nil` = không ghi gì (giữ bản đang có trên đĩa).
+    private static func banGuiDi(_ d: JSONValue, chon: String,
+                                 banDaSua: String?) -> String? {
+        if chon.hasPrefix("Dùng bản tôi vừa sửa") {
+            // Chưa đụng vào cột phải mà chọn "bản tôi vừa sửa" thì bản ấy CHÍNH LÀ bản
+            // hiện tại — không ghi gì, để khỏi đẻ ra một changeset rỗng.
+            return banDaSua
+        }
+        if chon.hasPrefix("Giữ bản của tôi") {
+            return d["trai"]?["noi_dung"]?.stringValue
+        }
+        return nil          // "Giữ bản của tác tử" — nó đang nằm trên đĩa rồi.
     }
 }
 

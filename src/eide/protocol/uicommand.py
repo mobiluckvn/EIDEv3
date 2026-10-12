@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
-"""UICommand — 16 lenh loi gui cho giao dien. EIDE-MDD-40 §D2.
+"""UICommand — 17 lenh loi gui cho giao dien. EIDE-MDD-40 §D2, EIDE-EDIT-47 §3.3.
 
 I3: giao dien khong quyet gi ca, chi render thu loi gui. Nen moi thu nguoi nhin thay
-phai di qua mot trong 16 lenh nay. Neu mot thong tin khong the dien dat bang 16 lenh
+phai di qua mot trong 17 lenh nay. Neu mot thong tin khong the dien dat bang 17 lenh
 nay thi do la khoang trong THIET KE, phai ghi DEV-2xx — khong duoc mo mot duong rieng
 cho giao dien tu quyet.
+
+Lenh thu 17 (`diff.show`, UAP v1.2) la mot vi du cua chinh luat ay: the xung dot tu G2
+nhet hai ban vao mot truong `hai_ban` cat o 4 000 ky tu roi de giao dien hien ra nhu chu
+thuong. Do la mot khoang trong thiet ke duoc va bang mot duong rieng, va no song mot nam.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ UI_COMMANDS: dict[str, str] = {
     "ui.set": "Thiet lap giao dien do loi quyet",
     "history.update": "Cap nhat changeset/snapshot/STALE",
     "explain.show": "Hien lop giai thich cua mot hien vat",
+    "diff.show": "Hien hai ban canh nhau (tep hoac hien vat), co the sua cot phai",
 }
 
 
@@ -44,7 +49,7 @@ class UICommand:
         if self.method not in UI_COMMANDS:
             raise schema_violation(
                 "UICommand.method",
-                f"{self.method!r} không nằm trong 16 lệnh: {', '.join(UI_COMMANDS)}",
+                f"{self.method!r} không nằm trong 17 lệnh: {', '.join(UI_COMMANDS)}",
             )
 
     def to_dict(self) -> dict[str, Any]:
@@ -161,3 +166,21 @@ def history_update(*, changesets: list[dict[str, Any]] | None = None,
 def explain_show(artefact: str, explain: dict[str, Any]) -> UICommand:
     """Nut "Vi sao?" — hien explain da co san, KHONG ton token (§E3.3)."""
     return UICommand("explain.show", {"artefact": artefact, "explain": explain})
+
+
+def diff_show(params: dict[str, Any]) -> UICommand:
+    """Hai ban canh nhau — EIDE-EDIT-47 §3.3. Tham so dung bang `diff_khoi.dung_diff`.
+
+    Nhan nguyen mot `dict` thay vi muoi tham so roi: ben dung no la `dung_diff`, mot ham
+    thuan da tra ve dung hinh dang nay. Go lai muoi tham so o day chi them mot cho de hai
+    ben lech nhau.
+
+    `gan_voi` quyet dinh giao dien ve CAI GI quanh khoi diff:
+      · `{"card_id": …}` → the xung dot: *Giu trai* / *Giu phai* / *Giu ban da sua*
+      · `{"gate_id": …}` → the cong: *Duyet* / *Tu choi* (va *Duyet voi ban da sua* o DEV-370)
+      · `None`           → mot tam riêng, chi de doc
+    """
+    thieu = [k for k in ("diff_id", "trai", "phai", "hunks") if k not in params]
+    if thieu:
+        raise schema_violation("diff.show", f"thiếu {', '.join(thieu)}")
+    return UICommand("diff.show", params)

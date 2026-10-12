@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Năm tầng lùi, đo QUA APP THẬT — EIDE-EDIT-47 §DEV-365.
+"""Năm tầng lùi và khối diff, đo QUA APP THẬT — EIDE-EDIT-47 §DEV-365, §DEV-366.
 
     python tools/thu_nut_lui.py
 
@@ -60,17 +60,38 @@ def _ver(du_an: pathlib.Path, ma: str) -> str:
     return f"v{a['version']}" if a else "v1"
 
 
+def _mo_app(g, lan: int = 3, giay: float = 60) -> None:
+    """Mở app và đợi kênh kiểm thử bật. Đóng hẳn rồi mở lại nếu nó không bật.
+
+    **Đo được 12/10/2026, và nó là một cái bẫy của bộ đo chứ không phải của sản phẩm:**
+    lần chạy ĐẦU TIÊN sau `./dong-goi.sh` thường treo ở đây, lần thứ hai thì kênh mở sau
+    5 giây. `dong-goi.sh` làm `rm -rf EIDE.app` rồi dựng lại **trong lúc bản cũ đang
+    chạy** — LaunchServices còn giữ gói cũ, nên `open` rơi vào một trạng thái nửa vời.
+
+    Nên: đóng hẳn và đợi LaunchServices quên bản cũ TRƯỚC khi mở, rồi mới đếm giờ. Đợi lâu
+    hơn không chữa được — đã thử 90 giây, vẫn treo; mở lại thì xong ngay.
+
+    Và đừng báo *"app có đang chạy không?"* sau một phút im lặng: app chạy bình thường,
+    chỉ bộ đo hết kiên nhẫn trước sản phẩm. Một bộ đo như thế nói sai về sản phẩm.
+    """
+    for i in range(lan):
+        subprocess.run(["pkill", "-f", "EIDE.app/Contents/MacOS/EIDE"], check=False)
+        time.sleep(3)
+        subprocess.run(["open", str(REPO / "ui/EIDEApp/EIDE.app")], check=True)
+        try:
+            g.san_sang(giay)
+            return
+        except TimeoutError:
+            if i == lan - 1:
+                raise
+            print(f"  (kênh chưa bật sau {giay:.0f}s — đóng hẳn rồi mở lại, lần {i + 2})")
+
+
 def chay(du_an: pathlib.Path) -> int:
     b = Bo()
     g = GiaoDien(du_an)
 
-    print("Mở app…")
-    subprocess.run(["open", str(REPO / "ui/EIDEApp/EIDE.app")], check=True)
-    # 90 giây chứ không phải 25: lần mở ĐẦU TIÊN sau khi đóng gói lại, macOS thẩm định lại
-    # chữ ký của gói và app mất gần một phút mới dựng xong cửa sổ. Đo được hai lần liền —
-    # và cả hai lần bộ đo báo *"app có đang chạy không?"* trong khi app chạy bình thường.
-    # Một bộ đo hết kiên nhẫn trước sản phẩm thì nó báo sai về sản phẩm.
-    g.san_sang(90)
+    _mo_app(g)
     print("Kênh kiểm thử giao diện đã mở")
 
     # ---------------------------------------------------------------- A
@@ -206,6 +227,62 @@ def chay(du_an: pathlib.Path) -> int:
     b.kiem("Chuyển về nhánh cũ được",
            ((a.get("lui") or {}).get("nhanh_hien_tai")) == "main",
            str((a.get("lui") or {}).get("nhanh_hien_tai")))
+
+    # ---------------------------------------------------------------- E
+    b.phan("E · HAI BẢN ĐỤNG NHAU: NGƯỜI THẤY DIFF, SỬA CỘT PHẢI, RỒI CHỌN (DEV-366)")
+
+    tep = du_an / "main.c"
+    tep.write_text("int main(void){return 0;}\n", "utf-8")
+    g.mo_tab("code")
+    # Người mở tệp ở một bản cũ rồi lưu — đúng tình huống tác tử đã sửa trong lúc họ gõ.
+    g._gui({"kind": "edit", "target": {"type": "file", "id": "main.c"},
+            "data": {"base_version": "ban-cu-khong-con-nua",
+                     "content": "int main(void){return 42;}\n"},
+            "note": "tôi sửa trong lúc tác tử cũng sửa",
+            "origin": {"surface": "code"}})
+    a = g.doi_xong()
+
+    the = [t for t in a["the_dang_cho"] if t["loai"] == "clarify"]
+    b.kiem("Giao diện hiện thẻ xung đột", bool(the),
+           the[0]["tieu_de"] if the else "không thẻ nào")
+    ds = a.get("diff") or []
+    b.kiem("Khối diff tới được giao diện (lệnh thứ 17)", len(ds) == 1,
+           json.dumps(ds, ensure_ascii=False)[:200])
+    assert ds and the
+    b.kiem("Diff gắn đúng vào thẻ xung đột ấy", ds[0]["gan_voi"] == the[0]["card_id"],
+           f"{ds[0]['gan_voi']} ↔ {the[0]['card_id']}")
+    b.kiem("Diff có nội dung thật, không phải một cái khung rỗng",
+           ds[0]["so_hunk"] >= 1 and ds[0]["so_dong_trai"] >= 1,
+           f"{ds[0]['so_hunk']} đoạn · trái {ds[0]['so_dong_trai']} dòng "
+           f"· phải {ds[0]['so_dong_phai']} dòng")
+    b.kiem("Cột phải sửa được — lựa chọn thứ ba của thẻ cần một chỗ để sửa",
+           ds[0]["cho_phep_sua"] is True, str(ds[0]["cho_phep_sua"]))
+
+    # Ảnh chụp LÚC THẺ CÒN MỞ: phần duy nhất của khối diff mà bản chụp trạng thái không
+    # thấy là **nó vẽ ra trông thế nào**. Hai cột có thẳng hàng không, màu có đúng chỗ
+    # không, chữ có bị cắt không — mấy câu ấy chỉ có mắt người trả lời được.
+    g.chup_man_hinh(REPO / "du-lieu" / "ket-qua" / "anh" / "the-xung-dot.png",
+                    nhan="the-xung-dot")
+
+    b.buoc("Sửa cột phải rồi bấm “Dùng bản tôi vừa sửa trong diff”")
+    da_sua = "int main(void){return 7;}\n"
+    g._gui({"ui": "giai_xung_dot", "card_id": the[0]["card_id"],
+            "chon": "Dùng bản tôi vừa sửa trong diff", "ban_da_sua": da_sua})
+    r = g._doi("da_giai_xung_dot", 25)
+    b.kiem("Cái bấm đi vào lõi", r.get("card_id") == the[0]["card_id"],
+           json.dumps(r, ensure_ascii=False))
+    g.doi_xong()
+    b.kiem("Đúng nội dung người gõ nằm trên đĩa", tep.read_text("utf-8") == da_sua,
+           repr(tep.read_text("utf-8")))
+
+    a = g.chup("sau-giai-xung-dot")
+    b.kiem("Thẻ xung đột đã đóng, không còn nút bấm được",
+           not [t for t in a["the_dang_cho"] if t["card_id"] == the[0]["card_id"]],
+           f"{len(a['the_dang_cho'])} thẻ còn chờ")
+    toast = (a.get("lui") or {}).get("toast") or {}
+    b.kiem("Lần ghi ấy hoàn tác được như mọi thay đổi khác",
+           bool(toast) and toast.get("con_hieu_luc") is True,
+           json.dumps(toast, ensure_ascii=False))
 
     # ---------------------------------------------------------------- Đ
     b.phan("Đ · ẢNH CHỤP CHO BÁO CÁO")

@@ -204,8 +204,6 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 
 ---
 
-<!-- se-co -->
-
 ### DEV-366 · Khối `diff` — thẻ xung đột thật, cổng G-FILE hiện diff, xem trước khôi phục
 
 **Mục tiêu.** Mọi chỗ EIDE đang nói "xem diff" đều có diff để xem. Cờ: không cần (thuần trình bày), nhưng phần "G-FILE kèm diff" nằm sau `EIDE_FEATURE_CONG_CO_DIFF` vì nó đổi nội dung thẻ Agent dựng.
@@ -218,7 +216,7 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 - `history.preview_restore` (DEV-365) trả thêm `diff_show` tóm tắt theo tệp/hiện vật (chỉ danh sách + số dòng đổi, không toàn văn, để không nặng).
 
 **Giao diện.**
-- `Views/DiffView.swift` (mới): hai cột, số dòng, tô màu hunk, cuộn đồng bộ; cột phải thành NSTextView sửa được khi `cho_phep_sua`; nút theo `gan_voi`: *Lưu* (→ `edit`), *Duyệt với bản đã sửa* / *Duyệt nguyên bản* / *Từ chối* (→ `decide`), *Giữ trái* / *Giữ phải* / *Giữ bản đã sửa* (→ thẻ `choose`).
+- `ui/EIDEApp/Sources/EIDE/Views/DiffView.swift` (mới): hai cột, số dòng, tô màu hunk, cuộn đồng bộ; cột phải thành NSTextView sửa được khi `cho_phep_sua`; nút theo `gan_voi`: *Lưu* (→ `edit`), *Duyệt với bản đã sửa* / *Duyệt nguyên bản* / *Từ chối* (→ `decide`), *Giữ trái* / *Giữ phải* / *Giữ bản đã sửa* (→ thẻ `choose`).
 - `AppState`: `case "diff.show"` → lưu theo `diff_id`; thẻ/cổng có `gan_voi` thì vẽ diff ngay trong thẻ; không gắn thì hiện ở sheet.
 
 **Ca kiểm.** `tests/test_edit47_diff.py`: hunks đúng cho đổi/thêm/xoá; 3-way đánh dấu `xung_dot` đúng đoạn; thẻ xung đột phát `diff.show` có `gan_voi.card_id` trùng `card_id`; cờ tắt → G-FILE không phát `diff.show`, cờ bật → có; `diff.show` là lệnh hợp lệ trong `uicommand` và giao diện không rơi vào nhánh "chưa biết vẽ".
@@ -228,6 +226,8 @@ Mỗi gói: mục tiêu → thay đổi lõi → thay đổi giao diện → ca 
 **Ước lượng.** 2–3 ngày.
 
 ---
+
+<!-- se-co -->
 
 ### DEV-367 · Trình soạn tệp ở A7 / A3 và khoá mềm hai chiều
 

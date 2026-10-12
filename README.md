@@ -141,7 +141,7 @@ Màn hình chat chỉ là một nửa. Nửa còn lại là 11 tab, mỗi tab l�
 | **A11** Lịch sử | từng lần sửa, ai sửa, vì sao · **gỡ lại, về bản chốt, rẽ/chuyển/gộp nhánh — bấm được, không phải nhờ Agent** |
 | **A14** Dự án & Bộ nhớ | thư mục dự án · bộ nhớ dài hạn · đồng hồ đo chỗ nhớ Agent đang dùng |
 
-Giao diện **không tự nghĩ ra gì**. Mọi thứ hiện trên màn hình đều do lõi gửi sang qua đúng 16
+Giao diện **không tự nghĩ ra gì**. Mọi thứ hiện trên màn hình đều do lõi gửi sang qua đúng 17
 loại lệnh. Lõi thêm loại khối mới thì giao diện vẽ được ngay, không phải sửa mã Swift. Lõi gửi
 loại khối giao diện chưa biết thì giao diện **nói ra**, không bỏ qua im lặng.
 
@@ -420,7 +420,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **2 259 ca Python + 62 ca giao diện**
+### Mức 1 — Ca đơn vị: **2 284 ca Python + 72 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -432,7 +432,7 @@ nói được sản phẩm có dùng được không — nó chỉ nói mã làm
 Phần giao diện mới có bộ kiểm từ 02/10/2026:
 
 ```bash
-cd ui/EIDEApp && swift test        # 62 ca
+cd ui/EIDEApp && swift test        # 72 ca
 ```
 
 Trước đó **cả giao diện chưa từng có một ca kiểm nào** — `Package.swift` chỉ khai một mục tiêu
@@ -447,7 +447,7 @@ không.
 
 Một cái bẫy trong chính lệnh đo, gặp ngày 06/10/2026: `swift test | tail -3` in ra
 *"Test run with 0 tests in 0 suites passed"* và trông như bộ kiểm giao diện rỗng. Ba dòng cuối
-ấy là bản tóm tắt của thư viện swift-testing (dự án chưa dùng); bản tóm tắt XCTest — **62 ca,
+ấy là bản tóm tắt của thư viện swift-testing (dự án chưa dùng); bản tóm tắt XCTest — **72 ca,
 0 đỏ** — nằm ngay phía trên, bị `tail` cắt mất. Một lệnh đo cắt nhầm chỗ thì nói sai theo cả
 hai chiều.
 
@@ -539,9 +539,9 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét giao diện | **124/124 ô** trên 11 tab · tab thứ 12 (Màn hình, A15) **chưa quét** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **2 259** | `pytest -q` |
-| Ca đơn vị giao diện | **62** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
-| Năm cách gỡ lại, bấm qua app thật | **25/25** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
+| Ca đơn vị Python | **2 284** | `pytest -q` |
+| Ca đơn vị giao diện | **72** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
+| Năm cách gỡ lại + khối diff, bấm qua app thật | **34/34** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
 | Vẽ sơ đồ (trên màn hình và trong tệp) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
@@ -1336,12 +1336,11 @@ Nói ra để người đọc không phải tự tìm:
   `edit` của lõi sửa được mọi hiện vật theo trường, nhưng giao diện chỉ mở ô sửa ở A2.1
   (yêu cầu), A5.8c (kiểu chân), A8 (ngưỡng) và A14 (mục EIDE.md) — và chỉ trường cấp một.
   `block_diagram`, `netlist`, `plan`, `adr`, `bom`, `pinout`, `ui_screen`… người **chỉ đọc**.
-  Chưa có trình soạn tệp trong app, chưa có khối `diff` (thẻ xung đột hiện hai bản dưới dạng
-  chữ thường, cắt ở 4 000 ký tự), và **sửa tệp bằng VS Code thì EIDE không biết** cho tới khi
-  Agent đọc lại tệp — nên luật nền số 3 hiện đúng với thứ sửa trong app, chưa đúng với thứ
-  sửa ngoài app. Sáu gói còn lại của
+  Chưa có trình soạn tệp trong app, và **sửa tệp bằng VS Code thì EIDE không biết** cho tới
+  khi Agent đọc lại tệp — nên luật nền số 3 hiện đúng với thứ sửa trong app, chưa đúng với
+  thứ sửa ngoài app. Năm gói còn lại của
   [`EIDE-EDIT-47`](docs/md/EIDE-EDIT-47_Nguoi_sua_truc_tiep_va_Hoan_tac.md) làm phần này;
-  gói đầu (năm cách gỡ lại, bấm được) xong 12/10/2026.
+  hai gói đầu — năm cách gỡ lại, và khối `diff` — xong 12/10/2026.
 - **Mã phiên sửa do giao diện cấp**, đếm trong một lần mở app — hai lần mở có thể cấp trùng
   mã, nên một danh sách changeset dài qua nhiều phiên có thể gom nhầm hai lượt sửa cùng tên.
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
@@ -1395,7 +1394,7 @@ Nói ra để người đọc không phải tự tìm:
   cả khi cờ tắt.
 
   Câu này từng ghi *"mười hai"* mà liệt kê **mười một** tên — con số tổng trong `Features` bị
-  dùng thay cho con số của đợt rà lại. Nay `Features` có **14** cờ, trong đó `SCHEMATIC` có từ
+  dùng thay cho con số của đợt rà lại. Nay `Features` có **15** cờ (thêm `CONG_CO_DIFF` của EDIT-47), trong đó `SCHEMATIC` có từ
   trước đợt này, nên đợt rà lại đóng góp **mười ba**.
 
   `PDF_BANG` có một chi phí đo được, nói ra để người bật cờ biết trước: nạp 21 PDF thật
@@ -1518,7 +1517,7 @@ src/eide/
 └── xuat_ban.py        dựng Word · PowerPoint · Excel · PDF
 
 ui/EIDEApp/Sources/EIDE/
-├── Protocol/          13 loại việc người làm · 16 loại lệnh lõi gửi
+├── Protocol/          13 loại việc người làm · 17 loại lệnh lõi gửi
 ├── State/             hình chiếu của thứ lõi đã gửi — không tự nghĩ ra gì
 └── Views/             Console · thẻ cửa duyệt · 11 tab · thanh trạng thái
 ```

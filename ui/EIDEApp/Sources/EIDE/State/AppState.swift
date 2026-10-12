@@ -42,6 +42,13 @@ final class AppState: ObservableObject {
     /// changeset cuối: sửa bốn ô trong một biểu mẫu là bốn lần lưu.
     @Published var sessionSua: String?
 
+    /// Khối diff lõi đã gửi, theo `diff_id` — lệnh thứ 17 của UAP (EIDE-EDIT-47 DEV-366).
+    ///
+    /// Giữ riêng chứ không nhét vào `Card`: một khối diff có thể gắn vào thẻ xung đột, gắn
+    /// vào thẻ cổng, hoặc không gắn vào đâu cả (mở ở một tấm riêng). Và nó tới bằng một
+    /// lệnh RIÊNG, sau `console.post` dựng thẻ — nên lúc thẻ tới thì diff chưa có.
+    @Published var diffs: [String: JSONValue] = [:]
+
     /// HumanAct đã gửi, 20 cái gần nhất.
     ///
     /// Có nó vì phần lớn gói này là **những cái nút**, và câu cần đo về một cái nút là
@@ -232,7 +239,7 @@ final class AppState: ObservableObject {
             doiDuAn(duAn)
             try client.start(.init(python: python, repoRoot: repo, projectDir: duAn))
             let hello = try await client.call("hello", ["client": .object([
-                "name": .string("EIDE.app"), "uap": .string("1.1")
+                "name": .string("EIDE.app"), "uap": .string("1.2")
             ])])
             let so = hello["ledger"]?["message_vi"]?.stringValue ?? ""
             connection = .dangChay(so)
@@ -283,6 +290,7 @@ final class AppState: ObservableObject {
         notices.removeAll()
         staleList.removeAll()
         snapshots.removeAll()
+        diffs.removeAll()
         nhanh.removeAll()
         nhanhHienTai = "main"
         toastLuu = nil
@@ -341,6 +349,17 @@ final class AppState: ObservableObject {
                 themThongBao(level: "error", text: error.localizedDescription, code: nil)
             }
             busy = false
+        }
+    }
+
+    /// Khối diff gắn vào một thẻ (xung đột) hoặc một cổng. Lõi khai `gan_voi`, giao diện
+    /// chỉ tra ngược — nó không tự gán diff cho thẻ nào.
+    func diffGanVoi(cardID: String? = nil, gateID: String? = nil) -> JSONValue? {
+        diffs.values.first { d in
+            let g = d["gan_voi"]
+            if let c = cardID, g?["card_id"]?.stringValue == c { return true }
+            if let x = gateID, g?["gate_id"]?.stringValue == x { return true }
+            return false
         }
     }
 
@@ -602,6 +621,11 @@ final class AppState: ObservableObject {
                     session: v["session"]?.stringValue,
                     soTrongPhien: v["so_trong_phien"]?.intValue ?? 1,
                     hoanTacDuoc: v["hoan_tac_duoc"]?.boolValue ?? true)
+            }
+
+        case "diff.show":
+            if let id = c.params["diff_id"]?.stringValue {
+                diffs[id] = .object(c.params)
             }
 
         case "surface.lock", "surface.unlock", "surface.highlight", "explain.show":

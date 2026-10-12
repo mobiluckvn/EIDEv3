@@ -359,6 +359,21 @@ final class UITestChannel {
                 default:
                     ghi(["su_kien": "loi", "ghi_chu": "việc lùi lạ: \(v["viec"] ?? .null)"])
                 }
+            case "giai_xung_dot":
+                // Bấm một trong ba lựa chọn trên thẻ xung đột, kèm bản người sửa trong cột
+                // phải nếu có. Gọi ĐÚNG hàm mà nút gọi — phần đáng đo nhất của DEV-366 nằm
+                // trong chính hàm ấy (thứ tự hai thao tác, và `base_version` lấy của bên nào).
+                if let cid = v["card_id"]?.stringValue,
+                   let the = s.cards.first(where: { $0.id == cid }) {
+                    TheLamRoView.guiTraLoi(
+                        state: s, card: the,
+                        traLoi: ["chon": v["chon"]?.stringValue ?? ""],
+                        banDaSua: v["ban_da_sua"]?.stringValue)
+                    ghi(["su_kien": "da_giai_xung_dot", "card_id": cid,
+                         "so_thao_tac": s.daGui.count])
+                } else {
+                    ghi(["su_kien": "loi", "ghi_chu": "không có thẻ \(v["card_id"] ?? .null)"])
+                }
             case "cho":
                 ghi(["su_kien": "cho", "dang_chay": s.busy ? "có" : "không"])
             default:
@@ -650,6 +665,25 @@ final class UITestChannel {
             // và báo lỗi mỗi khi không có lượt nào chạy — tức là lúc bình thường nhất.
             "run_trang_thai": s.run?.status ?? "",
             "dang_chay": s.busy,
+            // Khối diff (DEV-366) — thứ người NHÌN THẤY khi hai bản đụng nhau.
+            //
+            // Phơi cả `so_dong_*`: câu đáng hỏi về một khối diff không phải "nó có không"
+            // mà là "nó có nội dung không". Một khối diff rỗng vẫn vẽ ra một cái khung.
+            "diff": s.diffs.values.map { d -> [String: Any] in
+                [
+                    "diff_id": d["diff_id"]?.stringValue ?? "",
+                    "gan_voi": (d["gan_voi"]?["card_id"]?.stringValue
+                                ?? d["gan_voi"]?["gate_id"]?.stringValue ?? ""),
+                    "cho_phep_sua": d["cho_phep_sua"]?.boolValue ?? false,
+                    "so_hunk": (d["hunks"]?.arrayValue ?? []).count,
+                    "so_xung_dot": d["tom_tat"]?["xung_dot"]?.intValue ?? 0,
+                    "so_dong_trai": d["trai"]?["so_dong"]?.intValue ?? 0,
+                    "so_dong_phai": d["phai"]?["so_dong"]?.intValue ?? 0,
+                    "co_ban_goc": d["goc"] != nil,
+                    "cat": (d["trai"]?["cat"]?.boolValue ?? false)
+                           || (d["phai"]?["cat"]?.boolValue ?? false),
+                ]
+            },
             // Năm tầng lùi (EIDE-EDIT-47 DEV-365) — thứ người NHÌN THẤY để lùi lại.
             //
             // Phơi ra ở đây vì cả gói ấy là **những cái nút**, và câu phải đo được là "cái

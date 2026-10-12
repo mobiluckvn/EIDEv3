@@ -545,8 +545,37 @@ class History:
                     "message_vi": f"{snap_id} mất bản sao nội dung kho — không khôi phục "
                                   "được. Đây là lỗi toàn vẹn, hãy báo lại."}
         sau = self.log.sau(s.at_changeset) if s.at_changeset else self.log.all()
+        hien = sn.xuat_kho(self.store)
         return {"ok": True, "snapshot": s.to_dict(),
-                **sn.se_mat_gi(sn.xuat_kho(self.store), _unjson(cu), changeset_sau=sau)}
+                **sn.se_mat_gi(hien, _unjson(cu), changeset_sau=sau),
+                "diff_tom_tat": self._diff_tom_tat_kho(hien, _unjson(cu))}
+
+    def _diff_tom_tat_kho(self, hien: dict[str, Any],
+                          snap: dict[str, Any]) -> list[dict[str, Any]]:
+        """Mỗi hiện vật sẽ đổi: **mấy dòng thêm, mấy dòng bớt** — DEV-366.
+
+        Chỉ CON SỐ, không toàn văn. Một bản ưng ý có thể cách hiện tại hai mươi hiện vật;
+        gửi cả hai mươi nội dung vào một lần xem trước là trả giá cho thứ người chưa mở ra
+        xem. Người bấm vào một dòng thì lúc ấy mới dựng `diff.show` đầy đủ.
+        """
+        from . import diff_khoi as dk
+
+        d_snap = {a["id"]: a for a in snap.get("artefacts", [])}
+        d_hien = {a["id"]: a for a in hien.get("artefacts", [])}
+        ra: list[dict[str, Any]] = []
+        for aid in sorted(set(d_snap) | set(d_hien)):
+            a, b = d_snap.get(aid), d_hien.get(aid)
+            if a is not None and b is not None and a["canonical"] == b["canonical"]:
+                continue
+            # Chiều đọc: TỪ hiện tại VỀ bản ưng ý — vì đó là hướng phép khôi phục sẽ đi.
+            tt = dk.diff_tom_tat(dk.in_canonical((b or {}).get("canonical") or {}),
+                                 dk.in_canonical((a or {}).get("canonical") or {}))
+            ra.append({"id": aid,
+                       "type": (a or b or {}).get("type", "?"),
+                       "viec": "gỡ bỏ" if a is None else ("dựng lại" if b is None
+                                                          else "quay về bản cũ"),
+                       **tt})
+        return ra
 
     def _gom_so_do(self) -> dict[str, Any]:
         """Gói sơ đồ vào bản ưng ý: sổ đăng ký sheet + nội dung từng tệp (SCH-16).

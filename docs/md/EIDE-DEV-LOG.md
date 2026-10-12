@@ -10418,3 +10418,115 @@ Lỗ còn lại, nói ra chứ không giấu: một cái tên vừa là công c�
 * **Phiên sửa do GIAO DIỆN cấp mã** (`es-<n>`, đếm trong một lần mở app). Hai lần mở app có
   thể cấp cùng một mã; lõi chỉ dùng nó để gom trong phiên nên chưa thành vấn đề, nhưng một
   `history.danh_sach` dài qua nhiều phiên thì hai nhóm khác nhau có thể trùng tên.
+
+---
+
+## [DEV-366] Khối `diff` — ba chỗ NÓI "xem diff" mà không có gì để xem
+
+Gói thứ hai của EIDE-EDIT-47. Rà 12/10/2026, ba chỗ trong EIDE mời người xem một thứ không
+tồn tại:
+
+* **thẻ xung đột** cho ba lựa chọn, lựa chọn thứ ba là *"Để tôi xem diff rồi quyết"* — và
+  hai bản được nhét vào trường `hai_ban` **cắt ở 4 000 ký tự**, giao diện hiện ra như chữ
+  thường. Một tệp 300 dòng bị cắt đúng chỗ nó bắt đầu khác nhau;
+* **cổng `G-FILE`** nói "ghi đè bản của anh" mà không nói ghi đè CÁI GÌ;
+* **`history.preview_restore`** (DEV-365) nói "1 req quay về bản cũ" mà không nói về thành gì.
+
+### Lệnh thứ 17, và vì sao nó là một lệnh chứ không phải một trường
+
+`diff.show` nâng UAP lên **v1.2**: 17 lệnh, 13 HumanAct. Nó phải là một lệnh riêng vì một
+khối diff gắn vào **ba chỗ khác nhau** — thẻ xung đột (`gan_voi.card_id`), thẻ cổng
+(`gan_voi.gate_id`), hoặc không gắn vào đâu — và nó tới SAU cái thẻ nó thuộc về. Nhét nó
+vào `card` thì cổng G-FILE phải mang theo cả nội dung tệp trong mọi thẻ, kể cả khi cờ tắt.
+
+Đúng luật mà đầu `uicommand.py` đã viết: *"một thông tin không diễn đạt được bằng các lệnh
+này là một khoảng trống THIẾT KẾ, không được mở một đường riêng cho giao diện tự quyết"*.
+Trường `hai_ban` chính là một đường riêng như thế, và nó sống một năm.
+
+### `difflib` chỉ TÔ MÀU, `git merge-file` vẫn QUYẾT
+
+`diff_khoi.dung_diff` là hàm thuần: không chạm đĩa, không chạm git. Với ba bên, nó đánh
+`xung_dot` cho hunk nào **cả hai bên cùng đụng vào** so với bản gốc. Nhưng quyết định "gộp
+sạch hay không" vẫn là `vcs.merge_ba_chieu` ở `_sua_tep` — hai hiện thực, nên
+`test_hai_bo_may_dong_y_nhau` canh đúng chỗ chúng có thể lệch.
+
+Một giới hạn **ghi lại chứ không giấu**: hunk mà một bên XOÁ TRẮNG thì không được đánh đỏ
+(không còn dòng nào để hỏi "dòng này có mới không"), dù diff3 gọi đó là xung đột. Git vẫn
+bắt ca ấy nên thẻ vẫn dựng — chỉ thiếu cái nhãn đỏ. `test_xoa_mot_ben_sua_ben_kia` giữ chỗ.
+
+### Trả lời thẻ xung đột KHÔNG còn tốn một lượt mô hình
+
+Trước gói này, câu trả lời rơi xuống vòng lặp công cụ: mô hình đọc dòng *"[Bạn] Trả lời thẻ
+— chon: Giữ bản của tôi"* rồi **tự nghĩ cách ghi lại tệp**, dù nó chỉ thấy câu trả lời chứ
+không thấy hai bản. Nay `_nguoi_giai_xung_dot` giải bằng mã, theo mẫu `tra_loi_thanh` mà
+`snapshot.propose` đã dùng.
+
+Giao diện gửi **hai thao tác, nội dung TRƯỚC rồi lựa chọn SAU**, và `base_version` lấy
+**hash của cột PHẢI**. Hai chi tiết ấy không phải tiểu tiết:
+
+* gửi ngược thứ tự thì lõi đóng sổ một việc chưa xảy ra;
+* lấy hash cột trái là cố ghi đè bằng đúng phiên bản vừa gây ra xung đột — lần lưu này
+  xung đột lần nữa, và đoạn người vừa gõ trong cột phải mất theo.
+
+Cả hai có ca kiểm riêng phía Swift, vì cả hai chỉ hỏng vào đúng lúc tệ nhất.
+
+### Hai lỗi chỉ ẢNH CHỤP mới thấy (lần thứ hai trong hai gói liền)
+
+* **Dòng ma cuối tệp.** Giao diện tách dòng bằng `components(separatedBy: "\n")`, lõi đánh
+  số hunk bằng `splitlines()`. Một tệp kết thúc bằng xuống dòng thành `n + 1` dòng trên màn
+  hình — ảnh chụp cho thấy một tệp MỘT dòng được đánh số tới 2. Con số lệch mới là phần
+  nguy: phép tô màu trượt đúng một dòng ở **mọi** tệp kết thúc bằng xuống dòng.
+* **Khối diff không dùng được ở cột Console.** Console rộng 460 pt, chia đôi còn ~230 pt
+  mỗi bên — đủ cho `int main(void){return 0;}` và không đủ cho mã thật. Thêm nút *Mở rộng*
+  mở ra tấm 980 pt, dùng chung `banDaSua` nên sửa ở tấm rộng rồi đóng lại thì chữ vẫn còn.
+
+Không con số nào trong bản chụp giao diện kêu lên ở cả hai. Bản chụp đọc *trạng thái*,
+không đọc *pixel* — nói lại ở đây vì đây là lần thứ hai nó đúng.
+
+### Cờ `EIDE_FEATURE_CONG_CO_DIFF` (cờ thứ 15)
+
+Chỉ phần **thẻ cổng G-FILE kèm diff** nằm sau cờ: nó đổi nội dung thẻ mà TÁC TỬ dựng ra
+(N-4), và "người bấm Duyệt nhanh hơn hay chậm hơn khi thấy diff" là câu chỉ bộ 76 ca chạy
+hai chế độ trả lời được. Phần nền — `dung_diff` và thẻ xung đột của NGƯỜI — chạy cả khi cờ
+tắt: chúng không đụng vào thẻ của tác tử.
+
+Cổng chỉ dựng diff khi nội dung mới **tính được chắc chắn**: `fs.write` mang sẵn `content`,
+`fs.edit` thì áp đúng phép thay mà công cụ sẽ áp — và nếu phép thay ấy sắp hỏng (khớp 0 hay
+2 lần, tức `E1005`/`E1006`), **không vẽ gì**. Một diff đoán sai tệ hơn không có diff.
+
+### Đo
+
+* `tests/test_edit47_diff.py` — 25 ca. **Phá lại thì đỏ: 21/21.**
+* `ui/EIDEApp/Tests/EIDETests/DiffTests.swift` — 11 ca. **Phá lại thì đỏ: 8/8.**
+* `tools/thu_nut_lui.py` phần E — **9 ca mới qua APP THẬT**, dựng đúng tiêu chí chấp nhận
+  của gói: người thấy hai bản, sửa cột phải, bấm *Giữ bản đã sửa* → đúng nội dung ấy trên
+  đĩa, một changeset `author=human`, bản cũ còn trong `blobs/`, và thanh Hoàn tác còn hiệu
+  lực. Tổng bộ ấy 25 → **34/34**.
+* Bộ kiểm 2 259 → **2 284 xanh**, 2 skip, 0 đỏ. Giao diện 62 → **72 ca**.
+
+Hai phép phá LỌT ở lượt đầu, và cả hai là lỗi của bộ đo:
+
+1. **Tháo `autojunk=False` không đỏ.** Ca kiểm dựng 160 dòng, mà `autojunk` chỉ bật khi
+   chuỗi dài quá 200 — dàn dựng của ca làm chính phép phá của nó vô hiệu. Và phép khẳng
+   định cũng sai chỗ: đếm SỐ ĐOẠN thì bật `autojunk` lên vẫn ra **một** đoạn, chỉ có điều
+   đoạn ấy rộng 318 dòng, tức diff bảo cả tệp đã đổi. Nay đo BỀ RỘNG của đoạn.
+2. **Lẫn khoá thẻ với khoá cổng không đỏ** — ca kiểm chỉ hỏi một chiều.
+
+### Một cái bẫy của BỘ ĐO, không phải của sản phẩm
+
+Lần chạy `thu_nut_lui.py` đầu tiên sau `./dong-goi.sh` treo ở chỗ đợi kênh; lần thứ hai thì
+kênh mở sau **5 giây**. Nguyên nhân: `dong-goi.sh` làm `rm -rf EIDE.app` rồi dựng lại
+**trong lúc bản cũ đang chạy**, nên LaunchServices còn giữ gói cũ. Đợi lâu hơn không chữa
+được (đã thử 90 giây); đóng hẳn rồi mở lại thì xong. Mất ba lượt mới tìm ra, vì thông báo
+của bộ đo nói *"app có đang chạy không?"* trong khi app chạy bình thường.
+
+### Chưa làm
+
+* **Duyệt với bản đã sửa** — cột phải của thẻ cổng để ĐỌC, `cho_phep_sua=false`. Mở ô sửa
+  khi lõi chưa nhận được bản sửa là dựng một cái nút nuốt mất việc của người. DEV-370.
+* **Cuộn đồng bộ hai cột** chưa có: mỗi cột cuộn riêng. Đặc tả có nêu.
+* **Cột phải dùng `TextEditor`, không phải NSTextView bọc** như đặc tả — mất phần tô màu
+  theo hunk **trong lúc đang gõ**, và nhãn cột nói ra điều đó. Đổi lại nó là một ô văn bản
+  thật: chép, dán, Cmd-Z đều đúng như macOS.
+* **`history.preview_restore` trả `diff_tom_tat` nhưng giao diện chưa vẽ** — mới là con số
+  trong JSON. Sheet "Về bản…" vẫn chỉ hiện `se_mat_vi` dạng chữ.
