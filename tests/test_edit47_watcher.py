@@ -449,6 +449,133 @@ def test_XOA_roi_TAO_LAI_dung_noi_dung_cu_van_vao_so(phien, du_an):
     assert "sửa" in cs[-1].explain["summary"], "lần tạo lại phải có mặt trong sổ"
 
 
+# ================================================= một lô = một changeset (§DEV-376)
+def test_XOA_CA_THU_MUC_la_MOT_changeset_va_lui_MOT_lan(phien, du_an):
+    """Một cú bấm Delete trên thư mục `firmware/` là **một việc**, không phải ba việc.
+
+    Ba changeset nghĩa là ba lần bấm Hoàn tác và tự nhớ đã tới đâu — đúng thứ §E5.2 tầng 2
+    ra đời để tránh, và đúng câu DEV-365 nói: *"người dùng muốn lùi cả lượt về một điểm,
+    không phải bấm hoàn tác bảy lần"*.
+    """
+    a, core, out = phien()
+    (du_an / "firmware").mkdir()
+    ds = {"firmware/main.c": "int main(void){return 0;}\n",
+          "firmware/uart.c": "void uart(void){}\n",
+          "firmware/led.c": "void led(void){}\n"}
+    for t, n in ds.items():
+        (du_an / t).write_text(n, "utf-8")
+        # Cả ba là HIỆN VẬT trong kho, đúng như sau khi tác tử ghi chúng — không thì nhánh
+        # "hiện vật rời kiểm kê" chỉ chạy cho tệp đầu và phép phá tháo nó vẫn xanh.
+        a.store.apply(artefact_id=t, type="code", op="create", author="agent:run-1",
+                      canonical={"path": t, "bytes": len(n)}, explain=EX)
+    a._watcher_emit = out.append
+    a._tep_doi_ngoai_eide(list(ds))              # EIDE ghi nhận ba tệp (một changeset)
+    assert len([c for c in a.history.log.all() if c.by_human]) == 1
+
+    for t in ds:
+        (du_an / t).unlink()
+    out.clear()
+    a._tep_doi_ngoai_eide(list(ds))
+
+    cs = [c for c in a.history.log.all() if c.by_human]
+    assert len(cs) == 2, [c.explain["summary"] for c in cs]
+    xoa = cs[-1]
+    assert any(f.get("op") == "delete" for f in xoa.forward)
+    assert sorted(t.artefact_id for t in xoa.touches) == sorted(ds), \
+        "cả ba tệp phải nằm trong CÙNG một changeset"
+    assert "3 tệp" in xoa.explain["summary"]
+    assert all(a.store.get(t) is None for t in ds), "cả ba hiện vật phải rời kiểm kê"
+
+    # Phép NGHỊCH ĐẢO phải kể đủ ba tệp nó sẽ trả về. Không phép đo hành vi nào bắt được
+    # chỗ này — `_lui_tep` lùi theo `sha` và theo `blob_truoc`, không đọc `paths` — nên
+    # nếu chỉ đo hành vi thì trường ấy có thể kể một tệp mà mọi ca kiểm vẫn xanh.
+    #
+    # Nó vẫn phải đúng, vì sổ changeset là **bằng chứng người đọc** (chuỗi hash, hiện trên
+    # tab Lịch sử) chứ không phải chỉ dữ liệu cho mã: một dòng ghi "sẽ trả 1 tệp" cho một
+    # phép trả 3 tệp là một dòng nói sai, ở đúng chỗ người dựa vào để quyết có lùi không.
+    nd = [f for f in xoa.inverse if f.get("kind") == "file"][0]
+    assert sorted(nd["paths"]) == sorted(ds), nd["paths"]
+    assert sorted(nd["blob_truoc"]) == sorted(ds), "và giữ bản cũ của cả ba"
+
+    # Người đọc phải thấy ĐỦ ba tên, cả trong thông báo lẫn trong EIDE.md (tác tử đọc mục
+    # ấy mỗi lượt — thiếu hai tệp thì nó tưởng hai tệp kia vẫn còn).
+    tb = " ".join(c.params.get("text", "") for c in out if c.method == "notice")
+    md = a.eide_md.get("Người vừa sửa")
+    for t in ds:
+        assert t in tb, (t, tb)
+        assert t in md, (t, md)
+
+    kq = a.history.hoan_tac_changeset(xoa.id, by="human")
+    assert kq.ok, kq.message_vi
+    for t, n in ds.items():
+        assert (du_an / t).read_text("utf-8") == n, f"{t} phải trở lại"
+        assert a.store.get(t) is not None, f"hiện vật {t} phải trở lại kiểm kê"
+
+
+def test_XOA_CA_THU_MUC_lui_duoc_ca_khi_GIT_REVERT_HONG(phien, du_an):
+    """`_lui_tep` ưu tiên `git revert` nên nó trả về **cả lô** mà không cần blob — một
+    changeset chỉ giữ blob của tệp ĐẦU vẫn xanh. Đây là ca đo đúng đường blob, cho nhiều
+    tệp."""
+    from eide.vcs import GitKhongSan
+
+    a, core, out = phien()
+    (du_an / "firmware").mkdir()
+    ds = {"firmware/a.c": "a\n", "firmware/b.c": "b\n", "firmware/c.c": "c\n"}
+    for t, n in ds.items():
+        (du_an / t).write_text(n, "utf-8")
+    a._watcher_emit = out.append
+    a._tep_doi_ngoai_eide(list(ds))
+    for t in ds:
+        (du_an / t).unlink()
+    a._tep_doi_ngoai_eide(list(ds))
+    cs = [c for c in a.history.log.all() if c.by_human][-1]
+
+    def revert_hong(*_a, **_k):
+        raise GitKhongSan("giả lập: git revert xung đột")
+
+    a.history.vcs.revert = revert_hong
+    kq = a.history.hoan_tac_changeset(cs.id, by="human")
+    assert kq.ok, kq.message_vi
+    for t, n in ds.items():
+        assert (du_an / t).read_text("utf-8") == n, f"{t} phải trở lại từ blob"
+
+
+def test_mot_lo_SUA_nhieu_tep_cung_la_MOT_changeset(phien, du_an):
+    """`git checkout` một nhánh khác bên ngoài EIDE đổi N tệp trong **một việc**. Cùng lý
+    lẽ với xoá cả thư mục."""
+    a, core, out = phien()
+    (du_an / "a.c").write_text("a1\n", "utf-8")
+    (du_an / "b.c").write_text("b1\n", "utf-8")
+    a._watcher_emit = out.append
+    a._tep_doi_ngoai_eide(["a.c", "b.c"])
+
+    cs = [c for c in a.history.log.all() if c.by_human]
+    assert len(cs) == 1 and "2 tệp" in cs[0].explain["summary"]
+    assert sorted(t.artefact_id for t in cs[0].touches) == ["a.c", "b.c"]
+    assert [s["ref"] for s in cs[0].explain["sources"]] == ["a.c", "b.c"], \
+        "xuất xứ phải kể ĐỦ tệp, không chỉ tệp đầu"
+
+
+def test_SUA_va_XOA_trong_cung_mot_lo_la_HAI_changeset(phien, du_an):
+    """Hai phép nghịch đảo khác nhau, và người hoàn tác thường chỉ muốn lùi một trong
+    hai: *"trả tệp tôi xoá về, nhưng giữ bản tôi vừa sửa"*."""
+    a, core, out = phien()
+    (du_an / "con.c").write_text("x\n", "utf-8")
+    a._watcher_emit = out.append
+    a._tep_doi_ngoai_eide(["con.c"])
+    out.clear()
+
+    (du_an / "main.c").write_text("int main(void){return 7;}\n", "utf-8")
+    (du_an / "con.c").unlink()
+    a._tep_doi_ngoai_eide(["main.c", "con.c"])
+
+    cs = [c for c in a.history.log.all() if c.by_human][-2:]
+    la_xoa = [any(f.get("op") == "delete" for f in c.forward) for c in cs]
+    assert la_xoa == [False, True], [c.explain["summary"] for c in cs]
+    tb = " ".join(c.params.get("text", "") for c in out if c.method == "notice")
+    assert "sửa main.c" in tb and "XOÁ con.c" in tb, tb
+
+
 def test_tep_EIDE_CHUA_TUNG_BIET_bi_xoa_thi_khong_ghi_gi(phien, du_an):
     """Một tệp tạm do trình dịch sinh ra rồi tự xoá không phải việc của ai — và sổ đầy
     những dòng không nói gì là cách nhanh nhất làm người ngừng đọc sổ."""

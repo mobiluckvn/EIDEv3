@@ -371,13 +371,15 @@ def for_file_write(*, cs_id: str, author: str, paths: list[str], sha: str | None
         forward=forward, inverse=inverse, explain=explain, note=note)
 
 
-def for_file_delete(*, cs_id: str, author: str, path: str, type: str,
+def for_file_delete(*, cs_id: str, author: str, paths: list[str],
+                    kieu: dict[str, str],
                     sha: str | None, sha_truoc: str | None,
-                    blob_truoc: dict[str, str], canonical_truoc: dict[str, Any] | None,
+                    blob_truoc: dict[str, str],
+                    canonical_truoc: dict[str, dict[str, Any]],
                     explain: dict[str, Any], run_id: str | None = None,
                     human_act_id: str | None = None,
                     note: str | None = None) -> Changeset:
-    """Một tệp BỊ XOÁ — EIDE-EDIT-47 §DEV-375.
+    """MỘT HAY NHIỀU tệp bị xoá — EIDE-EDIT-47 §DEV-375, nhiều tệp từ §DEV-376.
 
     Hai phép, không một: tệp rời khỏi đĩa **và** hiện vật rời khỏi kiểm kê. Thiếu phép thứ
     hai thì kho còn một hiện vật `code` trỏ vào một tệp không tồn tại, và mọi phép đếm sau
@@ -386,21 +388,26 @@ def for_file_delete(*, cs_id: str, author: str, path: str, type: str,
     Phép nghịch đảo giữ **cả hai**: git revert (hoặc blob) trả tệp về đĩa, và `restore` trả
     hiện vật về kiểm kê với đúng `canonical` cũ. Trả một nửa thì tệp về mà kho không biết,
     hoặc kho biết mà tệp không có — hai trạng thái sai theo hai cách khác nhau.
+
+    **Nhiều tệp trong MỘT changeset** là chuyện của một cú bấm: người xoá cả thư mục
+    `firmware/` thì đó là một việc, không phải hai mươi việc. Hai mươi changeset nghĩa là
+    hai mươi lần bấm Hoàn tác và tự nhớ đã tới đâu — đúng thứ §E5.2 tầng 2 ra đời để tránh.
     """
     forward: list[dict[str, Any]] = [
-        {"kind": "file", "op": "delete", "sha": sha, "paths": [path]}]
+        {"kind": "file", "op": "delete", "sha": sha, "paths": list(paths)}]
     inverse: list[dict[str, Any]] = [
-        {"kind": "file", "op": "revert", "sha": sha, "paths": [path],
+        {"kind": "file", "op": "revert", "sha": sha, "paths": list(paths),
          "sha_truoc": sha_truoc, "blob_truoc": blob_truoc}]
-    if canonical_truoc is not None:
-        forward.append({"kind": "store", "op": "delete", "artefact_id": path,
-                        "type": type})
-        inverse.append({"kind": "store", "op": "restore", "artefact_id": path,
-                        "type": type, "canonical": canonical_truoc,
-                        "explain": explain})
+    for p in paths:
+        if p in canonical_truoc:
+            forward.append({"kind": "store", "op": "delete", "artefact_id": p,
+                            "type": kieu.get(p, "code")})
+            inverse.append({"kind": "store", "op": "restore", "artefact_id": p,
+                            "type": kieu.get(p, "code"),
+                            "canonical": canonical_truoc[p], "explain": explain})
     return Changeset(
         id=cs_id, ts=_now(), author=author, run_id=run_id, human_act_id=human_act_id,
-        touches=[Touch(path, type, "delete")],
+        touches=[Touch(p, kieu.get(p, "code"), "delete") for p in paths],
         forward=forward, inverse=inverse, explain=explain, note=note)
 
 

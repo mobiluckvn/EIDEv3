@@ -11478,3 +11478,54 @@ chờ thoả sai thì nó không chờ gì cả. Nay đếm mốc ngay trước 
 * **Thư mục bị xoá** (không phải một tệp) thì watcher báo từng tệp một, nên lịch sử có N
   dòng cho một cú bấm Delete. Gộp chúng thành một changeset là việc chưa làm.
 * **Chỉ số 2 và 3 của §7 chưa có con số "sau"** — cần một phiên có người thật ngồi bấm.
+
+## [DEV-376] Một lô quét = một changeset: xoá cả thư mục là MỘT việc
+
+DEV-375 ghi một changeset cho mỗi tệp. Nên người bấm Delete trên thư mục `firmware/` hai
+mươi tệp thì được **hai mươi dòng lịch sử**, và muốn lấy lại thì bấm Hoàn tác hai mươi lần
+rồi tự nhớ đã tới đâu — đúng thứ §E5.2 tầng 2 ra đời để tránh, và đúng câu DEV-365 nói:
+*"người dùng muốn lùi cả lượt về một điểm, không phải bấm hoàn tác bảy lần"*.
+
+Watcher đã gộp sự kiện trong 1,5 giây, nên cả hai mươi đường dẫn tới `_tep_doi_ngoai_eide`
+trong **một lô**. Chỗ thiếu chỉ là: lô ấy bị xử lý từng phần tử một.
+
+### Sửa và xoá vẫn là HAI changeset
+
+Hai phép nghịch đảo khác nhau, và một người hoàn tác thường chỉ muốn lùi một trong hai:
+*"trả tệp tôi xoá về, nhưng giữ bản tôi vừa sửa"*. Gộp cả hai vào một changeset là lấy mất
+lựa chọn ấy. Nên: một lô → tối đa hai changeset, mỗi loại việc một cái.
+
+Cùng lý lẽ cho `git checkout` một nhánh khác bên ngoài EIDE: nó đổi N tệp trong **một
+việc**, nên N tệp ấy là một changeset `sửa`.
+
+### Phép phá bắt được một thứ phép đo hành vi không bắt được
+
+Phép phá *"phép nghịch đảo chỉ kể tệp đầu"* (`inverse[0].paths = paths[:1]`) **LỌT** mọi ca
+kiểm hành vi, và nó lọt vì một lý do đúng: `_lui_tep` lùi theo `sha` (git revert cả commit)
+và theo `blob_truoc`, **không đọc `paths`**. Trường ấy là bản ghi, không phải đường chạy.
+
+Nhưng sổ changeset là **bằng chứng người đọc** — chuỗi hash, hiện trên tab Lịch sử, là thứ
+người dựa vào để quyết có lùi không. Một dòng ghi *"sẽ trả 1 tệp"* cho một phép trả 3 tệp là
+một dòng nói sai ở đúng chỗ ấy. Nên ca kiểm nay đo **bản ghi**, không chỉ đo hành vi, và nói
+rõ trong chú thích vì sao một phép đo hành vi không đủ ở đây.
+
+Bốn phép phá khác LỌT ở lượt đầu, và cả bốn là cùng một kiểu dàn dựng thiếu đã gặp ở
+DEV-375: ba tệp trong ca kiểm **chưa phải hiện vật trong kho** (nên nhánh "hiện vật rời
+kiểm kê" chỉ chạy cho tệp đầu), undo luôn đi qua git (nên nhánh blob nhiều tệp không chạy),
+và không ca nào đọc thông báo lẫn EIDE.md sau một lần xoá cả thư mục.
+
+### Đo
+
+* `tests/test_edit47_watcher.py` 29 → **33 ca**. **Phá lại thì đỏ: 10/10.**
+* `tools/thu_nut_lui.py` phần K — 2 ca mới qua APP THẬT: tạo `firmware/` ba tệp, `rmtree`
+  cả thư mục → **một** changeset chạm ba tệp, rồi **một** cú bấm Hoàn tác trả cả ba về.
+  Bộ ấy 72 → **74/74** (cờ bật); cờ tắt vẫn 66/66 (phần này sau cờ `WATCHER`).
+* Bộ kiểm 2 436 → **2 440 xanh**.
+
+### Chưa làm
+
+* **Thư mục rỗng** không trở lại được: git không theo dõi thư mục rỗng, nên hoàn tác trả
+  về đủ tệp chứ không trả về một thư mục không có tệp nào. Nói ra, không giấu.
+* **`watchdog` vẫn chưa cắm.**
+* Một lô **quá lớn** (xoá 5 000 tệp) ghi một changeset với 5 000 blob. Chưa có trần, và
+  chưa đo được ngưỡng nào là quá.

@@ -501,7 +501,16 @@ class Agent:
 
     def _tep_doi_ngoai_eide(self, paths: list[str]) -> None:
         """Watcher báo mấy tệp vừa đổi. Lọc ra cái KHÔNG phải do chính EIDE ghi, rồi ghi
-        changeset `loai="external"`.
+        changeset cho người.
+
+        **Một lô quét = một changeset mỗi loại việc** (§DEV-376). Watcher gộp sự kiện trong
+        1,5 giây, nên một cú bấm Delete trên thư mục `firmware/` tới đây thành MỘT lô hai
+        mươi đường dẫn. Hai mươi changeset cho một cú bấm nghĩa là hai mươi lần bấm Hoàn
+        tác và tự nhớ đã tới đâu — đúng thứ §E5.2 tầng 2 ra đời để tránh. Cùng lý lẽ với
+        `git checkout` một nhánh khác bên ngoài: nó đổi N tệp trong một việc.
+
+        Sửa và xoá vẫn là **hai** changeset: hai phép nghịch đảo khác nhau, và một người
+        hoàn tác thường chỉ muốn lùi một trong hai.
 
         Chạy trên THREAD của watcher, không phải trong một lượt. Nên nó không có
         `TurnContext`, không gọi mô hình, và không được ném ngoại lệ ra ngoài.
@@ -511,6 +520,10 @@ class Agent:
         emit = self._watcher_emit
         goc = self.config.paths.project_root
         da_ghi: list[Any] = []
+        sua: dict[str, str] = {}             # rel → nội dung mới
+        truoc_sua: dict[str, str] = {}       # rel → bản EIDE biết (cho blob)
+        xoa: list[str] = []
+        truoc_xoa: dict[str, str] = {}
         for rel in paths:
             # Lọc LẠI ở đây, không chỉ trong watcher. Hàm này còn được gọi từ chỗ khác
             # (ca kiểm, và sau này là một lệnh "quét lại"), và cái giá của một lần lọt là
@@ -524,12 +537,15 @@ class Agent:
             if not p.exists():
                 # KHÔNG cần cờ "đã ghi nhận tệp mất" ở đây, và đã thử thêm rồi bỏ: sau khi
                 # lần xoá được commit, `_ban_eide_biet` không còn thấy tệp trong git HEAD
-                # nữa, nên lần quét sau `_nguoi_xoa_tep` tự trả `None`. Một cái cờ không
-                # bao giờ đổi được kết quả là mã chết, và mã chết thì không phá được —
-                # phép phá "bỏ cờ ấy đi" LỌT, và đó là câu trả lời.
-                cs = self._nguoi_xoa_tep(rel)
-                if cs is not None:
-                    da_ghi.append((rel, cs))
+                # nữa, nên lần quét sau không còn gì để ghi. Một cái cờ không bao giờ đổi
+                # được kết quả là mã chết, và mã chết thì không phá được — phép phá "bỏ cờ
+                # ấy đi" LỌT, và đó là câu trả lời.
+                t = self._ban_eide_biet(rel)
+                if t is None and self.store.get(rel) is None:
+                    continue          # EIDE chưa từng biết tệp này: không phải việc của ai
+                xoa.append(rel)
+                if t is not None:
+                    truoc_xoa[rel] = t
                 continue
             noi_dung = wt.noi_dung_doc_duoc(p)
             if noi_dung is None:
@@ -544,7 +560,15 @@ class Agent:
             if self._ban_eide_biet(rel) == noi_dung:
                 continue
 
-            truoc = self._ban_eide_biet(rel)
+            sua[rel] = noi_dung
+            t = self._ban_eide_biet(rel)
+            if t is not None:
+                truoc_sua[rel] = t
+
+        # ---- ghi: một changeset cho lô SỬA, một cho lô XOÁ ----------------------
+        if sua:
+            ds = sorted(sua)
+            ten = ds[0] if len(ds) == 1 else f"{len(ds)} tệp ({', '.join(ds[:3])}…)"
             try:
                 cs = self.history.ghi_tep(
                     # KHÔNG truyền `loai=`: tham số ấy là **kiểu hiện vật** trong kho
@@ -552,52 +576,65 @@ class Agent:
                     # truyền `loai="external"` theo chữ trong tài liệu, và hậu quả là
                     # `main.c` đổi kiểu thành `external` trong kiểm kê — mất chỗ trong đồ
                     # thị phụ thuộc. Để trống thì `doan_loai()` đoán đúng theo đuôi tệp.
-                    author="human", paths=[rel],
-                    summary=f"anh sửa {rel} bên ngoài EIDE",
+                    author="human", paths=ds,
+                    summary=f"anh sửa {ten} bên ngoài EIDE",
                     explain={
-                        "summary": f"anh sửa {rel} bên ngoài EIDE",
+                        "summary": f"anh sửa {ten} bên ngoài EIDE",
                         "why": "Thay đổi tới từ một trình soạn khác, không qua giao diện.",
-                        "sources": [{"kind": "external", "ref": rel, "tier": "NGUOI"}],
+                        "sources": [{"kind": "external", "ref": r, "tier": "NGUOI"}
+                                    for r in ds],
                         "diff_prev": "xem diff của changeset",
                         "next": "Tác tử đọc lại tệp trước khi sửa tiếp.",
                         "confidence": "NGUOI"},
-                    noi_dung_truoc={rel: truoc} if truoc is not None else None)
+                    noi_dung_truoc=truoc_sua or None)
             except Exception:                                      # noqa: BLE001
-                continue
-            da_ghi.append((rel, cs))
-            # Sau khi đã ghi thành changeset thì bản này là bản EIDE biết: lần quét sau
-            # không được ghi lại nó lần nữa.
-            wt.danh_dau_eide_ghi(p, noi_dung)
-
-            # Tác tử đang giữ tệp này → đúng đường `lock_broken` đã có: nó dừng sửa tệp
-            # ấy, không tự ghi đè.
-            if rel in self.locks:
-                self.locks.discard(rel)
-                if emit:
-                    emit(uic.surface_unlock("code", block=rel))
+                cs = None
+            if cs is not None:
+                da_ghi.append((ds, cs))
+                for rel in ds:
+                    # Sau khi đã ghi thành changeset thì bản này là bản EIDE biết: lần quét
+                    # sau không được ghi lại nó lần nữa.
+                    wt.danh_dau_eide_ghi(goc / rel, sua[rel])
+                    # Tác tử đang giữ tệp này → đúng đường `lock_broken` đã có: nó dừng
+                    # sửa tệp ấy, không tự ghi đè.
+                    if rel in self.locks:
+                        self.locks.discard(rel)
+                        if emit:
+                            emit(uic.surface_unlock("code", block=rel))
+        if xoa:
+            try:
+                cs = self.history.ghi_xoa_tep(paths=xoa, noi_dung_truoc=truoc_xoa,
+                                              author="human")
+            except Exception:                                      # noqa: BLE001
+                cs = None
+            if cs is not None:
+                da_ghi.append((sorted(xoa), cs))
+                for rel in xoa:
+                    # Tệp không còn, nên dấu "EIDE vừa ghi" của nó phải bỏ: giữ lại thì
+                    # người tạo lại tệp với đúng nội dung cũ sẽ bị coi là tiếng của EIDE.
+                    wt.quen_tep(goc / rel)
+                    self.locks.discard(rel)
 
         if not da_ghi:
             return
-        for rel, cs in da_ghi:
-            xoa = any(f.get("op") == "delete" for f in cs.forward)
-            self.eide_md.note_human_edit(
-                artefact=f"file:{rel}",
-                summary=("XOÁ bên ngoài EIDE" if xoa else "sửa bên ngoài EIDE")
-                        + f" ({cs.id})",
-                why=None)
+        for ds, cs in da_ghi:
+            la_xoa = any(f.get("op") == "delete" for f in cs.forward)
+            for rel in ds:
+                self.eide_md.note_human_edit(
+                    artefact=f"file:{rel}",
+                    summary=("XOÁ bên ngoài EIDE" if la_xoa else "sửa bên ngoài EIDE")
+                            + f" ({cs.id})",
+                    why=None)
         self.eide_md.save()
         if emit is None:
             return
         cuoi = da_ghi[-1][1]
         # Nói ĐÚNG việc đã xảy ra. "Anh vừa sửa main.c" cho một lần xoá là một câu sai, và
         # nó sai đúng lúc người cần đọc kỹ nhất.
-        da_xoa = [r for r, c in da_ghi if any(f.get("op") == "delete" for f in c.forward)]
-        da_sua = [r for r, _ in da_ghi if r not in da_xoa]
         cau = []
-        if da_sua:
-            cau.append("sửa " + ", ".join(da_sua))
-        if da_xoa:
-            cau.append("XOÁ " + ", ".join(da_xoa))
+        for ds, cs in da_ghi:
+            la_xoa = any(f.get("op") == "delete" for f in cs.forward)
+            cau.append(("XOÁ " if la_xoa else "sửa ") + ", ".join(ds))
         emit(uic.notice(
             "Anh vừa " + " và ".join(cau) + " bên ngoài EIDE — "
             + (f"đã ghi thành thay đổi hoàn tác được ({cuoi.id})."
@@ -610,35 +647,6 @@ class Agent:
             stale=[{"id": i} for _, c in da_ghi for i in c.stale_marked],
             vua_ghi={"changeset": cuoi.id, "tom_tat": cuoi.explain.get("summary", ""),
                      "session": None, "hoan_tac_duoc": bool(cuoi.reversible)}))
-
-    def _nguoi_xoa_tep(self, rel: str) -> Any:
-        """Người xoá một tệp bên ngoài EIDE (§DEV-375).
-
-        Bản đầu của watcher **bỏ qua** chuyện này, nên người xoá `main.c` bằng Finder thì
-        EIDE không có đường nào trả nó về — một lỗ trong luật nền số 3, ở đúng chỗ đắt
-        nhất. Và nó im lặng: không changeset, không dòng nào trong tab Lịch sử, nên người
-        chỉ biết lúc đi tìm tệp.
-
-        Trả `None` khi EIDE chưa từng biết tệp ấy: một tệp tạm do trình dịch sinh ra rồi
-        tự xoá không phải việc của ai, và ghi nó vào sổ thì sổ đầy những dòng không nói gì.
-        """
-        from . import watcher as wt
-
-        truoc = self._ban_eide_biet(rel)
-        if truoc is None and self.store.get(rel) is None:
-            return None
-        try:
-            cs = self.history.ghi_xoa_tep(
-                path=rel, noi_dung_truoc=truoc, author="human",
-                summary=f"anh xoá {rel} bên ngoài EIDE")
-        except Exception:                                          # noqa: BLE001
-            return None
-        # Tệp không còn, nên dấu "EIDE vừa ghi" của nó phải bỏ: giữ lại thì người tạo
-        # lại tệp với đúng nội dung cũ sẽ bị coi là tiếng của chính EIDE.
-        wt.quen_tep(self.config.paths.project_root / rel)
-        if rel in self.locks:
-            self.locks.discard(rel)
-        return cs
 
     def _ban_eide_biet(self, rel: str) -> str | None:
         """Nội dung tệp theo bản EIDE ghi nhận gần nhất — blob của changeset cuối chạm nó.

@@ -558,6 +558,31 @@ def chay(du_an: pathlib.Path) -> int:
                ngoai.exists() and ngoai.read_text("utf-8") == V1,
                repr(ngoai.read_text("utf-8")) if ngoai.exists() else "tệp vẫn mất")
 
+        b.buoc("Xoá CẢ MỘT THƯ MỤC ba tệp — một cú bấm, phải là một changeset (DEV-376)")
+        tm = du_an / "firmware"
+        tm.mkdir(exist_ok=True)
+        ba = {f"firmware/{t}": f"// {t}\n" for t in ("main.c", "uart.c", "led.c")}
+        for t, n in ba.items():
+            (du_an / t).write_text(n, "utf-8")
+        _doi_changeset(du_an, "firmware/main.c", 1)
+        truoc_xoa = len(_changeset_cham(du_an, "firmware/main.c"))
+        shutil.rmtree(tm)
+        cs = _doi_changeset(du_an, "firmware/main.c", truoc_xoa + 1)
+        b.kiem("Ba tệp mất đi là MỘT changeset, không phải ba",
+               bool(cs) and len(cs) == truoc_xoa + 1
+               and len([t for t in cs[-1].get("touches") or []]) == 3,
+               f"{len(cs)} changeset · chạm {len(cs[-1].get('touches') or []) if cs else 0} tệp")
+
+        b.buoc("Một lần Hoàn tác phải trả CẢ BA về")
+        g.ve_lai()
+        g._gui({"kind": "undo", "target": {"type": "changeset", "id": cs[-1]["id"]},
+                "data": {"mode": "revert"}, "origin": {"surface": "history"}})
+        g.doi_xong()
+        thieu = [t for t, n in ba.items()
+                 if not (du_an / t).exists() or (du_an / t).read_text("utf-8") != n]
+        b.kiem("Cả ba tệp trở lại sau MỘT cú bấm", not thieu,
+               "thiếu: " + ", ".join(thieu) if thieu else "đủ ba")
+
     # ---------------------------------------------------------------- L
     b.phan("L · BẬT MỘT CỜ TÍNH NĂNG TỪ TRONG APP (DEV-371)")
 

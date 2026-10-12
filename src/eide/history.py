@@ -223,42 +223,48 @@ class History:
             mo_ta=("anh sửa" if author == "human" else "tác tử sửa") + " mã")
         return self._chot(cs)
 
-    def ghi_xoa_tep(self, *, path: str, noi_dung_truoc: str | None,
+    def ghi_xoa_tep(self, *, paths: list[str], noi_dung_truoc: dict[str, str],
                     author: str = "human", summary: str = "",
                     explain: dict[str, Any] | None = None,
                     run_id: str | None = None,
                     human_act_id: str | None = None) -> Changeset:
-        """Một tệp bị XOÁ — thành changeset hoàn tác được (§DEV-375).
+        """Một hay NHIỀU tệp bị xoá — một changeset hoàn tác được (§DEV-375, §DEV-376).
 
-        `noi_dung_truoc=None` thì vẫn ghi, nhưng changeset **không hoàn tác được** và nói
-        thẳng vì sao: không có bản nào để trả về. Im lặng bỏ qua một lần xoá không khôi
-        phục được là cách tệ nhất — người sẽ chỉ biết lúc đi tìm tệp.
+        Nhiều tệp trong một changeset vì một cú bấm Delete trên thư mục `firmware/` là
+        **một việc**, không phải hai mươi việc.
+
+        Tệp nào không có trong `noi_dung_truoc` thì không có bản để trả về. Hết thảy đều
+        thiếu, và git cũng không có, thì changeset **không hoàn tác được** và nói thẳng vì
+        sao. Im lặng bỏ qua một lần xoá không khôi phục được là cách tệ nhất — người sẽ
+        chỉ biết lúc đi tìm tệp.
         """
-        cu = self.store.get(path)
+        ds = sorted(paths)
+        cu = {p: a for p in ds if (a := self.store.get(p)) is not None}
         cs_id = self.ids.next("cs")
         sha_truoc = self.vcs.sha_hien_tai() if self.git_san else None
         sha = None
         if self.git_san:
             try:
-                sha = self.vcs.commit(cs_id=cs_id, author=author,
-                                      summary=summary or f"xoá {path}", paths=[path])
+                sha = self.vcs.commit(
+                    cs_id=cs_id, author=author,
+                    summary=summary or f"xoá {len(ds)} tệp", paths=ds)
             except GitKhongSan as e:
                 self.ledger.append("incident", {"code": "E7002", "message_vi": str(e)})
 
-        blob = ({path: self.blobs.put(noi_dung_truoc)}
-                if noi_dung_truoc is not None else {})
+        blob = {p: self.blobs.put(v) for p, v in noi_dung_truoc.items() if v is not None}
+        ten = ds[0] if len(ds) == 1 else f"{len(ds)} tệp ({', '.join(ds[:3])}…)"
         ex = explain or {
-            "summary": summary or f"anh xoá {path} bên ngoài EIDE",
+            "summary": summary or f"anh xoá {ten} bên ngoài EIDE",
             "why": "Tệp không còn trên đĩa khi watcher quét lại.",
-            "sources": [{"kind": "external", "ref": path, "tier": "NGUOI"}],
+            "sources": [{"kind": "external", "ref": p, "tier": "NGUOI"} for p in ds],
             "diff_prev": "tệp bị xoá",
             "next": "Hoàn tác changeset này thì tệp trở lại đúng nội dung cũ.",
             "confidence": "NGUOI"}
         cs = cs_mod.for_file_delete(
-            cs_id=cs_id, author=author, path=path,
-            type=(cu or {}).get("type") or doan_loai(path),
+            cs_id=cs_id, author=author, paths=ds,
+            kieu={p: (cu[p]["type"] if p in cu else doan_loai(p)) for p in ds},
             sha=sha, sha_truoc=sha_truoc, blob_truoc=blob,
-            canonical_truoc=(cu or {}).get("canonical") if cu else None,
+            canonical_truoc={p: a["canonical"] for p, a in cu.items()},
             explain=ex, run_id=run_id, human_act_id=human_act_id)
         if not sha and not blob:
             cs.reversible = False
@@ -266,13 +272,13 @@ class History:
                 "không có bản nội dung nào để trả về: dự án không có git, và EIDE chưa "
                 "từng đọc tệp này nên không có blob")
 
-        if cu is not None:
-            self.store.apply(artefact_id=path, type=cu["type"], op="delete",
+        for p, a in cu.items():
+            self.store.apply(artefact_id=p, type=a["type"], op="delete",
                              author=author, canonical={}, explain=ex,
                              changeset_id=cs_id)
         cs.stale_marked = deps_mod.danh_dau_stale(
-            self.store, thuong_nguon=[path], ly_do_cs=cs.id,
-            mo_ta=("anh xoá" if author == "human" else "tác tử xoá") + f" {path}")
+            self.store, thuong_nguon=ds, ly_do_cs=cs.id,
+            mo_ta=("anh xoá" if author == "human" else "tác tử xoá") + f" {ten}")
         return self._chot(cs)
 
     def ghi_chap_nhan_stale(self, *, artefact_id: str, why: str, author: str = "human",
