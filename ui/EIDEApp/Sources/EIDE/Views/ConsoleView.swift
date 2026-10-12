@@ -15,6 +15,10 @@ struct ConsoleView: View {
             Divider()
             dongHoiThoai
             if let r = state.run, r.status == "running" { Divider(); RunCard(run: r) }
+            if let t = state.toastLuu { Divider(); ThanhVuaGhi(toast: t) }
+            if let r = state.run, r.status != "running", r.soThayDoi > 0 {
+                Divider(); ThanhKetLuot(run: r)
+            }
             Divider()
             oNhap
         }
@@ -282,6 +286,77 @@ struct ThongBaoView: View {
     private var bieuTuong: String {
         notice.level == "error" ? "xmark.octagon.fill"
             : notice.level == "warn" ? "exclamationmark.triangle.fill" : "info.circle"
+    }
+}
+
+// MARK: - Hai thanh lùi (EIDE-EDIT-47 DEV-365)
+
+/// "Đã ghi `cs-12` · **Hoàn tác**" — cách lùi thứ nhất trong ba cách của README §3.3.
+///
+/// Thanh này sống 30 giây rồi tự mất. Bộ đếm giờ 1 Hz chỉ chạy TRONG LÚC nó hiện, vì view
+/// này chỉ được dựng khi `toastLuu != nil` — không có toast thì không có nhịp nào.
+struct ThanhVuaGhi: View {
+    @EnvironmentObject var state: AppState
+    let toast: AppState.ToastLuu
+    private let nhip = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 11)).foregroundStyle(Color.okGreen)
+            Text(toast.tomTat).font(.system(size: 11)).lineLimit(1)
+            Text(toast.changeset).font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.tertiary)
+            Spacer()
+            if toast.hoanTacDuoc {
+                Button(toast.nhan) { state.hoanTacVuaGhi() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .help("Lùi lại ngay. Lịch sử không bị xoá: đây là một thay đổi mới.")
+            } else {
+                Label("không lùi lại được", systemImage: "lock.fill")
+                    .font(.system(size: 10)).foregroundStyle(Color.gateRed)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Color.okGreen.opacity(0.08))
+        .onReceive(nhip) { _ in state.donToastHetHan() }
+    }
+}
+
+/// "Lượt này: N thay đổi · **Lùi cả lượt**" — cách lùi thứ hai.
+///
+/// Số N do **lõi** đếm (`run.update.so_thay_doi`): giao diện chỉ thấy 40 changeset gần nhất
+/// nên nó không đếm được, và một nút sáng lên ở lượt không đổi gì là một nút bấm được mà
+/// không làm gì. Thanh nút cũng do lõi khai (`buttons`), đúng I3.
+struct ThanhKetLuot: View {
+    @EnvironmentObject var state: AppState
+    let run: AppState.RunState
+    @State private var hienGhiBan = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Lượt này: \(run.soThayDoi) thay đổi")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            Spacer()
+            if run.buttons.contains("Lùi cả lượt") {
+                Button("Lùi cả lượt") { state.luiCaLuot() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.gateRed)
+                    .help("Lùi mọi thay đổi của lượt \(run.id). Phần đã tác động ra ngoài "
+                          + "máy thì không lùi được, và sẽ được kê ra.")
+            }
+            if run.buttons.contains("Ghi bản ưng ý") {
+                Button("Ghi bản ưng ý") { hienGhiBan = true }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .sheet(isPresented: $hienGhiBan) { GhiBanUngYView() }
     }
 }
 

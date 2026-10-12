@@ -319,6 +319,46 @@ final class UITestChannel {
                     await s.veLai()
                     self.ghi(["su_kien": "da_sync"])
                 }
+            case "lui":
+                // Năm tầng lùi. Gọi ĐÚNG những hàm mà các nút gọi — không dựng HumanAct ở
+                // đây, vì phần đáng đo nhất của gói DEV-365 nằm trong chính những hàm ấy:
+                // tên rỗng thì không gửi, toast hết hạn thì không bấm được, lượt không đổi
+                // gì thì không có gì để lùi.
+                let ten = v["ten"]?.stringValue ?? ""
+                switch v["viec"]?.stringValue ?? "" {
+                case "ghi_ban":
+                    let ok = s.ghiBanUngY(ten: ten, ghiChu: v["ghi_chu"]?.stringValue ?? "")
+                    ghi(["su_kien": "da_lui", "viec": "ghi_ban", "da_gui": ok])
+                case "ve_ban":
+                    s.veBanUngY(v["snapshot"]?.stringValue ?? "",
+                                giuBanHienTai: v["giu"]?.stringValue)
+                    ghi(["su_kien": "da_lui", "viec": "ve_ban", "da_gui": true])
+                case "xem_truoc":
+                    let id = v["snapshot"]?.stringValue ?? ""
+                    Task { @MainActor in
+                        let r = await s.xemTruocKhoiPhuc(id)
+                        self.ghi(["su_kien": "xem_truoc_khoi_phuc", "snapshot": id,
+                                  "ok": r?["ok"]?.boolValue ?? false,
+                                  "se_mat_vi": (r?["se_mat_vi"]?.arrayValue ?? [])
+                                      .compactMap(\.stringValue),
+                                  "co_sua_cua_nguoi": r?["co_sua_cua_nguoi"]?.boolValue ?? false])
+                    }
+                case "lui_luot":
+                    let truoc = s.daGui.count
+                    s.luiCaLuot()
+                    ghi(["su_kien": "da_lui", "viec": "lui_luot",
+                         "da_gui": s.daGui.count > truoc])
+                case "toast":
+                    let truoc = s.daGui.count
+                    s.hoanTacVuaGhi()
+                    ghi(["su_kien": "da_lui", "viec": "toast",
+                         "da_gui": s.daGui.count > truoc])
+                case "nhanh":
+                    let ok = s.thaoTacNhanh(v["action"]?.stringValue ?? "create", ten: ten)
+                    ghi(["su_kien": "da_lui", "viec": "nhanh", "da_gui": ok])
+                default:
+                    ghi(["su_kien": "loi", "ghi_chu": "việc lùi lạ: \(v["viec"] ?? .null)"])
+                }
             case "cho":
                 ghi(["su_kien": "cho", "dang_chay": s.busy ? "có" : "không"])
             default:
@@ -567,6 +607,11 @@ final class UITestChannel {
             "trang_thai": [
                 "du_an": s.status.du_an, "chip": s.status.chip,
                 "chang": s.status.chang, "stale": s.status.stale,
+                // Ô "Bản ưng ý" (ui_model A0 W5). Vắng mặt ở đây cho tới EDIT-47, nên ô ấy
+                // TRỐNG suốt từ đầu mà không phép đo nào kêu: lõi đọc bản ưng ý từ kho hiện
+                // vật, nơi chúng không nằm. Chỉ ảnh chụp mới thấy.
+                "ban_ung_y": s.status.snapshot ?? "",
+                "khoang_cach_snapshot": s.status.khoang_cach_snapshot,
                 "fact": s.status.fact, "mo_hinh": s.status.mo_hinh,
                 // Ngân sách và token: bộ đo phải hỏi được "con số có SỐNG giữa lượt không".
                 // Lấy đúng thứ tự mà `NganSachView`/`TokenView` lấy — nếu không, bộ đo đo
@@ -605,6 +650,32 @@ final class UITestChannel {
             // và báo lỗi mỗi khi không có lượt nào chạy — tức là lúc bình thường nhất.
             "run_trang_thai": s.run?.status ?? "",
             "dang_chay": s.busy,
+            // Năm tầng lùi (EIDE-EDIT-47 DEV-365) — thứ người NHÌN THẤY để lùi lại.
+            //
+            // Phơi ra ở đây vì cả gói ấy là **những cái nút**, và câu phải đo được là "cái
+            // nút có ở đó không, nó gửi đi cái gì". Không có mục này thì phép đo duy nhất
+            // cho nó là mở app ra bấm — tức một phép đo không chạy lại được ở lần sau.
+            "lui": [
+                "ban_ung_y": s.snapshots.compactMap { $0["name"]?.stringValue
+                                                      ?? $0["id"]?.stringValue },
+                "nhanh": s.nhanh,
+                "nhanh_hien_tai": s.nhanhHienTai,
+                // Thanh "Đã ghi … · Hoàn tác". `con_hieu_luc` phân biệt "còn bấm được" với
+                // "đã quá 30 giây" — hai thứ trông giống nhau nếu chỉ hỏi toast có hay không.
+                "toast": s.toastLuu.map {
+                    ["changeset": $0.changeset, "nhan": $0.nhan,
+                     "target": "\($0.target.type):\($0.target.id)",
+                     "con_hieu_luc": s.toastConHieuLuc != nil] as [String: Any]
+                } ?? [:],
+                "luot_so_thay_doi": s.run?.soThayDoi ?? 0,
+                "luot_nut": s.run?.buttons ?? [],
+                "phien_sua": s.sessionSua ?? "",
+                // HumanAct đã gửi — để ca đo hỏi "cái bấm ấy đi vào lõi dưới dạng gì".
+                "da_gui": s.daGui.suffix(6).map {
+                    ["kind": $0.kind.rawValue,
+                     "target": $0.target.map { t in "\(t.type):\(t.id)" } ?? ""] as [String: Any]
+                },
+            ] as [String: Any],
         ]
         // `isa` chỉ vào bản chụp khi THẬT SỰ hiện trên thanh: `StatusBarView` giấu nhãn này
         // khi chưa ghim hộ chiếu chip. Một chuỗi rỗng ở đây đọc ra thành "một ô đang bỏ

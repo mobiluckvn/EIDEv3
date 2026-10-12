@@ -9,7 +9,9 @@ Phuong thuc RPC:
   hello(client)            May–may. Tra nang luc + seq hien tai.
   resume(last_seq)         May–may. Phat lai UICommand tu last_seq (I5).
   ui.status()              May–may. Trang thai loi, khong phai y chi.
+  ui.sync()                May–may. Ve lai toan bo be mat.
   ping()                   May–may.
+  history.preview_restore  May–may, CHI DOC. "Khoi phuc ban nay thi mat gi?" (EDIT-47).
 
 Van chuyen: JSON-RPC 2.0 tren stdio (khung Content-Length) hoac WebSocket localhost.
 seq hai chieu; idempotent theo id; write-ahead HumanAct vao so cai TRUOC khi lam.
@@ -33,6 +35,17 @@ from .uicommand import UICommand, notice
 # §D2: "resume(last_seq) phat lai, > 500 thong diep -> surface.set toan bo"
 REPLAY_LIMIT = 500
 OUTBOX_KEEP = 2000
+
+# Cau hoi MAY–MAY, CHI DOC, 0 token — danh sach dong, khong phai mot cua vao thu hai.
+#
+# I1 noi y chi cua NGUOI chi vao bang `console.act`. Mot cau hoi "khoi phuc ban nay thi mat
+# gi?" khong phai y chi: no khong doi gi ca, khong ghi so cai, khong sinh changeset. Nhung
+# giao dien PHAI hoi duoc truoc khi hien the G-HIST — tai lieu (§E6.3) doi the ay liet ke
+# truoc "se mat gi", va bat giao dien tu tinh dieu do la bat no doc kho, tuc pha I3.
+#
+# Nen: mot danh sach dong, moi ten o day deu phai la chi doc. Them mot ten vao day la mot
+# quyet dinh thiet ke, khong phai mot tien ich.
+RPC_CHI_DOC: tuple[str, ...] = ("history.preview_restore",)
 
 
 class TurnRunner(Protocol):
@@ -95,7 +108,8 @@ class Core:
 
     def __init__(self, ledger: Ledger, ids: IdGen, run_turn: TurnRunner,
                  *, on_emit: Callable[[UICommand], None] | None = None,
-                 on_sync: Callable[[Callable[[UICommand], None]], None] | None = None):
+                 on_sync: Callable[[Callable[[UICommand], None]], None] | None = None,
+                 on_query: Callable[[str, dict[str, Any]], Any] | None = None):
         self.ledger = ledger
         self.ids = ids
         self.run_turn = run_turn
@@ -103,6 +117,10 @@ class Core:
         self._sink = on_emit or (lambda c: None)
         # Vẽ lại toàn bộ bề mặt. May–may, khong phai y chi cua nguoi (I1/I4).
         self._sync = on_sync
+        # Tra loi cac cau hoi CHI DOC trong `RPC_CHI_DOC`. Khong co thi cac cau hoi ay bao
+        # loi — khong im lang tra ve rong, vi mot the G-HIST khong co phan "se mat gi" la
+        # mot the hoi nguoi dung ma khong noi hau qua.
+        self._query = on_query
         # Đã dựng lại hội thoại cũ cho giao diện chưa. Một lõi phục vụ đúng một lần mở app,
         # nên cờ này sống đúng bằng cái Console nó đang nói chuyện cùng.
         self._da_phat_lai = False
@@ -299,6 +317,12 @@ class Core:
             return self.ui_sync()
         if method == "ping":
             return self.ping()
+        if method in RPC_CHI_DOC:
+            if self._query is None:
+                raise proto(PROTO_CHANNEL,
+                            f"Lõi đang chạy không kèm bộ trả lời cho {method!r}.",
+                            method=method)
+            return self._query(method, p)
         # I1 duoc canh o day: khong co cua thu hai vao lõi.
         raise proto(PROTO_CHANNEL,
                     f"Phương thức {method!r} không tồn tại. Ý chí của người chỉ vào bằng console.act.",

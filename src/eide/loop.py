@@ -36,7 +36,7 @@ from typing import Any, Callable
 from .du_an import ThongTinDuAn
 from .config import Config
 from .context import assemble
-from .errors import EideError, budget_exhausted, gate_pending
+from .errors import EideError, budget_exhausted, gate_pending, proto, PROTO_CHANNEL
 from .hooks import HookBus, S0Engine
 from .hooks.standard import register_standard_hooks
 from .ids import IdGen
@@ -305,6 +305,9 @@ class Agent:
         self.pending_gates: dict[str, dict[str, Any]] = {}
         # (công cụ, cổng) đã được người duyệt trong LƯỢT VIỆC hiện tại. Xoá ở đầu mỗi câu mới.
         self._cong_cu_da_duyet: set[tuple[str, str]] = set()
+        # Lượt việc / phiên sửa nào đã có mốc lùi do NGƯỜI sắp sửa (I10 của EIDE-EDIT-47).
+        # Cùng vòng đời với `_cong_cu_da_duyet`: xoá khi một câu mới của người mở lượt việc mới.
+        self._moc_nguoi_trong_luot: set[str] = set()
         self.assumptions: list[str] = []
         self.last_report: dict[str, Any] = {}
         self.locks: set[str] = set()             # tệp tác tử đang giữ soft-lock
@@ -417,7 +420,9 @@ class Agent:
                 emit(uic.run_update(
                     run_id, status="waiting" if ctx.awaiting_human else "done",
                     cost=report["cost"], assumptions=self.assumptions,
-                    buttons=["Hoàn tác lượt", "Ghi bản ưng ý"]))
+                    so_thay_doi=report["so_thay_doi"],
+                    buttons=(["Lùi cả lượt", "Ghi bản ưng ý"] if report["so_thay_doi"]
+                             else ["Ghi bản ưng ý"])))
                 # I3 — giao diện chỉ render thứ lõi gửi. Vẽ lại bề mặt SAU khi sổ cái
                 # đã chốt lượt, để tab Nhật ký thấy được cả dòng kết thúc lượt.
                 self.paint(emit, run=report)
@@ -445,6 +450,25 @@ class Agent:
                           run=run, only=only, hist=self.history,
                           ngu_canh=self.ngu_canh_hien_tai(),
                           bo_nho_kw=self._mat_bang_bo_nho())
+
+    # ------------------------------------------------------------------ hỏi chỉ đọc
+    def hoi_chi_doc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        """Câu hỏi MÁY–MÁY của giao diện: chỉ đọc, 0 token, không sinh changeset.
+
+        Danh sách tên nằm ở `protocol/rpc.RPC_CHI_DOC` — ở đây là phần trả lời.
+
+        `history.preview_restore` phục vụ thẻ G-HIST (§E6.3): nó phải nói **sẽ mất gì**
+        TRƯỚC khi hỏi, vì người bấm "về bản cũ" thường đang bực mình vì thứ gì hỏng, và đó
+        chính là lúc dễ mất việc nhất. Cơ chế đã có (`se_mat_gi_khi_khoi_phuc`) từ bước G5;
+        trước gói này không ai gọi nó cả.
+        """
+        if method == "history.preview_restore":
+            sid = str(params.get("snapshot_id") or "").strip()
+            if not sid:
+                return {"ok": False, "message_vi": "Xem trước bản ưng ý nào? Thiếu "
+                                                   "snapshot_id."}
+            return self.history.se_mat_gi_khi_khoi_phuc(sid)
+        raise proto(PROTO_CHANNEL, f"Lõi không trả lời được {method!r}.", method=method)
 
     def _mat_bang_bo_nho(self) -> dict[str, Any]:
         """Dữ liệu cho khối A14.6 — thứ người nhìn để biết tác tử đang nhớ gì (P6)."""
@@ -545,6 +569,9 @@ class Agent:
         # Một câu mới của người dùng mở một LƯỢT VIỆC mới — quên mọi lần duyệt cổng của lượt
         # trước. Giữ lại qua lượt sẽ biến "duyệt một lần" thành "duyệt mãi mãi".
         self._cong_cu_da_duyet.clear()
+        # Cùng lý do, cho mốc lùi của người (I10): lượt việc mới thì lần sửa đầu tiên của nó
+        # lại phải có một mốc riêng.
+        self._moc_nguoi_trong_luot.clear()
 
         # --- S0: hook UserPromptSubmit, 0 token, đứng trước mọi phép đoán (N5).
         s0 = self.s0.run(act.text, attachments_text=act.data.get("_attachment_text", ""),
@@ -1256,6 +1283,9 @@ class Agent:
         """
         t = act.target
         assert t is not None                       # đã kiểm ở HumanAct.validate()
+        # I10 (EIDE-EDIT-47 §2) — một mốc lùi TRƯỚC lần sửa đầu tiên của người. Đặt ở đây,
+        # trước cả ba nhánh sửa, nên mọi đường người đi đều có chỗ quay về.
+        self._moc_lui_cho_nguoi(act, ctx)
         if t.type == "criteria":
             # §E2: "Sửa ngưỡng (→ G-QUAL nếu đã có kết quả)… Kết quả sim → STALE".
             # Người sửa tiêu chí của chính họ thì KHÔNG phải hỏi — cổng G-QUAL là để chặn
@@ -1311,8 +1341,50 @@ class Agent:
                        "duyệt, chứ không tự ghi đè.")
         ctx.emit(uic.console_post("\n\n".join(loi), role="agent"))
         ctx.emit(uic.history_update(changesets=[self.history.tom_tat(cs)],
-                                    stale=[{"id": i} for i in cs.stale_marked]))
+                                    stale=[{"id": i} for i in cs.stale_marked],
+                                    vua_ghi=self._vua_ghi(act, cs)))
         ctx.said_anything = True
+
+    def _moc_lui_cho_nguoi(self, act: HumanAct, ctx: TurnContext) -> None:
+        """Mốc lùi trước lần sửa ĐẦU TIÊN của người trong một lượt việc (I10).
+
+        Đối xứng với luật của tác tử (`history.ghi_tep`: "tự đánh mốc lùi ở lần sửa đầu mỗi
+        lượt"). Một mốc, không phải một mốc mỗi lần lưu: người sửa bốn ô trong một biểu mẫu
+        muốn quay về *trước khi tôi bắt đầu sửa*, không phải về giữa bốn lần ấy.
+
+        **Khoá gom theo PHIÊN SỬA, không theo `run_id`** — chỗ này làm khác tài liệu
+        (EIDE-EDIT-47 §DEV-365 ghi `ctx.run_id`), vì mỗi `edit` của người là một lượt riêng
+        với một `run_id` riêng: khoá theo `run_id` thì lần nào cũng "lần đầu", và một người
+        sửa mười ô sẽ đẻ ra mười mốc — đúng thứ I10 nói là không cần. Giao diện gửi
+        `session_id` khi mở trình soạn (DEV-365 phần giao diện); không có nó thì lùi về
+        `run_id` như tài liệu nói.
+        """
+        khoa = str(act.data.get("session_id") or "").strip() or (ctx.run_id or "")
+        if not khoa or khoa in self._moc_nguoi_trong_luot:
+            return
+        self._moc_nguoi_trong_luot.add(khoa)
+        try:
+            self.history.checkpoint(ly_do=f"trước khi anh sửa {act.target}",
+                                    run_id=ctx.run_id)
+        except Exception as e:                                         # noqa: BLE001
+            # Không đặt được mốc thì VẪN cho lưu (I9: "lưu của người luôn được"). Nhưng nói
+            # ra trong sổ cái — một mốc tưởng có mà không có thì tệ hơn không có mốc.
+            self.ledger.append("incident", {
+                "run_id": ctx.run_id, "code": "E_MOC_NGUOI",
+                "message_vi": f"Không đặt được mốc lùi trước khi anh sửa: {e}"})
+
+    def _vua_ghi(self, act: HumanAct, cs: Any) -> dict[str, Any]:
+        """Dữ liệu cho thanh "Đã ghi … · Hoàn tác" — lõi khai, giao diện không suy."""
+        sid = str(act.data.get("session_id") or "").strip()
+        d: dict[str, Any] = {
+            "changeset": cs.id,
+            "tom_tat": cs.explain.get("summary", "sửa"),
+            "hoan_tac_duoc": bool(cs.reversible),
+            "session": sid or None,
+        }
+        if sid:
+            d["so_trong_phien"] = len(self.history.changeset_cua_phien_sua(sid))
+        return d
 
     def _nguoi_sua_tieu_chi(self, act: HumanAct, ctx: TurnContext) -> None:
         """Người sửa ngưỡng của một assert ngay trên bảng tiêu chí."""
@@ -1357,7 +1429,7 @@ class Agent:
             canonical=canon,
             explain={"summary": f"anh đổi ngưỡng {ma_assert}: {cu} → {gt}",
                      "why": act.note or "anh sửa trực tiếp trên bảng tiêu chí",
-                     "sources": [{"kind": "human", "ref": act.id or "gui"}],
+                     "sources": [self._nguon_nguoi(act, kind="human")],
                      "diff_prev": f"{ma_assert}.nguong: {cu} → {gt}",
                      "next": "Chạy lại sim.run — kết quả cũ đo bằng thước đã khác.",
                      "confidence": "NGUOI"},
@@ -1383,7 +1455,8 @@ class Agent:
                if het_han else "Chưa có kết quả mô phỏng nào để đánh dấu lỗi thời."),
             role="agent"))
         ctx.emit(uic.history_update(changesets=[self.history.tom_tat(cs)],
-                                    stale=[{"id": i} for i in het_han]))
+                                    stale=[{"id": i} for i in het_han],
+                                    vua_ghi=self._vua_ghi(act, cs)))
         ctx.said_anything = True
 
     def _nguoi_xac_nhan_ky_hieu(self, act: HumanAct, ctx: TurnContext) -> None:
@@ -1525,12 +1598,25 @@ class Agent:
         ]
         return cs
 
+    def _nguon_nguoi(self, act: HumanAct, *, kind: str = "human_act") -> dict[str, Any]:
+        """Xuất xứ "người làm" cho `explain.sources[0]`, kèm MÃ PHIÊN SỬA nếu có.
+
+        Mã phiên là thứ gom nhiều lần lưu của một lần ngồi sửa lại thành một đơn vị hoàn tác
+        (`history.changeset_cua_phien_sua`). Ghi nó vào xuất xứ chứ không thêm một trường mới
+        vào Changeset: đây đúng là một chi tiết về *thay đổi này đến từ đâu*.
+        """
+        d: dict[str, Any] = {"kind": kind, "ref": act.id or "gui", "tier": "NGUOI"}
+        sid = str(act.data.get("session_id") or "").strip()
+        if sid:
+            d["session"] = sid
+        return d
+
     def _explain_cua_nguoi(self, act: HumanAct, mac_dinh: str) -> dict[str, Any]:
         """Changeset của người cũng có lớp giải thích (§E5.1) — dựng từ lời họ."""
         return {
             "summary": act.data.get("summary") or mac_dinh,
             "why": act.note or "Anh không ghi lý do.",
-            "sources": [{"kind": "human_act", "ref": act.id, "tier": "NGUOI"}],
+            "sources": [self._nguon_nguoi(act)],
             "diff_prev": act.data.get("summary") or "xem diff của changeset",
             "next": "Tác tử xem lại hạ nguồn và đề nghị cập nhật.",
             "confidence": "NGUOI",
@@ -1577,13 +1663,38 @@ class Agent:
 
     # ------------------------------------------------------------------ người hoàn tác
     def _nguoi_hoan_tac(self, act: HumanAct, ctx: TurnContext) -> None:
-        """§E5.2 — "hoàn tác của người luôn được (R0)". Không cổng nào chắn."""
+        """§E5.2 — "hoàn tác của người luôn được (R0)". Không cổng nào chắn.
+
+        **Năm tầng lùi** (EIDE-EDIT-47 §DEV-365), theo `target.type`:
+
+        | target | lùi cái gì | cơ chế |
+        |---|---|---|
+        | `changeset:<id>` | một lần ghi | `hoan_tac_changeset` |
+        | `session:<es-n>` | cả một lượt ngồi sửa của người | `hoan_tac_phien_sua` |
+        | `run:<run-n>` | cả một lượt của tác tử | `hoan_tac_luot` |
+        | `snapshot:<snap-n>` | cả kho về một bản ưng ý | `khoi_phuc_snapshot` |
+
+        Tầng thứ năm — mốc ngầm trước lần sửa đầu của người — không có nút riêng: nó là một
+        `checkpoint`, và người quay về nó bằng chính `snapshot` hoặc `session` ở trên.
+
+        Cả bốn cơ chế đã có trong `history.py` từ bước G5; chỗ thiếu là đúng bốn dòng này.
+        """
         t = act.target
         if t is None:
             ctx.emit(uic.notice("Hoàn tác cái gì? Thiếu target.", level="error"))
             return
-        kq = (self.history.hoan_tac_luot(t.id, by="human") if t.type == "run"
-              else self.history.hoan_tac_changeset(t.id, by="human"))
+        if t.type == "snapshot":
+            # §E6.3 — khôi phục KHÔNG xoá lịch sử, và bản đang bỏ lại được giữ thành một
+            # nhánh nếu người muốn (giao diện hỏi sau khi xem trước "sẽ mất gì").
+            kq = self.history.khoi_phuc_snapshot(
+                t.id, by="human",
+                giu_ban_hien_tai=str(act.data.get("giu_ban_hien_tai") or "").strip() or None)
+        elif t.type == "session":
+            kq = self.history.hoan_tac_phien_sua(t.id, by="human")
+        elif t.type == "run":
+            kq = self.history.hoan_tac_luot(t.id, by="human")
+        else:
+            kq = self.history.hoan_tac_changeset(t.id, by="human")
 
         ctx.emit(uic.console_post(f"{kq.message_vi}", role="agent"))
         for c in kq.canh_bao:
@@ -1592,6 +1703,7 @@ class Agent:
         if kq.ok:
             ctx.emit(uic.history_update(
                 changesets=self.history.danh_sach(limit=30),
+                snapshots=self.history.danh_sach_snapshot(),
                 stale=[{"id": i} for i in kq.stale_moi]))
             self.messages.append({"role": "user", "text":
                 f"<system-reminder>\nNgười dùng vừa hoàn tác: {kq.message_vi}\n"
@@ -1633,15 +1745,37 @@ class Agent:
     def _nguoi_re_nhanh(self, act: HumanAct, ctx: TurnContext) -> None:
         viec = str(act.data.get("action") or "create")
         ten = str(act.data.get("name") or act.text or "").strip()
+        if viec in ("create", "tao", "switch", "chuyen", "merge", "gop") and not ten:
+            ctx.emit(uic.notice("Thao tác nhánh cần tên nhánh.", level="error"))
+            ctx.said_anything = True
+            return
         if viec in ("create", "tao"):
             kq = self.history.tao_nhanh(ten)
         elif viec in ("switch", "chuyen"):
             kq = self.history.chuyen_nhanh(ten)
+        elif viec in ("merge", "gop"):
+            # §E5.5 — gộp đã có trong `history.gop_nhanh` từ DEV-24x: tệp đi bằng `git merge`
+            # (xung đột thì HUỶ hẳn phép gộp, không để lại cây gộp dở), hiện vật đi bằng so
+            # ba bên. Chỗ thiếu là đúng nhánh này — giao diện không có đường nào gọi tới.
+            kq = self.history.gop_nhanh(ten, by="human")
         else:
             kq = {"ok": True, "message_vi": "Các nhánh: "
                   + ", ".join(self.history.danh_sach_nhanh())}
         ctx.emit(uic.console_post(f"{kq['message_vi']}", role="agent"))
         ctx.said_anything = True
+
+        # Xung đột khi gộp: nói ra bằng một cảnh báo chứ không chỉ một dòng chat, vì người
+        # vừa bấm một nút và cần biết nút ấy KHÔNG làm gì cả.
+        #
+        # Bản đầy đủ của chỗ này là một khối `diff` để người quyết từng tệp — DEV-366. Tới
+        # lúc đó nó vẫn là danh sách tên tệp, và tài liệu nói thẳng như vậy.
+        xd = list(kq.get("xung_dot_tep") or []) + list(kq.get("xung_dot") or [])
+        if xd:
+            ctx.emit(uic.notice(
+                f"{len(xd)} chỗ xung đột khi gộp “{ten}”: " + ", ".join(xd[:8])
+                + ". Chưa có trình xem diff nên anh phải mở từng tệp/hiện vật mà xem; "
+                  "phần tệp đã được trả về đúng như trước khi gộp.",
+                level="warn", code="E_GOP_XUNG_DOT"))
         if kq.get("ok"):
             self.paint(ctx.emit, only=["history"])
 
@@ -1936,7 +2070,20 @@ class Agent:
             "awaiting_human": ctx.awaiting_human,
             "assumptions": list(self.assumptions),
             "cost": self._chi_phi(ctx),
+            # Lượt này để lại bao nhiêu thay đổi lùi được — nguồn của nút "Lùi cả lượt".
+            # Bỏ checkpoint ngầm ra: nó không phải một thay đổi người làm ra, và đếm nó
+            # vào sẽ làm nút sáng lên ở những lượt không đổi gì.
+            "so_thay_doi": self._so_thay_doi_cua_luot(ctx.run_id),
         }
+
+    def _so_thay_doi_cua_luot(self, run_id: str | None) -> int:
+        if not run_id:
+            return 0
+        try:
+            return sum(1 for c in self.history.log.of_run(run_id)
+                       if not any(f.get("kind") == "checkpoint" for f in c.forward))
+        except Exception:                                              # noqa: BLE001
+            return 0
 
 
 class _XungDot(Exception):

@@ -114,10 +114,17 @@ def surface_unlock(surface: str, *, block: str) -> UICommand:
 
 def run_update(run_id: str, *, status: str, steps: list[dict[str, Any]] | None = None,
                cost: dict[str, Any] | None = None, assumptions: list[str] | None = None,
-               buttons: list[str] | None = None) -> UICommand:
+               buttons: list[str] | None = None, so_thay_doi: int = 0) -> UICommand:
+    """The Run. `so_thay_doi` = so changeset luot nay de lai (bo checkpoint ngam).
+
+    Vi sao LOI dem chu khong de giao dien tu dem (I3): giao dien chi thay 40 changeset gan
+    nhat qua `history.update`, nen no khong biet luot nay dong gop bao nhieu. Mot nut
+    "Lui ca luot" sang len khi luot khong doi gi la mot nut bam duoc ma khong lam gi.
+    """
     return UICommand("run.update", {
         "run_id": run_id, "status": status, "steps": steps or [],
         "cost": cost or {}, "assumptions": assumptions or [], "buttons": buttons or [],
+        "so_thay_doi": so_thay_doi,
     })
 
 
@@ -133,9 +140,22 @@ def ui_set(key: str, value: Any) -> UICommand:
 
 def history_update(*, changesets: list[dict[str, Any]] | None = None,
                    snapshots: list[dict[str, Any]] | None = None,
-                   stale: list[dict[str, Any]] | None = None) -> UICommand:
+                   stale: list[dict[str, Any]] | None = None,
+                   nhanh: dict[str, Any] | None = None,
+                   vua_ghi: dict[str, Any] | None = None) -> UICommand:
+    """Capture nhat ve lich su — EIDE-EDIT-47 DEV-365 them `nhanh` va `vua_ghi`.
+
+    `nhanh = {"hien_tai": str, "danh_sach": [str]}` — de giao dien ve menu nhanh ma khong
+    phai `paint` ca tab Lich su, va khong phai tu goi git (giao dien khong chay lenh).
+
+    `vua_ghi` — **lan luu vua roi cua NGUOI**, de hien thanh "Da ghi cs-12 · Hoan tac" song
+     30 giay (§3.3 README "go 30 giay"). Loi khai thay vi de giao dien suy ra tu danh sach
+    changeset: cung mot lenh nay con duoc phat cuoi moi luot voi 40 changeset, nen "cai nao
+    la cai nguoi vua luu" khong doc duoc tu danh sach. Suy ra se cho toast noi sai.
+    """
     return UICommand("history.update", {"changesets": changesets or [],
-                                        "snapshots": snapshots or [], "stale": stale or []})
+                                        "snapshots": snapshots or [], "stale": stale or [],
+                                        "nhanh": nhanh or {}, "vua_ghi": vua_ghi})
 
 
 def explain_show(artefact: str, explain: dict[str, Any]) -> UICommand:

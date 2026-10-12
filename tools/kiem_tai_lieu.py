@@ -60,6 +60,27 @@ KHONG_PHAI_CONG_CU = {
 _KHAI_DA_BO = ("lúc thiết kế", "chưa làm", "không làm", "đã bỏ", "bỏ |", "đổi tên",
                "không có trong kho", "thay bằng", "cố ý không")
 
+# Tên `a.b` là PHƯƠNG THỨC của một lớp trong lõi, không phải công cụ của tác tử.
+#
+# Vì sao phải phân biệt: tài liệu thiết kế nói về cả hai bằng cùng một cách viết —
+# `store.req_create` là công cụ tác tử gọi được, còn `store.put_fact` là một phương thức
+# Python mà chỉ mã trong lõi gọi. Bộ dò bản đầu đọc cả hai thành "công cụ", nên một tài
+# liệu mô tả đúng mã vẫn bị báo sáu chỗ lệch.
+#
+# Tra bằng `dir()` chứ không bằng một danh sách tên viết sẵn: một danh sách phải nhớ cập
+# nhật thì cái quên cập nhật sẽ là cái lọt qua (xem `_tat_ca_cong_cu`). Cách này còn bắt
+# được một phương thức bị đổi tên — tài liệu nhắc `store.put_fakt` sẽ ĐỎ.
+#
+# Lỗ còn lại, nói ra chứ không giấu: một cái tên vừa là công cụ vừa là phương thức (ví dụ
+# `store.get`) thì công cụ ấy bị bỏ đi mà phương thức còn, bộ dò sẽ im. Đổi lại, nó không
+# báo sai sáu chỗ mỗi lần tài liệu nói về nội thất của lõi.
+_LOP_CUA_LOI = {
+    "store": ("eide.store", "Store"),
+    "history": ("eide.history", "History"),
+    "ledger": ("eide.protocol.ledger", "Ledger"),
+    "eide_md": ("eide.store", "EideMd"),
+}
+
 
 def _dem_ma() -> dict[str, int]:
     """Số đếm được từ MÃ — mỗi con số một cách đếm, không cái nào chép của cái nào."""
@@ -119,6 +140,25 @@ def _cong_cu_that() -> set[str]:
     return {t.name for t in _tat_ca_cong_cu()}
 
 
+def _ten_khong_phai_cong_cu() -> set[str]:
+    """Mọi tên `a.b` có thật trong lõi mà KHÔNG phải công cụ: phương thức, lệnh giao diện,
+    phương thức RPC. Tất cả tra từ mã, không từ một danh sách gõ tay."""
+    import importlib
+
+    from eide.protocol.rpc import RPC_CHI_DOC
+    from eide.protocol.uicommand import UI_COMMANDS
+
+    ra: set[str] = set(UI_COMMANDS) | set(RPC_CHI_DOC)
+    ra |= {"ui.sync", "ui.status", "console.act"}          # ba phương thức RPC máy–máy
+    for tien_to, (mod, lop) in _LOP_CUA_LOI.items():
+        try:
+            c = getattr(importlib.import_module(mod), lop)
+        except (ImportError, AttributeError):
+            continue
+        ra |= {f"{tien_to}.{n}" for n in dir(c) if not n.startswith("_")}
+    return ra
+
+
 def _ma_loi_that() -> set[str]:
     ra: set[str] = set()
     for p in (REPO / "src").rglob("*.py"):
@@ -132,6 +172,7 @@ def main() -> int:
     a = ap.parse_args()
 
     that = _cong_cu_that()
+    khong_phai = KHONG_PHAI_CONG_CU | _ten_khong_phai_cong_cu()
     ma_loi = _ma_loi_that()
     dem = _dem_ma()
     lech: list[tuple[str, str, str]] = []
@@ -167,6 +208,20 @@ def main() -> int:
         # Bảng ánh xạ "tên cũ → tên nay": chỉ CỘT TRÁI là tên cũ; cột phải là tên hiện tại và
         # PHẢI được kiểm. Đọc theo cấu trúc bảng thay vì đuổi theo cách diễn đạt của cột lý
         # do — đuổi theo từ ngữ là cách chắc chắn để bỏ sót một cách nói mới.
+        # Vùng SẼ CÓ: đặc tả của một gói CHƯA LÀM.
+        #
+        # Một tài liệu thiết kế có việc phải nói về tệp nó sắp sinh ra — `src/eide/watcher.py`
+        # trong gói DEV-369 là một lời hứa, không phải một chỗ lệch. Nhưng để nó nằm lẫn với
+        # phần mô tả mã ĐANG CHẠY thì mỗi gói chưa làm sẽ đẻ ra một tá báo động giả, và một
+        # bảng đầy báo động giả thì không ai đọc tới dòng thứ ba.
+        #
+        # Nên đánh dấu, và dấu ấy có giá: gói nào làm xong thì dấu bị gỡ, và từ lúc ấy mọi
+        # đường dẫn trong đó bị kiểm như mọi chỗ khác. Phần KHÔNG đánh dấu của cùng tài liệu
+        # vẫn bị kiểm — nên nó không phải một cách tắt bộ dò cho cả tệp.
+        duong_se_co: set[str] = set()
+        for vung in re.findall(r"<!--\s*se-co\s*-->(.*?)<!--\s*/se-co\s*-->", t, re.S):
+            cu_trong_dong |= set(re.findall(r"`?([a-z_]+\.[a-z_*\\]+)`?", vung))
+            duong_se_co |= set(re.findall(r"`([\w][\w/.-]*\.[a-z]+)`", vung))
         for vung in re.findall(r"<!--\s*ten-cu\s*-->(.*?)<!--\s*/ten-cu\s*-->", t, re.S):
             for hang in vung.splitlines():
                 # Bỏ tiền tố khối trích dẫn trước khi tách cột: `> | a | b |` mà tách thẳng
@@ -182,7 +237,7 @@ def main() -> int:
                 if m in cu_trong_dong and m not in that:
                     bo_qua += 1
                     continue
-                if m in that or m in KHONG_PHAI_CONG_CU:
+                if m in that or m in khong_phai:
                     continue
                 if m.rsplit(".", 1)[1] in {"py", "md", "c", "h", "json", "yaml", "yml",
                                            "swift", "jsonl", "sqlite", "ino", "bin", "elf",
@@ -203,11 +258,11 @@ def main() -> int:
             # cách tài liệu thiết kế hay viết, và cũng là chỗ dễ sai nhất: một đường dẫn
             # thiếu tiền tố thì người đọc gõ vào không ra gì.
             for m in set(re.findall(r"`((?:src|ui|tools|tests|docs)/[\w./-]+)`", t)):
-                if not (REPO / m).exists():
+                if not (REPO / m).exists() and m not in duong_se_co:
                     lech.append((ngan, "đường dẫn không tồn tại", m))
             for m in set(re.findall(r"`([\w][\w/-]*/[\w.-]+\.(?:py|swift|yaml|md))`", t)):
-                if (REPO / m).exists() or m.startswith(("src/", "ui/", "tools/", "tests/",
-                                                        "docs/")):
+                if (REPO / m).exists() or m in duong_se_co or m.startswith(
+                        ("src/", "ui/", "tools/", "tests/", "docs/")):
                     continue
                 if (REPO / "src/eide" / m).exists():
                     lech.append((ngan, "đường dẫn THIẾU tiền tố src/eide/", m))

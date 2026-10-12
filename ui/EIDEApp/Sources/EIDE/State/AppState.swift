@@ -18,6 +18,39 @@ final class AppState: ObservableObject {
     @Published var notices: [Notice] = []
     @Published var staleList: [String] = []
 
+    // Lịch sử: thứ ba nút lùi cần, do lõi khai qua `history.update` (EIDE-EDIT-47 DEV-365).
+    //
+    // Trước gói này ba thứ dưới đây **không tồn tại phía Swift**, nên menu "Về bản…" và
+    // "Nhánh ▸" không có gì để vẽ, và `grep "kind: .snapshot"` trong `Views/` = 0 — cả phần
+    // `history.py` lo việc lùi (snapshot, nhánh, khôi phục) không có đường nào đi tới từ
+    // giao diện.
+    @Published var snapshots: [JSONValue] = []
+    @Published var nhanh: [String] = []
+    @Published var nhanhHienTai: String = "main"
+
+    /// Lần lưu vừa rồi của người — thanh "Đã ghi `cs-12` · **Hoàn tác**", sống 30 giây.
+    ///
+    /// README §3.3 gọi đây là "gỡ 30 giây", cách lùi thứ nhất trong ba cách. Lõi KHAI nó ra
+    /// (`history.update.vua_ghi`) chứ không để giao diện suy từ danh sách changeset: cùng
+    /// lệnh ấy còn được phát cuối mỗi lượt với 40 changeset, nên "cái nào người vừa lưu"
+    /// không đọc được từ danh sách.
+    @Published var toastLuu: ToastLuu?
+
+    /// Mã phiên sửa đang mở (`es-<n>`) — gom nhiều lần lưu của MỘT lần ngồi sửa.
+    ///
+    /// Có nó thì nút Hoàn tác trên thanh toast lùi *cái người vừa làm*, không phải riêng
+    /// changeset cuối: sửa bốn ô trong một biểu mẫu là bốn lần lưu.
+    @Published var sessionSua: String?
+
+    /// HumanAct đã gửi, 20 cái gần nhất.
+    ///
+    /// Có nó vì phần lớn gói này là **những cái nút**, và câu cần đo về một cái nút là
+    /// *"nó gửi đi cái gì"*. Không có chỗ này thì câu ấy chỉ trả lời được bằng cách mở app
+    /// ra bấm — tức là không trả lời lại được ở lần sau. Lỗi đã trả giá thật: nút "Khôi
+    /// phục" ở tab Lịch sử gửi một câu `say` cho mô hình thay vì một `undo`, và mọi ca đo
+    /// vẫn xanh vì không ca nào hỏi nút ấy gửi gì.
+    @Published var daGui: [HumanAct] = []
+
     // Trạng thái nhìn (của riêng giao diện)
     @Published var selectedSurface: String = "project"
     @Published var draft: String = ""
@@ -73,6 +106,33 @@ final class AppState: ObservableObject {
         var tokensIn: Int
         var tokensOut: Int
         var assumptions: [String]
+        /// Lượt này để lại bao nhiêu thay đổi lùi được — LÕI đếm (`run.update.so_thay_doi`).
+        var soThayDoi: Int = 0
+        /// Nút lõi cho phép ở cuối lượt. Giao diện không tự thêm nút nào.
+        var buttons: [String] = []
+    }
+
+    /// Lần lưu vừa rồi của người, kèm lúc nó xảy ra để thanh toast tự hết.
+    struct ToastLuu: Equatable {
+        var changeset: String
+        var tomTat: String
+        var session: String? = nil
+        var soTrongPhien: Int = 1
+        var hoanTacDuoc: Bool = true
+        var luc: Date = Date()
+
+        /// Hoàn tác cái gì: cả lượt ngồi sửa nếu có mã phiên, không thì riêng changeset ấy.
+        var target: HumanAct.Target {
+            if let s = session, !s.isEmpty {
+                return .init(type: "session", id: s)
+            }
+            return .init(type: "changeset", id: changeset)
+        }
+
+        var nhan: String {
+            guard session != nil, soTrongPhien > 1 else { return "Hoàn tác" }
+            return "Hoàn tác cả \(soTrongPhien) thay đổi vừa sửa"
+        }
     }
 
     struct Notice: Identifiable {
@@ -222,6 +282,12 @@ final class AppState: ObservableObject {
         cards.removeAll()
         notices.removeAll()
         staleList.removeAll()
+        snapshots.removeAll()
+        nhanh.removeAll()
+        nhanhHienTai = "main"
+        toastLuu = nil
+        sessionSua = nil
+        daGui.removeAll()
         coreLog.removeAll()
         khungKhoi.removeAll()
         khoiChuaBietVe.removeAll()
@@ -266,6 +332,8 @@ final class AppState: ObservableObject {
 
     func gui(_ act: HumanAct) {
         guard connection.ok else { return }
+        daGui.append(act)
+        if daGui.count > 20 { daGui.removeFirst(daGui.count - 20) }
         busy = true
         Task {
             do { _ = try await client.send(act) }
@@ -273,6 +341,143 @@ final class AppState: ObservableObject {
                 themThongBao(level: "error", text: error.localizedDescription, code: nil)
             }
             busy = false
+        }
+    }
+
+    // MARK: - Năm tầng lùi (EIDE-EDIT-47 DEV-365)
+    //
+    // Năm hàm dưới đây là CẢ phần nghiệp vụ của các nút lùi. Chúng nằm ở đây, không nằm
+    // trong thân view, vì một hàm trong `AppState` thì ca kiểm gọi được — còn một closure
+    // trong `Button { … }` thì chỉ kiểm được bằng cách mở app ra bấm.
+
+    /// Ghi bản ưng ý. Trả `false` khi tên rỗng và **không gửi gì**.
+    ///
+    /// Tên rỗng bị chặn ở cả hai đầu: lõi cũng từ chối (`_nguoi_ghi_ban`). Chặn ở đây là để
+    /// người không phải trả giá một vòng đi–về mới biết mình chưa đặt tên.
+    @discardableResult
+    func ghiBanUngY(ten: String, ghiChu: String = "") -> Bool {
+        let t = ten.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return false }
+        gui(HumanAct(kind: .snapshot,
+                     data: ["name": .string(t), "note": .string(ghiChu)],
+                     origin: .init(surface: "history")))
+        return true
+    }
+
+    /// Về một bản ưng ý. `giuBanHienTai` = tên để giữ lại trạng thái đang bỏ dở (§E6.3).
+    func veBanUngY(_ snapshotID: String, giuBanHienTai: String? = nil) {
+        var data: [String: JSONValue] = ["mode": .string("restore_branch")]
+        if let g = giuBanHienTai?.trimmingCharacters(in: .whitespacesAndNewlines), !g.isEmpty {
+            data["giu_ban_hien_tai"] = .string(g)
+        }
+        gui(HumanAct(kind: .undo, target: .init(type: "snapshot", id: snapshotID),
+                     data: data, origin: .init(surface: "history")))
+        boToast()
+    }
+
+    /// Hỏi lõi "về bản này thì mất gì" — máy–máy, chỉ đọc, 0 token (xem `RPC_CHI_DOC`).
+    func xemTruocKhoiPhuc(_ snapshotID: String) async -> JSONValue? {
+        guard connection.ok else { return nil }
+        do {
+            return try await client.call("history.preview_restore",
+                                         ["snapshot_id": .string(snapshotID)])
+        } catch {
+            themThongBao(level: "warn",
+                         text: "Không xem trước được hậu quả khi về \(snapshotID): \(error). "
+                             + "Chưa khôi phục gì cả.", code: nil)
+            return nil
+        }
+    }
+
+    /// Lùi cả lượt vừa xong.
+    func luiCaLuot() {
+        guard let r = run, r.soThayDoi > 0 else { return }
+        gui(HumanAct(kind: .undo, target: .init(type: "run", id: r.id),
+                     data: ["mode": .string("revert")], origin: .init(surface: "console")))
+        boToast()
+    }
+
+    /// Hoàn tác lần lưu vừa rồi của người — nút trên thanh toast.
+    func hoanTacVuaGhi() {
+        guard let t = toastConHieuLuc, t.hoanTacDuoc else { return }
+        gui(HumanAct(kind: .undo, target: t.target,
+                     data: ["mode": .string("revert")], origin: .init(surface: "history")))
+        boToast()
+        dongPhienSua()
+    }
+
+    /// Bỏ thanh "vừa ghi" sau BẤT KỲ phép lùi nào.
+    ///
+    /// Thấy trên ảnh chụp của bộ `thu_nut_lui`: người lùi về một bản ưng ý xong, thanh
+    /// "Đã ghi cs-0006 · Hoàn tác" vẫn nằm đó — mà cs-0006 chính là thay đổi phép khôi phục
+    /// vừa cuốn đi. Nút ấy không hỏng (lõi vẫn lùi được, kèm cảnh báo chuỗi), nhưng nó MÔ TẢ
+    /// SAI trạng thái: nó nói "anh vừa lưu cái này" trong khi cái ấy không còn ở đỉnh lịch sử.
+    private func boToast() {
+        toastLuu = nil
+    }
+
+    /// Tạo / chuyển / gộp nhánh. Trả `false` khi tên rỗng và **không gửi gì**.
+    @discardableResult
+    func thaoTacNhanh(_ viec: String, ten: String) -> Bool {
+        let t = ten.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return false }
+        gui(HumanAct(kind: .branch,
+                     data: ["action": .string(viec), "name": .string(t)],
+                     origin: .init(surface: "history")))
+        return true
+    }
+
+    // MARK: - Thanh "Đã ghi … · Hoàn tác"
+
+    /// Thanh toast sống bao lâu. README §3.3: "gỡ 30 giây".
+    static let giayToast: TimeInterval = 30
+
+    /// Thanh toast nếu còn hiệu lực. Hết 30 giây thì nó không còn là một cái nút nữa —
+    /// và một cái nút bấm được mà không làm gì là thứ tệ nhất trong ba khả năng.
+    var toastConHieuLuc: ToastLuu? {
+        guard let t = toastLuu, Date().timeIntervalSince(t.luc) <= Self.giayToast else {
+            return nil
+        }
+        return t
+    }
+
+    /// Bỏ thanh toast đã quá hạn. `ThanhVuaGhi` gọi mỗi giây trong lúc nó còn hiện — nên
+    /// không có bộ đếm giờ nào chạy khi không có toast nào.
+    func donToastHetHan() {
+        if toastLuu != nil, toastConHieuLuc == nil { toastLuu = nil }
+    }
+
+    // MARK: - Phiên sửa
+
+    /// Phiên sửa tự hết sau bấy nhiêu giây không ai gõ.
+    static let giayPhienSua: TimeInterval = 120
+
+    private var demPhienSua = 0
+    /// Lần gõ/lưu gần nhất. Không `private` để ca kiểm dựng được tình huống "phiên đã nguội"
+    /// mà không phải ngồi chờ hai phút.
+    var lanChamPhienSua = Date.distantPast
+
+    /// Mã phiên sửa để kèm vào `edit`. Mở trình soạn, hoặc lưu một ô, đều gọi hàm này.
+    func moPhienSua() -> String {
+        donPhienSuaHetHan()
+        lanChamPhienSua = Date()
+        if let s = sessionSua { return s }
+        demPhienSua += 1
+        let s = "es-\(demPhienSua)"
+        sessionSua = s
+        return s
+    }
+
+    /// Đóng trình soạn. Lần sửa sau là một lượt sửa khác, có mốc lùi riêng.
+    func dongPhienSua() {
+        sessionSua = nil
+    }
+
+    /// Bỏ phiên sửa đã nguội. Không có chỗ này thì hai lần sửa cách nhau cả tiếng vẫn bị
+    /// gom vào một đơn vị hoàn tác, và nút Hoàn tác sẽ lùi nhiều hơn người tưởng.
+    func donPhienSuaHetHan() {
+        if Date().timeIntervalSince(lanChamPhienSua) > Self.giayPhienSua {
+            sessionSua = nil
         }
     }
 
@@ -285,7 +490,9 @@ final class AppState: ObservableObject {
 
     // MARK: - Nhận UICommand (16 lệnh)
 
-    private func apply(_ c: UICommand) {
+    /// Nhận một UICommand từ lõi. Không `private`: bộ kiểm giao diện nạp lệnh qua đúng
+    /// đường này, nên nó đo thứ app THẬT làm với lệnh của lõi, không đo một bản dựng riêng.
+    func apply(_ c: UICommand) {
         switch c.method {
 
         case "console.post":
@@ -358,7 +565,9 @@ final class AppState: ObservableObject {
                 seconds: Double(cost["seconds"]?.stringValue ?? "0") ?? 0,
                 tokensIn: tok["in"]?.intValue ?? 0,
                 tokensOut: tok["out"]?.intValue ?? 0,
-                assumptions: (c.params["assumptions"]?.arrayValue ?? []).compactMap(\.stringValue))
+                assumptions: (c.params["assumptions"]?.arrayValue ?? []).compactMap(\.stringValue),
+                soThayDoi: c.params["so_thay_doi"]?.intValue ?? 0,
+                buttons: (c.params["buttons"]?.arrayValue ?? []).compactMap(\.stringValue))
 
         case "notice":
             themThongBao(level: c.params["level"]?.stringValue ?? "info",
@@ -376,6 +585,23 @@ final class AppState: ObservableObject {
         case "history.update":
             staleList = (c.params["stale"]?.arrayValue ?? []).map {
                 "\($0["id"]?.stringValue ?? "?") — \($0["ly_do"]?.stringValue ?? "")"
+            }
+            // Danh sách bản ưng ý và nhánh: chỉ GHI ĐÈ khi lõi gửi kèm. Lệnh này còn được
+            // phát sau mỗi lần người sửa, lúc ấy nó chỉ mang một changeset — xoá hai danh
+            // sách kia theo thì menu "Về bản…" sẽ rỗng đi ngay sau khi người sửa một ô.
+            if let s = c.params["snapshots"]?.arrayValue, !s.isEmpty { snapshots = s }
+            if let n = c.params["nhanh"], !n.objectValue.isEmpty {
+                nhanh = (n["danh_sach"]?.arrayValue ?? []).compactMap(\.stringValue)
+                nhanhHienTai = n["hien_tai"]?.stringValue ?? nhanhHienTai
+            }
+            if let v = c.params["vua_ghi"], !v.objectValue.isEmpty,
+               let cs = v["changeset"]?.stringValue {
+                toastLuu = ToastLuu(
+                    changeset: cs,
+                    tomTat: v["tom_tat"]?.stringValue ?? "sửa",
+                    session: v["session"]?.stringValue,
+                    soTrongPhien: v["so_trong_phien"]?.intValue ?? 1,
+                    hoanTacDuoc: v["hoan_tac_duoc"]?.boolValue ?? true)
             }
 
         case "surface.lock", "surface.unlock", "surface.highlight", "explain.show":

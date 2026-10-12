@@ -574,17 +574,36 @@ struct OSuaDuoc: View {
     }
 
     private func luu() {
-        state.gui(HumanAct(
+        state.gui(Self.actLuu(ma: ma, truong: truong, gia: moi, phienBan: phienBan,
+                              khoi: khoi, loai: loai, surface: state.selectedSurface,
+                              session: state.moPhienSua(), viSao: viSao))
+        dangSua = false
+    }
+
+    /// Thông điệp mà một ô bảng gửi khi người bấm Lưu.
+    ///
+    /// Tách ra khỏi thân view để **đo được**: câu cần trả lời về một cái nút là *"nó gửi đi
+    /// cái gì"*, và một closure trong `Button { … }` thì chỉ trả lời được bằng cách mở app
+    /// ra bấm — tức không trả lời lại được ở lần sau.
+    ///
+    /// `session_id` gom nhiều lần lưu của MỘT lần ngồi sửa lại thành một đơn vị hoàn tác
+    /// (EIDE-EDIT-47 §5.1): sửa bốn ô trong một bảng là bốn lần lưu, và thanh "Hoàn tác"
+    /// ngay sau đó phải lùi *cái người vừa làm*, không phải riêng ô cuối. Nó cũng là chỗ lõi
+    /// gom mốc lùi (I10) — một mốc cho cả lượt sửa, không phải mỗi ô một mốc.
+    static func actLuu(ma: String, truong: String, gia: String, phienBan: Int,
+                       khoi: String, loai: String, surface: String,
+                       session: String, viSao: String) -> HumanAct {
+        HumanAct(
             kind: .edit,
             target: .init(type: loai, id: ma),
             data: [
                 "base_version": .string("v\(phienBan)"),
-                "fields": .object([truong: .string(moi)]),
+                "fields": .object([truong: .string(gia)]),
                 "summary": .string("sửa \(truong) của \(ma)"),
+                "session_id": .string(session),
             ],
-            origin: .init(surface: state.selectedSurface, block: khoi, row: ma),
-            note: viSao.isEmpty ? nil : viSao))
-        dangSua = false
+            origin: .init(surface: surface, block: khoi, row: ma),
+            note: viSao.isEmpty ? nil : viSao)
     }
 }
 
@@ -738,6 +757,7 @@ struct KhoiSnapshot: View {
 private struct DongSnapshot: View {
     @EnvironmentObject var state: AppState
     let s: JSONValue
+    @State private var hienVeBan = false
 
     private var id: String { s["id"]?.stringValue ?? "" }
     private var laRelease: Bool { s["kind"]?.stringValue == "release" }
@@ -794,15 +814,18 @@ private struct DongSnapshot: View {
                 .buttonStyle(.plain).font(.system(size: 11))
                 .foregroundStyle(Color.accentColor)
 
-                // §E6.3 — khôi phục đi qua thẻ G-HIST, và thẻ phải liệt kê sẽ mất gì
-                // TRƯỚC. Nên nút này HỎI tác tử chứ không tự khôi phục.
-                Button("Khôi phục") {
-                    state.gui(.say("Tôi muốn khôi phục về bản ưng ý \(id). "
-                                   + "Cho tôi biết sẽ mất gì trước đã."))
-                }
+                // §E6.3 — khôi phục phải liệt kê sẽ mất gì TRƯỚC.
+                //
+                // Bản trước nút này gửi một câu `say` NHỜ TÁC TỬ làm việc ấy. Nó chạy được,
+                // nhưng trả giá sai: một lượt mô hình cho một việc mã làm xong trong 0 token,
+                // và mô hình đứng giữa người và một thao tác R0 — nó có thể hiểu sai mã bản,
+                // hoặc không gọi công cụ nào cả. Nay bảng "sẽ mất gì" lấy thẳng từ
+                // `history.preview_restore` (chỉ đọc), và người bấm là người quyết.
+                Button("Về bản này") { hienVeBan = true }
                 .buttonStyle(.plain).font(.system(size: 11))
                 .foregroundStyle(Color.gateRed)
-                .help("Tác tử sẽ liệt kê sẽ mất gì rồi mới hỏi")
+                .help("Hiện trước: sẽ mất gì, có giữ bản hiện tại lại không")
+                .sheet(isPresented: $hienVeBan) { VeBanUngYView() }
 
                 if !laRelease {
                     Button("Đánh dấu release") {
@@ -1085,6 +1108,24 @@ struct DongChangeset: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Color.accentColor)
                 .help("Tạo một thay đổi mới lùi lại changeset này. Lịch sử không bị xoá.")
+
+                // A11.1 W4 của `ui_model.py` — "hoàn tác cả lượt" có trong mô hình thiết kế
+                // từ đầu, và `history.hoan_tac_luot` có từ G5. Đường từ nút tới nó thì chưa.
+                //
+                // Vì sao cần ngay cạnh nút kia: hoàn tác RIÊNG một changeset ở giữa chuỗi sẽ
+                // kéo theo cảnh báo "còn N thay đổi nữa chạm cùng hiện vật" (CX10) — tức
+                // đúng lúc ấy người cần một cách lùi cả nhóm, chứ không phải bấm bảy lần.
+                if let r = cs["run_id"]?.stringValue, !r.isEmpty {
+                    Button("cả lượt") {
+                        state.gui(HumanAct(kind: .undo, target: .init(type: "run", id: r),
+                                           data: ["mode": .string("revert")],
+                                           origin: .init(surface: "history")))
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .help("Lùi mọi thay đổi của lượt \(r), theo thứ tự ngược")
+                }
             }
         }
         .padding(.vertical, 5)

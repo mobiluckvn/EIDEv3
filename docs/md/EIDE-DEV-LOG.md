@@ -10287,3 +10287,134 @@ App Swift dịch sạch, 43 ca giao diện xanh. `kiem_tai_lieu` 0 chỗ LỆCH 
   thêm LVGL sau không phải làm lại mô hình — nhưng hiện chưa có.
 * **Màn hình ký tự (HD44780) có hồ sơ mà không vẽ được.** `16x2` được nhận đúng là cột × dòng
   chứ không phải pixel, và hồ sơ ấy **tự khai** là chưa làm cho loại màn hình này.
+
+---
+
+## [DEV-365] Năm tầng lùi — cơ chế có sẵn từ G5, và không nút nào đi tới nó
+
+Yêu cầu của chủ sản phẩm ngày 12/10/2026 (EIDE-EDIT-47 §DEV-365): *"nếu người sửa có lỗi có
+thể rollback về trạng thái trước đó"* — cụ thể hơn, gói này nối giao diện vào **mọi việc
+`history.py` đã làm được**: ghi bản chốt, rẽ/chuyển/gộp nhánh, về bản chốt có xem trước mất
+gì, lùi cả lượt, hoàn tác ngay sau khi lưu.
+
+### Chẩn đoán đọc lại bằng mã, không bằng trí nhớ
+
+`history.py` có `tao_snapshot`, `khoi_phuc_snapshot`, `tao_nhanh`, `chuyen_nhanh`,
+`gop_nhanh`, `se_mat_gi_khi_khoi_phuc`, `hoan_tac_luot` từ bước G5 và DEV-24x. Phía giao
+diện, `grep "kind: .snapshot"` trong `Views/` = **0**. Ba hệ quả đo được:
+
+* `khoi_phuc_snapshot` và `se_mat_gi_khi_khoi_phuc` **chưa từng có ai gọi** ngoài bộ kiểm —
+  nút "Khôi phục" ở tab Lịch sử gửi một câu `say` NHỜ MÔ HÌNH làm hộ. Nó "chạy được", nên
+  không ai nhìn lại: một lượt mô hình cho một việc 0 token, và mô hình đứng giữa người với
+  một thao tác R0 mà nó có thể hiểu sai mã bản.
+* `gop_nhanh` chỉ đi được khi **tác tử** tự gọi `branch.merge`; `HumanAct kind=branch` của
+  người không có nhánh `merge`.
+* `run.update` mang `buttons=["Hoàn tác lượt", "Ghi bản ưng ý"]` từ bước G2 và **giao diện bỏ
+  qua nó** suốt từ đó.
+
+Đây đúng là mẫu `co-che-co-san-duong-dan-dut` của dự án, và lần này nó nằm ở chỗ README gọi
+là luật nền số 3 — *"mọi thay đổi gỡ lại được, kể cả do người gõ"*.
+
+### Năm tầng, và chúng nối vào đâu
+
+| target của `undo` | lùi cái gì | cơ chế đã có |
+|---|---|---|
+| `changeset:<id>` | một lần ghi | `hoan_tac_changeset` |
+| `session:<es-n>` | cả một lượt ngồi sửa của người | **mới**: `hoan_tac_phien_sua` |
+| `run:<run-n>` | cả một lượt của tác tử | `hoan_tac_luot` |
+| `snapshot:<snap-n>` | cả kho về một bản ưng ý | `khoi_phuc_snapshot` |
+
+Tầng thứ năm — mốc ngầm trước lần sửa đầu của người (I10) — không có nút riêng: nó là một
+`checkpoint`, và người quay về nó bằng chính hai tầng trên.
+
+### Ba chỗ làm KHÁC tài liệu, và vì sao
+
+**1 · Mốc lùi I10 gom theo PHIÊN SỬA, không theo `run_id`.** Tài liệu ghi
+`nhớ trong self._moc_nguoi_trong_luot` khoá bằng `ctx.run_id`. Nhưng mỗi `edit` của người là
+một lượt riêng với một `run_id` riêng — khoá theo `run_id` thì lần nào cũng là "lần đầu", và
+một người sửa mười ô đẻ ra mười mốc, đúng thứ I10 nói là không cần. Nay khoá bằng
+`session_id` (giao diện gửi khi mở trình soạn), lùi về `run_id` khi không có. Ca kiểm đo
+đúng chỗ ấy: sửa hai lần trong `es-1` → **một** mốc; sửa lần nữa trong `es-2` → thêm một.
+
+**2 · Mã phiên nằm trong `explain.sources[0].session`, và `hoan_tac_phien_sua` đọc từ
+`log.all()` chứ không từ `history.danh_sach()`.** Tài liệu nói duyệt `danh_sach(tac_gia=
+"human")`, nhưng hàm ấy trả về `tom_tat()` — không có `explain`, nên không lọc theo phiên
+được. Phép lọc đặt trong `history.py` để phần áp nghịch đảo chỉ có một chỗ.
+
+**3 · `history.preview_restore` là một phương thức RPC CHỈ ĐỌC, không phải lệnh UAP thứ 17.**
+UAP vẫn 16 lệnh, 13 HumanAct — `diff.show` mới là lệnh thứ 17 và nó thuộc DEV-366. Danh sách
+`RPC_CHI_DOC` trong `protocol/rpc.py` là một danh sách đóng: thêm một tên vào đó là một quyết
+định thiết kế, không phải một tiện ích. I1 không bị nới: ý chí của người vẫn chỉ vào bằng
+`console.act`; đây là một câu hỏi máy–máy không đổi gì, không ghi sổ cái, không sinh
+changeset — và ca kiểm đếm cả ba thứ ấy trước/sau để chứng minh.
+
+### Hai lỗi chỉ ẢNH CHỤP mới thấy
+
+Cả hai lọt qua 2 259 ca Python và 62 ca Swift, và cả hai nằm trong đúng ô người nhìn mỗi ngày:
+
+* **Ô "Bản ưng ý" trên thanh trạng thái TRỐNG suốt từ đầu.** `status_bar` đọc
+  `inv.last_snapshot`, mà `inventory` lấy nó bằng `store.list("snapshot")` — từ **kho hiện
+  vật**, nơi bản ưng ý không nằm (chúng nằm trong `.eide/snapshots.jsonl`). Trước gói này ô
+  ấy chỉ là một nhãn chữ nên không ai để ý; biến nó thành một MENU thì một nhãn trống bên
+  cạnh mũi tên đọc ra là giao diện hỏng. Nay `status_bar` nhận `hist`.
+* **`Menu` chỉ lấy phần tử ĐẦU của nhãn.** Nhãn `HStack { Text("Bản ưng ý"); Text(tên) }`
+  hiện đúng chữ "Bản ưng ý" rồi thôi — **giá trị biến mất**, kể cả chữ "chưa có". Phải gộp
+  thành một `Text`.
+
+Lỗi thứ nhất nay có phép đo (`trang_thai.ban_ung_y` trong bản chụp giao diện, và một ca
+Python đọc `ui.set status_bar`). Lỗi thứ hai thì **chưa**: bản chụp đọc *trạng thái*, không
+đọc *pixel*, nên một nhãn bị cắt khi vẽ vẫn vô hình với nó. Nói ra chứ không để một ô xanh
+nói hộ.
+
+### Đo
+
+* `tests/test_edit47_nut_lui.py` — 16 ca, trong đó một ca **đi hết đường người đi** (§0 mục
+  6): bấm ở tab → `console.act` → changeset `author=human` → `EIDE.md §Người vừa sửa` → khối
+  A11.1 → bấm Hoàn tác với đúng target lõi vừa đưa ra → kho quay về.
+  **Phá lại thì đỏ: 16/16** phép phá (tháo mốc lùi; khoá theo `run_id` như tài liệu viết; bỏ
+  từng nhánh `undo`; lọc phiên sai; bỏ nhánh `merge`; nuốt xung đột; không khai `vua_ghi`; bỏ
+  mã phiên khỏi xuất xứ; đếm cả mốc ngầm; bỏ danh sách nhánh; tháo tên khỏi `RPC_CHI_DOC`;
+  phép xem trước ghi một changeset).
+* `ui/EIDEApp/Tests/EIDETests/LuiTests.swift` — 19 ca hỏi đúng một câu về mỗi cái nút: **nó
+  gửi đi cái gì**. `AppState.daGui` giữ 20 HumanAct gần nhất để câu ấy trả lời được bằng số
+  thay vì bằng cách mở app ra bấm. **Phá lại thì đỏ: 19/19.**
+  Một phép phá LỌT ở lượt đầu và nó đáng ghi: tháo `buttons` khỏi `run.update` thì không ca
+  nào đỏ — tôi đã kiểm "nút không sáng khi lượt rỗng" mà quên kiểm "nút CÓ sáng khi lượt có
+  thay đổi". Đúng kiểu hỏng mà cả gói này tồn tại để vá, và nó suýt lọt vào chính bộ đo của
+  gói.
+* `tools/thu_nut_lui.py` — **25/25 qua APP THẬT**. Hai bộ trên chứng minh "lõi làm đúng" và
+  "nút gửi đúng thứ"; câu *"người bấm vào app thì có lùi được không"* thì không bộ nào trong
+  hai bộ ấy trả lời. Không tốn một đồng mô hình nào: `edit`, `undo`, `snapshot`, `branch` lõi
+  giải quyết bằng mã.
+
+Bộ kiểm 2 243 → **2 259 xanh**, 2 skip, 0 đỏ. Giao diện 43 → **62 ca**. UAP vẫn 16 lệnh · 13
+HumanAct · 140 công cụ · 14 cờ — gói này **không thêm cờ nào** (§0 mục 4: phần thuần giao
+diện nối vào cơ chế lõi đã có thì không cần cờ) và không đổi thứ tác tử nhìn thấy mỗi lượt.
+
+### Một chỗ ngoài gói: bộ dò tài liệu
+
+`tools/kiem_tai_lieu.py` đỏ ngay khi tài liệu EDIT-47 vào repo — 17 chỗ "lệch", toàn bộ là
+tài liệu nhắc tên tệp mà **gói sau sẽ sinh ra** (`src/eide/watcher.py`, `Views/DiffView.swift`
+…) và tên phương thức Python mà bộ dò đọc nhầm thành tên công cụ (`store.put_fact`). Hai sửa:
+
+* dấu vùng `<!-- se-co -->` cho đặc tả của gói CHƯA LÀM. Dấu ấy có giá: gói nào làm xong thì
+  dấu bị gỡ, và từ lúc ấy mọi đường dẫn trong đó bị kiểm như mọi chỗ khác. Phần KHÔNG đánh
+  dấu của cùng tài liệu vẫn bị kiểm — §5 DEV-365 không có dấu nào.
+* phân biệt **công cụ** với **phương thức của lõi / lệnh giao diện / phương thức RPC**, tra
+  bằng `dir()` và `UI_COMMANDS` chứ không bằng một danh sách gõ tay. Nó còn nhạy hơn bản cũ:
+  đổi tên lệnh `history.update` thì tài liệu nhắc nó sẽ ĐỎ (đã phá thử).
+
+Lỗ còn lại, nói ra chứ không giấu: một cái tên vừa là công cụ vừa là phương thức (ví dụ
+`store.get`) thì công cụ ấy bị bỏ mà phương thức còn, bộ dò sẽ im.
+
+### Chưa làm, nói ra để không ai đọc thành đã làm
+
+* **A11.1 W5 "đặt snapshot tại changeset này"** vẫn chưa có — `tao_snapshot` chụp trạng thái
+  HIỆN TẠI, không chụp tại một điểm trong quá khứ.
+* **Xung đột khi gộp nhánh chỉ là một danh sách tên tệp.** Người phải mở từng tệp mà xem.
+  Khối `diff` là DEV-366, và tài liệu nói thẳng như vậy.
+* **Bốn bảng cũ (A2.1, A5.8c, A8, A14) vẫn là đường sửa duy nhất.** Phủ sửa trực tiếp lên
+  mọi hiện vật là DEV-368 (`sua_duoc` + `patch`).
+* **Phiên sửa do GIAO DIỆN cấp mã** (`es-<n>`, đếm trong một lần mở app). Hai lần mở app có
+  thể cấp cùng một mã; lõi chỉ dùng nó để gom trong phiên nên chưa thành vấn đề, nhưng một
+  `history.danh_sach` dài qua nhiều phiên thì hai nhóm khác nhau có thể trùng tên.

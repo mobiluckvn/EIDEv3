@@ -59,7 +59,8 @@ def main(argv: list[str] | None = None) -> int:
         agent.dong_phien()
         return 0
 
-    core = Core(agent.ledger, agent.ids, agent.turn, on_sync=agent.paint)
+    core = Core(agent.ledger, agent.ids, agent.turn, on_sync=agent.paint,
+                on_query=agent.hoi_chi_doc)
     if a.ws:
         import asyncio
         from .protocol.rpc import serve_websocket

@@ -325,10 +325,7 @@ struct StatusBarView: View {
                   ? "Có hiện vật hạ nguồn cần cập nhật vì thượng nguồn đã đổi"
                   : "Không hiện vật nào cần cập nhật")
 
-            muc("Bản ưng ý", state.status.snapshot ?? "chưa có",
-                help: state.status.snapshot == nil
-                    ? "Chưa ghi bản ưng ý nào"
-                    : "cách đây \(state.status.khoang_cach_snapshot) changeset")
+            MucBanUngY()
 
             Spacer()
 
@@ -354,6 +351,245 @@ struct StatusBarView: View {
             Text(gia).font(.system(size: 11, weight: .medium)).lineLimit(1)
         }
         .help(help)
+    }
+}
+
+// MARK: - Mục "Bản ưng ý" trên thanh trạng thái — cửa vào ba tầng lùi (EIDE-EDIT-47)
+
+/// Trước gói EDIT-47 đây là một **nhãn chữ**: nó nói "cách đây 12 changeset" rồi hết.
+///
+/// Mà `history.py` đã có đủ `tao_snapshot`, `khoi_phuc_snapshot`, `tao_nhanh`,
+/// `chuyen_nhanh`, `gop_nhanh` từ bước G5. Người dùng muốn dùng chúng thì phải **gõ một câu
+/// nhờ tác tử** — tức trả một lượt mô hình cho một việc mã làm được, và nhận lại rủi ro mô
+/// hình hiểu sai tên bản. Nay nhãn ấy thành một menu.
+struct MucBanUngY: View {
+    @EnvironmentObject var state: AppState
+    @State private var hienGhiBan = false
+    @State private var hienVeBan = false
+    @State private var hienReNhanh = false
+
+    var body: some View {
+        Menu {
+            Button("Ghi bản ưng ý…") { hienGhiBan = true }
+            Button("Về bản…") { hienVeBan = true }
+                .disabled(state.snapshots.isEmpty)
+            Divider()
+            Menu("Nhánh") {
+                Text("Đang ở “\(state.nhanhHienTai)”")
+                Divider()
+                ForEach(state.nhanh.filter { $0 != state.nhanhHienTai }, id: \.self) { n in
+                    Button("Chuyển sang “\(n)”") { state.thaoTacNhanh("switch", ten: n) }
+                }
+                ForEach(state.nhanh.filter { $0 != state.nhanhHienTai }, id: \.self) { n in
+                    Button("Gộp “\(n)” vào đây") { state.thaoTacNhanh("merge", ten: n) }
+                }
+                Divider()
+                Button("Rẽ nhánh mới…") { hienReNhanh = true }
+            }
+        } label: {
+            // MỘT `Text`, không phải một `HStack` hai `Text`.
+            //
+            // `Menu` dựng nhãn bằng NSMenuItem, và nó chỉ lấy phần tử ĐẦU của nhãn — nên
+            // bản trước (`HStack { Text("Bản ưng ý"); Text(tên) }`) hiện đúng chữ "Bản ưng
+            // ý" rồi thôi: **giá trị biến mất**, kể cả chữ "chưa có". Chỉ thấy bằng ảnh
+            // chụp; không con số nào trong bản chụp giao diện kêu lên, vì lõi vẫn gửi đủ.
+            Text("Bản ưng ý \(state.status.snapshot ?? "chưa có")")
+                .font(.system(size: 11)).lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(state.status.snapshot == nil
+              ? "Chưa ghi bản ưng ý nào — bấm để ghi một bản"
+              : "cách đây \(state.status.khoang_cach_snapshot) changeset")
+        .sheet(isPresented: $hienGhiBan) { GhiBanUngYView() }
+        .sheet(isPresented: $hienVeBan) { VeBanUngYView() }
+        .sheet(isPresented: $hienReNhanh) { ReNhanhView() }
+    }
+}
+
+/// Đặt tên cho một bản ưng ý. Tên là thứ dẫn người quay về đúng chỗ khi không còn nhớ hôm
+/// ấy làm gì — nên nó bắt buộc, và nút Ghi tắt khi ô còn trống.
+struct GhiBanUngYView: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dong
+    @State private var ten = ""
+    @State private var ghiChu = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Ghi bản ưng ý").font(.system(size: 15, weight: .semibold))
+            Text("Quay về bản này bất cứ lúc nào; nội dung của nó không đổi nữa.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            TextField("tên — ví dụ “nạp xong, LED nháy đúng”", text: $ten)
+                .textFieldStyle(.roundedBorder)
+            TextField("ghi chú (tuỳ chọn)", text: $ghiChu)
+                .textFieldStyle(.roundedBorder).font(.system(size: 11))
+            HStack {
+                Spacer()
+                Button("Bỏ") { dong() }
+                Button("Ghi") {
+                    if state.ghiBanUngY(ten: ten, ghiChu: ghiChu) { dong() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(ten.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(18).frame(width: 420)
+    }
+}
+
+/// "Về bản…" — và nó **hỏi lõi sẽ mất gì TRƯỚC**.
+///
+/// §E6.3: *"người bấm khôi phục thường đang bực mình vì thứ gì đó hỏng, và đó chính là lúc
+/// dễ mất việc nhất. Nên câu hỏi phải là 'anh có chấp nhận mất những thứ này không', không
+/// phải 'anh chắc chưa'."* Phép xem trước là một lời gọi chỉ đọc, 0 token.
+struct VeBanUngYView: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dong
+    @State private var chon: String?
+    @State private var truoc: JSONValue?
+    @State private var dangHoi = false
+    @State private var giuBan = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Về một bản ưng ý").font(.system(size: 15, weight: .semibold))
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(state.snapshots.enumerated()), id: \.offset) { _, s in
+                        let id = s["id"]?.stringValue ?? ""
+                        Button {
+                            chon = id
+                            Task { dangHoi = true
+                                   truoc = await state.xemTruocKhoiPhuc(id)
+                                   dangHoi = false }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: chon == id ? "largecircle.fill.circle"
+                                                             : "circle")
+                                    .font(.system(size: 10))
+                                Text(s["name"]?.stringValue ?? id)
+                                    .font(.system(size: 12, weight: .medium))
+                                Text(s["ts"]?.stringValue?.prefix(16) ?? "")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                if let k = s["khoang_cach"]?.intValue, k > 0 {
+                                    Text("cách đây \(k) thay đổi")
+                                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxHeight: 160)
+
+            Divider()
+
+            if dangHoi {
+                Label("Đang hỏi lõi xem sẽ mất gì…", systemImage: "hourglass")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            } else if let t = truoc {
+                SeMatGiView(truoc: t, giuBan: $giuBan)
+            } else {
+                Text("Chọn một bản để xem trước hậu quả. Chưa khôi phục gì cả.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Spacer()
+                Button("Bỏ") { dong() }
+                Button("Về bản này") {
+                    if let id = chon {
+                        state.veBanUngY(id, giuBanHienTai: giuBan)
+                        dong()
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                // Không cho bấm trước khi xem trước xong: thẻ G-HIST mà thiếu phần hậu quả
+                // thì là một câu hỏi không nói hậu quả.
+                .disabled(chon == nil || truoc?["ok"]?.boolValue != true)
+            }
+        }
+        .padding(18).frame(width: 540)
+    }
+}
+
+/// Phần "sẽ mất gì" — chữ do LÕI soạn (`se_mat_vi`), giao diện không tự diễn giải kho.
+struct SeMatGiView: View {
+    let truoc: JSONValue
+    @Binding var giuBan: String
+
+    private var dong: [String] {
+        (truoc["se_mat_vi"]?.arrayValue ?? []).compactMap(\.stringValue)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if truoc["ok"]?.boolValue != true {
+                Label(truoc["message_vi"]?.stringValue ?? "Không xem trước được.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11)).foregroundStyle(Color.gateRed)
+            } else if dong.isEmpty {
+                Label("Không mất gì — kho đang giống hệt bản ấy.",
+                      systemImage: "checkmark.circle")
+                    .font(.system(size: 11)).foregroundStyle(Color.okGreen)
+            } else {
+                Text("Sẽ mất:").font(.system(size: 11, weight: .semibold))
+                ForEach(dong, id: \.self) { d in
+                    Text("· \(d)").font(.system(size: 11)).foregroundStyle(Color.staleAmber)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            let khongLui = truoc["khong_hoan_tac_duoc"]?.arrayValue ?? []
+            if !khongLui.isEmpty {
+                Label("\(khongLui.count) thay đổi KHÔNG lùi lại được (đã tác động ra ngoài "
+                      + "máy) — trạng thái trên máy sẽ lùi, thứ ở ngoài thì không.",
+                      systemImage: "lock.fill")
+                    .font(.system(size: 11)).foregroundStyle(Color.gateRed)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if truoc["co_sua_cua_nguoi"]?.boolValue == true {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Có sửa của anh chưa nằm trong bản ưng ý nào. Giữ bản hiện tại lại?")
+                        .font(.system(size: 11))
+                    TextField("tên để giữ bản hiện tại (bỏ trống = không giữ)", text: $giuBan)
+                        .textFieldStyle(.roundedBorder).font(.system(size: 11))
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+}
+
+struct ReNhanhView: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dong
+    @State private var ten = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Rẽ nhánh mới").font(.system(size: 15, weight: .semibold))
+            Text("Từ “\(state.nhanhHienTai)”. Mọi thay đổi từ giờ nằm trên nhánh mới; "
+                 + "nhánh cũ giữ nguyên.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            TextField("tên nhánh", text: $ten).textFieldStyle(.roundedBorder)
+            HStack {
+                Spacer()
+                Button("Bỏ") { dong() }
+                Button("Rẽ") {
+                    if state.thaoTacNhanh("create", ten: ten) { dong() }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(ten.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(18).frame(width: 420)
     }
 }
 

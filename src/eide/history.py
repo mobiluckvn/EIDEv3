@@ -308,6 +308,49 @@ class History:
                 + ". Trạng thái trên máy đã lùi, nhưng thứ ở ngoài thì chưa.")
         return kq
 
+    def changeset_cua_phien_sua(self, session_id: str) -> list[Changeset]:
+        """Changeset của MỘT PHIÊN SỬA của người (`es-<n>`) — EIDE-EDIT-47 §5.1.
+
+        Phiên sửa là khoảng từ lúc người mở một trình soạn tới lúc đóng nó. Một phiên như
+        thế thường đẻ ra nhiều changeset (sửa bốn ô trong một biểu mẫu là bốn lần lưu), và
+        thanh "Hoàn tác" ngay sau khi lưu phải lùi **cái người vừa làm**, không phải cái
+        changeset cuối cùng trong đó.
+
+        Mã phiên nằm trong `explain.sources[0].session` — chỗ ấy đã là nơi ghi xuất xứ của
+        một thay đổi, nên không cần thêm trường mới vào Changeset.
+        """
+        ra: list[Changeset] = []
+        for cs in self.log.all():
+            if not cs.by_human or cs.undone_by:
+                continue
+            nguon = (cs.explain.get("sources") or [{}])[0] or {}
+            if isinstance(nguon, dict) and nguon.get("session") == session_id:
+                ra.append(cs)
+        return ra
+
+    def hoan_tac_phien_sua(self, session_id: str, *, by: str = "human") -> KetQuaHoanTac:
+        """§E5.2 mức 1b — hoàn tác cả một phiên sửa của người, theo thứ tự NGƯỢC."""
+        ds = self.changeset_cua_phien_sua(session_id)
+        if not ds:
+            return KetQuaHoanTac(
+                False, message_vi=f"Phiên sửa {session_id} không còn thay đổi nào để hoàn "
+                                  "tác — hoặc nó đã được hoàn tác rồi.")
+
+        self.checkpoint(ly_do=f"trước khi hoàn tác phiên sửa {session_id}")
+
+        lui = [c for c in ds if c.reversible]
+        giu = [{"id": c.id, "ly_do": c.ly_do_khong_hoan_tac() or "",
+                "summary": c.explain.get("summary", "")} for c in ds if not c.reversible]
+
+        kq = self._ap_nghich_dao(list(reversed(lui)), by=by,
+                                 mo_ta=f"hoàn tác lượt sửa của anh ({len(lui)} thay đổi)")
+        kq.giu_nguyen = giu
+        if giu:
+            kq.canh_bao.append(
+                "Những thay đổi sau KHÔNG hoàn tác được và vẫn còn nguyên: "
+                + "; ".join(f"{g['id']} ({g['ly_do']})" for g in giu) + ".")
+        return kq
+
     def _ap_nghich_dao(self, ds: list[Changeset], *, by: str, mo_ta: str) -> KetQuaHoanTac:
         da_lui: list[str] = []
         cham: list[str] = []

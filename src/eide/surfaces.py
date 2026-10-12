@@ -1807,9 +1807,27 @@ def project(eide_md: Any, inv: Any, assumptions: list[str], **kw: Any) -> dict[s
 
 # =========================================================================== thanh trạng thái
 def status_bar(inv: Any, cfg: Any, *, run: dict[str, Any] | None = None,
-               ngu_canh: dict[str, Any] | None = None) -> dict[str, Any]:
-    """§E7 thanh trạng thái + ui_model A0 + đồng hồ ngữ cảnh A14.6 (MEM-02)."""
+               ngu_canh: dict[str, Any] | None = None,
+               hist: Any = None) -> dict[str, Any]:
+    """§E7 thanh trạng thái + ui_model A0 + đồng hồ ngữ cảnh A14.6 (MEM-02).
+
+    `hist` — nguồn THẬT của ô "Bản ưng ý" (ui_model A0 W5).
+
+    Trước EDIT-47 ô ấy đọc `inv.last_snapshot`, mà `inventory` lấy nó bằng
+    `store.list("snapshot")` — tức từ KHO HIỆN VẬT. Bản ưng ý thì không nằm ở đó: nó nằm
+    trong `.eide/snapshots.jsonl` (`history.snapshots`). Nên ô ấy **trống suốt từ đầu**,
+    kể cả khi dự án đã có năm bản ưng ý.
+
+    Thấy được là nhờ DEV-365 biến ô ấy thành một cái MENU: một nhãn trống bên cạnh một mũi
+    tên thì không ai đọc ra là "chưa ghi bản nào" cả. Đúng mẫu của cả gói này — cơ chế có,
+    đường lên giao diện đứt — và lần này chỗ đứt nằm ngay trong một ô người nhìn mỗi ngày.
+    """
     b = cfg.budget
+    snap, cach = (inv.last_snapshot or {}).get("name"), inv.changesets_since_snapshot
+    if hist is not None:
+        ds = [s for s in hist.danh_sach_snapshot() if s.get("name")]
+        if ds:
+            snap, cach = ds[-1]["name"], ds[-1].get("khoang_cach", 0)
     return {
         "ngu_canh": ngu_canh or {},
         "du_an": inv.project_name or "(chưa đặt tên)",
@@ -1818,8 +1836,8 @@ def status_bar(inv: Any, cfg: Any, *, run: dict[str, Any] | None = None,
         "isa": inv.isa,
         "fact": dict(inv.fact_tiers),
         "chang": inv._stage(),
-        "snapshot": (inv.last_snapshot or {}).get("name"),
-        "khoang_cach_snapshot": inv.changesets_since_snapshot,
+        "snapshot": snap,
+        "khoang_cach_snapshot": cach,
         "stale": len(inv.stale),
         "tu_chu": cfg.autonomy,
         "mo_hinh": cfg.model.main,
@@ -2122,10 +2140,15 @@ def emit_all(emit, *, store: Any, ledger: Any, eide_md: Any, inv: Any, cfg: Any,
             continue
         emit(uic.surface_set(ten, dung()))
         n += 1
-    emit(uic.ui_set("status_bar", status_bar(inv, cfg, run=run, ngu_canh=ngu_canh)))
+    emit(uic.ui_set("status_bar",
+                    status_bar(inv, cfg, run=run, ngu_canh=ngu_canh, hist=hist)))
     emit(uic.history_update(
         changesets=hist.danh_sach(limit=40) if hist else [],
         snapshots=hist.danh_sach_snapshot() if hist else [],
+        # Danh sách nhánh đi kèm ở đây để menu "Nhánh ▸" trên thanh trạng thái có dữ liệu
+        # mà không phải vẽ lại cả tab Lịch sử — và để giao diện không phải chạy `git`.
+        nhanh={"hien_tai": hist.nhanh_hien_tai(),
+               "danh_sach": hist.danh_sach_nhanh()} if hist else {},
         stale=[{"id": a["id"], "type": a["type"], "ly_do": a["stale_reason"]}
                for a in store.list(stale_only=True, limit=50)]))
     return n
