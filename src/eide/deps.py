@@ -160,6 +160,52 @@ def fact_ha_nguon(store: Any, fact_id: str) -> list[str]:
     return ket
 
 
+def ha_nguon_cua_nhieu(store: Any, ids: list[str]) -> dict[str, list[str]]:
+    """`ha_nguon_cua` cho CẢ MỘT LÔ — đọc chỉ mục kho **một lần** (§DEV-377).
+
+    `ha_nguon_cua` gọi `store.list()` bốn lần cho mỗi hiện vật, và `list()` giải mã đầy đủ
+    `canonical`/`explain` của từng hàng. Với một lô N hiện vật thì đó là O(N²) lần giải mã
+    JSON: đo được trên lô 400 tệp — **50,8 giây**, trong đó 37,3 giây nằm trong
+    `json.decoder`, cho một việc chỉ cần đọc tên và loại.
+
+    Hàm này giữ **đúng luật** của `ha_nguon_cua` (xem docstring của nó): đường khai báo
+    thắng chuỗi mặc định khi lời khai nói về cùng loại. Hai bản phải cho cùng kết quả, và
+    `test_hai_duong_cho_cung_ket_qua` canh chuyện đó.
+    """
+    tat_ca = (store.chi_muc_nhe() if hasattr(store, "chi_muc_nhe")
+              else store.list(limit=20000))
+    loai_cua = {a["id"]: a["type"] for a in tat_ca}
+    # Nhóm theo loại MỘT lần, thay vì một truy vấn cho mỗi (hiện vật × loại hạ nguồn).
+    theo_loai: dict[str, list[str]] = {}
+    for a in tat_ca:
+        theo_loai.setdefault(a["type"], []).append(a["id"])
+    khai: dict[str, list[str]] = {a["id"]: ((a.get("deps") or {}).get("upstream") or [])
+                                  for a in tat_ca}
+
+    ra: dict[str, list[str]] = {}
+    for aid in ids:
+        if aid not in loai_cua:
+            ra[aid] = []
+            continue
+        loai_goc = loai_cua[aid]
+        ket: list[str] = []
+        khai_ro: set[str] = set()
+        for a in tat_ca:
+            if a["id"] == aid or a["type"] in KHONG_STALE:
+                continue
+            up = khai.get(a["id"]) or []
+            if aid in up:
+                ket.append(a["id"])
+            elif any(loai_cua.get(u) == loai_goc for u in up):
+                khai_ro.add(a["id"])
+        for loai in HA_NGUON.get(loai_goc, ()):
+            for hid in theo_loai.get(loai, ()):
+                if hid != aid and hid not in ket and hid not in khai_ro:
+                    ket.append(hid)
+        ra[aid] = ket
+    return ra
+
+
 def danh_dau_stale(store: Any, *, thuong_nguon: Iterable[str], ly_do_cs: str,
                    mo_ta: str = "") -> list[str]:
     """Đánh dấu hạ nguồn của các hiện vật vừa đổi. Trả danh sách đã đánh dấu.
@@ -167,15 +213,17 @@ def danh_dau_stale(store: Any, *, thuong_nguon: Iterable[str], ly_do_cs: str,
     Lý do luôn mang **mã changeset**, để băng cảnh báo trên tab nói được câu đầy đủ:
     "cần cập nhật vì cs-0103 (anh sửa REQ v2)" — chứ không phải "cần cập nhật" cụt lủn.
     """
+    ds = list(thuong_nguon)
     can: list[str] = []
-    for aid in thuong_nguon:
-        for ha in ha_nguon_cua(store, aid):
-            if ha not in can:
-                can.append(ha)
+    ha = ha_nguon_cua_nhieu(store, ds)
+    for aid in ds:
+        for h in ha.get(aid, ()):
+            if h not in can:
+                can.append(h)
         if aid.startswith("fact:") or (store.get(aid) or {}).get("type") == "fact":
-            for ha in fact_ha_nguon(store, aid):
-                if ha not in can:
-                    can.append(ha)
+            for h in fact_ha_nguon(store, aid):
+                if h not in can:
+                    can.append(h)
 
     if not can:
         return []

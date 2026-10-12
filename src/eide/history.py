@@ -147,7 +147,8 @@ class History:
                 run_id: str | None = None, tool_call_id: str | None = None,
                 human_act_id: str | None = None, note: str | None = None,
                 loai: str | None = None,
-                deps: dict[str, Any] | None = None) -> Changeset:
+                deps: dict[str, Any] | None = None,
+                dang_ky_kho: bool = True) -> Changeset:
         """Commit thay đổi tệp thành một changeset.
 
         Tệp cũng được đăng ký thành **hiện vật trong kho**, không chỉ nằm trong git.
@@ -155,6 +156,11 @@ class History:
         tại trong git thì sửa REQ sẽ không đánh dấu được tệp đó là lỗi thời — và ca
         CX06 ("hạ nguồn STALE đúng danh sách") sẽ im lặng trượt. Git giữ *nội dung*;
         kho giữ *vị trí của nó trong mạng lưới phụ thuộc*.
+
+        `dang_ky_kho=False` bỏ phần đăng ký kho và phần đánh dấu hạ nguồn — CHỈ dùng cho lô
+        quá lớn (§DEV-377, `loop.TRAN_LO_TEP`). Đó là một thiệt hại có chủ ý và phải được
+        nói ra cho người: nội dung vẫn vào git nên hoàn tác vẫn chạy, nhưng những tệp ấy
+        không có mặt trong kiểm kê và hạ nguồn của chúng không ai đánh dấu.
         """
         # MỐC LÙI trước lần sửa ĐẦU TIÊN của mỗi lượt.
         #
@@ -204,7 +210,7 @@ class History:
         # `snapshot_id` vốn dành cho đúng việc này: changeset trỏ về mốc lùi được.
         cs.snapshot_id = moc or None
         # Đăng ký tệp thành hiện vật để nó có mặt trong kiểm kê và trong đồ thị phụ thuộc.
-        for i, p in enumerate(paths):
+        for i, p in enumerate(paths if dang_ky_kho else []):
             cu = self.store.get(p)
             lp = loai or doan_loai(p)
             v = self.store.apply(
@@ -218,9 +224,10 @@ class History:
             cs.touches[i].to_version = v
             cs.touches[i].op = "update" if cu else "create"
 
-        cs.stale_marked = deps_mod.danh_dau_stale(
-            self.store, thuong_nguon=paths, ly_do_cs=cs.id,
-            mo_ta=("anh sửa" if author == "human" else "tác tử sửa") + " mã")
+        if dang_ky_kho:
+            cs.stale_marked = deps_mod.danh_dau_stale(
+                self.store, thuong_nguon=paths, ly_do_cs=cs.id,
+                mo_ta=("anh sửa" if author == "human" else "tác tử sửa") + " mã")
         return self._chot(cs)
 
     def ghi_xoa_tep(self, *, paths: list[str], noi_dung_truoc: dict[str, str],

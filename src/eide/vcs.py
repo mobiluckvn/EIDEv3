@@ -98,8 +98,21 @@ class Vcs:
                paths: list[str] | None = None) -> str | None:
         """Một changeset một commit. Trả sha, hoặc None nếu không có gì để commit."""
         if paths:
-            for p in paths:
-                self._git("add", "--", p, check=False)
+            # MỘT lần `git add` cho cả lô, không một lần mỗi tệp (§DEV-377).
+            #
+            # Đo được 12/10/2026: một lô 100 tệp tốn 0,87 s **chỉ riêng phần add**, vì nó
+            # sinh 100 tiến trình con. Một lần gọi cho cả lô là 0,01 s.
+            #
+            # Vẫn giữ đường cũ làm đường lui: `check=False` cho cả lô nghĩa là một đường
+            # dẫn git từ chối (bị `.gitignore` chặn, tên lạ) sẽ làm **cả lô** không được
+            # stage. Nên nếu lệnh gộp thất bại thì thêm từng tệp một — chậm, nhưng chỉ
+            # chậm ở đúng ca hiếm ấy.
+            r = subprocess.run(
+                ["git", "-C", str(self.root), "add", "--", *paths],
+                capture_output=True, text=True, timeout=120)
+            if r.returncode != 0:
+                for p in paths:
+                    self._git("add", "--", p, check=False)
         else:
             self._git("add", "-A")
         if not self._git("diff", "--cached", "--name-only").strip():
@@ -137,6 +150,52 @@ class Vcs:
             return self._git("show", f"{sha}:{path}")
         except GitKhongSan:
             return None
+
+    def noi_dung_nhieu(self, sha: str, paths: list[str]) -> dict[str, str]:
+        """Nội dung của NHIỀU tệp tại một commit — **một** lần gọi git (§DEV-377).
+
+        `noi_dung_tai` gọi `git show` một lần cho mỗi tệp, và mỗi lần là một tiến trình
+        con. Đo được 12/10/2026: ~13 ms mỗi tệp, nên một lô 1 000 tệp (xoá cả thư mục, hay
+        bung một kho nén vào dự án) tốn **13 giây chỉ để đọc bản cũ** — trên thread của
+        watcher, nên lần quét sau dồn lại phía sau nó.
+
+        `git cat-file --batch` đọc cả lô trong một tiến trình: nó nhận từng dòng
+        `<sha>:<đường dẫn>` ở stdin và trả `<oid> <loại> <số byte>\\n<nội dung>\\n`.
+
+        Tệp không có trong commit ấy thì git trả `<xin> missing` — **vắng mặt trong dict
+        trả về**, không phải chuỗi rỗng: một tệp chưa từng tồn tại và một tệp rỗng là hai
+        chuyện khác nhau, và hoàn tác chúng cho hai kết quả khác nhau.
+        """
+        if not paths:
+            return {}
+        xin = "".join(f"{sha}:{p}\n" for p in paths)
+        try:
+            r = subprocess.run(
+                ["git", "-C", str(self.root), "cat-file", "--batch"],
+                input=xin.encode("utf-8"), capture_output=True, timeout=120)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            raise GitKhongSan("Không đọc được nhiều tệp bằng git cat-file.")
+        if r.returncode != 0:
+            raise GitKhongSan(f"git cat-file → {r.returncode}: "
+                              f"{r.stderr.decode('utf-8', 'replace')[:200]}")
+
+        ra: dict[str, str] = {}
+        buf, i = r.stdout, 0
+        for p in paths:
+            nl = buf.find(b"\n", i)
+            if nl < 0:
+                break
+            dau = buf[i:nl].decode("utf-8", "replace").split()
+            if len(dau) >= 2 and dau[-1] in ("missing", "ambiguous"):
+                i = nl + 1
+                continue
+            try:
+                n = int(dau[-1])
+            except ValueError:
+                break
+            ra[p] = buf[nl + 1:nl + 1 + n].decode("utf-8", "replace")
+            i = nl + 1 + n + 1              # bỏ cả dấu xuống dòng git thêm vào cuối
+        return ra
 
     def diff(self, sha: str, *, gon: bool = False) -> str:
         args = ["show", "--format=%s", "--stat" if gon else "--patch", sha]

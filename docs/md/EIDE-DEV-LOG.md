@@ -11529,3 +11529,74 @@ và không ca nào đọc thông báo lẫn EIDE.md sau một lần xoá cả th
 * **`watchdog` vẫn chưa cắm.**
 * Một lô **quá lớn** (xoá 5 000 tệp) ghi một changeset với 5 000 blob. Chưa có trần, và
   chưa đo được ngưỡng nào là quá.
+
+## [DEV-377] Lô lớn: đo trước, rồi mới đặt trần — và hai chỗ O(N²) trong lõi
+
+DEV-376 gộp một lô thành một changeset, và mục "chưa làm" của nó ghi: *"một lô quá lớn (xoá
+5 000 tệp) ghi một changeset với 5 000 blob. Chưa có trần, và **chưa đo được ngưỡng nào là
+quá**"*. Gói này đo trước khi đặt trần — và phép đo tìm ra hai chỗ còn tệ hơn một lô lớn.
+
+### Đo: một lô 500 tệp mất 101 giây
+
+| tệp trong lô | trước gói này | sau |
+|---|---|---|
+| 100 | 3,9 s | **0,20 s** |
+| 500 | 101,2 s | **1,02 s** |
+| 2 000 | **> 10 phút** (bộ đo hết hạn) | **8,1 s** |
+
+Siêu tuyến tính, nên con số không phải "hơi chậm" mà là một lỗi. `cProfile` chỉ đúng hai chỗ:
+
+**1. Đọc bản cũ: hai tiến trình git cho MỖI tệp.** `_ban_eide_biet` gọi `sha_hien_tai()` +
+`noi_dung_tai()`, và nó được gọi **hai lần** mỗi tệp (một cho phép lọc "có đổi không", một
+để lấy `truoc`). Bốn tiến trình con mỗi tệp, ~13 ms mỗi tiến trình.
+
+Nay `Vcs.noi_dung_nhieu` đọc cả lô bằng **một** `git cat-file --batch`: **0,017 s cho 300
+tệp — nhanh hơn 115×**. Chỗ dễ sai nhất của nó là khung dữ liệu: git trả
+`<oid> <loại> <số byte>\n<nội dung>\n`, và một tệp vắng mặt trả `<xin> missing` **không kèm
+nội dung**. Đọc nhầm một dòng là lệch toàn bộ phần còn lại — mỗi tệp nhận nội dung của tệp
+khác, và hoàn tác sẽ ghi bản của tệp này lên tệp kia. Có ca kiểm đặt hai tệp không tồn tại
+**xen giữa** lô và đòi ba tệp quanh chúng vẫn đúng từng byte.
+
+**2. `danh_dau_stale` giải mã 643 200 JSON cho một việc chỉ cần đọc tên.** `ha_nguon_cua`
+gọi `store.list()` bốn lần cho mỗi hiện vật, và `list()` giải mã đầy đủ `canonical` ·
+`explain` · `view_hint` · `deps` của **từng hàng**. Với lô 400 tệp: 50,8 giây, trong đó
+**37,3 giây nằm trong `json.decoder`**.
+
+Nay có `store.chi_muc_nhe()` (chỉ `id` · `type` · `deps`) và `deps.ha_nguon_cua_nhieu()` —
+đọc chỉ mục **một lần** cho cả lô, nhóm theo loại một lần, rồi tính trong bộ nhớ. Bản gộp
+lô phải cho **đúng cùng kết quả** với bản một-hiện-vật, kể cả hai luật tinh: *"lời khai
+thắng chuỗi mặc định khi nó nói về cùng loại"* và *`KHONG_STALE`* (báo cáo, phân tích,
+snapshot là bằng chứng của một thời điểm — chúng không bao giờ lỗi thời). Ca kiểm
+`test_hai_duong_cho_cung_ket_qua` đối chiếu hai bản trên năm hiện vật, và cả hai luật ấy có
+phép phá riêng.
+
+Đây **không** chỉ là chuyện của watcher: cùng đường mã chạy khi tác tử ghi hai mươi tệp
+trong một lượt. Lỗi O(N²) này có từ bước G5 và chưa ai đo nó.
+
+### Trần, sau khi đã đo
+
+**1 000 tệp** một lô: tới đó khoảng 2–4 giây, còn chịu được trên thread của watcher. Quá
+trần thì **vẫn ghi** — im lặng là tệ hơn — nhưng bỏ phần `dang_ky_kho` (đăng ký từng tệp
+vào kho + đánh dấu hạ nguồn), phần tuyến-tính-đắt duy nhất còn lại. Và **nói ra** ngay trong
+`explain.why` của changeset: *"từng tệp không được đăng ký vào kho và hạ nguồn của chúng
+KHÔNG được đánh dấu lỗi thời"*. Một changeset trông bình thường mà hạ nguồn không được đánh
+dấu là một cái bẫy đặt cho chính mình ba tháng sau.
+
+### Đo
+
+* `tests/test_edit47_watcher.py` 33 → **39 ca**. **Phá lại thì đỏ: 11/11.**
+* Hai ca mới đếm **số tiến trình git**, không đo đồng hồ: 30 tệp phải là ≤ 2 lần gọi git để
+  đọc bản cũ, và ≤ 8 lần cho cả một lượt ghi. Một phép đo theo thời gian sẽ đỏ trên máy
+  chậm của người khác chứ không vì mã sai.
+* `vcs.commit` cũng gộp `git add`: 100 tệp từ 100 tiến trình xuống 1, có đường lui từng tệp
+  nếu lệnh gộp thất bại (một đường dẫn bị `.gitignore` chặn làm cả lô không stage được).
+* Bộ kiểm 2 440 → **2 446 xanh**. Giao diện **98**. `thu_nut_lui.py` **74/74** (cờ bật).
+
+### Chưa làm
+
+* **`ha_nguon_cua_nhieu` vẫn là O(N²) trong bộ nhớ** (vòng `for a in tat_ca` cho mỗi id).
+  Rẻ hơn 100× nên 2 000 tệp còn 8 s, nhưng 20 000 tệp thì không. Chưa cần, và đã đo để
+  biết khi nào cần.
+* **`ha_nguon_cua` một-hiện-vật vẫn dùng đường cũ** — còn 40 chỗ gọi nó, và đổi hết trong
+  một gói là đổi hành vi đánh dấu lỗi thời ở 40 chỗ cùng lúc mà không đo được từng chỗ.
+* **`watchdog` vẫn chưa cắm.**

@@ -422,7 +422,7 @@ công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗ
 
 Bốn mức này đo bốn thứ khác nhau, và không mức nào thay được mức khác.
 
-### Mức 1 — Ca đơn vị: **2 440 ca Python + 98 ca giao diện**
+### Mức 1 — Ca đơn vị: **2 446 ca Python + 98 ca giao diện**
 
 ```bash
 .venv/bin/python -m pytest -q
@@ -541,7 +541,7 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 |---|---|---|
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét giao diện | **124/124 ô** trên 11 tab · tab thứ 12 (Màn hình, A15) **chưa quét** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
-| Ca đơn vị Python | **2 440** | `pytest -q` |
+| Ca đơn vị Python | **2 446** | `pytest -q` |
 | Ca đơn vị giao diện | **98** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
 | Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa/XOÁ NGOÀI app · bật cờ · cập nhật hạ nguồn, qua app thật | **74/74** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
 | Loại hiện vật người sửa được thẳng trên giao diện | **15/33** | [`dem_sua_duoc.py`](tools/dem_sua_duoc.py) |
@@ -1369,7 +1369,10 @@ Nói ra để người đọc không phải tự tìm:
   DEV-375 đã vá: nó thành changeset hoàn tác được, trả cả tệp về đĩa lẫn hiện vật về kiểm
   kê — và nói thẳng `KHÔNG hoàn tác được` ở dự án không có git, thay vì hứa một đường lui
   không có thật. Xoá **cả thư mục** là MỘT changeset (DEV-376): một cú bấm Delete là một
-  việc, nên một cú bấm Hoàn tác trả cả thư mục về. Sáu gói đầu của
+  việc, nên một cú bấm Hoàn tác trả cả thư mục về. Và đo lô lớn tìm ra **hai chỗ O(N²)
+  trong lõi** có từ bước G5 (DEV-377): đọc bản cũ bằng hai tiến trình git mỗi tệp, và
+  `danh_dau_stale` giải mã 643 200 JSON cho một lô 400 tệp. Một lô 500 tệp từ **101 giây
+  xuống 1,0 giây**; 2 000 tệp từ *quá 10 phút* xuống 8,1 giây. Sáu gói đầu của
   [`EIDE-EDIT-47`](docs/md/EIDE-EDIT-47_Nguoi_sua_truc_tiep_va_Hoan_tac.md) — gỡ lại, khối
   `diff`, sửa sâu, duyệt có sửa, trình soạn tệp trong app, bắt sửa ngoài app — cùng gói
   thứ bảy ở trên, **xong cả bảy** ngày 12/10/2026.

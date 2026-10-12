@@ -499,6 +499,23 @@ class Agent:
             self._watcher.dung()
             self._watcher = None
 
+    # Bao nhiêu tệp trong MỘT lô thì vẫn đăng ký từng tệp vào kho (§DEV-377).
+    #
+    # Con số này ĐO ĐƯỢC, không đoán. Sau khi vá hai chỗ O(N²) của gói này — đọc bản cũ
+    # của cả lô bằng một lần `git cat-file --batch`, và đọc chỉ mục kho một lần cho cả lô
+    # thay vì bốn truy vấn đầy đủ mỗi tệp — thời gian xử lý một lô trên máy đo:
+    #
+    #   |  tệp | trước gói này | sau |
+    #   |------|---------------|-----|
+    #   |  100 |      3,9 s    | 0,20 s |
+    #   |  500 |    101,2 s    | 1,02 s |
+    #   | 2000 |  > 10 phút    | 8,1 s  |
+    #
+    # Nên trần đặt ở 1 000: tới đó một lô mất khoảng 2–4 giây trên thread của watcher, còn
+    # chịu được. Quá trần thì vẫn GHI (im lặng là tệ hơn), nhưng bỏ phần đăng ký kho —
+    # phần duy nhất tuyến tính-đắt còn lại — và nói ra là đã bỏ.
+    TRAN_LO_TEP = 1000
+
     def _tep_doi_ngoai_eide(self, paths: list[str]) -> None:
         """Watcher báo mấy tệp vừa đổi. Lọc ra cái KHÔNG phải do chính EIDE ghi, rồi ghi
         changeset cho người.
@@ -524,6 +541,14 @@ class Agent:
         truoc_sua: dict[str, str] = {}       # rel → bản EIDE biết (cho blob)
         xoa: list[str] = []
         truoc_xoa: dict[str, str] = {}
+        # Bản EIDE biết của CẢ LÔ, đọc trong MỘT lần gọi git (§DEV-377).
+        #
+        # Bản trước gọi `_ban_eide_biet` hai lần cho mỗi tệp, và mỗi lần là hai tiến trình
+        # git. Đo được: 39 ms/tệp, nên một lô 1 000 tệp tốn **39 giây** trên thread của
+        # watcher — và lần quét sau dồn lại phía sau nó. Đọc cả lô: 0,017 s cho 300 tệp,
+        # **nhanh hơn 115×**.
+        biet = self._ban_eide_biet_nhieu([
+            r for r in paths if wt.dang_theo_doi(Path(r))])
         for rel in paths:
             # Lọc LẠI ở đây, không chỉ trong watcher. Hàm này còn được gọi từ chỗ khác
             # (ca kiểm, và sau này là một lệnh "quét lại"), và cái giá của một lần lọt là
@@ -540,7 +565,7 @@ class Agent:
                 # nữa, nên lần quét sau không còn gì để ghi. Một cái cờ không bao giờ đổi
                 # được kết quả là mã chết, và mã chết thì không phá được — phép phá "bỏ cờ
                 # ấy đi" LỌT, và đó là câu trả lời.
-                t = self._ban_eide_biet(rel)
+                t = biet.get(rel)
                 if t is None and self.store.get(rel) is None:
                     continue          # EIDE chưa từng biết tệp này: không phải việc của ai
                 xoa.append(rel)
@@ -557,18 +582,18 @@ class Agent:
                 continue
             # Nội dung y hệt bản EIDE biết: chạm tệp mà không đổi gì (một lần lưu không
             # sửa gì, hay `touch`). Không có gì để hoàn tác.
-            if self._ban_eide_biet(rel) == noi_dung:
+            if biet.get(rel) == noi_dung:
                 continue
 
             sua[rel] = noi_dung
-            t = self._ban_eide_biet(rel)
-            if t is not None:
-                truoc_sua[rel] = t
+            if rel in biet:
+                truoc_sua[rel] = biet[rel]
 
         # ---- ghi: một changeset cho lô SỬA, một cho lô XOÁ ----------------------
         if sua:
             ds = sorted(sua)
             ten = ds[0] if len(ds) == 1 else f"{len(ds)} tệp ({', '.join(ds[:3])}…)"
+            qua_lon = len(ds) > self.TRAN_LO_TEP
             try:
                 cs = self.history.ghi_tep(
                     # KHÔNG truyền `loai=`: tham số ấy là **kiểu hiện vật** trong kho
@@ -578,9 +603,18 @@ class Agent:
                     # thị phụ thuộc. Để trống thì `doan_loai()` đoán đúng theo đuôi tệp.
                     author="human", paths=ds,
                     summary=f"anh sửa {ten} bên ngoài EIDE",
+                    # Lô quá lớn: KHÔNG đăng ký từng tệp vào kho và không đánh dấu hạ
+                    # nguồn. Đó là phần tốn thời gian nhất, và nó tuyến tính theo số tệp
+                    # (đo được §DEV-377). Thiệt hại có chủ ý, và nói ra ngay trong `why`.
+                    dang_ky_kho=not qua_lon,
                     explain={
                         "summary": f"anh sửa {ten} bên ngoài EIDE",
-                        "why": "Thay đổi tới từ một trình soạn khác, không qua giao diện.",
+                        "why": ("Thay đổi tới từ một trình soạn khác, không qua giao diện."
+                                if not qua_lon else
+                                f"Thay đổi tới từ bên ngoài, và lô này có {len(ds)} tệp — "
+                                f"quá trần {self.TRAN_LO_TEP}. Nội dung đã vào git nên hoàn "
+                                "tác vẫn chạy, NHƯNG từng tệp không được đăng ký vào kho "
+                                "và hạ nguồn của chúng KHÔNG được đánh dấu lỗi thời."),
                         "sources": [{"kind": "external", "ref": r, "tier": "NGUOI"}
                                     for r in ds],
                         "diff_prev": "xem diff của changeset",
@@ -647,6 +681,26 @@ class Agent:
             stale=[{"id": i} for _, c in da_ghi for i in c.stale_marked],
             vua_ghi={"changeset": cuoi.id, "tom_tat": cuoi.explain.get("summary", ""),
                      "session": None, "hoan_tac_duoc": bool(cuoi.reversible)}))
+
+    def _ban_eide_biet_nhieu(self, rels: list[str]) -> dict[str, str]:
+        """Bản EIDE biết của CẢ MỘT LÔ — một lần gọi git (§DEV-377).
+
+        Tệp vắng mặt trong dict nghĩa là **git không có nó ở HEAD**, không phải "nội dung
+        rỗng". Hai thứ ấy dẫn tới hai quyết định khác nhau: cái thứ nhất là tệp mới (hoặc
+        dự án không git), cái thứ hai là một tệp đã có và đang trống.
+        """
+        if not rels or not self.history.git_san:
+            return {}
+        try:
+            sha = self.history.vcs.sha_hien_tai()
+            if not sha:
+                return {}
+            return self.history.vcs.noi_dung_nhieu(sha, sorted(set(rels)))
+        except Exception:                                          # noqa: BLE001
+            # Đọc cả lô không được thì KHÔNG rơi về đọc từng tệp: cái giá của đường chậm
+            # là thứ gói này vừa bỏ đi, và một đường lui lặng lẽ chậm 115× là một đường
+            # không ai đo lại.
+            return {}
 
     def _ban_eide_biet(self, rel: str) -> str | None:
         """Nội dung tệp theo bản EIDE ghi nhận gần nhất — blob của changeset cuối chạm nó.

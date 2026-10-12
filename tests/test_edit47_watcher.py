@@ -576,6 +576,152 @@ def test_SUA_va_XOA_trong_cung_mot_lo_la_HAI_changeset(phien, du_an):
     assert "sửa main.c" in tb and "XOÁ con.c" in tb, tb
 
 
+# ===================================================== lô lớn: tốc độ (§DEV-377)
+def test_doc_ban_cu_CA_LO_bang_MOT_lan_goi_git(phien, du_an):
+    """`noi_dung_tai` gọi `git show` một lần cho MỖI tệp, mỗi lần một tiến trình con —
+    ~13 ms/tệp, nên một lô 1 000 tệp tốn 13 giây **chỉ để đọc bản cũ**, trên thread của
+    watcher. `git cat-file --batch` đọc cả lô trong một tiến trình.
+
+    Đo bằng cách ĐẾM TIẾN TRÌNH, không bằng đồng hồ: một phép đo theo thời gian trên máy
+    người khác sẽ đỏ vì máy chậm chứ không vì mã sai.
+    """
+    a, core, out = phien()
+    ds = [f"t{i:03d}.c" for i in range(30)]
+    for t in ds:
+        (du_an / t).write_text(f"// {t}\n", "utf-8")
+    a._watcher_emit = out.append
+    a._tep_doi_ngoai_eide(ds)                 # đưa cả 30 tệp vào git
+
+    dem = {"n": 0}
+    that = a.history.vcs._git
+
+    def dem_git(*args, **kw):
+        dem["n"] += 1
+        return that(*args, **kw)
+
+    a.history.vcs._git = dem_git
+    biet = a._ban_eide_biet_nhieu(ds)
+    assert len(biet) == 30, "phải đọc được bản cũ của cả 30 tệp"
+    assert dem["n"] <= 2, f"{dem['n']} lần gọi git cho 30 tệp — phải là MỘT lô"
+
+    # Tệp KHÔNG có trong commit nằm **xen giữa** lô: nó phải vắng mặt trong kết quả, và
+    # những tệp sau nó vẫn phải đọc đúng. Git trả `<xin> missing` không kèm nội dung, nên
+    # đọc nhầm một dòng là lệch toàn bộ phần còn lại — mỗi tệp nhận nội dung của tệp khác,
+    # và hoàn tác sẽ ghi bản của tệp này lên tệp kia.
+    xen = [ds[0], "khong-he-co.c", ds[1], "cung-khong-co.c", ds[2]]
+    b2 = a._ban_eide_biet_nhieu(xen)
+    assert set(b2) == {ds[0], ds[1], ds[2]}, set(b2)
+    for t in (ds[0], ds[1], ds[2]):
+        assert b2[t] == f"// {t}\n", (t, b2[t])
+
+
+def test_git_add_CA_LO_mot_lan(phien, du_an):
+    """`vcs.commit` thêm từng tệp một: 100 tệp = 100 tiến trình con, đo được 0,87 s **chỉ
+    riêng phần add**. Một lần gọi cho cả lô là 0,01 s.
+
+    Đếm tiến trình, không đo đồng hồ — xem lý do ở ca trên.
+    """
+    a, core, out = phien()
+    ds = [f"g{i:03d}.c" for i in range(30)]
+    for t in ds:
+        (du_an / t).write_text(f"// {t}\n", "utf-8")
+    a._watcher_emit = out.append
+
+    dem = {"n": 0}
+    that = a.history.vcs._git
+
+    def dem_git(*args, **kw):
+        dem["n"] += 1
+        return that(*args, **kw)
+
+    a.history.vcs._git = dem_git
+    a._tep_doi_ngoai_eide(ds)
+    assert [c for c in a.history.log.all() if c.by_human], "phải ghi được changeset"
+    assert dem["n"] <= 8, f"{dem['n']} lần gọi git cho một lô 30 tệp"
+
+
+def test_chi_muc_NHE_khong_giai_ma_canonical(phien, du_an):
+    """`store.list()` giải mã đầy đủ `canonical`/`explain` của từng hàng — bốn lần
+    `json.loads` mỗi hàng. Đồ thị phụ thuộc chỉ cần `id`/`type`/`deps`.
+
+    Đo được trên lô 400 tệp: `danh_dau_stale` tốn 50,8 giây, trong đó **37,3 giây nằm
+    trong `json.decoder`**.
+    """
+    a, core, out = phien()
+    a.store.apply(artefact_id="FR-01", type="req", op="create", author="agent:run-1",
+                  canonical={"text": "x" * 500}, explain=EX)
+    nhe = a.store.chi_muc_nhe()
+    assert nhe and set(nhe[0]) == {"id", "type", "deps"}, nhe[0]
+    assert "canonical" not in nhe[0] and "explain" not in nhe[0]
+
+
+def test_hai_duong_cho_cung_ket_qua(phien, du_an):
+    """`ha_nguon_cua_nhieu` là bản gộp lô của `ha_nguon_cua`. Hai bản PHẢI cho cùng kết
+    quả — không thì gói tối ưu này vừa đổi luật đánh dấu lỗi thời mà không ai thấy."""
+    from eide import deps
+
+    a, core, out = phien()
+    a.store.apply(artefact_id="FR-01", type="req", op="create", author="agent:run-1",
+                  canonical={"text": "a"}, explain=EX)
+    a.store.apply(artefact_id="FR-02", type="req", op="create", author="agent:run-1",
+                  canonical={"text": "b"}, explain=EX)
+    a.store.apply(artefact_id="main.c", type="code", op="create", author="agent:run-1",
+                  canonical={"path": "main.c"}, explain=EX,
+                  deps={"upstream": ["FR-01"]})
+    a.store.apply(artefact_id="build:firmware", type="build", op="create",
+                  author="agent:run-1", canonical={}, explain=EX)
+    a.store.apply(artefact_id="adr:01", type="adr", op="create", author="agent:run-1",
+                  canonical={}, explain=EX)
+    # Một hiện vật thuộc `KHONG_STALE` (bằng chứng của một thời điểm, không phải kết luận
+    # cần cập nhật) và nó KHAI dựng từ FR-01. Thiếu nó trong ca kiểm thì phép phá "bỏ qua
+    # KHONG_STALE" vẫn xanh — và lúc ấy mọi báo cáo cũ sẽ sáng đèn cảnh báo.
+    a.store.apply(artefact_id="PT-01", type="analysis", op="create",
+                  author="agent:run-1", canonical={}, explain=EX,
+                  deps={"upstream": ["FR-01"]})
+
+    ids = ["FR-01", "FR-02", "main.c", "build:firmware", "khong-co"]
+    lo = deps.ha_nguon_cua_nhieu(a.store, ids)
+    for i in ids:
+        assert sorted(lo[i]) == sorted(deps.ha_nguon_cua(a.store, i)), i
+    # Và luật "lời khai thắng chuỗi mặc định" vẫn đứng: `main.c` khai dựng từ FR-01, nên
+    # sửa FR-02 KHÔNG làm nó lỗi thời.
+    assert "main.c" in lo["FR-01"] and "main.c" not in lo["FR-02"]
+    assert "PT-01" not in lo["FR-01"], \
+        "`analysis` là bằng chứng của một thời điểm — nó không bao giờ lỗi thời"
+
+
+def test_LO_QUA_TRAN_van_ghi_nhung_NOI_RA_da_bo_gi(phien, du_an, monkeypatch):
+    """Quá trần thì vẫn ghi — im lặng là tệ hơn — nhưng bỏ phần đăng ký kho, và **nói ra**
+    là đã bỏ. Một changeset trông bình thường mà hạ nguồn không được đánh dấu là một cái
+    bẫy đặt cho chính mình ba tháng sau."""
+    a, core, out = phien()
+    monkeypatch.setattr(type(a), "TRAN_LO_TEP", 3)
+    ds = [f"t{i}.c" for i in range(5)]
+    for t in ds:
+        (du_an / t).write_text(f"// {t}\n", "utf-8")
+    a._watcher_emit = out.append
+    a._tep_doi_ngoai_eide(ds)
+
+    cs = [c for c in a.history.log.all() if c.by_human][-1]
+    assert len(cs.touches) == 5, "changeset vẫn phải KHAI đủ năm tệp"
+    assert "quá trần 3" in cs.explain["why"]
+    assert "KHÔNG được đánh dấu" in cs.explain["why"]
+    assert all(a.store.get(t) is None for t in ds), "đúng là đã bỏ phần đăng ký kho"
+    # Và vẫn hoàn tác được: nội dung nằm trong git.
+    assert cs.reversible
+
+
+def test_LO_TRONG_TRAN_van_dang_ky_kho_day_du(phien, du_an):
+    """Trần là trần, không phải một cái cớ để bỏ việc ở mọi lô."""
+    a, core, out = phien()
+    ds = ["x1.c", "x2.c"]
+    for t in ds:
+        (du_an / t).write_text(f"// {t}\n", "utf-8")
+    a._watcher_emit = out.append
+    a._tep_doi_ngoai_eide(ds)
+    assert all(a.store.get(t) is not None for t in ds)
+
+
 def test_tep_EIDE_CHUA_TUNG_BIET_bi_xoa_thi_khong_ghi_gi(phien, du_an):
     """Một tệp tạm do trình dịch sinh ra rồi tự xoá không phải việc của ai — và sổ đầy
     những dòng không nói gì là cách nhanh nhất làm người ngừng đọc sổ."""

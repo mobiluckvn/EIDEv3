@@ -536,6 +536,21 @@ class Store:
         args.append(limit)
         return [_row_to_artefact(r) for r in self._db.execute(q, args)]
 
+    def chi_muc_nhe(self, *, limit: int = 20000) -> list[dict[str, Any]]:
+        """Chỉ mục NHẸ: `id` · `type` · `deps` — không giải mã `canonical`/`explain`.
+
+        EIDE-EDIT-47 §DEV-377. Đồ thị phụ thuộc chỉ cần ba trường ấy, nhưng `list()` trả
+        về hiện vật ĐẦY ĐỦ, tức bốn lần `json.loads` cho mỗi hàng. Đo được 12/10/2026 trên
+        một lô 400 tệp sửa cùng lúc: `danh_dau_stale` tốn **50,8 giây**, trong đó **37,3
+        giây nằm trong `json.decoder`** — 643 200 lần giải mã JSON cho một việc chỉ cần
+        đọc tên và loại.
+        """
+        return [{"id": r["id"], "type": r["type"],
+                 "deps": json.loads(r["deps"] or "{}")}
+                for r in self._db.execute(
+                    "SELECT id, type, deps FROM artefacts WHERE deleted=0 "
+                    "ORDER BY updated_at DESC LIMIT ?", (limit,))]
+
     def counts(self) -> dict[str, int]:
         return {r["type"]: r["n"] for r in self._db.execute(
             "SELECT type, COUNT(*) n FROM artefacts WHERE deleted=0 GROUP BY type")}
