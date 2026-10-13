@@ -125,9 +125,9 @@ vòng "Không → gõ lại yêu cầu → đợi một lượt":
 | `G-SNAP` | ghi đè một bản chốt |
 | `G-TOOL` | cài thêm công cụ vào máy |
 
-### 2.3 · Mười một tab: người xem được việc, không chỉ xem chữ
+### 2.3 · Mười hai tab: người xem được việc, không chỉ xem chữ
 
-Màn hình chat chỉ là một nửa. Nửa còn lại là 11 tab, mỗi tab là hình chiếu của kho:
+Màn hình chat chỉ là một nửa. Nửa còn lại là 12 tab, mỗi tab là hình chiếu của kho:
 
 | Tab | Nội dung |
 |---|---|
@@ -141,7 +141,8 @@ Màn hình chat chỉ là một nửa. Nửa còn lại là 11 tab, mỗi tab l�
 | **A9** Mạch thật | bo đang cắm · lần nạp gần nhất kèm mã băm, đích, kết quả đọc ngược |
 | **A10** Nhật ký | sổ ghi việc — kiểm được là chưa ai sửa dòng nào |
 | **A11** Lịch sử | từng lần sửa, ai sửa, vì sao · **gỡ lại, về bản chốt, rẽ/chuyển/gộp nhánh — bấm được, không phải nhờ Agent** |
-| **A14** Dự án & Bộ nhớ | thư mục dự án · bộ nhớ dài hạn · đồng hồ đo chỗ nhớ Agent đang dùng |
+| **A14** Dự án & Bộ nhớ | thư mục dự án · bộ nhớ dài hạn · đồng hồ đo chỗ nhớ Agent đang dùng · **19 cờ tính năng bật/tắt được, mỗi cờ kèm một câu và cái giá của nó** |
+| **A15** Màn hình | thiết kế giao diện cho màn LCD của bo: hồ sơ panel · bản dựng HTML xem trước · mã C sinh ra |
 
 Giao diện **không tự nghĩ ra gì**. Mọi thứ hiện trên màn hình đều do lõi gửi sang qua đúng 17
 loại lệnh. Lõi thêm loại khối mới thì giao diện vẽ được ngay, không phải sửa mã Swift. Lõi gửi
@@ -416,6 +417,27 @@ mất mất một quyết định thì các bước sau sẽ đi sai mà không 
 Bộ nhớ dài hạn nằm trong tệp `EIDE.md` của dự án. Agent **không** được ghi đè tệp này bằng
 công cụ ghi tệp thường; phải đi qua công cụ bộ nhớ, để mỗi lần thêm luật đều có dấu.
 
+### 4.11 · Người sửa thẳng, và mọi thứ gỡ lại được
+
+Luật nền số 3 của dự án là *"mọi thay đổi gỡ lại được, **kể cả do người gõ**"*. Đợt
+EIDE-EDIT-47 (16 gói, 12–13/10/2026) làm cho câu ấy đúng ở cả bốn chỗ người thật sự sửa:
+
+| Người làm gì | EIDE làm gì |
+|---|---|
+| Bấm vào một ô trong bảng và sửa | Một changeset của **anh**, hoàn tác được; hạ nguồn sáng đèn "cần xem lại"; Agent bị buộc nhắc tới ở lượt sau |
+| Sửa **sâu** (ô thứ hai của một bảng con, một trường trong mảng) | `patch` theo đường dẫn lồng, áp **nguyên tử** — không có "lưu một nửa"; 15/33 loại hiện vật |
+| Mở tệp soạn trong app, hoặc sửa bằng **VS Code** | Cả hai thành changeset; lần sửa ngoài app phá khoá mềm của Agent và vào `EIDE.md` để nó biết |
+| **Xoá** tệp hay cả thư mục bên ngoài | Một changeset cho cả lô — một cú bấm Hoàn tác trả cả thư mục về đĩa **và** hiện vật về kiểm kê |
+
+Năm tầng lùi: một thay đổi · một lượt ngồi sửa của anh · một lượt của Agent · một bản ưng ý ·
+mốc ngầm trước lần sửa đầu. Thẻ cổng có **diff hai cột** và anh sửa được cột phải trước khi
+bấm Duyệt — phần anh sửa là một changeset **riêng**, nên hoàn tác nó thì về đúng bản của
+Agent. Và khi thấy một hiện vật lỗi thời, anh có hai cú bấm: *Cập nhật hạ nguồn* (lõi soạn
+đơn công việc từ đồ thị phụ thuộc) hoặc *Chấp nhận STALE* (0 token, phải nêu lý do).
+
+Mọi cơ chế ở trên đã có trong lõi từ các bước G2–G5; đợt này phần lớn là **nối đường từ
+chúng lên giao diện** — §8 kể mười hai chỗ đứt tìm ra như thế, và bảy thứ cố ý chưa làm.
+
 ---
 
 ## 5 · Cách thử: bốn mức
@@ -434,7 +456,7 @@ nói được sản phẩm có dùng được không — nó chỉ nói mã làm
 Phần giao diện mới có bộ kiểm từ 02/10/2026:
 
 ```bash
-cd ui/EIDEApp && swift test        # 89 ca
+cd ui/EIDEApp && swift test        # 102 ca
 ```
 
 Trước đó **cả giao diện chưa từng có một ca kiểm nào** — `Package.swift` chỉ khai một mục tiêu
@@ -542,8 +564,8 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 | 76 ca kiểm theo 19 nhóm việc, chạy qua app thật | **68/68 ca đo được đạt** · 8 ca còn lại mang nhãn riêng | [`BAO-CAO-TONG.md`](docs/review-v3/test/BAO-CAO-TONG.md) · [bảng Excel](docs/review-v3/test/Usecase_Test_KET_QUA_29-09-2026.xlsx) |
 | Quét giao diện | **124/124 ô** trên 11 tab · tab thứ 12 (Màn hình, A15) **chưa quét** | [`ket-qua-giao-dien/`](docs/review-v3/test/ket-qua-giao-dien/) |
 | Ca đơn vị Python | **2 461** | `pytest -q` |
-| Ca đơn vị giao diện | **102** · 13 trong 40 ca đỏ khi trả lại mã cũ (đo 02/10/2026) | `cd ui/EIDEApp && swift test` |
-| Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa/XOÁ NGOÀI app · bật cờ · cập nhật hạ nguồn, qua app thật | **74/74** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
+| Ca đơn vị giao diện | **102** · đo độ nhạy 02/10/2026 trên 40 ca lúc ấy: 13 ca đỏ khi trả lại mã cũ · 59 ca của EDIT-47 thì **phá lại đỏ hết** | `cd ui/EIDEApp && swift test` |
+| Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa/XOÁ NGOÀI app · bật cờ · cập nhật hạ nguồn, qua app thật | **66/66** (cờ tắt) · **74/74** (cờ bật) | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
 | Loại hiện vật người sửa được thẳng trên giao diện | **15/33** | [`dem_sua_duoc.py`](tools/dem_sua_duoc.py) |
 | Hoàn tác theo tầng, đọc từ sổ cái | **5/5 ok** · 4 tầng | [`do_edit47.py`](tools/do_edit47.py) |
 | Hạ nguồn bị đánh STALE rồi KHÔNG ai cập nhật | **8 lần** (5 trong số đó ở dự án của chính bộ đo) · trung vị cập nhật **8,5 phút** (5 mẫu) | [`do_edit47.py`](tools/do_edit47.py) |
@@ -1344,48 +1366,50 @@ Nói ra để người đọc không phải tự tìm:
   mở**: bản dựng ra thì sửa trên gốc, phép đo thì không ai được gõ đè, hình chiếu thì sửa
   ở chỗ nó chiếu từ đó. Còn thiếu: cây khối A5.9 chưa sửa được, nút thêm/xoá dòng chưa
   vẽ, kéo–thả trên canvas để sau.
-- **Cơ chế STALE chạy đúng, mà 7 lần hạ nguồn bị đánh dấu rồi KHÔNG ai cập nhật** (đo
-  12/10/2026 bằng [`do_edit47.py`](tools/do_edit47.py) trên sổ cái 39 dự án; khi có ai cập
-  nhật thì trung vị 41,8 phút — chỉ 4 mẫu). Chỗ thiếu là đường đi của người, và DEV-373 đã
-  vẽ nó: tab Lịch sử nay có **hai cú bấm** trên từng hiện vật lỗi thời — *Cập nhật hạ nguồn*
-  (lời nhờ do LÕI soạn từ đồ thị phụ thuộc, có nói rõ công cụ dựng lại từng loại; tốn một
-  lượt mô hình và tự khai là tốn) và *Chấp nhận STALE* (0 token, bắt buộc nêu lý do, là một
-  changeset hoàn tác được — hoàn tác thì cờ bật lại nguyên văn lý do cũ). Chưa đo được chỉ
-  số 3 **sau** khi có nút: cần một phiên thật có người bấm. Cùng gói DEV-372: sổ cái nay ghi **kết quả** hoàn tác kèm tầng (trước đó §7
-  đòi đo một thứ sổ không ghi, nên "lùi thất bại" trông y hệt "không ai bấm"), và bốn tầng
-  lùi đều có bản ghi **ok** trong một phiên app thật.
-- **Bật một cờ tính năng nay bấm được trong app** (DEV-371, 12/10/2026): tab A14 có mười
-  chín công tắc, mỗi cái kèm một câu giải thích và cái giá nếu cái giá đo được; chúng ghi
-  vào `.eide/settings.json` của DỰ ÁN. Cùng gói: hai công cụ `build.make` và `py.run` để
-  Agent tự chạy đường dựng của dự án (có cửa duyệt G-OPS, trần 900 s, đầu ra 64 KB), và
-  thẻ cổng trùng việc được gộp — gọi lại cùng một việc khi thẻ cũ còn treo thì nhận lại
-  đúng thẻ ấy, không đẻ thẻ mới.
-- **Sửa tệp bằng VS Code thì EIDE đã biết** (DEV-369, 12/10/2026, sau cờ
-  `EIDE_FEATURE_WATCHER`): một thread quét `mtime` mỗi 2 giây, gộp sự kiện 1,5 giây, và lần
-  lưu ấy thành changeset của người — hoàn tác được, phá soft-lock, đánh dấu hạ nguồn, có
-  trong `EIDE.md` để Agent biết ở lượt sau. Hai chỗ **chưa làm, nói ra chứ không giấu**:
-  một **thư mục rỗng** không trở lại được sau hoàn tác (git không theo dõi thư mục
-  rỗng). `watchdog` thì **đo rồi và không cần**: một nhịp quét `mtime` tốn 6,5 ms trên cây
-  500 tệp và 128 ms trên cây 10 000 tệp — 0,3–6,4 % một lõi ở nhịp 2 giây, nên không đáng
-  thêm một phụ thuộc ngoài vào một tính năng an toàn dữ liệu. Còn **tệp bị xoá bên ngoài** thì
-  DEV-375 đã vá: nó thành changeset hoàn tác được, trả cả tệp về đĩa lẫn hiện vật về kiểm
-  kê — và nói thẳng `KHÔNG hoàn tác được` ở dự án không có git, thay vì hứa một đường lui
-  không có thật. Và khi người bấm *Cập nhật hạ nguồn*, khoảng thời gian từ lúc họ lưu tới
-  lúc hạ nguồn sạch là **56,5 giây** trên một phiên thật (DEV-379) — mốc cũ là trung vị
-  **41,8 phút**, và 7 lần không ai cập nhật. Xoá **cả thư mục** là MỘT changeset (DEV-376): một cú bấm Delete là một
-  việc, nên một cú bấm Hoàn tác trả cả thư mục về. Và đo lô lớn tìm ra **hai chỗ O(N²)
-  trong lõi** có từ bước G5 (DEV-377): đọc bản cũ bằng hai tiến trình git mỗi tệp, và
-  `danh_dau_stale` giải mã 643 200 JSON cho một lô 400 tệp. Một lô 500 tệp từ **101 giây
-  xuống 1,0 giây**; 2 000 tệp từ *quá 10 phút* xuống 8,1 giây.
+- **EIDE-EDIT-47 — "người sửa trực tiếp và hoàn tác" — xong 16 gói** (DEV-365…380, ngày
+  12–13/10/2026; tài liệu
+  [`EIDE-EDIT-47`](docs/md/EIDE-EDIT-47_Nguoi_sua_truc_tiep_va_Hoan_tac.md) đặt ra 7 gói,
+  tám gói sau sinh ra từ chính phép đo của bảy gói đầu). Người nay: lùi được **năm tầng**
+  (một thay đổi · một lượt ngồi sửa · một lượt của Agent · một bản ưng ý · mốc ngầm) · xem
+  **diff hai cột** ở ba chỗ trước kia chỉ *nói* "xem diff" · **sửa sâu** vào hiện vật
+  (15/33 loại) · **soạn tệp trong app** với khoá mềm hai chiều · **duyệt kèm bản đã sửa** ·
+  **bật/tắt 19 cờ** từ tab A14 · và sửa/xoá tệp **bên ngoài app** vẫn thành changeset hoàn
+  tác được. Mười hai lỗi *có sẵn từ trước* lôi ra trong đợt này — mỗi lỗi một dòng trong
+  [`EIDE-DEV-LOG.md`](docs/md/EIDE-DEV-LOG.md) — trong đó bốn chỗ đáng nhớ: `surface.lock`
+  lõi gửi từ bước G2 mà app có đúng một dòng `case …: break` nên băng *"tác tử đang sửa tệp
+  này"* **chưa bao giờ hiện**; `stale.accept` có từ G5 nhưng **chỉ Agent gọi được**, nên
+  người phải nhờ mô hình làm một việc kế toán; một cái **trần 500** cắt âm thầm trong đồ thị
+  phụ thuộc; và sổ cái **không ghi kết quả** hoàn tác, trong khi §7 đòi đo đúng thứ ấy.
+- **Hạ nguồn lỗi thời: từ "không ai cập nhật" sang một cú bấm.** Đo 12/10/2026 bằng
+  [`do_edit47.py`](tools/do_edit47.py) trên sổ cái 39 dự án: **8 lần** hiện vật hạ nguồn bị
+  đánh dấu STALE rồi không ai cập nhật (5 trong số đó ở dự án của chính bộ đo), và khi có ai
+  cập nhật thì trung vị **8,5 phút**. Tab Lịch sử nay có **hai cú bấm** trên từng hiện vật
+  lỗi thời: *Cập nhật hạ nguồn* (lời nhờ do **lõi** soạn từ đồ thị phụ thuộc, nói rõ công cụ
+  dựng lại từng loại; tốn một lượt mô hình và **tự khai** là tốn) và *Chấp nhận STALE* (0
+  token, bắt buộc nêu lý do, là một changeset hoàn tác được — hoàn tác thì cờ bật lại
+  **nguyên văn** lý do cũ). Trên một phiên thật có người bấm
+  ([`phien_nguoi_bam.py`](tools/phien_nguoi_bam.py), DEV-379), khoảng từ lúc lưu tới lúc hạ
+  nguồn sạch là **56,5 giây** — mốc cũ là trung vị **41,8 phút**.
 - **Một cái trần 500 cắt âm thầm trong đồ thị phụ thuộc** — tìm ra lúc đi đo tốc độ, và nó
   là lỗi đúng-sai chứ không phải lỗi chậm (DEV-378): `ha_nguon_cua` đọc hạ nguồn qua
   `store.list(loai, limit=500)`, nên dự án có 700 hiện vật cùng loại thì **200 hiện vật
   cuối không bao giờ bị đánh dấu lỗi thời**, im lặng, và `CX06` vẫn xanh vì kho mẫu nhỏ.
   Nay chỉ mục của đồ thị phụ thuộc **không có `LIMIT` nào**, và có ca kiểm đọc chính câu
-  SQL để canh luật ấy. Sáu gói đầu của
-  [`EIDE-EDIT-47`](docs/md/EIDE-EDIT-47_Nguoi_sua_truc_tiep_va_Hoan_tac.md) — gỡ lại, khối
-  `diff`, sửa sâu, duyệt có sửa, trình soạn tệp trong app, bắt sửa ngoài app — cùng gói
-  thứ bảy ở trên, **xong cả bảy** ngày 12/10/2026.
+  SQL để canh luật ấy. Cùng đợt đo ấy vá **hai chỗ O(N²)** có từ bước G5 (DEV-377): một lô
+  500 tệp sửa cùng lúc từ **101 giây xuống 1,0 giây**, 2 000 tệp từ *quá 10 phút* xuống
+  8,1 giây.
+- **Bảy thứ của EDIT-47 cố ý KHÔNG làm, mỗi thứ có lý do đứng sau** (§8 của tài liệu):
+  `watchdog` không cắm (**đo rồi**: một nhịp quét `mtime` tốn 0,3–6,4 % một lõi) · **thư
+  mục rỗng** không trở lại được sau hoàn tác (git không theo dõi thư mục rỗng; thư mục *còn
+  tệp* thì trả đủ) · `ha_nguon_cua_nhieu` còn O(N²) trong bộ nhớ (đã đo để biết **khi nào**
+  cần: 20 000 tệp một lô) · app gửi `amended.content` chứ chưa gửi `amended.patch` (lõi có
+  đường và có ca kiểm; ca dùng nó hẹp) · trình soạn tệp **không** tô màu cú pháp và không có
+  số dòng, thẻ xung đột hiện ở Console chứ không trong trình soạn (cả ba cần `NSTextView`
+  bọc — EIDE không định thay VS Code) · **bố cục** thì ca kiểm không đo được, chỉ đo bằng
+  mắt hoặc ảnh chụp E2E · và **chỉ số 2 của §7 chưa trả lời được câu thật**: *người thật* có
+  chọn bấm thay vì gõ không. Phiên DEV-379 chứng minh **đường đi của cú bấm dẫn tới việc**;
+  câu kia chỉ một phiên có người ngồi trước màn hình trả lời được, và không bộ đo tự động
+  nào trả lời hộ.
 - **Mã phiên sửa do giao diện cấp**, đếm trong một lần mở app — hai lần mở có thể cấp trùng
   mã, nên một danh sách changeset dài qua nhiều phiên có thể gom nhầm hai lượt sửa cùng tên.
 - **Bộ vẽ sơ đồ còn yếu với sơ đồ dạng chuỗi dài.**
