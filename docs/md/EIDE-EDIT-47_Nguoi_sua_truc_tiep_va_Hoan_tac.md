@@ -372,3 +372,13 @@ Thêm bộ ca CX mới `tests/kich_ban/cx_edit47_*.py` theo mẫu CX05/CX08: m�
 - **`patch` cho phép sửa sâu, nên cũng cho phép làm hỏng cấu trúc** (xoá `assert` cuối cùng của một tiêu chí). Lõi kiểm bất biến của từng `type` sau `ap_patch` (tiêu chí ≥ 1 assert; `ui_screen` phần tử trong biên panel bằng `screen.check`); vi phạm → từ chối cả patch (I9).
 - **Duyệt có sửa làm mờ ranh giới "ai viết dòng này".** Vì thế phần người sửa là changeset riêng `author=human` (DEV-370), không gộp vào changeset của Agent.
 - **Không mở cổng mạng, không thêm tiến trình ngoài** cho bất kỳ gói nào — watcher chạy trong tiến trình lõi.
+
+### Ba quyết định sau khi ĐÃ ĐO (ghi lại 13/10/2026, khi mười lăm gói đã xong)
+
+- **`watchdog` KHÔNG cắm.** §DEV-369 để ngỏ chuyện này vì *"watchdog nhanh hơn và không tốn CPU khi im"*. Đo (§DEV-378): một nhịp quét `mtime` tốn **6,5 ms** trên cây 500 tệp · **30 ms** trên 2 000 · **128 ms** trên 10 000 — tức **0,3–6,4 % một lõi** ở nhịp 2 giây. Không đáng thêm một phụ thuộc ngoài vào một tính năng *an toàn dữ liệu*: thứ tắt lặng lẽ khi thiếu thư viện là thứ không ai dám tin. Chỗ thật sự đắt là `rglob` đi vào `.git/`+`node_modules/`, và đã vá bằng `os.walk` cắt nhánh (124,8 ms → **1,9 ms**).
+- **Thư mục RỖNG không trở lại được sau hoàn tác — cố ý.** Git không theo dõi thư mục rỗng, và watcher chỉ chụp *tệp*. Nên một thư mục bị xoá **mà trong nó còn tệp** thì hoàn tác trả đủ (tệp về, thư mục mẹ được dựng lại theo); chỉ một thư mục **rỗng ngay lúc bị xoá** là mất. Làm được thì phải chụp thêm cả cây thư mục mỗi nhịp và thêm một `forward.kind` mới, để đổi lấy một ca hiếm và gần như không có nội dung. Nói ra thay vì sửa.
+- **`ha_nguon_cua_nhieu` còn O(N²) trong bộ nhớ — chưa cần.** Sau §DEV-377/378 thì 2 000 tệp một lô mất 8 giây, 500 tệp mất 1 giây. Đã đo để biết **khi nào** cần sửa (20 000 tệp một lô), chứ không sửa theo cảm giác.
+
+### Hai chỉ số của §7 và câu chúng KHÔNG trả lời được
+
+§DEV-379 chạy một phiên "người bấm thay vì gõ" và cho chỉ số 3 con số *sau*: **56,5 giây** từ lúc người lưu tới lúc hạ nguồn sạch, so với trung vị **41,8 phút** trước đó. Nhưng "người" trong phiên ấy là một kịch bản đi qua kênh kiểm thử của app. Nó chứng minh **đường đi của cú bấm dẫn tới việc**; nó không trả lời được *"người thật có chọn bấm thay vì gõ không"* — và không bộ đo nào tự động trả lời được câu ấy.
