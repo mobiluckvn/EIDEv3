@@ -46,21 +46,22 @@ struct DiffView: View {
             if hunks.isEmpty {
                 Label("Hai bản giống hệt nhau.", systemImage: "equal.circle")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
-            } else {
+            } else if choPhepSua {
+                // Cột phải là một ô soạn THẬT, nên nó tự cuộn: `TextEditor` giữ vị trí
+                // cuộn của riêng nó và SwiftUI thuần không đọc được vị trí ấy. Nên chỉ ca
+                // "hai cột đều để đọc" cuộn đồng bộ được — nói ra, thay vì để người tưởng
+                // cuộn hỏng ở đúng một trong hai ca.
                 HStack(alignment: .top, spacing: 1) {
                     cot(nhan: d["trai"]?["nhan"]?.stringValue ?? "Bản A",
                         dong: trai, ben: .trai)
                     Divider()
-                    if choPhepSua {
-                        cotSuaDuoc
-                    } else {
-                        cot(nhan: d["phai"]?["nhan"]?.stringValue ?? "Bản B",
-                            dong: phai, ben: .phai)
-                    }
+                    cotSuaDuoc
                 }
                 .frame(maxHeight: trongTam ? .infinity : 340)
                 .overlay(RoundedRectangle(cornerRadius: 5)
                     .strokeBorder(Color.secondary.opacity(0.25)))
+            } else {
+                haiCotCuonCungNhau
             }
             canhBaoCat
         }
@@ -112,34 +113,87 @@ struct DiffView: View {
 
     private enum Ben { case trai, phai }
 
+    /// Hai cột trong **MỘT** khung cuộn dọc — EIDE-EDIT-47 §DEV-380.
+    ///
+    /// Bản trước cho mỗi cột một `ScrollView` riêng, nên cuộn bên trái thì bên phải đứng
+    /// im: đọc một diff 200 dòng thành việc canh hai thanh cuộn bằng tay, và đó đúng là
+    /// lúc người ta bỏ không đọc nữa. Đặc tả có nêu "cuộn đồng bộ hai cột".
+    ///
+    /// Cách làm: **một** khung cuộn dọc bọc cả hai cột, nên chúng cuộn cùng nhau *vì cấu
+    /// trúc* — không phải vì một phép đồng bộ hai chiều phải tự giữ cho khỏi lệch. Cuộn
+    /// NGANG thì vẫn riêng từng cột, có chủ ý: hai bản thường dài dòng khác nhau, và ép
+    /// chúng cuộn ngang cùng nhau là ép người đọc kéo cột trái để nhìn cột phải.
+    ///
+    /// Nhãn cột nằm NGOÀI khung cuộn: cuộn xuống 50 dòng mà không biết mình đang đọc cột
+    /// nào thì hai cột cạnh nhau cũng chẳng để làm gì.
+    private var haiCotCuonCungNhau: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 1) {
+                nhanCot(d["trai"]?["nhan"]?.stringValue ?? "Bản A")
+                Divider()
+                nhanCot(d["phai"]?["nhan"]?.stringValue ?? "Bản B")
+            }
+            ScrollView(.vertical) {
+                HStack(alignment: .top, spacing: 1) {
+                    dongCua(trai, ben: .trai)
+                    Divider()
+                    dongCua(phai, ben: .phai)
+                }
+            }
+        }
+        .frame(maxHeight: trongTam ? .infinity : 340)
+        .overlay(RoundedRectangle(cornerRadius: 5)
+            .strokeBorder(Color.secondary.opacity(0.25)))
+    }
+
+    private func nhanCot(_ nhan: String) -> some View {
+        Text(nhan)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6).padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.08))
+    }
+
+    /// Phần DÒNG của một cột, không có khung cuộn dọc của riêng nó.
+    private func dongCua(_ dong: [String], ben: Ben) -> some View {
+        ScrollView(.horizontal) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(dong.enumerated()), id: \.offset) { i, l in
+                    hangDong(i: i, l: l, ben: ben)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func hangDong(i: Int, l: String, ben: Ben) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text("\(i + 1)")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+                .frame(width: 30, alignment: .trailing)
+            Text(l.isEmpty ? " " : l)
+                .font(.system(size: 11, design: .monospaced))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(mau(dong: i, ben: ben))
+    }
+
+    /// Một cột ĐỦ (nhãn + dòng), có khung cuộn dọc riêng. Chỉ còn dùng cho ca cột phải
+    /// là ô soạn — ca ấy không cuộn đồng bộ được, xem `haiCotCuonCungNhau`.
+    ///
+    /// Dựng từ `nhanCot` + `dongCua`, KHÔNG vẽ lại dòng diff lần thứ hai: hai bản vẽ cùng
+    /// một dòng sẽ lệch nhau ở màu hoặc ở số dòng, và lệch ở đây nghĩa là người đọc hai
+    /// diff khác nhau tuỳ chỗ nó hiện ra.
     private func cot(nhan: String, dong: [String], ben: Ben) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(nhan)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6).padding(.vertical, 3)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.08))
-            ScrollView([.vertical, .horizontal]) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(dong.enumerated()), id: \.offset) { i, l in
-                        HStack(alignment: .top, spacing: 6) {
-                            Text("\(i + 1)")
-                                .font(.system(size: 9, design: .monospaced))
-                                .foregroundStyle(.tertiary)
-                                .frame(width: 30, alignment: .trailing)
-                            Text(l.isEmpty ? " " : l)
-                                .font(.system(size: 11, design: .monospaced))
-                                .textSelection(.enabled)
-                                .fixedSize(horizontal: true, vertical: false)
-                            Spacer(minLength: 0)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(mau(dong: i, ben: ben))
-                    }
-                }
-                .padding(.vertical, 2)
-            }
+            nhanCot(nhan)
+            ScrollView(.vertical) { dongCua(dong, ben: ben) }
         }
         .frame(maxWidth: .infinity)
     }

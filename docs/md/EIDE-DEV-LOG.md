@@ -11739,3 +11739,103 @@ lời gọi mô hình, vì tôi đọc `tokens_in`/`tokens_out` — hai khoá **
   — nó chỉ chứng minh đường đi tồn tại và dẫn tới việc.
 * **Một mẫu là một mẫu.** Ba lần chạy cho 62,4 · 60,4 · 56,5 giây, đủ để nói "khoảng một
   phút", không đủ để nói một phân phối.
+
+## [DEV-380] Trả nợ giao diện: bốn chỗ lõi đã có mà người không chạm tới được
+
+Bốn món nợ đọng từ các gói trước, và cả bốn cùng một hình dạng — thứ dự án này gặp đi gặp
+lại: **cơ chế có sẵn, đường lên giao diện đứt**.
+
+### Cuộn đồng bộ hai cột diff (nợ từ DEV-366)
+
+Mỗi cột có một `ScrollView` riêng, nên cuộn bên trái thì bên phải đứng im: đọc một diff 200
+dòng thành việc canh hai thanh cuộn bằng tay, và đó đúng là lúc người ta bỏ không đọc nữa.
+
+Nay **một** khung cuộn dọc bọc cả hai cột, nên chúng cuộn cùng nhau *vì cấu trúc* — không
+phải vì một phép đồng bộ hai chiều phải tự giữ cho khỏi lệch. Hai quyết định đi kèm: cuộn
+**ngang** vẫn riêng từng cột (hai bản dài dòng khác nhau; ép cuộn ngang cùng nhau là ép
+người kéo cột trái để nhìn cột phải), và **nhãn cột nằm ngoài khung cuộn** (cuộn 50 dòng mà
+không biết đang đọc cột nào thì hai cột cạnh nhau cũng chẳng để làm gì).
+
+Ca cột phải là **ô soạn** thì không đồng bộ được: `TextEditor` giữ vị trí cuộn của riêng nó
+và SwiftUI thuần không đọc được vị trí ấy. Nói ra, thay vì để người tưởng cuộn hỏng ở đúng
+một trong hai ca.
+
+Và `cot(...)` cũ nay dựng từ cùng hai phần (`nhanCot` + `dongCua`) — **một bản vẽ dòng
+diff, không hai**: hai bản sẽ lệch nhau ở màu hoặc số dòng, và lệch ở đây nghĩa là người
+đọc hai diff khác nhau tuỳ chỗ nó hiện ra.
+
+### `diff_tom_tat` — lõi tính từ DEV-366, app chưa bao giờ vẽ
+
+Phép xem trước khôi phục nói **sẽ mất gì** bằng câu chữ, nhưng không nói mất **bao nhiêu**:
+một bản ưng ý cách hiện tại hai mươi hiện vật trông y như một bản cách một hiện vật. Lõi đã
+tính sẵn (`_diff_tom_tat_kho`) và gửi đi; không ai đọc.
+
+Nay có bảng "N hiện vật sẽ đổi", mỗi dòng: việc (*gỡ bỏ · dựng lại · quay về bản cũ*) · mã ·
+loại · số đoạn đổi/thêm/bớt. Cắt ở 12 dòng và nói còn bao nhiêu nữa.
+
+**Ca kiểm bắt được một lỗi trong chính khung tôi vừa vẽ.** Bản đầu chỉ hiện `+them −bot`.
+Nhưng một ô bị **sửa** đếm vào `doi` và để `them`/`bot` bằng 0 — nên bảng in **"+0 −0"** cho
+đúng cái ca thường gặp nhất (người đổi một trường), tức **nói "không đổi gì" về một thay
+đổi**. Ca kiểm đỏ trước khi nó lên màn hình.
+
+### Nút "Sửa phương án" trên thẻ (nợ từ DEV-370)
+
+Đặc tả đòi *"mỗi cách có nút Sửa mở FormEditor"*. A2.3 đã mang `sua_duoc` từ DEV-368 nên
+phương án **sửa được rồi**; chỗ thiếu là người đang đọc thẻ **không biết điều đó** — họ nhìn
+một câu hỏi ba lựa chọn, và chỗ sửa thì ở một tab khác.
+
+Nên `ask_user` khai một `hanh_dong` trên THẺ (cùng hợp đồng DEV-373, mở rộng từ khối sang
+thẻ): *"Sửa phương án (N cách)"* → `attend` sang tab Yêu cầu, **0 token**.
+
+Hai điều cố ý **không** làm: không dò xem lựa chọn nào trên thẻ ứng với phương án nào trong
+kho (đoán chuyện ấy từ chữ người gõ là một phép đoán, và một cái nút "Sửa cách B" mở ra
+phương án A thì tệ hơn không có nút); và không khai nút khi kho **không có** phương án chưa
+chốt (một cái nút mở ra bảng rỗng dạy người ta rằng nút trong app hay dẫn tới chỗ không có
+gì).
+
+Phía app, cú bấm mang `data.di_tab` thì **đổi tab thật** rồi mới gửi `attend` với đúng bề
+mặt người sắp nhìn. Thiếu phần ấy thì lõi ghi *"người đang xem tab Yêu cầu"* trong khi họ
+vẫn ngồi ở Console — lõi và màn hình nói hai chuyện khác nhau.
+
+### Nút "Quét lại ngay" (nợ từ DEV-369)
+
+Nhịp 2 giây đủ nhanh cho tay người, trừ một lúc: người vừa làm gì đó ngoài app (chạy một
+script sinh mã, bung một kho nén) rồi quay sang EIDE để xem nó bắt được chưa. Chờ hai giây
+trong khi nhìn một bảng không đổi là chờ mà không biết mình đang chờ cái gì.
+
+`set key="watcher.quet_lai"` → lõi quét **một** nhịp bằng mã, 0 token. Đi qua `set` chứ
+không thêm loại HumanAct thứ 14: tài liệu EDIT-47 cam kết *"13 loại HumanAct giữ nguyên"*.
+Hai ca im lặng được vá luôn: cờ `watcher` tắt thì nói *"chưa theo dõi, bật ở A14.7"*, và
+quét xong không có gì đổi thì **vẫn nói** — im lặng sau một cú bấm là thứ tệ nhất, người
+không biết nút có ăn hay không.
+
+### Đo
+
+* `tests/test_edit47_no_giao_dien.py` — 10 ca · `NoGiaoDienTests.swift` — 4 ca.
+  **Phá lại thì đỏ: 15/15.**
+* Bộ kiểm 2 451 → **2 461 xanh**. Giao diện 98 → **102 ca**. `thu_nut_lui.py` **66/66** và
+  **74/74**.
+
+Bốn phép phá LỌT ở lượt đầu, và cả bốn đều ở các ca **đọc mã Swift** — phép đo yếu nhất
+trong bộ này. Hai cách chữa, dùng cả hai:
+
+1. **Chuyển luật vào một HÀM rồi đo hàm.** Phép phá "bỏ `doi` đi" lọt mọi ca đọc mã nguồn
+   vì chữ `"doi"` vẫn còn trong tệp. Nay luật nằm trong `SeMatGiView.nhanSo` và đo ở Swift:
+   một ô sửa ra `["1 đổi"]`, có thêm/bớt ra `["2 đổi", "+3", "−1"]`, không số nào > 0 ra
+   `["cả hiện vật"]`.
+2. **Đếm trên mã ĐÃ BỎ CHÚ THÍCH.** Phép phá "giữ hàm, bỏ chỗ gọi" lọt vì tên hàm còn xuất
+   hiện trong một câu `/// … xem haiCotCuonCungNhau`. Đúng cùng cái bẫy đã sập ở
+   `_than_ma` trong §DEV-378 — **lần thứ hai trong một ngày**: một phép đo đọc văn xuôi của
+   chính mình rồi báo xanh.
+
+### Chưa làm
+
+* **Bố cục thì ca kiểm không đo được.** "Hai cột có thật sự cuộn cùng nhau trên màn hình"
+  chỉ đo được bằng mắt hoặc bằng ảnh chụp của bộ E2E. Ca kiểm ở đây canh **đường dẫn**
+  (một khung cuộn, nhãn ngoài khung, một bản vẽ dòng), không canh pixel.
+* **`amended` kèm `patch` app vẫn chỉ gửi `content`.** Lõi có đường và có ca kiểm từ
+  DEV-370. Để gửi `patch` thì thẻ cổng phải mang `sua_duoc` của hiện vật đích, và ca dùng
+  nó hẹp (cổng ghi hiện vật chỉ sinh ra ở mức tự chủ A0/A1). Chưa làm, nói ra.
+* **Trình soạn tệp vẫn không có số dòng, không tô màu cú pháp** — cố ý từ DEV-367: cần
+  `NSTextView` bọc, và EIDE không định thay VS Code.
+* **Thẻ xung đột vẫn hiện ở Console**, không hiện trong trình soạn như đặc tả.

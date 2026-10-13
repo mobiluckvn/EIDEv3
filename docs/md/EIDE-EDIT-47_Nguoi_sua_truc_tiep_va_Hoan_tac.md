@@ -379,6 +379,16 @@ Thêm bộ ca CX mới `tests/kich_ban/cx_edit47_*.py` theo mẫu CX05/CX08: m�
 - **Thư mục RỖNG không trở lại được sau hoàn tác — cố ý.** Git không theo dõi thư mục rỗng, và watcher chỉ chụp *tệp*. Nên một thư mục bị xoá **mà trong nó còn tệp** thì hoàn tác trả đủ (tệp về, thư mục mẹ được dựng lại theo); chỉ một thư mục **rỗng ngay lúc bị xoá** là mất. Làm được thì phải chụp thêm cả cây thư mục mỗi nhịp và thêm một `forward.kind` mới, để đổi lấy một ca hiếm và gần như không có nội dung. Nói ra thay vì sửa.
 - **`ha_nguon_cua_nhieu` còn O(N²) trong bộ nhớ — chưa cần.** Sau §DEV-377/378 thì 2 000 tệp một lô mất 8 giây, 500 tệp mất 1 giây. Đã đo để biết **khi nào** cần sửa (20 000 tệp một lô), chứ không sửa theo cảm giác.
 
+### Nợ giao diện: đã trả bốn, còn ba (13/10/2026)
+
+**Đã trả (§DEV-380):** cuộn đồng bộ hai cột diff · `diff_tom_tat` được vẽ thành bảng "N hiện vật sẽ đổi" · nút "Sửa phương án" trên thẻ nêu 2–4 cách (`attend` sang A2.3, 0 token) · nút "Quét lại ngay" ở A11.1 (`set`, 0 token).
+
+**Còn, và đều nói rõ vì sao:**
+
+- **Bố cục không đo được bằng ca kiểm.** "Hai cột có thật sự cuộn cùng nhau trên màn hình" chỉ đo bằng mắt hoặc ảnh chụp của bộ E2E; ca kiểm canh *đường dẫn* (một khung cuộn, nhãn ngoài khung, một bản vẽ dòng), không canh pixel.
+- **`amended` kèm `patch`: app vẫn chỉ gửi `content`.** Lõi có đường và có ca kiểm từ §DEV-370. Gửi được `patch` thì thẻ cổng phải mang `sua_duoc` của hiện vật đích, và ca dùng nó hẹp (cổng ghi hiện vật chỉ sinh ở mức tự chủ A0/A1).
+- **Trình soạn tệp không có số dòng, không tô màu cú pháp; thẻ xung đột hiện ở Console chứ không trong trình soạn.** Cả ba cần `NSTextView` bọc — xem mục đầu của §8 này.
+
 ### Hai chỉ số của §7 và câu chúng KHÔNG trả lời được
 
 §DEV-379 chạy một phiên "người bấm thay vì gõ" và cho chỉ số 3 con số *sau*: **56,5 giây** từ lúc người lưu tới lúc hạ nguồn sạch, so với trung vị **41,8 phút** trước đó. Nhưng "người" trong phiên ấy là một kịch bản đi qua kênh kiểm thử của app. Nó chứng minh **đường đi của cú bấm dẫn tới việc**; nó không trả lời được *"người thật có chọn bấm thay vì gõ không"* — và không bộ đo nào tự động trả lời được câu ấy.

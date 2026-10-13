@@ -129,8 +129,18 @@ struct NutHanhDong: View {
     }
 
     private func gui(lyDo: String) {
+        // `di_tab`: cú bấm này còn ĐỔI TAB đang xem (§DEV-380).
+        //
+        // Lõi khai `data.di_tab`, app chuyển tab — và `attend` gửi đi vẫn mang đúng bề mặt
+        // người sắp nhìn, nên sổ cái phát lại được. Thiếu phần chuyển tab thì nút "Sửa
+        // phương án" gửi một `attend` nói *"tôi đang xem tab Yêu cầu"* trong khi người vẫn
+        // ngồi ở Console: lõi và màn hình nói hai chuyện khác nhau.
+        let tab = hd.raw["data"]?["di_tab"]?.stringValue
+        if let tab, !tab.isEmpty {
+            state.selectedSurface = tab
+        }
         if let act = hd.act(ma: ma, loai: loai, khoi: khoi,
-                            surface: state.selectedSurface, lyDo: lyDo) {
+                            surface: tab ?? state.selectedSurface, lyDo: lyDo) {
             state.gui(act)
         }
     }

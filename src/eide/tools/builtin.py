@@ -442,6 +442,27 @@ def build_registry(features: Any = None) -> Registry:
         card_id = ctx.ids.next("card")
         card = {"type": "clarify", "card_id": card_id, "intro": intro,
                 "questions": questions, "assumption_if_skipped": assumption_if_skipped}
+
+        # Thẻ "nêu 2–4 cách" có một cú bấm dẫn tới bảng phương án — EIDE-EDIT-47 §DEV-380.
+        #
+        # §DEV-370 đòi "mỗi cách có nút Sửa mở FormEditor". A2.3 đã mang `sua_duoc` từ
+        # DEV-368 nên phương án SỬA ĐƯỢC rồi; chỗ thiếu là người đọc thẻ **không biết điều
+        # đó** — họ đang nhìn một câu hỏi có ba lựa chọn, và chỗ sửa thì ở một tab khác.
+        #
+        # Lõi chỉ khai cú bấm khi kho THẬT SỰ có phương án chưa chốt. Không dò xem lựa
+        # chọn nào trên thẻ ứng với phương án nào: đoán chuyện ấy từ chữ người gõ là một
+        # phép đoán, và một cái nút "Sửa cách B" mở ra phương án A thì tệ hơn không có nút.
+        from .. import surfaces as _sf
+
+        chua_chot = [a for a in ctx.store.list("option", limit=50)
+                     if not (a.get("canonical") or {}).get("da_chon")]
+        if chua_chot:
+            card["hanh_dong"] = [_sf.hanh_dong(
+                "mo_bang_phuong_an",
+                f"Sửa phương án ({len(chua_chot)} cách)", "attend", muc="khoi",
+                data={"di_tab": "requirements"},
+                giai_thich="Mở bảng Phương án ở tab Yêu cầu — ở đó mỗi cách sửa được "
+                           "từng ô (tên · kiến trúc · chi phí · độ khó). 0 token.")]
         ctx.emit(uic.console_post(_render_ask(intro, questions,
                                                            assumption_if_skipped),
                                   role="agent", card=card))

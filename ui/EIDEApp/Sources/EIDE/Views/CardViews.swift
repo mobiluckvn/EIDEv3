@@ -225,6 +225,18 @@ struct TheLamRoView: View {
                     .font(.system(size: 10)).foregroundStyle(Color.staleAmber)
             }
 
+            // Nút do LÕI khai trên thẻ (§DEV-380). Hôm nay có đúng một cái: "Sửa phương
+            // án" trên thẻ nêu 2–4 cách — A2.3 sửa được từ DEV-368, nhưng người đang đọc
+            // thẻ không biết chỗ ấy ở đâu.
+            if !card.hanhDong.isEmpty {
+                HStack(spacing: 10) {
+                    ForEach(Array(card.hanhDong.enumerated()), id: \.offset) { _, h in
+                        NutHanhDong(hd: HanhDong(h), ma: "", loai: "", khoi: card.id)
+                    }
+                    Spacer()
+                }
+            }
+
             HStack {
                 Button("Gửi trả lời") { guiTraLoi() }
                 .disabled(traLoi.values.allSatisfy(\.isEmpty))

@@ -1694,7 +1694,26 @@ class Agent:
 
         key = str(act.data.get("key"))
         val = act.data.get("value")
-        if key.startswith("feature."):
+        if key == "watcher.quet_lai":
+            # "Quét lại ngay" (§DEV-380) — một nhịp quét bằng mã, 0 token.
+            #
+            # Đi qua `set` chứ không thêm một loại HumanAct thứ 14: tài liệu EDIT-47 cam kết
+            # "13 loại HumanAct giữ nguyên", và `set` đúng là cửa cho những thao tác người
+            # bấm mà lõi giải quyết bằng mã (xem docstring của hàm này).
+            if self._watcher is None:
+                ctx.emit(uic.notice(
+                    "Chưa theo dõi thư mục dự án nên không có gì để quét lại. Bật cờ "
+                    "`watcher` ở tab Dự án (A14.7) thì nó chạy từ lần mở app sau.",
+                    level="warn"))
+            else:
+                doi = self._watcher.quet_mot_lan()
+                if doi:
+                    self._tep_doi_ngoai_eide(doi)
+                else:
+                    ctx.emit(uic.notice(
+                        "Đã quét lại: không tệp nào đổi kể từ lần quét trước.",
+                        level="info"))
+        elif key.startswith("feature."):
             self._dat_co(key.split(".", 1)[1], val, act, ctx)
         elif key == "autonomy" and val in ("A0", "A1", "A2", "A3", "A4"):
             self.policy.autonomy = str(val)

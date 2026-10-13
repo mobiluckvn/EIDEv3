@@ -528,6 +528,68 @@ struct SeMatGiView: View {
         (truoc["se_mat_vi"]?.arrayValue ?? []).compactMap(\.stringValue)
     }
 
+    /// `diff_tom_tat` — MỖI hiện vật sẽ đổi: mấy dòng thêm, mấy dòng bớt (§DEV-380).
+    ///
+    /// Lõi đã tính và gửi nó từ DEV-366, và giao diện **chưa bao giờ vẽ**: người đọc được
+    /// câu "sẽ mất gì" nhưng không thấy mất BAO NHIÊU, nên một bản ưng ý cách hiện tại hai
+    /// mươi hiện vật trông y như một bản cách một hiện vật.
+    ///
+    /// Chỉ con số, đúng như lõi gửi — nó cố ý không gửi toàn văn, vì hai mươi nội dung cho
+    /// một lần xem trước là trả giá cho thứ người chưa mở ra xem.
+    private var dsDiff: [JSONValue] { truoc["diff_tom_tat"]?.arrayValue ?? [] }
+
+    /// Nhãn số của một dòng `diff_tom_tat` — tách ra để **đo được** (§DEV-380).
+    ///
+    /// `doi` phải có mặt, không chỉ `+them −bot`: một ô bị SỬA đếm vào `doi` và để
+    /// `them`/`bot` bằng 0. Bản đầu của khung này chỉ hiện `+them −bot`, nên nó in
+    /// **"+0 −0"** cho đúng ca thường gặp nhất (người đổi một trường) — tức nói "không đổi
+    /// gì" về một thay đổi.
+    ///
+    /// Phép phá "bỏ `doi` đi" LỌT mọi ca kiểm đọc mã nguồn, vì chữ `"doi"` vẫn còn trong
+    /// tệp. Nên luật ấy phải nằm trong một HÀM, và hàm thì đo được.
+    static func nhanSo(_ x: JSONValue) -> [(String, Color)] {
+        var ra: [(String, Color)] = []
+        if let d = x["doi"]?.intValue, d > 0 { ra.append(("\(d) đổi", .staleAmber)) }
+        if let t = x["them"]?.intValue, t > 0 { ra.append(("+\(t)", .okGreen)) }
+        if let b = x["bot"]?.intValue, b > 0 { ra.append(("−\(b)", .gateRed)) }
+        // Không có số nào > 0 mà dòng vẫn ở đây: hiện vật bị gỡ bỏ hoặc dựng lại, nên nói
+        // thẳng thay vì để một dòng trống trông như lỗi hiển thị.
+        if ra.isEmpty { ra.append(("cả hiện vật", .staleAmber)) }
+        return ra
+    }
+
+    @ViewBuilder private var bangDiffTomTat: some View {
+        if !dsDiff.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(dsDiff.count) hiện vật sẽ đổi:")
+                    .font(.system(size: 11, weight: .semibold))
+                ForEach(Array(dsDiff.prefix(12).enumerated()), id: \.offset) { _, x in
+                    HStack(spacing: 6) {
+                        Text(x["viec"]?.stringValue ?? "đổi")
+                            .font(.system(size: 9, weight: .medium))
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                        Text(x["id"]?.stringValue ?? "")
+                            .font(.system(size: 10, design: .monospaced))
+                        Text("(\(x["type"]?.stringValue ?? "?"))")
+                            .font(.system(size: 9)).foregroundStyle(.tertiary)
+                        Spacer(minLength: 0)
+                        ForEach(Self.nhanSo(x), id: \.0) { chu, mau in
+                            Text(chu)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(mau)
+                        }
+                    }
+                }
+                if dsDiff.count > 12 {
+                    Text("… và \(dsDiff.count - 12) hiện vật nữa")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if truoc["ok"]?.boolValue != true {
@@ -545,6 +607,7 @@ struct SeMatGiView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            bangDiffTomTat
             let khongLui = truoc["khong_hoan_tac_duoc"]?.arrayValue ?? []
             if !khongLui.isEmpty {
                 Label("\(khongLui.count) thay đổi KHÔNG lùi lại được (đã tác động ra ngoài "

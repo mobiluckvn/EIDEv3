@@ -1824,7 +1824,20 @@ def history(store: Any, inv: Any, hist: Any = None) -> dict[str, Any]:
                      f"{sum(1 for c in hien if c['cua_nguoi'])} của anh · "
                      f"{sum(1 for c in hien if not c['hoan_tac_duoc'])} không hoàn tác được"),
             items=hien,
-            checkpoints=[c for c in ds if c["la_checkpoint"]]))
+            checkpoints=[c for c in ds if c["la_checkpoint"]],
+            # "Quét lại ngay" — EIDE-EDIT-47 §DEV-380.
+            #
+            # Watcher quét mỗi 2 giây, đủ nhanh cho tay người. Nhưng có một lúc nó KHÔNG đủ:
+            # người vừa làm gì đó ngoài app (chạy một script sinh mã, bung một kho nén) rồi
+            # quay sang EIDE để xem nó bắt được chưa. Chờ hai giây trong khi nhìn một bảng
+            # không đổi là chờ mà không biết mình đang chờ cái gì.
+            #
+            # 0 token: lõi gọi đúng một nhịp quét bằng mã.
+            hanh_dong=[hanh_dong("quet_lai", "Quét lại ngay", "set", muc="khoi",
+                                 data={"key": "watcher.quet_lai", "value": True},
+                                 giai_thich="Quét thư mục dự án NGAY, không chờ nhịp 2 "
+                                            "giây. Chỉ có tác dụng khi cờ WATCHER bật. "
+                                            "0 token.")]))
     else:
         khoi.append(empty(
             "A11.1", "Dòng thời gian changeset",

@@ -211,6 +211,9 @@ struct Card: Identifiable {
     var requireFields: [String] { (raw["require_fields"]?.arrayValue ?? []).compactMap(\.stringValue) }
     var options: [String] { (raw["options"]?.arrayValue ?? []).compactMap(\.stringValue) }
 
+    /// Nút do LÕI khai trên thẻ (§DEV-380) — cùng hợp đồng với `hanh_dong` của khối.
+    var hanhDong: [JSONValue] { raw["hanh_dong"]?.arrayValue ?? [] }
+
     // Thẻ làm rõ
     var intro: String? { raw["intro"]?.stringValue }
     var assumptionIfSkipped: String? { raw["assumption_if_skipped"]?.stringValue }
