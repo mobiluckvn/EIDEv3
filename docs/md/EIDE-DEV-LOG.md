@@ -11676,3 +11676,66 @@ trong tệp, nên phép thay thế **lặng lẽ không làm gì**. Nay cắt th
   nào cần, chưa cần.
 * **Thư mục rỗng** không trở lại được sau hoàn tác (git không theo dõi thư mục rỗng).
 * **Chỉ số 2 và 3 của §7** chưa có con số "sau" — cần một phiên có người thật ngồi bấm.
+
+## [DEV-379] Phiên "người bấm thay vì gõ" — hai chỉ số cuối của §7 có con số *sau*
+
+Anh Công nhờ làm thay việc chỉ anh làm được. Nó là việc cuối còn thiếu của §7: hai chỉ số
+mới chỉ có mốc **"trước"**, vì chúng đo *hành vi của người ngồi trước giao diện*.
+
+`tools/phien_nguoi_bam.py` chạy một phiên thật: giao một việc có nội dung (ghi FR-01 rồi
+viết `firmware/uart.c` hiện thực nó), rồi **mỗi lần muốn một thay đổi thì bấm** — sửa ô
+trong bảng A2.1, bấm "Cập nhật hạ nguồn" trên A11.4 — thay vì gõ một câu nhờ tác tử.
+
+### Giới hạn, nói trước khi đọc số
+
+"Người" ở đây là một kịch bản đi qua kênh kiểm thử của **chính app** (`.eide/ui-test/`),
+không phải anh Công ngồi trước màn hình. Nó đo được *"đường đi của một cú bấm có dẫn tới
+việc không"*, **không** đo được *"người thật có chọn bấm thay vì gõ không"* — câu thứ hai
+chỉ một phiên có người thật trả lời được. Đổi lại: mọi thông điệp gửi đi đều lấy từ chính
+`hanh_dong` mà lõi khai trên khối A11.4, nên nó không dựng ra một đường đi không tồn tại.
+
+### Hai con số
+
+| | trước (sổ 39 dự án, DEV-372) | phiên này |
+|---|---|---|
+| **Chỉ số 2** · lượt người gõ lời cho việc lẽ ra bấm được | 0 trong 32 câu ngắn — nhưng **vì lý do không liên quan** (mọi câu đều do kịch bản gõ, và chúng nói về việc viết mã) | **0** — và lần này vì người **đã bấm**: sửa ô, bấm cập nhật. Câu duy nhất gõ ra là câu giao việc đầu phiên, việc **không có nút nào** |
+| **Chỉ số 3** · sửa → hạ nguồn cập nhật | 4 lần đo được, trung vị **41,8 phút**; **7 lần không ai cập nhật** | **56,5 giây** từ lúc người bấm Lưu tới changeset của tác tử (ba lần chạy: 62,4 · 60,4 · 56,5 s); **0 lần** bị bỏ quên |
+
+Đo lại cả kho sau khi thêm phiên này: trung vị chỉ số 3 từ **41,8 phút xuống 8,5 phút** (5
+mẫu). Con số kho vẫn trộn phiên cũ; con số của riêng phiên bấm là **56,5 giây** — nhanh hơn
+khoảng **40×** so với mốc cũ.
+
+Chi phí một phiên: 18 lời gọi `gemini-3.8-flash` · vào 681 247 token (539 387 lấy từ cache)
+· ra 4 302 token.
+
+### Lần chạy ĐỎ, và nó là lỗi của bộ đo
+
+Lần thứ ba báo đỏ: *"hạ nguồn vẫn lỗi thời"*, kèm "8,4 giây". Mở sổ cái ra thì lượt ấy chạy
+**103 giây** và tác tử **đã cập nhật xong** (`cs-0006`, `uart.c` lên v2, cờ sạch). Tức
+`doi_xong` trả về sớm — nó thấy một sự kiện kết lượt còn lại từ lượt trước — và tôi đọc
+đồng hồ trước khi việc xong.
+
+Một phép đo trả về sớm thì nó không đo gì cả, và tệ hơn: nó **báo đỏ cho một việc đã làm
+đúng**. Nếu lần ấy ngẫu nhiên xanh thì tôi đã ghi "8,4 giây" vào báo cáo như một thuộc tính
+của sản phẩm. Nay đợi theo **điều kiện** (cờ lỗi thời sạch, có deadline), và thêm một phép
+kiểm *"tác tử thật sự GHI một thay đổi, không chỉ nói"*.
+
+Một con số nữa cũng từng nói dối trong chính bộ đo này: nó in **"0 token"** cho một phiên 19
+lời gọi mô hình, vì tôi đọc `tokens_in`/`tokens_out` — hai khoá **không tồn tại** trong sổ
+(tên thật là `usage.in` / `usage.out` / `usage.cached`). Nay có một `assert` chặn đúng chỗ
+ấy: nếu có lời gọi mô hình mà đếm ra 0 token vào thì bộ đo tự báo là mình đọc sai tên trường.
+
+### Đo
+
+* `tools/phien_nguoi_bam.py` — **12/12** qua app thật, sau cờ `EIDE_E2E_MO_HINH=1` (tốn
+  tiền mô hình, nên không chạy trong `pytest -q`).
+* Kết quả ghi `du-lieu/ket-qua/phien_nguoi_bam.json`, kèm **câu giới hạn** ngay trong tệp —
+  để lần sau ai đọc con số cũng đọc được nó nói về cái gì.
+
+### Chưa làm
+
+* **Chỉ số 2 vẫn chưa trả lời câu thật**: *người thật* có chọn bấm thay vì gõ không. Chỉ một
+  phiên có anh Công ngồi trước màn hình trả lời được, và bộ này không thay thế được chuyện ấy
+  — nó chỉ chứng minh đường đi tồn tại và dẫn tới việc.
+* **Một mẫu là một mẫu.** Ba lần chạy cho 62,4 · 60,4 · 56,5 giây, đủ để nói "khoảng một
+  phút", không đủ để nói một phân phối.

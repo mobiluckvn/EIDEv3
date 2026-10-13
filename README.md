@@ -546,7 +546,8 @@ dự án firmware thật: **50 trong 50** tệp giữ nguyên cả `sha256` lẫ
 | Gỡ lại · diff · sửa sâu · duyệt có sửa · soạn tệp · sửa/XOÁ NGOÀI app · bật cờ · cập nhật hạ nguồn, qua app thật | **74/74** | [`thu_nut_lui.py`](tools/thu_nut_lui.py) |
 | Loại hiện vật người sửa được thẳng trên giao diện | **15/33** | [`dem_sua_duoc.py`](tools/dem_sua_duoc.py) |
 | Hoàn tác theo tầng, đọc từ sổ cái | **5/5 ok** · 4 tầng | [`do_edit47.py`](tools/do_edit47.py) |
-| Hạ nguồn bị đánh STALE rồi KHÔNG ai cập nhật | **7 lần** · trung vị cập nhật 41,8 phút (4 mẫu) | [`do_edit47.py`](tools/do_edit47.py) |
+| Hạ nguồn bị đánh STALE rồi KHÔNG ai cập nhật | **8 lần** (5 trong số đó ở dự án của chính bộ đo) · trung vị cập nhật **8,5 phút** (5 mẫu) | [`do_edit47.py`](tools/do_edit47.py) |
+| Phiên “người bấm thay vì gõ”: sửa → hạ nguồn sạch | **56,5 giây** (3 lần chạy: 62,4 · 60,4 · 56,5) · **0** lượt gõ lời cho việc bấm được | [`phien_nguoi_bam.py`](tools/phien_nguoi_bam.py) |
 | Agent tự viết công cụ cho chính nó | **8/8** | [`thu_tu_viet_cong_cu.py`](tools/thu_tu_viet_cong_cu.py) |
 | Viết tài liệu Word · PowerPoint · Excel · PDF | **13/13** | [`thu_xuat_tai_lieu.py`](tools/thu_xuat_tai_lieu.py) |
 | Vẽ sơ đồ (trên màn hình và trong tệp) | **18/18** | [`thu_so_do.py`](tools/thu_so_do.py) |
@@ -1369,7 +1370,9 @@ Nói ra để người đọc không phải tự tìm:
   thêm một phụ thuộc ngoài vào một tính năng an toàn dữ liệu. Còn **tệp bị xoá bên ngoài** thì
   DEV-375 đã vá: nó thành changeset hoàn tác được, trả cả tệp về đĩa lẫn hiện vật về kiểm
   kê — và nói thẳng `KHÔNG hoàn tác được` ở dự án không có git, thay vì hứa một đường lui
-  không có thật. Xoá **cả thư mục** là MỘT changeset (DEV-376): một cú bấm Delete là một
+  không có thật. Và khi người bấm *Cập nhật hạ nguồn*, khoảng thời gian từ lúc họ lưu tới
+  lúc hạ nguồn sạch là **56,5 giây** trên một phiên thật (DEV-379) — mốc cũ là trung vị
+  **41,8 phút**, và 7 lần không ai cập nhật. Xoá **cả thư mục** là MỘT changeset (DEV-376): một cú bấm Delete là một
   việc, nên một cú bấm Hoàn tác trả cả thư mục về. Và đo lô lớn tìm ra **hai chỗ O(N²)
   trong lõi** có từ bước G5 (DEV-377): đọc bản cũ bằng hai tiến trình git mỗi tệp, và
   `danh_dau_stale` giải mã 643 200 JSON cho một lô 400 tệp. Một lô 500 tệp từ **101 giây
