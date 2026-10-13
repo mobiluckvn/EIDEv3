@@ -54,6 +54,26 @@ def _chin_ngay(w):
     return w.quet_mot_lan()
 
 
+def _than_ma(fn) -> str:
+    """Mã của một hàm, ĐÃ BỎ docstring.
+
+    Hai ca kiểm dưới đây đọc mã nguồn để canh một luật (không `LIMIT`, không đường đọc
+    riêng). Không bỏ docstring thì chúng khớp vào chính câu chú thích nói về cái luật ấy —
+    một phép đo đọc văn xuôi của mình rồi báo xanh. Đã sập một lần, 12/10/2026.
+    """
+    import inspect
+
+    ma = inspect.getsource(fn)
+    if not fn.__doc__:
+        return ma
+    # Cắt theo DẤU NGOẶC trong mã, không `replace(fn.__doc__)`: `__doc__` đã bị Python
+    # xử lý thụt lề nên nó KHÔNG khớp nguyên văn trong tệp, và phép thay thế lặng lẽ
+    # không làm gì. Đã sập đúng như thế một lần trước khi viết dòng này.
+    i = ma.find('"""')
+    j = ma.find('"""', i + 3)
+    return ma[:i] + ma[j + 3:] if i >= 0 and j > i else ma
+
+
 def _cs_ngoai(a):
     return [c for c in a.history.log.all() if a.history.tom_tat(c)["ngoai_eide"]]
 
@@ -107,6 +127,46 @@ def test_theo_doi_bo_qua_THU_MUC_CUA_CHINH_MINH(du_an):
     (du_an / ".eide").mkdir(exist_ok=True)
     (du_an / ".eide" / "rac.jsonl").write_text("x\n", "utf-8")
     assert _chin_ngay(w) == []
+
+
+def test_quet_CAT_NHANH_khong_di_vao_thu_muc_bi_bo_qua(du_an):
+    """`rglob("*")` **đi vào** `.git/` và `node_modules/` rồi ta mới từ chối chúng.
+
+    Đo được 12/10/2026: một dự án 200 tệp thật cộng 10 000 tệp trong hai thư mục ấy tốn
+    **124,8 ms** mỗi nhịp quét; cắt nhánh bằng `os.walk` còn **1,9 ms** — nhanh hơn 66×.
+
+    Đếm **số tệp chạm tới**, không đo đồng hồ: đếm thì đúng trên mọi máy.
+    """
+    cham = {"n": 0}
+    that_su = wt.dang_theo_doi
+
+    def dem(rel):
+        cham["n"] += 1
+        return that_su(rel)
+
+    for i in range(5):
+        (du_an / f"t{i}.c").write_text("x\n", "utf-8")
+    # Thư mục con THẬT, sâu hai cấp: cắt nhánh mà cắt cả cái này thì watcher mù với mọi
+    # dự án có cấu trúc — và `firmware/`, `src/driver/` là cấu trúc thường gặp nhất.
+    (du_an / "src" / "driver").mkdir(parents=True, exist_ok=True)
+    (du_an / "src" / "driver" / "eth.c").write_text("x\n", "utf-8")
+    for ten in (".git", "node_modules", "build"):
+        (du_an / ten).mkdir(exist_ok=True)
+        for i in range(40):
+            (du_an / ten / f"r{i}.js").write_text("x\n", "utf-8")
+
+    wt.dang_theo_doi = dem
+    try:
+        w = wt.Watcher(du_an, khi_doi=lambda _: None)
+        anh = w._chup()
+    finally:
+        wt.dang_theo_doi = that_su
+
+    assert "src/driver/eth.c" in anh, list(anh)
+    assert len(anh) >= 6, anh
+    assert all("node_modules" not in k and ".git" not in k for k in anh), list(anh)[:5]
+    assert cham["n"] <= 13, (f"{cham['n']} tệp được xét cho một dự án 6 tệp thật — "
+                             "cây rác đang bị đi vào rồi mới lọc")
 
 
 def test_nhi_phan_va_tep_qua_lon_bi_bo_qua(du_an):
@@ -688,6 +748,88 @@ def test_hai_duong_cho_cung_ket_qua(phien, du_an):
     assert "main.c" in lo["FR-01"] and "main.c" not in lo["FR-02"]
     assert "PT-01" not in lo["FR-01"], \
         "`analysis` là bằng chứng của một thời điểm — nó không bao giờ lỗi thời"
+
+
+def test_HON_500_HIEN_VAT_CUNG_LOAI_van_duoc_danh_dau_du(phien, du_an):
+    """Đường cũ của `ha_nguon_cua` gọi `store.list(loai, limit=500)`. Nên một dự án có hơn
+    500 hiện vật cùng loại thì hiện vật thứ 501 trở đi **không bao giờ bị đánh dấu lỗi
+    thời** — im lặng, không cảnh báo, và `CX06` vẫn xanh vì kho mẫu của nó nhỏ.
+
+    Đo được 12/10/2026: 700 tệp mã trong kho thì đường cũ thấy 500, bỏ 200. Ngưỡng nằm
+    đúng ở 501, nên ca kiểm dựng 520 — vừa đủ qua trần, đủ nhanh để chạy lại.
+    """
+    from eide import deps
+
+    a, core, out = phien()
+    for i in range(520):
+        a.store.apply(artefact_id=f"m{i:04d}.c", type="code", op="create",
+                      author="agent:run-1", canonical={"path": f"m{i}.c"}, explain=EX)
+    a.store.apply(artefact_id="FR-01", type="req", op="create", author="agent:run-1",
+                  canonical={"text": "x"}, explain=EX)
+
+    ha = deps.ha_nguon_cua(a.store, "FR-01")
+    assert len(ha) == 520, f"thấy {len(ha)}/520 — một cái trần đang cắt âm thầm"
+
+    # Và đường ghi thật cũng phải đánh dấu đủ.
+    cs = a.history.ghi_kho(author="human", artefact_id="FR-01", type="req", op="update",
+                           canonical={"text": "y"}, explain=EX)
+    assert len(cs.stale_marked) == 520, len(cs.stale_marked)
+
+
+def test_danh_dau_stale_doc_chi_muc_MOT_LAN_cho_ca_lo(phien):
+    """Đếm số lần ĐỌC CHỈ MỤC, đúng như hai ca trên đếm số tiến trình git.
+
+    Nếu `danh_dau_stale` gọi `ha_nguon_cua` từng hiện vật một thì kết quả vẫn ĐÚNG (nó
+    cùng một luật, cùng một hàm) — chỉ là nó đọc lại cả chỉ mục kho N lần. Một phép đo
+    theo kết quả không bao giờ thấy chuyện đó; một phép đo theo số lần đọc thì thấy.
+    """
+    from eide import deps
+
+    a, core, out = phien()
+    for i in range(10):
+        a.store.apply(artefact_id=f"FR-{i:02d}", type="req", op="create",
+                      author="agent:run-1", canonical={"text": "x"}, explain=EX)
+    a.store.apply(artefact_id="main.c", type="code", op="create", author="agent:run-1",
+                  canonical={"path": "main.c"}, explain=EX)
+
+    dem = {"n": 0}
+    that = a.store.chi_muc_nhe
+
+    def dem_doc(*args, **kw):
+        dem["n"] += 1
+        return that(*args, **kw)
+
+    a.store.chi_muc_nhe = dem_doc
+    can = deps.danh_dau_stale(a.store, thuong_nguon=[f"FR-{i:02d}" for i in range(10)],
+                              ly_do_cs="cs-0001")
+    assert "main.c" in can
+    assert dem["n"] == 1, f"{dem['n']} lần đọc chỉ mục cho một lô 10 hiện vật"
+
+
+def test_chi_muc_nhe_KHONG_CO_TRAN(phien):
+    """Một cái trần trên chỉ mục của đồ thị phụ thuộc là một phép mất dữ liệu đặt sẵn.
+
+    Đo bằng chính câu SQL, vì một ca kiểm dựng 20 001 hiện vật để chạm trần cũ thì không
+    ai chạy lại nó.
+    """
+    from eide.store.db import Store
+
+    assert "LIMIT" not in _than_ma(Store.chi_muc_nhe).upper(), _than_ma(Store.chi_muc_nhe)
+    assert "nói ra đã bỏ bao nhiêu" in (Store.chi_muc_nhe.__doc__ or ""), \
+        "và nói rõ luật cho lần sau, trong docstring"
+
+
+def test_MOT_DUONG_khong_hai(phien):
+    """`ha_nguon_cua` phải GỌI bản gộp lô, không giữ một bản riêng.
+
+    Hai bản song song của cùng một luật sẽ lệch, và lần này chúng đã lệch theo kiểu tệ
+    nhất: bản được gọi ở 40 chỗ là bản **sai** (trần 500).
+    """
+    from eide import deps
+
+    than = _than_ma(deps.ha_nguon_cua)
+    assert "ha_nguon_cua_nhieu(store, [artefact_id])" in than
+    assert "store.list(" not in than, "không được còn một đường đọc riêng"
 
 
 def test_LO_QUA_TRAN_van_ghi_nhung_NOI_RA_da_bo_gi(phien, du_an, monkeypatch):

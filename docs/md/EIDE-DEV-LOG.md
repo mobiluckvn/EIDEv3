@@ -11600,3 +11600,79 @@ dấu là một cái bẫy đặt cho chính mình ba tháng sau.
 * **`ha_nguon_cua` một-hiện-vật vẫn dùng đường cũ** — còn 40 chỗ gọi nó, và đổi hết trong
   một gói là đổi hành vi đánh dấu lỗi thời ở 40 chỗ cùng lúc mà không đo được từng chỗ.
 * **`watchdog` vẫn chưa cắm.**
+
+## [DEV-378] Một đường, không hai — và cái trần 500 không ai canh
+
+Mục "chưa làm" của DEV-377 ghi: *"`ha_nguon_cua` một-hiện-vật vẫn dùng đường cũ — còn 40
+chỗ gọi nó"*. Gói này nối nó vào bản gộp lô, và phép đo lộ ra một **lỗi đúng sai**, không
+phải một chuyện tốc độ.
+
+### `store.list(loai, limit=500)` cắt âm thầm
+
+Đo `ha_nguon_cua` trên kho lớn dần, so hai bản:
+
+| hiện vật cùng loại trong kho | đường CŨ thấy | đường MỚI thấy |
+|---|---|---|
+| 400 | 400 | 400 |
+| 500 | 500 | 500 |
+| **501** | **500** | 501 |
+| 700 | 500 | 700 |
+| 1 000 | 500 | 1 000 |
+
+Một dự án có hơn 500 hiện vật cùng loại thì hiện vật thứ 501 trở đi **không bao giờ bị
+đánh dấu lỗi thời**. Im lặng — không cảnh báo, không dòng nào trong sổ. Và `CX06` ("hạ
+nguồn STALE đúng danh sách") vẫn xanh suốt, vì kho mẫu của nó có vài hiện vật.
+
+Đây là lỗi tôi đi tìm tốc độ mà gặp: phép đo so hai bản, thấy `khớp False` ở kho 1 000, và
+chữ "False" ấy mới là kết quả đáng đọc của cả gói. Một bộ đo chỉ xem đồng hồ sẽ báo "nhanh
+hơn 2,7×" rồi đi tiếp.
+
+**`chi_muc_nhe()` nay không có `LIMIT` nào.** Một cái trần trên chỉ mục của đồ thị phụ
+thuộc là một phép mất dữ liệu đặt sẵn. Nếu sau này cần trần (kho triệu hiện vật), nó phải
+**nói ra đã bỏ bao nhiêu** — và có ca kiểm đọc chính câu SQL để canh luật ấy.
+
+### Một đường, không hai
+
+`ha_nguon_cua(store, id)` nay chỉ còn một dòng: gọi `ha_nguon_cua_nhieu(store, [id])`. Hai
+bản song song của cùng một luật sẽ lệch, và lần này chúng đã lệch theo kiểu tệ nhất: **bản
+được gọi ở 40 chỗ là bản sai**. Thêm vào đó nó nhanh hơn 2,7–6,9× cho đúng một hiện vật.
+
+### Và câu hỏi `watchdog` nay có số đứng sau
+
+Nợ từ DEV-369: *"`watchdog` nhanh hơn và không tốn CPU khi im"*. Đo nhịp quét `mtime`:
+
+| cây dự án | một nhịp quét | phần của một lõi (nhịp 2 s) |
+|---|---|---|
+| 500 tệp | 6,5 ms | 0,3 % |
+| 2 000 tệp | 30,1 ms | 1,5 % |
+| 10 000 tệp | 128,2 ms | 6,4 % |
+
+Với một dự án nhúng cỡ vài trăm tệp thì 0,3 %. **Không cần thêm một phụ thuộc ngoài vào
+một tính năng an toàn dữ liệu** — và câu ấy nay dựa trên số, không trên cảm giác. Nợ này
+đóng lại.
+
+Nhưng chính phép đo ấy lộ ra một chỗ khác: `rglob("*")` **đi vào** `.git/` và
+`node_modules/` rồi ta mới từ chối chúng. Một dự án 200 tệp thật cộng 10 000 tệp trong hai
+thư mục ấy tốn **124,8 ms mỗi nhịp**. `os.walk` cắt `dirnames` tại chỗ: **1,9 ms — nhanh
+hơn 66×**.
+
+### Đo
+
+* `tests/test_edit47_watcher.py` 39 → **44 ca**. **Phá lại thì đỏ: 6/6.**
+* Ba ca mới đo bằng cách **đếm**, không bằng đồng hồ: số tệp được xét trong một lần quét
+  (≤ 13 cho một dự án 6 tệp thật + 120 tệp rác), số lần đọc chỉ mục kho cho một lô 10 hiện
+  vật (= 1), và 520 hiện vật cùng loại phải được đánh dấu **đủ 520**.
+* Bộ kiểm 2 446 → **2 451 xanh**. `thu_nut_lui.py` **74/74**.
+
+Một cái bẫy của bộ đo, ghi lại vì nó sẽ gặp lại: hai ca kiểm đọc **mã nguồn** để canh một
+luật ("không `LIMIT`", "không đường đọc riêng"). Bản đầu khớp vào chính **docstring** nói về
+cái luật ấy — một phép đo đọc văn xuôi của mình rồi báo xanh. Và `ma.replace(fn.__doc__)`
+cũng không chữa được: `__doc__` đã bị Python xử lý thụt lề nên nó không khớp nguyên văn
+trong tệp, nên phép thay thế **lặng lẽ không làm gì**. Nay cắt theo dấu ngoặc trong mã.
+
+### Chưa làm
+
+* **`ha_nguon_cua_nhieu` vẫn O(N²) trong bộ nhớ** — 2 000 tệp còn 8 s. Đã đo để biết khi
+  nào cần, chưa cần.
+* **Thư mục rỗng** không trở lại được sau hoàn tác (git không theo dõi thư mục rỗng).
+* **Chỉ số 2 và 3 của §7** chưa có con số "sau" — cần một phiên có người thật ngồi bấm.

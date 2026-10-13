@@ -47,6 +47,54 @@ HA_NGUON: dict[str, tuple[str, ...]] = {
 KHONG_STALE = frozenset({"changeset", "snapshot", "report", "analysis"})
 
 
+def ha_nguon_cua_nhieu(store: Any, ids: list[str]) -> dict[str, list[str]]:
+    """`ha_nguon_cua` cho CẢ MỘT LÔ — đọc chỉ mục kho **một lần** (§DEV-377).
+
+    `ha_nguon_cua` gọi `store.list()` bốn lần cho mỗi hiện vật, và `list()` giải mã đầy đủ
+    `canonical`/`explain` của từng hàng. Với một lô N hiện vật thì đó là O(N²) lần giải mã
+    JSON: đo được trên lô 400 tệp — **50,8 giây**, trong đó 37,3 giây nằm trong
+    `json.decoder`, cho một việc chỉ cần đọc tên và loại.
+
+    Hàm này giữ **đúng luật** của `ha_nguon_cua` (xem docstring của nó): đường khai báo
+    thắng chuỗi mặc định khi lời khai nói về cùng loại. Hai bản phải cho cùng kết quả, và
+    `test_hai_duong_cho_cung_ket_qua` canh chuyện đó.
+    """
+    tat_ca = (store.chi_muc_nhe() if hasattr(store, "chi_muc_nhe")
+              # Kho giả trong vài ca kiểm không có `chi_muc_nhe`. Trần 100 000 ở đây là
+              # một con số "không bao giờ tới" cho một kho giả, không phải một trần thật.
+              else store.list(limit=100000))
+    loai_cua = {a["id"]: a["type"] for a in tat_ca}
+    # Nhóm theo loại MỘT lần, thay vì một truy vấn cho mỗi (hiện vật × loại hạ nguồn).
+    theo_loai: dict[str, list[str]] = {}
+    for a in tat_ca:
+        theo_loai.setdefault(a["type"], []).append(a["id"])
+    khai: dict[str, list[str]] = {a["id"]: ((a.get("deps") or {}).get("upstream") or [])
+                                  for a in tat_ca}
+
+    ra: dict[str, list[str]] = {}
+    for aid in ids:
+        if aid not in loai_cua:
+            ra[aid] = []
+            continue
+        loai_goc = loai_cua[aid]
+        ket: list[str] = []
+        khai_ro: set[str] = set()
+        for a in tat_ca:
+            if a["id"] == aid or a["type"] in KHONG_STALE:
+                continue
+            up = khai.get(a["id"]) or []
+            if aid in up:
+                ket.append(a["id"])
+            elif any(loai_cua.get(u) == loai_goc for u in up):
+                khai_ro.add(a["id"])
+        for loai in HA_NGUON.get(loai_goc, ()):
+            for hid in theo_loai.get(loai, ()):
+                if hid != aid and hid not in ket and hid not in khai_ro:
+                    ket.append(hid)
+        ra[aid] = ket
+    return ra
+
+
 def ha_nguon_cua(store: Any, artefact_id: str) -> list[str]:
     """Hiện vật nào phụ thuộc vào cái này.
 
@@ -55,42 +103,19 @@ def ha_nguon_cua(store: Any, artefact_id: str) -> list[str]:
       - **theo khai báo** (`deps.upstream` của chính hiện vật): chính xác hơn chuỗi
         mặc định, vì nó nói *hiện vật này* dựng từ *cái kia*, chứ không phải *loại này*
         thường dựng từ *loại kia*.
+
+    **Một đường, không hai** (§DEV-378). Hàm này gọi thẳng bản gộp lô. Bản riêng cũ của nó
+    đi qua `store.list(loai, limit=500)` và `store.list(limit=2000)`, nên:
+
+    * nó **chậm hơn 2,7–6,9×** cho đúng một hiện vật (đo trên kho 100–1 000 hiện vật), vì
+      `list()` giải mã đầy đủ `canonical`/`explain` của từng hàng;
+    * và nó **mất hạ nguồn** khi kho có hơn 500 hiện vật cùng loại — 700 tệp mã thì nó
+      thấy 500, im lặng bỏ 200.
+
+    Hai bản song song của cùng một luật sẽ lệch, và lần này chúng đã lệch theo kiểu tệ
+    nhất: bản được gọi ở 40 chỗ là bản sai.
     """
-    goc = store.get(artefact_id)
-    if goc is None:
-        return []
-
-    ket: list[str] = []
-    tat_ca = store.list(limit=2000)
-    loai_cua = {a["id"]: a["type"] for a in tat_ca}
-
-    # M2-01 — hiện vật đã NÓI RÕ nó dựng từ những cái nào cùng loại với `goc` thì lời khai
-    # của nó thắng chuỗi mặc định. Một tiêu chí khai `do_req: FR-01` mà vẫn lỗi thời khi
-    # người ta sửa FR-02 thì lời khai ấy chẳng để làm gì — và băng cảnh báo lúc nào cũng
-    # sáng là băng cảnh báo không ai đọc.
-    #
-    # Chỉ chặn khi khai CÙNG LOẠI: một phương án khai nguồn là REQ thì nó tự quyết lấy
-    # chuyện "REQ nào làm tôi lỗi thời", nhưng nó vẫn phải lỗi thời khi ADR đổi — chuyện
-    # ấy nó chưa nói gì.
-    khai_ro: set[str] = set()
-
-    # Đường khai báo: ai ghi rằng mình phụ thuộc vào goc.
-    for a in tat_ca:
-        if a["id"] == artefact_id or a["type"] in KHONG_STALE:
-            continue
-        up = (a.get("deps") or {}).get("upstream") or []
-        if artefact_id in up:
-            ket.append(a["id"])
-        elif any(loai_cua.get(u) == goc["type"] for u in up):
-            khai_ro.add(a["id"])
-
-    # Đường mặc định theo loại — cho những hiện vật CHƯA khai gì về loại này.
-    for loai in HA_NGUON.get(goc["type"], ()):
-        for a in store.list(loai, limit=500):
-            if a["id"] != artefact_id and a["id"] not in ket and a["id"] not in khai_ro:
-                ket.append(a["id"])
-
-    return ket
+    return ha_nguon_cua_nhieu(store, [artefact_id]).get(artefact_id, [])
 
 
 # Loại hiện vật → cột trong ma trận truy vết. Năm cột này là thứ tab A2 dựng (M2-02);
@@ -158,52 +183,6 @@ def fact_ha_nguon(store: Any, fact_id: str) -> list[str]:
                 ket.append(a["id"])
                 break
     return ket
-
-
-def ha_nguon_cua_nhieu(store: Any, ids: list[str]) -> dict[str, list[str]]:
-    """`ha_nguon_cua` cho CẢ MỘT LÔ — đọc chỉ mục kho **một lần** (§DEV-377).
-
-    `ha_nguon_cua` gọi `store.list()` bốn lần cho mỗi hiện vật, và `list()` giải mã đầy đủ
-    `canonical`/`explain` của từng hàng. Với một lô N hiện vật thì đó là O(N²) lần giải mã
-    JSON: đo được trên lô 400 tệp — **50,8 giây**, trong đó 37,3 giây nằm trong
-    `json.decoder`, cho một việc chỉ cần đọc tên và loại.
-
-    Hàm này giữ **đúng luật** của `ha_nguon_cua` (xem docstring của nó): đường khai báo
-    thắng chuỗi mặc định khi lời khai nói về cùng loại. Hai bản phải cho cùng kết quả, và
-    `test_hai_duong_cho_cung_ket_qua` canh chuyện đó.
-    """
-    tat_ca = (store.chi_muc_nhe() if hasattr(store, "chi_muc_nhe")
-              else store.list(limit=20000))
-    loai_cua = {a["id"]: a["type"] for a in tat_ca}
-    # Nhóm theo loại MỘT lần, thay vì một truy vấn cho mỗi (hiện vật × loại hạ nguồn).
-    theo_loai: dict[str, list[str]] = {}
-    for a in tat_ca:
-        theo_loai.setdefault(a["type"], []).append(a["id"])
-    khai: dict[str, list[str]] = {a["id"]: ((a.get("deps") or {}).get("upstream") or [])
-                                  for a in tat_ca}
-
-    ra: dict[str, list[str]] = {}
-    for aid in ids:
-        if aid not in loai_cua:
-            ra[aid] = []
-            continue
-        loai_goc = loai_cua[aid]
-        ket: list[str] = []
-        khai_ro: set[str] = set()
-        for a in tat_ca:
-            if a["id"] == aid or a["type"] in KHONG_STALE:
-                continue
-            up = khai.get(a["id"]) or []
-            if aid in up:
-                ket.append(a["id"])
-            elif any(loai_cua.get(u) == loai_goc for u in up):
-                khai_ro.add(a["id"])
-        for loai in HA_NGUON.get(loai_goc, ()):
-            for hid in theo_loai.get(loai, ()):
-                if hid != aid and hid not in ket and hid not in khai_ro:
-                    ket.append(hid)
-        ra[aid] = ket
-    return ra
 
 
 def danh_dau_stale(store: Any, *, thuong_nguon: Iterable[str], ly_do_cs: str,

@@ -536,7 +536,7 @@ class Store:
         args.append(limit)
         return [_row_to_artefact(r) for r in self._db.execute(q, args)]
 
-    def chi_muc_nhe(self, *, limit: int = 20000) -> list[dict[str, Any]]:
+    def chi_muc_nhe(self) -> list[dict[str, Any]]:
         """Chỉ mục NHẸ: `id` · `type` · `deps` — không giải mã `canonical`/`explain`.
 
         EIDE-EDIT-47 §DEV-377. Đồ thị phụ thuộc chỉ cần ba trường ấy, nhưng `list()` trả
@@ -544,12 +544,22 @@ class Store:
         một lô 400 tệp sửa cùng lúc: `danh_dau_stale` tốn **50,8 giây**, trong đó **37,3
         giây nằm trong `json.decoder`** — 643 200 lần giải mã JSON cho một việc chỉ cần
         đọc tên và loại.
+
+        **KHÔNG có `LIMIT`, và đó là cả điểm của hàm này** (§DEV-378). Đường cũ đi qua
+        `list(loai, limit=500)`, nên một dự án có 501 hiện vật cùng loại thì hiện vật thứ
+        501 trở đi **không bao giờ bị đánh dấu lỗi thời** — im lặng, không cảnh báo, và
+        `CX06` vẫn xanh vì kho mẫu của nó nhỏ. Đo được: 700 tệp mã trong kho thì đường cũ
+        thấy 500, mất 200.
+
+        Một cái trần trên chỉ mục của đồ thị phụ thuộc là một phép mất dữ liệu đặt sẵn.
+        Nếu sau này cần trần (kho triệu hiện vật), nó phải **nói ra đã bỏ bao nhiêu**, chứ
+        không được cắt lặng lẽ như lần trước.
         """
         return [{"id": r["id"], "type": r["type"],
                  "deps": json.loads(r["deps"] or "{}")}
                 for r in self._db.execute(
                     "SELECT id, type, deps FROM artefacts WHERE deleted=0 "
-                    "ORDER BY updated_at DESC LIMIT ?", (limit,))]
+                    "ORDER BY updated_at DESC")]
 
     def counts(self) -> dict[str, int]:
         return {r["type"]: r["n"] for r in self._db.execute(
