@@ -19,7 +19,7 @@ Ba luật nền, mọi thứ khác dựng trên chúng:
 | **Đề tài** | Phát triển phần mềm nhúng có ứng dụng trí tuệ nhân tạo |
 | | Đề án tốt nghiệp Thạc sĩ ngành Kỹ thuật Điện tử — Học viện Công nghệ Bưu chính Viễn thông |
 | **Học viên** | Vũ Trí Công · **Hướng dẫn:** TS. Nguyễn Trung Hiếu |
-| **Hỗ trợ** | ThS. Đào Thanh Huyền |
+| **Hỗ trợ** | TS. Đào Thanh Huyền |
 | **Chạy trên** | macOS · lõi Python + giao diện Swift · mô hình `gemini-3.8-flash` |
 
 ---
